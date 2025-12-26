@@ -35,6 +35,11 @@ export default function Dashboard() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
 
+    const { data: currentUser } = useQuery({
+      queryKey: ['currentUser'],
+      queryFn: () => base44.auth.me(),
+    });
+
     // Log page visit with user context
     React.useEffect(() => {
       if (currentUser?.email) {
@@ -45,11 +50,6 @@ export default function Dashboard() {
         });
       }
     }, [currentUser?.email]);
-
-    const { data: currentUser } = useQuery({
-      queryKey: ['currentUser'],
-      queryFn: () => base44.auth.me(),
-    });
 
     const { data: visits, isLoading, error: visitsError } = useQuery({
       queryKey: ['todayVisits'],
