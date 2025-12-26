@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
+import AIChatAssistant from "../components/chat/AIChatAssistant";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -403,6 +404,9 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Offline Indicator */}
       <OfflineIndicator />
-    </div>
-  );
-}
+
+      {/* AI Chat Assistant */}
+      {currentUser && <AIChatAssistant />}
+      </div>
+      );
+      }
