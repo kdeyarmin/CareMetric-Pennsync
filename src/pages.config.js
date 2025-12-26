@@ -67,6 +67,7 @@ import Settings from './pages/Settings';
 import Tasks from './pages/Tasks';
 import About from './pages/About';
 import Homepage from './pages/Homepage';
+import SecurityAudit from './pages/SecurityAudit';
 import __Layout from './Layout.jsx';
 
 
@@ -140,6 +141,7 @@ export const PAGES = {
     "Tasks": Tasks,
     "About": About,
     "Homepage": Homepage,
+    "SecurityAudit": SecurityAudit,
 }
 
 export const pagesConfig = {
