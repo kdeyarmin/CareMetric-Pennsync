@@ -15,7 +15,8 @@ export default function Settings() {
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
-    credential_type: 'RN'
+    credential_type: 'RN',
+    preferred_language: 'en-US'
   });
 
   const { data: currentUser } = useQuery({
@@ -27,7 +28,8 @@ export default function Settings() {
     if (currentUser) {
       setFormData({
         full_name: currentUser.full_name || '',
-        credential_type: currentUser.credential_type || 'RN'
+        credential_type: currentUser.credential_type || 'RN',
+        preferred_language: currentUser.preferred_language || 'en-US'
       });
     }
   }, [currentUser]);
@@ -37,7 +39,8 @@ export default function Settings() {
     try {
       await base44.auth.updateMe({
         full_name: formData.full_name,
-        credential_type: formData.credential_type
+        credential_type: formData.credential_type,
+        preferred_language: formData.preferred_language
       });
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setIsEditing(false);
@@ -83,7 +86,8 @@ export default function Settings() {
                       setIsEditing(false);
                       setFormData({
                         full_name: currentUser?.full_name || '',
-                        credential_type: currentUser?.credential_type || 'RN'
+                        credential_type: currentUser?.credential_type || 'RN',
+                        preferred_language: currentUser?.preferred_language || 'en-US'
                       });
                     }}
                     disabled={isSaving}
@@ -132,6 +136,28 @@ export default function Settings() {
                   </Select>
                 </div>
                 <div>
+                  <Label htmlFor="preferred_language">Preferred Language</Label>
+                  <Select
+                    value={formData.preferred_language}
+                    onValueChange={(value) => setFormData({ ...formData, preferred_language: value })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en-US">🇺🇸 English (US)</SelectItem>
+                      <SelectItem value="es-ES">🇪🇸 Español</SelectItem>
+                      <SelectItem value="fr-FR">🇫🇷 Français</SelectItem>
+                      <SelectItem value="de-DE">🇩🇪 Deutsch</SelectItem>
+                      <SelectItem value="it-IT">🇮🇹 Italiano</SelectItem>
+                      <SelectItem value="pt-BR">🇧🇷 Português</SelectItem>
+                      <SelectItem value="zh-CN">🇨🇳 中文</SelectItem>
+                      <SelectItem value="ja-JP">🇯🇵 日本語</SelectItem>
+                      <SelectItem value="ko-KR">🇰🇷 한국어</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
                   <Label className="text-gray-500">Email (Cannot be changed)</Label>
                   <p className="text-gray-900 mt-1">{currentUser?.email}</p>
                 </div>
@@ -149,6 +175,20 @@ export default function Settings() {
                 <div>
                   <p className="text-sm font-medium text-gray-500">Credential Type</p>
                   <p className="text-gray-900">{currentUser?.credential_type || 'RN'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Preferred Language</p>
+                  <p className="text-gray-900">
+                    {currentUser?.preferred_language === 'es-ES' ? '🇪🇸 Español' :
+                     currentUser?.preferred_language === 'fr-FR' ? '🇫🇷 Français' :
+                     currentUser?.preferred_language === 'de-DE' ? '🇩🇪 Deutsch' :
+                     currentUser?.preferred_language === 'it-IT' ? '🇮🇹 Italiano' :
+                     currentUser?.preferred_language === 'pt-BR' ? '🇧🇷 Português' :
+                     currentUser?.preferred_language === 'zh-CN' ? '🇨🇳 中文' :
+                     currentUser?.preferred_language === 'ja-JP' ? '🇯🇵 日本語' :
+                     currentUser?.preferred_language === 'ko-KR' ? '🇰🇷 한국어' :
+                     '🇺🇸 English (US)'}
+                  </p>
                 </div>
               </>
             )}
