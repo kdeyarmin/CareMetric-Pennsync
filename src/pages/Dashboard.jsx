@@ -22,6 +22,7 @@ import NurseRegulatoryAlerts from "../components/compliance/NurseRegulatoryAlert
 import PDGMPredictiveAnalytics from "../components/pdgm/PDGMPredictiveAnalytics";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import AITrainingRecommendations from "../components/training/AITrainingRecommendations";
+import NursePersonalizedInsights from "../components/dashboard/NursePersonalizedInsights";
 import ComplianceAlertNotifications from "../components/alerts/ComplianceAlertNotifications";
 import ProactiveClinicalSupport from "../components/clinical/ProactiveClinicalSupport";
 import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
@@ -84,7 +85,38 @@ export default function Dashboard() {
 
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['nurseNoteConversions', currentUser?.email],
-    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser?.email }),
+    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser?.email }, '-created_date', 10),
+    enabled: !!currentUser?.email,
+    initialData: [],
+  });
+
+  const { data: nurseTrainingRecommendations = [] } = useQuery({
+    queryKey: ['nurseTrainingRecommendations', currentUser?.email],
+    queryFn: () => base44.entities.TrainingRecommendation.filter({ nurse_email: currentUser?.email, addressed: false }),
+    enabled: !!currentUser?.email,
+    initialData: [],
+  });
+
+  const { data: nurseComplianceAudits = [] } = useQuery({
+    queryKey: ['nurseComplianceAudits', currentUser?.email],
+    queryFn: () => base44.entities.ComplianceAudit.filter({ nurse_email: currentUser?.email }, '-audit_date', 5),
+    enabled: !!currentUser?.email,
+    initialData: [],
+  });
+
+  const { data: nurseTasks = [] } = useQuery({
+    queryKey: ['nurseTasks', currentUser?.email],
+    queryFn: () => base44.entities.Task.filter({ 
+      assigned_to: currentUser?.email,
+      status: 'pending'
+    }),
+    enabled: !!currentUser?.email,
+    initialData: [],
+  });
+
+  const { data: nurseActivity = [] } = useQuery({
+    queryKey: ['nurseRecentActivity', currentUser?.email],
+    queryFn: () => base44.entities.UserActivity.filter({ user_email: currentUser?.email }, '-created_date', 20),
     enabled: !!currentUser?.email,
     initialData: [],
   });
@@ -187,6 +219,18 @@ export default function Dashboard() {
 
       {/* Admin Announcements */}
       <AnnouncementsWidget />
+
+      {/* Personalized Nurse Insights */}
+      <div className="mb-6">
+        <NursePersonalizedInsights
+          nurseEmail={currentUser?.email}
+          recentActivity={nurseActivity}
+          noteConversions={noteConversions}
+          trainingRecommendations={nurseTrainingRecommendations}
+          complianceAudits={nurseComplianceAudits}
+          pendingTasks={nurseTasks}
+        />
+      </div>
 
       {/* Nurse Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
