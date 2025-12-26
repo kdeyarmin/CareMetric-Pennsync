@@ -215,8 +215,7 @@ export default function Layout({ children, currentPageName }) {
             <img 
               src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
               alt="CareMetric AI Logo" 
-              className="w-8 h-8 rounded-lg flex-shrink-0"
-              style={{ mixBlendMode: 'multiply' }}
+              className="w-8 h-8 rounded-lg flex-shrink-0 bg-white p-0.5 shadow-md"
             />
             {!sidebarCollapsed && <span className="font-bold text-lg text-gray-900">CareMetric AI</span>}
           </Link>
@@ -333,8 +332,7 @@ export default function Layout({ children, currentPageName }) {
           <img 
             src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
             alt="CareMetric AI Logo" 
-            className="w-8 h-8 rounded-lg"
-            style={{ mixBlendMode: 'multiply' }}
+            className="w-8 h-8 rounded-lg bg-white p-0.5 shadow-md"
           />
           <span className="font-bold text-lg text-white">CareMetric AI</span>
         </Link>
