@@ -104,6 +104,7 @@ export default function Layout({ children, currentPageName }) {
     {
       category: "Resources",
       items: [
+        { name: "Features Guide", icon: Sparkles, page: "Features" },
         { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
         { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Guidelines Library", icon: BookOpen, page: "MedicareGuidelinesLibrary" },
