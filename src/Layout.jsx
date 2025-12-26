@@ -31,6 +31,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
+import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -407,6 +408,9 @@ export default function Layout({ children, currentPageName }) {
 
       {/* AI Chat Assistant */}
       {currentUser && <AIChatAssistant />}
+
+      {/* Mobile Quick Access Menu */}
+      <MobileQuickAccessMenu />
       </div>
       );
       }

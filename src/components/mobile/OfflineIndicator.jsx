@@ -45,26 +45,27 @@ export default function OfflineIndicator() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom">
+    <div className="fixed bottom-4 left-4 sm:left-auto sm:right-4 z-40 animate-in slide-in-from-bottom max-w-[calc(100vw-2rem)] sm:max-w-sm">
       {!isOnline ? (
-        <Badge className="bg-red-600 text-white px-4 py-2 shadow-lg">
-          <WifiOff className="w-4 h-4 mr-2" />
-          <span className="font-medium">Offline Mode</span>
+        <Badge className="bg-red-600 text-white px-3 sm:px-4 py-2 shadow-lg text-xs sm:text-sm">
+          <WifiOff className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+          <span className="font-medium">Offline</span>
           {pendingCount > 0 && (
-            <span className="ml-2 bg-red-700 px-2 py-0.5 rounded-full text-xs">
-              {pendingCount} pending
+            <span className="ml-1 sm:ml-2 bg-red-700 px-1.5 sm:px-2 py-0.5 rounded-full text-xs">
+              {pendingCount}
             </span>
           )}
         </Badge>
       ) : isSyncing ? (
-        <Badge className="bg-blue-600 text-white px-4 py-2 shadow-lg">
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        <Badge className="bg-blue-600 text-white px-3 sm:px-4 py-2 shadow-lg text-xs sm:text-sm">
+          <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
           <span className="font-medium">Syncing...</span>
         </Badge>
       ) : pendingCount > 0 ? (
-        <Badge className="bg-yellow-600 text-white px-4 py-2 shadow-lg">
-          <Cloud className="w-4 h-4 mr-2" />
-          <span className="font-medium">{pendingCount} items pending sync</span>
+        <Badge className="bg-yellow-600 text-white px-3 sm:px-4 py-2 shadow-lg text-xs sm:text-sm">
+          <Cloud className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+          <span className="font-medium hidden sm:inline">{pendingCount} items pending</span>
+          <span className="font-medium sm:hidden">{pendingCount} pending</span>
         </Badge>
       ) : null}
     </div>
