@@ -39,7 +39,7 @@ export default function Homepage() {
           <div className="text-center">
             <div className="flex items-center justify-center gap-3 mb-6">
               <img
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/08984fa98_IMG_0918-removebg-preview.png"
                 alt="CareMetric AI Logo"
                 className="w-24 h-auto rounded-2xl shadow-2xl" />
 
