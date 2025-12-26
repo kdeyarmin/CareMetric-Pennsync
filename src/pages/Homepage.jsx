@@ -54,23 +54,13 @@ export default function Homepage() {
               predictive analytics, and personalized patient education
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {currentUser ?
-              <Link to={createPageUrl("Dashboard")}>
-                  <Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6">
-                    Go to Dashboard
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                </Link> :
-
               <Button
                 size="lg"
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6"
                 onClick={() => base44.auth.redirectToLogin()}>
-
-                  Get Started
+                  Sign Up
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
-              }
               <Link to={createPageUrl("Features")}>
                 <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-2">
                   Explore Features
@@ -411,23 +401,13 @@ export default function Homepage() {
             <p className="text-xl text-gray-600 mb-8">
               Join nurses who are saving time, reducing stress, and improving patient outcomes
             </p>
-            {currentUser ?
-            <Link to={createPageUrl("Dashboard")}>
-                <Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
-                  Go to Dashboard
-                  <ArrowRight className="w-5 h-5 ml-2" />
-                </Button>
-              </Link> :
-
             <Button
               size="lg"
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6"
               onClick={() => base44.auth.redirectToLogin()}>
-
-                Get Started Free
+                Sign Up
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
-            }
           </CardContent>
         </Card>
       </section>
