@@ -18,10 +18,12 @@ import {
   Sparkles
 } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
+import AIInsightFeedbackWidget from "../feedback/AIInsightFeedbackWidget";
 
 export default function AITrainingRecommendations({ userId, userEmail }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [recommendations, setRecommendations] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch user's training history

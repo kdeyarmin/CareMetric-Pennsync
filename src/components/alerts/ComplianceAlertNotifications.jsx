@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import AIInsightFeedbackWidget from "../feedback/AIInsightFeedbackWidget";
 
 export default function ComplianceAlertNotifications({ 
   nurseEmail,
@@ -30,6 +31,7 @@ export default function ComplianceAlertNotifications({
 }) {
   const queryClient = useQueryClient();
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
+  const [feedbackAlertId, setFeedbackAlertId] = useState(null);
 
   // Fetch active compliance alerts
   const { data: alerts = [], isLoading } = useQuery({
@@ -244,6 +246,28 @@ export default function ComplianceAlertNotifications({
                             Acknowledge
                           </Button>
                         </div>
+
+                        {/* AI Feedback */}
+                        {feedbackAlertId === alert.id ? (
+                          <div className="mt-3 pt-3 border-t">
+                            <AIInsightFeedbackWidget
+                              insightType="compliance_alert"
+                              insightId={alert.id}
+                              insightContent={`${alert.title}: ${alert.message}`}
+                              onFeedbackSubmitted={() => setFeedbackAlertId(null)}
+                              compact={true}
+                            />
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="w-full mt-2 text-xs"
+                            onClick={() => setFeedbackAlertId(alert.id)}
+                          >
+                            Rate this alert
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
