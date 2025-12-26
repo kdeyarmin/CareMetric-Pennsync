@@ -58,7 +58,11 @@ ${patient.functional_status ? `
 
 Provide a comprehensive clinical analysis with:
 1. **Potential Additional Diagnoses**: Based on symptoms, medications, and history, suggest diagnoses that may be undocumented
-2. **Risk Factors**: Identify specific clinical risks (fall risk, infection risk, medication interactions, readmission risk)
+2. **Adverse Event Risk Predictions**: For each potential adverse event (falls, infections, hospital readmissions, medication errors, pressure ulcers, malnutrition), provide:
+   - Probability score (0-100) based on patient's specific risk factors
+   - Severity level
+   - Detailed description of why this risk exists
+   - Specific preventative interventions tailored to this patient
 3. **Personalized Care Recommendations**: Evidence-based interventions tailored to this patient's specific situation
 4. **Monitoring Priorities**: Key vital signs and symptoms to closely monitor
 5. **Care Plan Suggestions**: Specific goals and interventions that should be added
@@ -86,10 +90,12 @@ Format as JSON with clear, actionable clinical insights.`;
               items: {
                 type: "object",
                 properties: {
+                  adverse_event_type: { type: "string", enum: ["fall", "infection", "readmission", "medication_error", "pressure_ulcer", "malnutrition", "other"] },
                   risk_category: { type: "string" },
+                  probability_score: { type: "number", minimum: 0, maximum: 100 },
                   severity: { type: "string", enum: ["Critical", "High", "Moderate", "Low"] },
                   description: { type: "string" },
-                  interventions: {
+                  preventative_interventions: {
                     type: "array",
                     items: { type: "string" }
                   }
@@ -256,17 +262,45 @@ Format as JSON with clear, actionable clinical insights.`;
                       <Alert key={idx} className={getSeverityColor(risk.severity)}>
                         <AlertTriangle className="w-4 h-4" />
                         <AlertDescription>
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="font-semibold">{risk.risk_category}</p>
-                            <Badge variant="outline">{risk.severity} Risk</Badge>
+                          <div className="flex flex-col gap-2 mb-2">
+                            <div className="flex items-center justify-between">
+                              <p className="font-semibold text-base">
+                                {risk.adverse_event_type ? risk.adverse_event_type.replace(/_/g, ' ').toUpperCase() : risk.risk_category}
+                              </p>
+                              <Badge variant="outline">{risk.severity} Risk</Badge>
+                            </div>
+                            {risk.probability_score !== undefined && (
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+                                  <div 
+                                    className={`h-full ${
+                                      risk.probability_score >= 70 ? 'bg-red-500' :
+                                      risk.probability_score >= 40 ? 'bg-orange-500' :
+                                      'bg-yellow-500'
+                                    }`}
+                                    style={{ width: `${risk.probability_score}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm font-bold min-w-[60px]">{risk.probability_score}% risk</span>
+                              </div>
+                            )}
+                            {risk.risk_category && risk.adverse_event_type && (
+                              <p className="text-sm font-medium text-gray-700">{risk.risk_category}</p>
+                            )}
                           </div>
                           <p className="text-sm mb-3">{risk.description}</p>
-                          {risk.interventions && risk.interventions.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold mb-1">Recommended Interventions:</p>
-                              <ul className="text-xs space-y-1">
-                                {risk.interventions.map((intervention, i) => (
-                                  <li key={i}>• {intervention}</li>
+                          {((risk.preventative_interventions && risk.preventative_interventions.length > 0) || 
+                            (risk.interventions && risk.interventions.length > 0)) && (
+                            <div className="bg-white/50 p-3 rounded border border-current/20">
+                              <p className="text-xs font-semibold mb-2 flex items-center gap-1">
+                                <span className="text-green-600">✓</span> Preventative Interventions:
+                              </p>
+                              <ul className="text-xs space-y-1.5">
+                                {(risk.preventative_interventions || risk.interventions).map((intervention, i) => (
+                                  <li key={i} className="flex items-start gap-2">
+                                    <span className="text-green-600 mt-0.5">•</span>
+                                    <span>{intervention}</span>
+                                  </li>
                                 ))}
                               </ul>
                             </div>
