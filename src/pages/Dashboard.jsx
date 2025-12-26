@@ -31,6 +31,7 @@ import { calculateNurseStats } from "@/components/utils/statsCalculator";
 import OfflineDataManager from "../components/mobile/OfflineDataManager";
 import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
 import ProactiveCareGapIdentifier from "../components/predictive/ProactiveCareGapIdentifier";
+import TaskNotifications from "../components/tasks/TaskNotifications";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -219,6 +220,11 @@ export default function Dashboard() {
 
       {/* Admin Announcements */}
       <AnnouncementsWidget />
+
+      {/* Task Notifications */}
+      <div className="mb-6">
+        <TaskNotifications userEmail={currentUser?.email} />
+      </div>
 
       {/* Nurse Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
