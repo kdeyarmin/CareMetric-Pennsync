@@ -24,6 +24,7 @@ import EnhancedVoiceCommands from "../components/voice/EnhancedVoiceCommands";
 import AIPatientSummaryReport from "../components/smartNote/AIPatientSummaryReport";
 import DuplicatePatientManager from "../components/patient/DuplicatePatientManager";
 import AdvancedPatientFilters from "../components/patient/AdvancedPatientFilters";
+import ReferralUploadProcessor from "../components/referral/ReferralUploadProcessor";
 import BulkPatientActions from "../components/patient/BulkPatientActions";
 import PatientMergeDialog from "../components/patient/PatientMergeDialog";
 import PaginatedPatientList from "../components/patient/PaginatedPatientList";
@@ -55,6 +56,7 @@ export default function Patients() {
   const [selectedPatients, setSelectedPatients] = useState([]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [patientsToMerge, setPatientsToMerge] = useState({ patient1: null, patient2: null });
+  const [showReferralUpload, setShowReferralUpload] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -333,16 +335,26 @@ export default function Patients() {
             </div>
             <FavoriteButton type="page" id="Patients" name="Patients" />
           </div>
-        <Button
-          onClick={() => {
-            setEditingPatient(null);
-            setShowForm(true);
-          }}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Patient
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setShowReferralUpload(true)}
+            variant="outline"
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">Upload Referral</span>
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingPatient(null);
+              setShowForm(true);
+            }}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Patient
+          </Button>
+        </div>
       </div>
 
       {showForm && (
@@ -592,6 +604,27 @@ export default function Patients() {
           showSettings={true}
         />
       </div>
+
+      {/* Referral Upload Dialog */}
+      <Dialog open={showReferralUpload} onOpenChange={setShowReferralUpload}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-600" />
+              Upload Patient Referral
+            </DialogTitle>
+          </DialogHeader>
+          <ReferralUploadProcessor
+            onPatientDataExtracted={(data) => {
+              console.log('Extracted referral data:', data);
+            }}
+            onCreatePatient={async (patientData) => {
+              await createPatientMutation.mutateAsync(patientData);
+              setShowReferralUpload(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Patient Summary Dialog */}
                   <Dialog open={showSummaryDialog} onOpenChange={setShowSummaryDialog}>
