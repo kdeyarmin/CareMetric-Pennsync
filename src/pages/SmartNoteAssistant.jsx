@@ -110,6 +110,10 @@ import AISmartSuggester from "../components/smartNote/AISmartSuggester";
 import ConsolidatedAISuggestions from "../components/smartNote/ConsolidatedAISuggestions";
 import RealTimeDeteriorationPredictor from "../components/smartNote/RealTimeDeteriorationPredictor";
 import AIEducationMaterialSuggester from "../components/smartNote/AIEducationMaterialSuggester";
+import CustomPhrasesManager from "../components/smartNote/CustomPhrasesManager";
+import OneClickComplianceFixer from "../components/smartNote/OneClickComplianceFixer";
+import ProactiveComplianceWarnings from "../components/smartNote/ProactiveComplianceWarnings";
+import AdvancedVoiceCommands from "../components/voice/AdvancedVoiceCommands";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1855,6 +1859,18 @@ Return JSON with:
             </CardContent>
           </Card>
 
+          {/* Proactive Compliance Warnings - Before Enhancement */}
+          {roughNote.length >= 50 && !enhancedNote && selectedPatientId && (
+            <ProactiveComplianceWarnings
+              roughNote={roughNote}
+              visitType={visitType}
+              diagnosis={finalDiagnosis}
+              patientData={selectedPatient}
+              onAddCompliance={(text) => setRoughNote(prev => prev + '\n\n' + text)}
+              threshold={50}
+            />
+          )}
+
           {/* Consolidated AI Suggestions - All Categories */}
           {(roughNote.length >= 150 || enhancedNote) && selectedPatientId && (
             <ConsolidatedAISuggestions
@@ -2146,14 +2162,19 @@ Return JSON with:
                 )}
               </div>
 
-              {/* Character count */}
-              <div className="flex items-center gap-2">
+              {/* Character count and Advanced Voice */}
+              <div className="flex items-center justify-between gap-2">
                 <p className={`text-sm ${roughNote.length >= 20 ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
                   {roughNote.length} characters
+                  {roughNote.length < 20 && roughNote.length > 0 && (
+                    <span className="text-orange-500 ml-2">(min 20 required)</span>
+                  )}
                 </p>
-                {roughNote.length < 20 && roughNote.length > 0 && (
-                  <p className="text-sm text-orange-500">(min 20 required)</p>
-                )}
+                <AdvancedVoiceCommands
+                  onVitalSigns={(vitals) => setVitalSigns(prev => ({ ...prev, ...vitals }))}
+                  onTranscription={handleVoiceTranscription}
+                  onCommand={handleVoiceCommand}
+                />
               </div>
               </CardContent>
               </Card>
@@ -2249,6 +2270,19 @@ Return JSON with:
             )}
 
 
+
+          {/* One-Click Compliance Fixer - After Enhancement */}
+          {enhancedNote && (
+            <OneClickComplianceFixer
+              noteContent={enhancedNote}
+              visitType={visitType}
+              diagnosis={finalDiagnosis}
+              patientData={selectedPatient}
+              vitalSigns={vitalSigns}
+              onApplyFix={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
+              autoAnalyze={true}
+            />
+          )}
 
           {/* Step 4: Enhanced Note - Celebration */}
           {enhancedNote && (
@@ -2690,10 +2724,20 @@ Return JSON with:
                   {/* Knowledge Tab - Lazy Loaded */}
                   <TabsContent value="knowledge" className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
                     {activeAITab === "knowledge" && (
-                      <>
+                     <>
+                    <CustomPhrasesManager
+                     onInsertPhrase={(text) => {
+                       if (enhancedNote) {
+                         setEnhancedNote(prev => prev + '\n\n' + text);
+                       } else {
+                         setRoughNote(prev => prev + '\n\n' + text);
+                       }
+                     }}
+                     compact={true}
+                    />
                     <AIComplianceAssistant 
-                      compact={true}
-                      context={enhancedNote ? `Current note context: ${enhancedNote.substring(0, 500)}...` : null}
+                     compact={true}
+                     context={enhancedNote ? `Current note context: ${enhancedNote.substring(0, 500)}...` : null}
                     />
                     <AIMedicalKnowledgeBase
                       patientData={selectedPatient}
