@@ -9,8 +9,9 @@ import {
   Users, FileText, TrendingUp, DollarSign, Shield, 
   GraduationCap, AlertTriangle, Activity, Clock, 
   CheckCircle2, BarChart3, Calendar, Zap, Brain,
-  UserCheck, Award, Target
+  UserCheck, Award, Target, Search, ChevronLeft, ChevronRight
 } from "lucide-react";
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { formatEastern } from "@/components/utils/timezone";
@@ -18,6 +19,9 @@ import { calculateStats, formatNumber, formatCurrency } from "@/components/utils
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
+  const [activitySearch, setActivitySearch] = useState("");
+  const [activityPage, setActivityPage] = useState(1);
+  const activityPerPage = 10;
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -174,30 +178,80 @@ export default function AdminDashboard() {
       .slice(0, 5);
   }, [allNoteConversions]);
 
-  // Recent activity
-  const recentActivity = allActivity.slice(0, 10);
+  // Recent activity with search and pagination
+  const filteredActivity = useMemo(() => {
+    return allActivity.filter(a => 
+      a.user_name?.toLowerCase().includes(activitySearch.toLowerCase()) ||
+      a.action?.toLowerCase().includes(activitySearch.toLowerCase()) ||
+      a.user_email?.toLowerCase().includes(activitySearch.toLowerCase())
+    );
+  }, [allActivity, activitySearch]);
 
-  // Compliance trends
-  const complianceTrend = useMemo(() => {
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
+  const paginatedActivity = useMemo(() => {
+    const startIdx = (activityPage - 1) * activityPerPage;
+    return filteredActivity.slice(startIdx, startIdx + activityPerPage);
+  }, [filteredActivity, activityPage, activityPerPage]);
+
+  const totalActivityPages = Math.ceil(filteredActivity.length / activityPerPage);
+
+  // Compliance trends - 30 day trend for line chart
+  const complianceTrendData = useMemo(() => {
+    const last30Days = Array.from({ length: 30 }, (_, i) => {
       const date = new Date();
-      date.setDate(date.getDate() - (6 - i));
+      date.setDate(date.getDate() - (29 - i));
       return date.toISOString().split('T')[0];
     });
 
-    return last7Days.map(date => {
+    return last30Days.map(date => {
       const dayAudits = allComplianceAudits.filter(a => 
         a.audit_date && a.audit_date.startsWith(date)
       );
       return {
-        date,
-        avgScore: dayAudits.length > 0
-          ? (dayAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / dayAudits.length).toFixed(0)
-          : 0,
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        score: dayAudits.length > 0
+          ? Math.round(dayAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / dayAudits.length)
+          : null,
         count: dayAudits.length
       };
     });
   }, [allComplianceAudits]);
+
+  // AI Feature Usage breakdown
+  const aiFeatureUsage = useMemo(() => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - dateRange);
+    
+    const recentActivity = allActivity.filter(a => new Date(a.created_date) >= cutoffDate);
+    
+    return [
+      { name: "Note Enhancements", value: allNoteConversions.filter(n => new Date(n.created_date) >= cutoffDate).length, color: "#3B82F6" },
+      { name: "Voice Dictation", value: recentActivity.filter(a => a.action === 'voice_dictation_used').length, color: "#8B5CF6" },
+      { name: "AI Care Plans", value: recentActivity.filter(a => a.action === 'ai_care_plan_generated').length, color: "#10B981" },
+      { name: "Compliance Checks", value: allComplianceAudits.filter(a => new Date(a.audit_date) >= cutoffDate).length, color: "#F59E0B" },
+      { name: "Patient Analysis", value: recentActivity.filter(a => a.action === 'ai_patient_analysis').length, color: "#EF4444" }
+    ];
+  }, [allNoteConversions, allActivity, allComplianceAudits, dateRange]);
+
+  // Visit types breakdown
+  const visitTypeData = useMemo(() => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - dateRange);
+    
+    const recentVisits = allVisits.filter(v => 
+      v.status === 'completed' && new Date(v.created_date) >= cutoffDate
+    );
+    
+    const typeCounts = recentVisits.reduce((acc, visit) => {
+      const type = visit.visit_type || 'unknown';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+    
+    return Object.entries(typeCounts).map(([type, count]) => ({
+      type: type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      count
+    })).sort((a, b) => b.count - a.count);
+  }, [allVisits, dateRange]);
 
   if (currentUser?.role !== 'admin') {
     return (
@@ -408,34 +462,130 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          {/* Compliance Trend */}
+          {/* Compliance Trend - Line Chart */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-blue-600" />
-                7-Day Compliance Trend
+                30-Day Compliance Score Trend
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {complianceTrend.map((day, idx) => (
-                  <div key={idx} className="flex items-center gap-3">
-                    <p className="text-xs text-gray-600 w-20">
-                      {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </p>
-                    <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
-                      <div 
-                        className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${day.avgScore}%` }}
-                      />
-                      <p className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-900">
-                        {day.avgScore}%
-                      </p>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={complianceTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{ fontSize: 12 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-white p-3 border border-gray-200 rounded shadow-lg">
+                            <p className="text-sm font-semibold">{payload[0].payload.date}</p>
+                            <p className="text-sm text-blue-600">Score: {payload[0].value}%</p>
+                            <p className="text-xs text-gray-500">{payload[0].payload.count} audits</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="score" 
+                    stroke="#3B82F6" 
+                    strokeWidth={3}
+                    dot={{ fill: '#3B82F6', r: 4 }}
+                    name="Compliance Score"
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* AI Feature Usage */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="w-5 h-5 text-indigo-600" />
+                AI Feature Usage Breakdown
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={aiFeatureUsage}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {aiFeatureUsage.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-3">
+                  {aiFeatureUsage.map((feature, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-4 h-4 rounded"
+                          style={{ backgroundColor: feature.color }}
+                        />
+                        <span className="text-sm font-medium">{feature.name}</span>
+                      </div>
+                      <Badge variant="outline">{feature.value}</Badge>
                     </div>
-                    <p className="text-xs text-gray-500 w-16">{day.count} audits</p>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Visit Types Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-purple-600" />
+                Visit Types Completed
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={visitTypeData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="type" 
+                    tick={{ fontSize: 12 }}
+                    angle={-45}
+                    textAnchor="end"
+                    height={100}
+                  />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar 
+                    dataKey="count" 
+                    fill="#8B5CF6" 
+                    name="Visits Completed"
+                    radius={[8, 8, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
             </CardContent>
           </Card>
 
@@ -719,26 +869,103 @@ export default function AdminDashboard() {
         <TabsContent value="activity" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-blue-600" />
-                Recent System Activity
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  Recent System Activity
+                </CardTitle>
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    placeholder="Search activity..."
+                    value={activitySearch}
+                    onChange={(e) => {
+                      setActivitySearch(e.target.value);
+                      setActivityPage(1);
+                    }}
+                    className="pl-9 h-9"
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {recentActivity.map((activity, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{activity.user_name}</p>
-                      <p className="text-xs text-gray-600">{activity.action}</p>
+              <div className="space-y-2 min-h-[400px]">
+                {paginatedActivity.length > 0 ? (
+                  paginatedActivity.map((activity, idx) => (
+                    <div key={idx} className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded">
+                      <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{activity.user_name}</p>
+                        <p className="text-xs text-gray-600">{activity.action}</p>
+                        {activity.user_email && (
+                          <p className="text-xs text-gray-500">{activity.user_email}</p>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 flex-shrink-0">
+                        {activity.created_date ? formatEastern(activity.created_date, 'MMM d, h:mm a') : ''}
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-500 flex-shrink-0">
-                      {activity.created_date ? formatEastern(activity.created_date, 'MMM d, h:mm a') : ''}
-                    </p>
+                  ))
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <Activity className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p>No activity found</p>
                   </div>
-                ))}
+                )}
               </div>
+              
+              {/* Pagination */}
+              {totalActivityPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <p className="text-sm text-gray-600">
+                    Showing {((activityPage - 1) * activityPerPage) + 1} to {Math.min(activityPage * activityPerPage, filteredActivity.length)} of {filteredActivity.length} activities
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActivityPage(p => Math.max(1, p - 1))}
+                      disabled={activityPage === 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalActivityPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalActivityPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (activityPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (activityPage >= totalActivityPages - 2) {
+                          pageNum = totalActivityPages - 4 + i;
+                        } else {
+                          pageNum = activityPage - 2 + i;
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNum}
+                            size="sm"
+                            variant={activityPage === pageNum ? "default" : "outline"}
+                            onClick={() => setActivityPage(pageNum)}
+                            className="w-8"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActivityPage(p => Math.min(totalActivityPages, p + 1))}
+                      disabled={activityPage === totalActivityPages}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
