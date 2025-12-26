@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, AlertCircle, Clock, Target, Star, CheckCircle2 } from "lucide-react";
+import { TrendingUp, AlertCircle, Clock, Target, Star, CheckCircle2, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import AIInsightFeedbackWidget from "../feedback/AIInsightFeedbackWidget";
 
 export default function NursePersonalizedInsights({ 
   nurseEmail, 
@@ -28,13 +29,33 @@ export default function NursePersonalizedInsights({
 
   const failedAudits = complianceAudits?.filter(a => a.status === 'critical' || a.status === 'flagged').length || 0;
 
+  const [showFeedback, setShowFeedback] = useState(false);
+
+  // Generate insight summary for feedback
+  const insightSummary = `Performance: Quality ${avgQualityScore}%, Compliance ${avgComplianceScore}%. ${
+    criticalTraining > 0 ? `${criticalTraining} critical training items. ` : ''
+  }${highPriorityTasks > 0 ? `${highPriorityTasks} high priority tasks. ` : ''}${
+    failedAudits > 0 ? `${failedAudits} flagged audits.` : ''
+  }`;
+
   return (
     <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50">
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Star className="w-5 h-5 text-indigo-600" />
-          Your Performance Insights
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Star className="w-5 h-5 text-indigo-600" />
+            Your Performance Insights
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowFeedback(!showFeedback)}
+            className="gap-2"
+          >
+            <MessageSquare className="w-4 h-4" />
+            Feedback
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
@@ -109,6 +130,17 @@ export default function NursePersonalizedInsights({
             <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
             <p className="text-sm font-medium text-green-900">You're all caught up! 🎉</p>
             <p className="text-xs text-gray-600">No urgent items requiring attention</p>
+          </div>
+        )}
+
+        {/* AI Insight Feedback */}
+        {showFeedback && (
+          <div className="pt-3 border-t border-indigo-200">
+            <AIInsightFeedbackWidget
+              insightType="performance_insight"
+              insightContent={insightSummary}
+              onFeedbackSubmitted={() => setShowFeedback(false)}
+            />
           </div>
         )}
       </CardContent>
