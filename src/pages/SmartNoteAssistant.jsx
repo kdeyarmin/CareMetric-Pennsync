@@ -463,8 +463,14 @@ export default function SmartNoteAssistant() {
     queryFn: () => base44.auth.me(),
   });
 
+  const { data: patients = [] } = useQuery({
+    queryKey: ['patients'],
+    queryFn: () => base44.entities.Patient.list(),
+    initialData: [],
+  });
+
   // Log page visit
-  useEffect(() => {
+  React.useEffect(() => {
     if (currentUser?.email) {
       logActivity(ActivityActions.PAGE_VISIT, {
         page: 'SmartNoteAssistant',
@@ -472,12 +478,6 @@ export default function SmartNoteAssistant() {
       });
     }
   }, [currentUser?.email]);
-
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
-    initialData: [],
-  });
 
   const { data: carePlans = [] } = useQuery({
     queryKey: ['patientCarePlans', selectedPatientId],
