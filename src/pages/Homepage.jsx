@@ -41,7 +41,7 @@ export default function Homepage() {
               <img
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                 alt="CareMetric AI Logo"
-                className="w-20 h-20 rounded-2xl shadow-2xl" />
+                className="w-24 h-auto rounded-2xl shadow-2xl" />
 
               <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 CareMetric AI
