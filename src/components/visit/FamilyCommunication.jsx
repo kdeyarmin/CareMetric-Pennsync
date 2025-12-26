@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,16 +179,40 @@ Generate the family update now:`;
     try {
       const subject = `Update on ${patient.first_name} ${patient.last_name} - ${format(new Date(visit.visit_date), 'MMMM d, yyyy')}`;
       
+      const { generateEmailTemplate } = await import('../utils/branding');
+      const currentNurse = await base44.auth.me();
+
       // Send email to each recipient
       for (const recipient of recipients) {
         if (sendMethod === "email" && recipient.email) {
-          const personalizedMessage = `Dear ${recipient.name},\n\n${summary}\n\nWarm regards,\n${(await base44.auth.me()).full_name}\nHome Health Nurse\nPenn Sync Home Health\n\nQuestions? Call us at: [Your agency number]\nEmail: [Your agency email]`;
+          const emailContent = `
+            <p style="font-size: 16px; color: #1f2937;">Dear ${recipient.name},</p>
+            
+            <div style="margin: 20px 0; line-height: 1.8; white-space: pre-wrap; font-size: 15px; color: #374151;">
+${summary}
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; color: #1f2937;"><strong>Warm regards,</strong></p>
+              <p style="margin: 5px 0 0 0; color: #6b7280;">${currentNurse.full_name}</p>
+              <p style="margin: 0; color: #6b7280; font-size: 14px;">Home Health Nurse</p>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #2563eb;">
+              <p style="margin: 0; font-size: 14px; color: #1e40af;"><strong>Questions or Concerns?</strong></p>
+              <p style="margin: 5px 0 0 0; font-size: 14px; color: #3b82f6;">We're here to help. Contact us anytime.</p>
+            </div>
+          `;
+
+          const htmlEmail = generateEmailTemplate(emailContent, {
+            subject: subject
+          });
 
           await base44.integrations.Core.SendEmail({
             to: recipient.email,
             subject: subject,
-            body: personalizedMessage,
-            from_name: 'Penn Sync Home Health'
+            body: htmlEmail,
+            from_name: 'CareMetric AI'
           });
         }
         
