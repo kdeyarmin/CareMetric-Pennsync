@@ -44,8 +44,8 @@ export default function Layout({ children, currentPageName }) {
     window.scrollTo(0, 0);
   }, [currentPageName]);
 
-  const isAdmin = currentUser?.role === 'admin';
-  const isApproved = currentUser?.is_approved === true || isAdmin;
+  // Single nurse app - no approval needed
+  const isApproved = true;
 
   // Track user login and session
   useEffect(() => {
@@ -83,55 +83,33 @@ export default function Layout({ children, currentPageName }) {
 
   const navCategories = [
     {
-      category: "Overview",
+      category: "My Practice",
       items: [
         { name: "Dashboard", icon: Home, page: "Dashboard" },
-        { name: "Patient Dashboard", icon: BarChart3, page: "PatientDashboard" }
+        { name: "My Patients", icon: Users, page: "Patients" }
       ]
     },
     {
-      category: "Patient Care",
-      items: [
-        { name: "Patients", icon: Users, page: "Patients" },
-        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-        { name: "Alerts", icon: Bell, page: "PatientAlerts" },
-        { name: "Care Coordination", icon: Users, page: "CareCoordinationDashboard" }
-      ]
-    },
-    {
-      category: "Documentation",
+      category: "Clinical Work",
       items: [
         { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
-        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
-        { name: "Referral Processor", icon: FileText, page: "ReferralProcessor" },
-        { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
-        { name: "Education Generator", icon: BookOpen, page: "PatientEducationGenerator" }
+        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+        { name: "Patient Alerts", icon: Bell, page: "PatientAlerts" },
+        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
       ]
     },
     {
-      category: "Quality & Compliance",
+      category: "Resources",
       items: [
-        { name: "Medicare Compliance", icon: Shield, page: "MedicareComplianceDashboard" },
+        { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
         { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Guidelines Library", icon: BookOpen, page: "MedicareGuidelinesLibrary" },
-        { name: "Clinical Insights", icon: BarChart3, page: "ClinicalInsightsDashboard" },
-        { name: "Features", icon: Sparkles, page: "Features" }
+        { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" }
       ]
     }
   ];
 
-  const adminItems = [
-    { name: "Admin Dashboard", icon: Settings, page: "AdminDashboard" },
-    { name: "Advanced Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" },
-    { name: "Users & Settings", icon: Users, page: "UserManagement" },
-    { name: "Training Management", icon: GraduationCap, page: "TrainingManagement" },
-    { name: "Analytics & Performance", icon: BarChart3, page: "AgencyAnalytics" },
-    { name: "Compliance & Audit", icon: ClipboardList, page: "ComplianceRegulatory" },
-    { name: "Audit Trail", icon: Shield, page: "AuditTrail" },
-    { name: "Clinical & OASIS", icon: ClipboardList, page: "ClinicalPathwayManager" },
-    { name: "Import Patients", icon: Users, page: "ImportPatients" },
-    { name: "Patient Data Management", icon: Users, page: "PatientDataManagement" }
-    ];
+  // Removed admin features for independent nurse use
 
   const handleLogout = async () => {
     // Log logout before actually logging out
@@ -288,27 +266,7 @@ export default function Layout({ children, currentPageName }) {
             </React.Fragment>
           ))}
 
-          {isAdmin && (
-            <>
-              <div className="border-t border-gray-200 my-3" />
-              {!sidebarCollapsed && <p className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase">Admin</p>}
-              {adminItems.map((item) => (
-                <Link
-                  key={item.page}
-                  to={createPageUrl(item.page)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive(item.page)
-                      ? "bg-blue-100 text-blue-700"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  }`}
-                  title={sidebarCollapsed ? item.name : undefined}
-                >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {!sidebarCollapsed && <span>{item.name}</span>}
-                </Link>
-              ))}
-            </>
-          )}
+
         </nav>
 
         {/* User Section */}
@@ -387,27 +345,7 @@ export default function Layout({ children, currentPageName }) {
                   {catIndex === 0 && <div className="border-t border-gray-200 my-2" />}
                 </React.Fragment>
               ))}
-              {isAdmin && (
-                <>
-                  <div className="border-t border-gray-200 my-3" />
-                  <p className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase">Admin</p>
-                  {adminItems.map((item) => (
-                    <Link
-                      key={item.page}
-                      to={createPageUrl(item.page)}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${
-                        isActive(item.page)
-                          ? "bg-blue-100 text-blue-700"
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      <item.icon className="w-5 h-5" />
-                      {item.name}
-                    </Link>
-                  ))}
-                </>
-              )}
+
             </nav>
             <div className="flex-shrink-0 border-t border-gray-200 p-3">
               <div className="flex items-center gap-3 mb-2">

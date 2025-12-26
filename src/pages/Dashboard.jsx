@@ -172,8 +172,11 @@ export default function Dashboard() {
             <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-2">
               {getGreeting()}, {fullName}! 👋
             </h1>
-            <p className="text-white/80 text-xs sm:text-sm md:text-base">
+            <p className="text-white/80 text-xs sm:text-sm md:text-base mb-3">
               {isValid(new Date()) ? formatEastern(new Date(), 'EEEE, MMMM d, yyyy').replace(' ET', '') : new Date().toLocaleDateString()}
+            </p>
+            <p className="text-white/90 text-sm">
+              Your independent nursing practice dashboard
             </p>
           </div>
         </CardContent>
@@ -217,23 +220,23 @@ export default function Dashboard() {
           <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-blue-200 hover:border-blue-400">
             <CardContent className="p-6 text-center">
               <FileText className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">Smart Note</h3>
+              <h3 className="font-semibold text-gray-900">Document Visit</h3>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to={createPageUrl("Patients")}>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 hover:border-green-400">
+            <CardContent className="p-6 text-center">
+              <User className="w-8 h-8 text-green-600 mx-auto mb-2" />
+              <h3 className="font-semibold text-gray-900">My Patients</h3>
             </CardContent>
           </Card>
         </Link>
         <Link to={createPageUrl("CarePlanManagement")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 hover:border-green-400">
-            <CardContent className="p-6 text-center">
-              <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">Care Plans</h3>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link to={createPageUrl("PatientEducationHub")}>
           <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 hover:border-purple-400">
             <CardContent className="p-6 text-center">
-              <User className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">Patient Education</h3>
+              <CheckCircle2 className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+              <h3 className="font-semibold text-gray-900">Care Plans</h3>
             </CardContent>
           </Card>
         </Link>
@@ -241,7 +244,7 @@ export default function Dashboard() {
           <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-orange-200 hover:border-orange-400">
             <CardContent className="p-6 text-center">
               <Calendar className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">Nurse Training Hub</h3>
+              <h3 className="font-semibold text-gray-900">My Training</h3>
             </CardContent>
           </Card>
         </Link>
@@ -270,23 +273,27 @@ export default function Dashboard() {
         <OfflineDataManager />
       </div>
 
-      {/* Dashboard Widgets */}
+      {/* My Daily Tools */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-        <ComplianceAlertNotifications 
+        <IntelligentTaskPrioritization
           nurseEmail={currentUser?.email}
-          showAll={false}
-          maxAlerts={5}
-          compact={true}
+          patients={patients}
+          onTaskCompleted={() => queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })}
         />
         <SmartRouteOptimizer
           visits={visits.filter(v => v.status === 'scheduled')}
           patients={patients}
           onOptimizedSchedule={(order) => console.log('Optimized:', order)}
         />
-        <IntelligentTaskPrioritization
+      </div>
+      
+      {/* My Compliance Alerts */}
+      <div className="mb-6">
+        <ComplianceAlertNotifications 
           nurseEmail={currentUser?.email}
-          patients={patients}
-          onTaskCompleted={() => queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })}
+          showAll={false}
+          maxAlerts={5}
+          compact={false}
         />
       </div>
 
