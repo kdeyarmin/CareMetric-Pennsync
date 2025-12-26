@@ -220,18 +220,6 @@ export default function Dashboard() {
       {/* Admin Announcements */}
       <AnnouncementsWidget />
 
-      {/* Personalized Nurse Insights */}
-      <div className="mb-6">
-        <NursePersonalizedInsights
-          nurseEmail={currentUser?.email}
-          recentActivity={nurseActivity}
-          noteConversions={noteConversions}
-          trainingRecommendations={nurseTrainingRecommendations}
-          complianceAudits={nurseComplianceAudits}
-          pendingTasks={nurseTasks}
-        />
-      </div>
-
       {/* Nurse Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
@@ -292,6 +280,18 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
+      </div>
+
+      {/* Personalized Nurse Insights */}
+      <div className="mb-6">
+        <NursePersonalizedInsights
+          nurseEmail={currentUser?.email}
+          recentActivity={nurseActivity}
+          noteConversions={noteConversions}
+          trainingRecommendations={nurseTrainingRecommendations}
+          complianceAudits={nurseComplianceAudits}
+          pendingTasks={nurseTasks}
+        />
       </div>
 
       {/* Proactive Care Gap Identification */}
