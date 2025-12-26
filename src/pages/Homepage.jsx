@@ -39,9 +39,9 @@ export default function Homepage() {
           <div className="text-center">
             <div className="flex items-center justify-center gap-3 mb-6">
               <img
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/08984fa98_IMG_0918-removebg-preview.png"
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg"
                 alt="CareMetric AI Logo"
-                className="w-24 h-auto rounded-2xl shadow-2xl" />
+                className="w-20 h-20 rounded-2xl shadow-2xl bg-white p-1" />
 
               <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 CareMetric AI
@@ -85,7 +85,14 @@ export default function Homepage() {
 
       {/* Key Stats */}
       <section className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card className="border-2 border-blue-200 bg-white/80 backdrop-blur">
+            <CardContent className="p-6 text-center">
+              <Brain className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+              <p className="text-3xl font-bold text-green-600">40%</p>
+              <p className="text-sm text-gray-600 mt-2">Smart Documentation</p>
+            </CardContent>
+          </Card>
           <Card className="border-2 border-green-200 bg-white/80 backdrop-blur">
             <CardContent className="p-6 text-center">
               <Clock className="w-12 h-12 text-green-600 mx-auto mb-3" />
@@ -440,7 +447,7 @@ export default function Homepage() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <img
-                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg"
                   alt="CareMetric AI Logo"
                   className="w-10 h-10 rounded-lg" />
 
