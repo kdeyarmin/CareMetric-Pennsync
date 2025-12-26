@@ -39,9 +39,9 @@ export default function Homepage() {
           <div className="text-center">
             <div className="flex items-center justify-center gap-3 mb-6">
               <img
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg"
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                 alt="CareMetric AI Logo"
-                className="w-20 h-20 rounded-2xl shadow-2xl bg-white p-1" />
+                className="w-20 h-20 rounded-2xl shadow-2xl" />
 
               <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 CareMetric AI
@@ -440,7 +440,7 @@ export default function Homepage() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <img
-                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg"
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                   alt="CareMetric AI Logo"
                   className="w-10 h-10 rounded-lg" />
 
