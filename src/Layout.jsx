@@ -405,7 +405,7 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
       )}
 
       {/* Main Content */}
-      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 bg-blue-100 min-h-screen">
+      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 min-h-screen" style={{backgroundImage: 'url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
         <div className="p-4 lg:p-6">
           <Breadcrumbs currentPageName={currentPageName} />
           {children}
