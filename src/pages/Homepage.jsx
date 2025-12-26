@@ -21,13 +21,13 @@ import {
   ArrowRight,
   Stethoscope,
   Activity,
-  Zap
-} from "lucide-react";
+  Zap } from
+"lucide-react";
 
 export default function Homepage() {
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: () => base44.auth.me()
   });
 
   return (
@@ -38,11 +38,11 @@ export default function Homepage() {
         <div className="relative max-w-7xl mx-auto px-4 py-20 sm:px-6 lg:px-8">
           <div className="text-center">
             <div className="flex items-center justify-center gap-3 mb-6">
-              <img 
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
-                alt="CareMetric AI Logo" 
-                className="w-20 h-20 rounded-2xl shadow-2xl bg-white p-1"
-              />
+              <img
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg"
+                alt="CareMetric AI Logo"
+                className="w-20 h-20 rounded-2xl shadow-2xl bg-white p-1" />
+
               <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 CareMetric AI
               </h1>
@@ -55,23 +55,23 @@ export default function Homepage() {
               predictive analytics, and personalized patient education
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {currentUser ? (
-                <Link to={createPageUrl("Dashboard")}>
+              {currentUser ?
+              <Link to={createPageUrl("Dashboard")}>
                   <Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6">
                     Go to Dashboard
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
-                </Link>
-              ) : (
-                <Button 
-                  size="lg" 
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6"
-                  onClick={() => base44.auth.redirectToLogin()}
-                >
+                </Link> :
+
+              <Button
+                size="lg"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6"
+                onClick={() => base44.auth.redirectToLogin()}>
+
                   Get Started
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
-              )}
+              }
               <Link to={createPageUrl("Features")}>
                 <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-2">
                   Explore Features
@@ -413,29 +413,29 @@ export default function Homepage() {
         <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-purple-50">
           <CardContent className="p-12 text-center">
             <Sparkles className="w-16 h-16 text-purple-600 mx-auto mb-4" />
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Ready to Transform Your Practice?
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Transform how you document?
+
             </h2>
             <p className="text-xl text-gray-600 mb-8">
               Join nurses who are saving time, reducing stress, and improving patient outcomes
             </p>
-            {currentUser ? (
-              <Link to={createPageUrl("Dashboard")}>
+            {currentUser ?
+            <Link to={createPageUrl("Dashboard")}>
                 <Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
                   Go to Dashboard
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
-              </Link>
-            ) : (
-              <Button 
-                size="lg" 
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6"
-                onClick={() => base44.auth.redirectToLogin()}
-              >
+              </Link> :
+
+            <Button
+              size="lg"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6"
+              onClick={() => base44.auth.redirectToLogin()}>
+
                 Get Started Free
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
-            )}
+            }
           </CardContent>
         </Card>
       </section>
@@ -446,11 +446,11 @@ export default function Homepage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <img 
-                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
-                  alt="CareMetric AI Logo" 
-                  className="w-10 h-10 rounded-lg"
-                />
+                <img
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg"
+                  alt="CareMetric AI Logo"
+                  className="w-10 h-10 rounded-lg" />
+
                 <span className="text-xl font-bold">CareMetric AI</span>
               </div>
               <p className="text-gray-400">
@@ -471,13 +471,13 @@ export default function Homepage() {
                     About
                   </Link>
                 </li>
-                {currentUser && (
-                  <li>
+                {currentUser &&
+                <li>
                     <Link to={createPageUrl("Dashboard")} className="hover:text-white transition-colors">
                       Dashboard
                     </Link>
                   </li>
-                )}
+                }
               </ul>
             </div>
 
@@ -495,6 +495,6 @@ export default function Homepage() {
           </div>
         </div>
       </footer>
-    </div>
-  );
+    </div>);
+
 }
