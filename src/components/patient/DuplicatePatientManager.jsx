@@ -76,22 +76,56 @@ export default function DuplicatePatientManager() {
           matchReasons.push("Same MRN");
         }
 
-        // Exact name match
-        const name1 = `${patient.first_name} ${patient.last_name}`.toLowerCase().trim();
-        const name2 = `${other.first_name} ${other.last_name}`.toLowerCase().trim();
-        if (name1 === name2) {
+        // Name matching with full name comparison
+        const firstName1 = patient.first_name?.toLowerCase().trim() || '';
+        const firstName2 = other.first_name?.toLowerCase().trim() || '';
+        const lastName1 = patient.last_name?.toLowerCase().trim() || '';
+        const lastName2 = other.last_name?.toLowerCase().trim() || '';
+        const name1 = `${firstName1} ${lastName1}`;
+        const name2 = `${firstName2} ${lastName2}`;
+        
+        // Exact full name match
+        if (name1 === name2 && name1 !== ' ') {
           score += 30;
           matchReasons.push("Same name");
-        } else {
-          // Similar name (Levenshtein-like check)
-          const lastName1 = patient.last_name?.toLowerCase() || '';
-          const lastName2 = other.last_name?.toLowerCase() || '';
-          const firstName1 = patient.first_name?.toLowerCase() || '';
-          const firstName2 = other.first_name?.toLowerCase() || '';
-          
-          if (lastName1 === lastName2 && firstName1.charAt(0) === firstName2.charAt(0)) {
-            score += 15;
-            matchReasons.push("Similar name");
+        } else if (firstName1 && lastName1 && firstName2 && lastName2) {
+          // Exact last name + similar first name
+          if (lastName1 === lastName2) {
+            if (firstName1 === firstName2) {
+              score += 30;
+              matchReasons.push("Same name");
+            } else if (firstName1.charAt(0) === firstName2.charAt(0)) {
+              score += 20;
+              matchReasons.push("Same last name, similar first");
+            } else if (Math.abs(firstName1.length - firstName2.length) <= 2) {
+              // Check for typos in first name
+              let differences = 0;
+              const maxLen = Math.max(firstName1.length, firstName2.length);
+              for (let i = 0; i < maxLen; i++) {
+                if (firstName1[i] !== firstName2[i]) differences++;
+              }
+              if (differences <= 2) {
+                score += 18;
+                matchReasons.push("Same last name, first name typo");
+              }
+            }
+          }
+          // Similar last name (typo) + exact first name
+          else if (firstName1 === firstName2 && Math.abs(lastName1.length - lastName2.length) <= 2) {
+            let differences = 0;
+            const maxLen = Math.max(lastName1.length, lastName2.length);
+            for (let i = 0; i < maxLen; i++) {
+              if (lastName1[i] !== lastName2[i]) differences++;
+            }
+            if (differences <= 2) {
+              score += 20;
+              matchReasons.push("Same first name, last name typo");
+            }
+          }
+          // Check for name reversal (first/last swapped)
+          else if (firstName1 === lastName2 && lastName1 === firstName2) {
+            score += 25;
+            matchReasons.push("Names reversed");
           }
         }
 

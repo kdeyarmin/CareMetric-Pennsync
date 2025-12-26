@@ -123,52 +123,96 @@ const calculateMatchScore = (p1, p2) => {
   const fullName1 = `${firstName1} ${lastName1}`;
   const fullName2 = `${firstName2} ${lastName2}`;
   
-  // Exact match
-  if (fullName1 === fullName2) {
-    score += 40;
-    matches.push('name_exact');
-  } 
-  // Nickname matching
-  else if (areNicknames(firstName1, firstName2) && lastNameSimilarity >= 95) {
-    score += 38;
-    matches.push('nickname_match');
-  }
-  // Fuzzy match on full name (lowered threshold to 80%)
-  else {
-    const fullNameSimilarity = calculateSimilarity(fullName1, fullName2);
-    if (fullNameSimilarity >= 90) {
+  // Skip if names are too short to be reliable
+  if (!firstName1 || !lastName1 || !firstName2 || !lastName2) {
+    // Still check if both full names exist and match
+    if (fullName1.trim() && fullName2.trim() && fullName1 === fullName2) {
+      score += 40;
+      matches.push('name_exact');
+    }
+  } else {
+    // Exact full name match
+    if (fullName1 === fullName2) {
+      score += 40;
+      matches.push('name_exact');
+    } 
+    // Check for name reversal (first/last swapped - common data entry error)
+    else if (firstName1 === lastName2 && lastName1 === firstName2) {
       score += 35;
-      matches.push('name_fuzzy_very_high');
-    } else if (fullNameSimilarity >= 80) {
-      score += 30;
-      matches.push('name_fuzzy_high');
-    } else if (fullNameSimilarity >= 70) {
-      score += 22;
-      matches.push('name_fuzzy_medium');
+      matches.push('name_reversed');
     }
-    
-    // Check individual name components
-    const firstNameSimilarity = calculateSimilarity(firstName1, firstName2);
-    const lastNameSimilarity = calculateSimilarity(lastName1, lastName2);
-    
-    if (firstNameSimilarity >= 90 && lastNameSimilarity >= 90) {
-      score += 30;
-      matches.push('name_components_similar');
-    } else if (firstNameSimilarity >= 85 || lastNameSimilarity >= 95) {
-      score += 20;
-      matches.push('name_partial_strong');
-    } else if (firstNameSimilarity === 100 || lastNameSimilarity === 100) {
-      score += 15;
-      matches.push('name_partial');
+    // Nickname matching
+    else if (areNicknames(firstName1, firstName2) && calculateSimilarity(lastName1, lastName2) >= 95) {
+      score += 38;
+      matches.push('nickname_match');
     }
-    
-    // Check for initials vs full name (e.g., "J. Smith" vs "John Smith")
-    if (firstName1.length === 1 && firstName2.startsWith(firstName1) && lastNameSimilarity >= 95) {
-      score += 25;
-      matches.push('initial_vs_full_name');
-    } else if (firstName2.length === 1 && firstName1.startsWith(firstName2) && lastNameSimilarity >= 95) {
-      score += 25;
-      matches.push('initial_vs_full_name');
+    // Fuzzy match on full name
+    else {
+      const fullNameSimilarity = calculateSimilarity(fullName1, fullName2);
+      if (fullNameSimilarity >= 90) {
+        score += 35;
+        matches.push('name_fuzzy_very_high');
+      } else if (fullNameSimilarity >= 80) {
+        score += 30;
+        matches.push('name_fuzzy_high');
+      } else if (fullNameSimilarity >= 70) {
+        score += 22;
+        matches.push('name_fuzzy_medium');
+      }
+      
+      // Check individual name components
+      const firstNameSimilarity = calculateSimilarity(firstName1, firstName2);
+      const lastNameSimilarity = calculateSimilarity(lastName1, lastName2);
+      
+      // Exact last name + similar first name (common for relatives or typos)
+      if (lastNameSimilarity === 100) {
+        if (firstNameSimilarity >= 90) {
+          score += 28;
+          matches.push('same_lastname_similar_firstname');
+        } else if (firstNameSimilarity >= 70) {
+          score += 18;
+          matches.push('same_lastname_firstname_typo');
+        } else if (firstName1.charAt(0) === firstName2.charAt(0)) {
+          score += 12;
+          matches.push('same_lastname_same_initial');
+        }
+      }
+      // Exact first name + similar last name
+      else if (firstNameSimilarity === 100 && lastNameSimilarity >= 85) {
+        score += 25;
+        matches.push('same_firstname_similar_lastname');
+      }
+      // Both components very similar
+      else if (firstNameSimilarity >= 90 && lastNameSimilarity >= 90) {
+        score += 30;
+        matches.push('name_components_similar');
+      } else if (firstNameSimilarity >= 85 && lastNameSimilarity >= 85) {
+        score += 20;
+        matches.push('name_partial_strong');
+      }
+      
+      // Check for initials vs full name (e.g., "J. Smith" vs "John Smith")
+      if (firstName1.length === 1 && firstName2.startsWith(firstName1) && lastNameSimilarity >= 95) {
+        score += 25;
+        matches.push('initial_vs_full_name');
+      } else if (firstName2.length === 1 && firstName1.startsWith(firstName2) && lastNameSimilarity >= 95) {
+        score += 25;
+        matches.push('initial_vs_full_name');
+      }
+      
+      // Check for middle name/initial inclusion differences
+      // e.g., "John Smith" vs "John A Smith" or "John A. Smith"
+      const name1Parts = fullName1.split(' ').filter(p => p.length > 0);
+      const name2Parts = fullName2.split(' ').filter(p => p.length > 0);
+      if (name1Parts.length !== name2Parts.length) {
+        // Check if one has middle initial/name that the other doesn't
+        const shorter = name1Parts.length < name2Parts.length ? name1Parts : name2Parts;
+        const longer = name1Parts.length < name2Parts.length ? name2Parts : name1Parts;
+        if (shorter[0] === longer[0] && shorter[shorter.length - 1] === longer[longer.length - 1]) {
+          score += 20;
+          matches.push('name_middle_initial_difference');
+        }
+      }
     }
   }
 
