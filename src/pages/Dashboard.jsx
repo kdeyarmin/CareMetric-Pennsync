@@ -285,6 +285,11 @@ export default function Dashboard() {
         </Link>
       </div>
 
+      {/* Task Notifications */}
+      <div className="mb-6">
+        <TaskNotifications userEmail={currentUser?.email} />
+      </div>
+
       {/* Personalized Nurse Insights */}
       <div className="mb-6">
         <NursePersonalizedInsights
