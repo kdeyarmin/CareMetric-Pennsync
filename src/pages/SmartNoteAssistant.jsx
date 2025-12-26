@@ -115,6 +115,7 @@ import OneClickComplianceFixer from "../components/smartNote/OneClickComplianceF
 import ProactiveComplianceWarnings from "../components/smartNote/ProactiveComplianceWarnings";
 import AdvancedVoiceCommands from "../components/voice/AdvancedVoiceCommands";
 import PatientEducationPanel from "../components/smartNote/PatientEducationPanel";
+import RealTimeNoteFeedback from "../components/smartNote/RealTimeNoteFeedback";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -2038,6 +2039,25 @@ Return JSON with:
                   setEnhancedNote(prev => prev + '\n\n' + text);
                 } else {
                   setRoughNote(prev => prev + '\n\n' + text);
+                }
+              }}
+              autoAnalyze={true}
+            />
+          )}
+
+          {/* Real-Time Note Feedback - Prominent position */}
+          {selectedPatientId && roughNote.length >= 50 && (
+            <RealTimeNoteFeedback
+              noteContent={enhancedNote || roughNote}
+              diagnosis={finalDiagnosis}
+              visitType={visitType}
+              vitalSigns={vitalSigns}
+              patientData={selectedPatient}
+              onApplySuggestion={(originalText, correctedText) => {
+                if (enhancedNote) {
+                  setEnhancedNote(prev => prev.replace(originalText, correctedText));
+                } else {
+                  setRoughNote(prev => prev.replace(originalText, correctedText));
                 }
               }}
               autoAnalyze={true}
