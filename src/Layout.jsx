@@ -104,7 +104,8 @@ export default function Layout({ children, currentPageName }) {
         { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
         { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Guidelines Library", icon: BookOpen, page: "MedicareGuidelinesLibrary" },
-        { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" }
+        { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
+        { name: "Settings", icon: Settings, page: "Settings" }
       ]
     }
   ];
@@ -123,6 +124,28 @@ export default function Layout({ children, currentPageName }) {
       });
     } catch (error) {
       console.error('Failed to log logout:', error);
+    }
+
+    // Delete patient data if preference is set to delete on logout
+    if (currentUser?.data_retention_preference === 'delete_on_logout') {
+      try {
+        // Delete all patient data created by this user
+        const patients = await base44.entities.Patient.filter({ created_by: currentUser.email });
+        
+        for (const patient of patients) {
+          // Delete associated visits, care plans, tasks, incidents
+          await base44.entities.Visit.deleteMany({ patient_id: patient.id });
+          await base44.entities.CarePlan.deleteMany({ patient_id: patient.id });
+          await base44.entities.Task.deleteMany({ patient_id: patient.id });
+          await base44.entities.Incident.deleteMany({ patient_id: patient.id });
+          await base44.entities.PatientAlert.deleteMany({ patient_id: patient.id });
+          
+          // Delete patient
+          await base44.entities.Patient.delete(patient.id);
+        }
+      } catch (error) {
+        console.error('Failed to delete patient data:', error);
+      }
     }
     
     base44.auth.logout();
