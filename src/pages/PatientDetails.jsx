@@ -52,6 +52,8 @@ import PredictiveAnalyticsPanel from "../components/oasis/PredictiveAnalyticsPan
 import PatientChartRecommendations from "../components/patient/PatientChartRecommendations";
 import AIPatientAnalyzer from "../components/patient/AIPatientAnalyzer";
 import PatientSummaryGenerator from "../components/patient/PatientSummaryGenerator";
+import PatientEventsTimeline from "../components/patient/PatientEventsTimeline";
+import VitalSignsTrendsChart from "../components/patient/VitalSignsTrendsChart";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -390,6 +392,21 @@ export default function PatientDetails() {
             queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts', patientId] });
           }}
           autoAnalyze={false}
+        />
+      </div>
+
+      {/* Vital Signs Trends Chart */}
+      <div className="mb-6">
+        <VitalSignsTrendsChart visits={visits} patient={patient} />
+      </div>
+
+      {/* Patient Events Timeline */}
+      <div className="mb-6">
+        <PatientEventsTimeline 
+          visits={visits} 
+          incidents={incidents} 
+          carePlans={carePlans}
+          patient={patient}
         />
       </div>
 
