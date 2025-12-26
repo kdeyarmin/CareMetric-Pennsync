@@ -247,36 +247,36 @@ export default function Dashboard() {
       </div>
 
       {/* Quick Action Buttons */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Link to={createPageUrl("SmartNoteAssistant")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-blue-200 hover:border-blue-400">
-            <CardContent className="p-6 text-center">
-              <FileText className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">Document Visit</h3>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+        <Link to={createPageUrl("SmartNoteAssistant")} className="block">
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-blue-200 hover:border-blue-400 active:scale-95 touch-target h-full">
+            <CardContent className="p-4 sm:p-6 text-center flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px]">
+              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 mb-1 sm:mb-2" />
+              <h3 className="font-semibold text-sm sm:text-base text-gray-900">Document Visit</h3>
             </CardContent>
           </Card>
         </Link>
-        <Link to={createPageUrl("Patients")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 hover:border-green-400">
-            <CardContent className="p-6 text-center">
-              <User className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">My Patients</h3>
+        <Link to={createPageUrl("Patients")} className="block">
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 hover:border-green-400 active:scale-95 touch-target h-full">
+            <CardContent className="p-4 sm:p-6 text-center flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px]">
+              <User className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 mb-1 sm:mb-2" />
+              <h3 className="font-semibold text-sm sm:text-base text-gray-900">My Patients</h3>
             </CardContent>
           </Card>
         </Link>
-        <Link to={createPageUrl("CarePlanManagement")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 hover:border-purple-400">
-            <CardContent className="p-6 text-center">
-              <CheckCircle2 className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">Care Plans</h3>
+        <Link to={createPageUrl("CarePlanManagement")} className="block">
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 hover:border-purple-400 active:scale-95 touch-target h-full">
+            <CardContent className="p-4 sm:p-6 text-center flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px]">
+              <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 mb-1 sm:mb-2" />
+              <h3 className="font-semibold text-sm sm:text-base text-gray-900">Care Plans</h3>
             </CardContent>
           </Card>
         </Link>
-        <Link to={createPageUrl("StaffTrainingHub")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-orange-200 hover:border-orange-400">
-            <CardContent className="p-6 text-center">
-              <Calendar className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">My Training</h3>
+        <Link to={createPageUrl("StaffTrainingHub")} className="block">
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-orange-200 hover:border-orange-400 active:scale-95 touch-target h-full">
+            <CardContent className="p-4 sm:p-6 text-center flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px]">
+              <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600 mb-1 sm:mb-2" />
+              <h3 className="font-semibold text-sm sm:text-base text-gray-900">My Training</h3>
             </CardContent>
           </Card>
         </Link>
@@ -318,7 +318,7 @@ export default function Dashboard() {
       </div>
 
       {/* My Daily Tools */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 mb-4 sm:mb-6">
         <IntelligentTaskPrioritization
           nurseEmail={currentUser?.email}
           patients={patients}

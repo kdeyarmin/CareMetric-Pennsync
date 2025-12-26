@@ -114,7 +114,7 @@ export default function AIChatAssistant() {
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+        className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 h-14 w-14 rounded-full shadow-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 touch-target"
         size="icon"
       >
         <MessageSquare className="w-6 h-6" />
@@ -123,8 +123,13 @@ export default function AIChatAssistant() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-3rem)]">
-      <Card className="shadow-2xl border-2 border-indigo-300">
+    <>
+      {/* Mobile overlay */}
+      <div className="fixed inset-0 z-50 bg-black/50 md:hidden" onClick={() => setIsOpen(false)} />
+      
+      {/* Chat window */}
+      <div className="fixed inset-0 md:inset-auto md:bottom-6 md:right-6 z-50 md:w-96 md:max-w-[calc(100vw-3rem)] p-4 md:p-0 flex items-end md:items-start">
+        <Card className="w-full md:max-w-none shadow-2xl border-2 border-indigo-300 max-h-[90vh] md:max-h-none flex flex-col">
         <CardHeader className="pb-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-lg">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
@@ -144,7 +149,7 @@ export default function AIChatAssistant() {
         </CardHeader>
         <CardContent className="p-0">
           {/* Chat Messages */}
-          <ScrollArea ref={scrollRef} className="h-96 p-4">
+          <ScrollArea ref={scrollRef} className="h-[50vh] md:h-96 p-3 md:p-4">
             <div className="space-y-4">
               {conversation.map((msg, idx) => (
                 <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -154,8 +159,8 @@ export default function AIChatAssistant() {
                     </div>
                   )}
                   
-                  <div className={`flex-1 max-w-[80%] ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
-                    <div className={`rounded-lg p-3 ${
+                  <div className={`flex-1 max-w-[85%] md:max-w-[80%] ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
+                    <div className={`rounded-lg p-2.5 md:p-3 ${
                       msg.role === 'user' 
                         ? 'bg-indigo-600 text-white' 
                         : 'bg-gray-100 text-gray-900'
@@ -260,34 +265,36 @@ export default function AIChatAssistant() {
           )}
 
           {/* Input Area */}
-          <div className="p-4 border-t bg-white rounded-b-lg">
+          <div className="p-3 md:p-4 border-t bg-white rounded-b-lg safe-bottom">
             <div className="flex gap-2">
               <Input
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Ask me anything..."
-                className="flex-1"
+                className="flex-1 text-base md:text-sm"
                 disabled={isLoading}
               />
               <Button
                 onClick={handleSendMessage}
                 disabled={!message.trim() || isLoading}
-                className="bg-indigo-600 hover:bg-indigo-700"
+                className="bg-indigo-600 hover:bg-indigo-700 h-10 w-10 md:h-9 md:w-9 touch-target flex-shrink-0"
+                size="icon"
               >
                 {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 md:w-4 md:h-4 animate-spin" />
                 ) : (
-                  <Send className="w-4 h-4" />
+                  <Send className="w-5 h-5 md:w-4 md:h-4" />
                 )}
               </Button>
             </div>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-gray-500 mt-2 hidden md:block">
               Press Enter to send, Shift+Enter for new line
             </p>
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }
