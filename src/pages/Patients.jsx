@@ -328,8 +328,8 @@ export default function Patients() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 md:mb-8">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Patient Management</h1>
-            <p className="text-sm md:text-base text-gray-600 mt-1">Manage your patient roster</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">My Patients</h1>
+            <p className="text-sm md:text-base text-gray-600 mt-1">Manage your patient caseload</p>
           </div>
           <FavoriteButton type="page" id="Patients" name="Patients" />
         </div>
@@ -359,37 +359,19 @@ export default function Patients() {
         />
       )}
 
-      {/* Patient File Update Uploader */}
-      <PatientFileUpdateUploader />
-
-      {/* Duplicate Detection Alert */}
-      <DuplicatePatientManager />
-
-      {/* Advanced Filters */}
-      <div className="mb-4">
-        <AdvancedPatientFilters 
-          onFilterChange={setFilters}
-          activeFilters={filters}
-        />
-      </div>
-
-      {/* Bulk Actions Bar */}
-      {selectedPatients.length > 0 && (
-        <div className="mb-4">
-          <BulkPatientActions
-            selectedPatients={selectedPatients}
-            onClearSelection={() => setSelectedPatients([])}
+      {/* Search Bar */}
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <Input
+            type="text"
+            placeholder="Search patients by name, MRN, or phone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-12 text-base"
           />
-          {selectedPatients.length === 2 && (
-            <Button
-              onClick={handleMergeSelected}
-              className="mt-2 bg-purple-600 hover:bg-purple-700"
-            >
-              Merge Selected Patients
-            </Button>
-          )}
         </div>
-      )}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         {isLoading ? (
