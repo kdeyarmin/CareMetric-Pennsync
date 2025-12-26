@@ -887,6 +887,90 @@ export default function SmartNoteAssistant() {
       ACTIVE CARE PLAN GOALS:
       ${carePlans.filter(cp => cp.status === 'active').map(cp => `- ${cp.problem}: ${cp.goal}`).join('\n') || '- No active care plans'}
 
+      ${visitType === 'recertification' ? `
+      ⚠️ RECERTIFICATION VISIT - SPECIAL REQUIREMENTS:
+      This is a recertification visit requiring detailed justification for continued skilled care.
+
+      MANDATORY RECERTIFICATION ELEMENTS:
+      1. COMPREHENSIVE PROGRESS REVIEW:
+         - Compare patient's current status to admission baseline
+         - Document ALL improvements (functional, clinical, safety, knowledge)
+         - Document ongoing deficits requiring continued skilled intervention
+         - Reference specific care plan goals: progress made vs. goals remaining
+      
+      2. CHANGES SINCE ADMISSION:
+         ${selectedPatient?.admission_date ? `Admission Date: ${selectedPatient.admission_date}` : ''}
+         ${selectedPatient?.baseline_vitals ? `Baseline Vitals: BP ${selectedPatient.baseline_vitals.blood_pressure_systolic}/${selectedPatient.baseline_vitals.blood_pressure_diastolic}, HR ${selectedPatient.baseline_vitals.heart_rate}, O2 Sat ${selectedPatient.baseline_vitals.oxygen_saturation}%` : ''}
+         ${selectedPatient?.functional_status?.ambulation ? `Admission Ambulation: ${selectedPatient.functional_status.ambulation}` : ''}
+         ${selectedPatient?.functional_status?.adl_independence ? `Admission ADL Level: ${selectedPatient.functional_status.adl_independence}` : ''}
+         - Document vital sign trends and clinical stability improvements
+         - Document functional ability changes (mobility, ADLs, IADLs)
+         - Document medication management improvements
+         - Document safety awareness and fall risk changes
+         - Document patient/caregiver learning progress
+      
+      3. JUSTIFICATION FOR CONTINUED CARE:
+         - Identify remaining skilled needs despite improvements
+         - Explain why RN/LPN skilled services remain medically necessary
+         - Document complexity requiring ongoing skilled intervention
+         - Reference specific interventions preventing hospitalization/complications
+         - Project timeline to discharge and remaining goals to achieve
+      
+      4. COMPREHENSIVE COMPARISON:
+         Create a clear narrative showing:
+         "On admission [date], patient presented with [baseline status]. Since then, patient has achieved [improvements]. However, patient continues to require skilled nursing for [ongoing needs] due to [clinical justification]. Goals for next certification period include [specific, measurable objectives]."
+      
+      Use ALL available patient history data, visit notes, vital trends, and care plan progress to build a compelling case for recertification.
+      ` : ''}
+
+      ${visitType === 'discharge' ? `
+      🎉 DISCHARGE VISIT - SPECIAL REQUIREMENTS:
+      This is a discharge visit requiring comprehensive summary of patient journey and outcomes.
+
+      MANDATORY DISCHARGE ELEMENTS:
+      1. ADMISSION TO DISCHARGE COMPARISON:
+         ${selectedPatient?.admission_date ? `Admission Date: ${selectedPatient.admission_date}` : 'Document admission date'}
+         Discharge Date: ${visitDate}
+         
+         ON ADMISSION STATUS:
+         ${selectedPatient?.baseline_vitals ? `- Vitals: BP ${selectedPatient.baseline_vitals.blood_pressure_systolic}/${selectedPatient.baseline_vitals.blood_pressure_diastolic}, HR ${selectedPatient.baseline_vitals.heart_rate}, O2 Sat ${selectedPatient.baseline_vitals.oxygen_saturation}%` : '- Document admission vitals'}
+         ${selectedPatient?.functional_status?.ambulation ? `- Ambulation: ${selectedPatient.functional_status.ambulation}` : '- Document admission mobility'}
+         ${selectedPatient?.functional_status?.adl_independence ? `- ADL Independence: ${selectedPatient.functional_status.adl_independence}` : '- Document admission ADL status'}
+         ${selectedPatient?.functional_status?.cognitive_status ? `- Cognitive Status: ${selectedPatient.functional_status.cognitive_status}` : ''}
+         ${selectedPatient?.functional_status?.fall_risk ? `- Fall Risk: ${selectedPatient.functional_status.fall_risk}` : ''}
+         - Chief Complaint on Admission: ${selectedPatient?.admission_source ? `Admitted from ${selectedPatient.admission_source}` : 'Document admission reason'}
+         ${selectedPatient?.functional_status?.notes ? `- Admission Notes: ${selectedPatient.functional_status.notes}` : ''}
+      
+      2. CURRENT DISCHARGE STATUS:
+         - Current Vitals: ${Object.entries(vitalSigns).filter(([k,v]) => v && k !== 'o2Source' && k !== 'o2Flow').map(([k,v]) => `${k}: ${v}`).join(', ')}
+         - Current Ambulation/Mobility: [Document current status]
+         - Current ADL Independence: [Document improvements]
+         - Current Cognitive/Safety Awareness: [Document improvements]
+         - Current Medication Management: [Document competency level]
+      
+      3. IMPROVEMENTS ACHIEVED:
+         Document specific, measurable improvements in:
+         - Clinical stability (vital sign trends, symptom management)
+         - Functional abilities (mobility, transfers, ADLs, IADLs)
+         - Safety (fall prevention knowledge, home safety modifications)
+         - Disease self-management (medication compliance, symptom recognition)
+         - Patient/caregiver education competency
+         
+         Reference care plan goals achieved:
+         ${carePlans.filter(cp => cp.status === 'met').map(cp => `✓ ${cp.problem}: ${cp.goal} - ACHIEVED`).join('\n') || 'Document goals met during episode'}
+      
+      4. DISCHARGE PLAN & SUSTAINABILITY:
+         - Reason for discharge (goals met, plateau, patient choice, etc.)
+         - Patient/caregiver ability to sustain improvements independently
+         - Home environment safety and support systems in place
+         - Follow-up appointments scheduled (MD, therapies, etc.)
+         - Emergency plan and red flag symptoms reviewed with patient/caregiver
+         - DME/supplies provided and education completed
+         - Community resources referred (if applicable)
+      
+      Create a comprehensive narrative that clearly demonstrates the VALUE of home health intervention by contrasting admission status with discharge status. Show measurable outcomes and patient transformation during the episode of care.
+      ` : ''}
+
       ${oasisContext ? `OASIS ASSESSMENT DATA (Synced):
       - Assessment Date: ${oasisContext.assessmentDate}
       - Admission Source: ${oasisContext.admissionSource === '1' || oasisContext.admissionSource?.toLowerCase().includes('community') ? 'Community (home)' : oasisContext.admissionSource === '2' || oasisContext.admissionSource?.toLowerCase().includes('institutional') ? 'Institutional (hospital/SNF discharge)' : oasisContext.admissionSource || 'Unknown'}
