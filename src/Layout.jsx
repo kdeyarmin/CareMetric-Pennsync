@@ -213,11 +213,11 @@ export default function Layout({ children, currentPageName }) {
         <div className="h-16 flex items-center justify-between px-3 border-b border-gray-200">
           <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
             <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/52cac091f_20170AA9-BB95-4BA4-B4E7-793615312CC4.png" 
-              alt="Penn Sync Logo" 
+              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
+              alt="CareMetric AI Logo" 
               className="w-8 h-8 rounded-lg flex-shrink-0"
             />
-            {!sidebarCollapsed && <span className="font-bold text-lg text-gray-900">Penn Sync</span>}
+            {!sidebarCollapsed && <span className="font-bold text-lg text-gray-900">CareMetric AI</span>}
           </Link>
           <Button
             variant="ghost"
@@ -330,11 +330,11 @@ export default function Layout({ children, currentPageName }) {
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-blue-600 shadow-sm border-b border-blue-700 h-16 flex items-center justify-between px-4 print:hidden">
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
           <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/52cac091f_20170AA9-BB95-4BA4-B4E7-793615312CC4.png" 
-            alt="Penn Sync Logo" 
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
+            alt="CareMetric AI Logo" 
             className="w-8 h-8 rounded-lg"
           />
-          <span className="font-bold text-lg text-white">Penn Sync</span>
+          <span className="font-bold text-lg text-white">CareMetric AI</span>
         </Link>
         <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white hover:bg-blue-700 h-12 w-12">
           {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
