@@ -89,6 +89,7 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
     {
       category: "My Practice",
       items: [
+        { name: "Home", icon: Home, page: "Homepage" },
         { name: "Dashboard", icon: Home, page: "Dashboard" },
         { name: "My Patients", icon: Users, page: "Patients" }
       ]
