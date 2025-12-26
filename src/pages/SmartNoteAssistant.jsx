@@ -114,6 +114,7 @@ import CustomPhrasesManager from "../components/smartNote/CustomPhrasesManager";
 import OneClickComplianceFixer from "../components/smartNote/OneClickComplianceFixer";
 import ProactiveComplianceWarnings from "../components/smartNote/ProactiveComplianceWarnings";
 import AdvancedVoiceCommands from "../components/voice/AdvancedVoiceCommands";
+import PatientEducationPanel from "../components/smartNote/PatientEducationPanel";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -2043,22 +2044,22 @@ Return JSON with:
             />
           )}
 
-          {/* AI Education Material Suggester */}
-          {selectedPatientId && (roughNote.length >= 100 || enhancedNote) && (
-            <AIEducationMaterialSuggester
-              noteContent={enhancedNote || roughNote}
+          {/* Patient Education Panel - Enhanced and Prominent */}
+          {selectedPatientId && finalDiagnosis && (
+            <PatientEducationPanel
+              patient={selectedPatient}
               diagnosis={finalDiagnosis}
-              patientData={selectedPatient}
-              visitType={visitType}
-              patientId={selectedPatientId}
-              onAssignEducation={async (educationData) => {
-                await base44.entities.PatientEducationAssignment.create({
-                  ...educationData,
-                  assigned_by: currentUser?.email
-                });
-                queryClient.invalidateQueries({ queryKey: ['patientEducation', selectedPatientId] });
+              visitNotes={enhancedNote || roughNote}
+              vitalSigns={vitalSigns}
+              carePlans={carePlans}
+              onDocumentEducation={(text) => {
+                if (enhancedNote) {
+                  setEnhancedNote(prev => prev + '\n\n' + text);
+                } else {
+                  setRoughNote(prev => prev + '\n\n' + text);
+                }
               }}
-              autoAnalyze={true}
+              autoSuggest={roughNote.length >= 100 || !!enhancedNote}
             />
           )}
 
@@ -2523,7 +2524,7 @@ Return JSON with:
               <AccordionItem value="education">
                 <AccordionTrigger className="text-sm">
                   <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" /> Generate Patient Education
+                    <BookOpen className="w-4 h-4" /> Advanced Education Materials
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
