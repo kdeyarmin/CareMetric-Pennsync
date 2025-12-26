@@ -252,6 +252,11 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* Task Notifications */}
+      <div className="mb-6">
+        <TaskNotifications userEmail={currentUser?.email} />
+      </div>
+
       {/* Quick Action Buttons */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
         <Link to={createPageUrl("SmartNoteAssistant")} className="block">
