@@ -32,8 +32,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
 import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
+import Breadcrumbs from "../components/navigation/Breadcrumbs";
 
-export default function Layout({ children, currentPageName }) {
+      export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -403,7 +404,12 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 bg-blue-100 min-h-screen">{children}</main>
+      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 bg-blue-100 min-h-screen">
+        <div className="p-4 lg:p-6">
+          <Breadcrumbs currentPageName={currentPageName} />
+          {children}
+        </div>
+      </main>
 
       {/* Offline Indicator */}
       <OfflineIndicator />
