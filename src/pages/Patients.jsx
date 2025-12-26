@@ -329,7 +329,7 @@ export default function Patients() {
         <div className="flex items-center gap-3">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900">My Patients</h1>
-              <p className="text-sm md:text-base text-gray-600 mt-1">Your personal patient roster</p>
+              <p className="text-sm md:text-base text-gray-600 mt-1">Your personal patient roster - detailed patient information helps AI provide better recommendations</p>
             </div>
             <FavoriteButton type="page" id="Patients" name="Patients" />
           </div>
@@ -403,17 +403,22 @@ export default function Patients() {
             <CardContent className="p-12 text-center">
               <User className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No patients found</h3>
-              <p className="text-gray-500 mb-6">
-                {searchTerm ? 'No patients match your search.' : 'Start by adding your first patient.'}
+              <p className="text-gray-500 mb-2">
+                {searchTerm ? 'No patients match your search.' : 'Start building your patient roster.'}
               </p>
               {!searchTerm && (
-                <Button
-                  onClick={() => setShowForm(true)}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Your First Patient
-                </Button>
+                <>
+                  <p className="text-sm text-gray-400 mb-6">
+                    Save detailed patient information to get personalized AI recommendations for care plans, documentation, and clinical decisions.
+                  </p>
+                  <Button
+                    onClick={() => setShowForm(true)}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Your First Patient
+                  </Button>
+                </>
               )}
             </CardContent>
           </Card>
@@ -612,10 +617,22 @@ export default function Patients() {
                   <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Patient</AlertDialogTitle>
+                        <AlertDialogTitle>Delete Patient & All Data</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Are you sure you want to delete {patientToDelete?.first_name} {patientToDelete?.last_name}? 
-                          This action cannot be undone and will remove all associated data.
+                          <div className="space-y-3">
+                            <p>Are you sure you want to permanently delete <strong>{patientToDelete?.first_name} {patientToDelete?.last_name}</strong>?</p>
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-900">
+                              <p className="font-semibold mb-1">⚠️ This will permanently delete:</p>
+                              <ul className="list-disc list-inside space-y-1 ml-2">
+                                <li>Patient profile and medical history</li>
+                                <li>All visit notes and documentation</li>
+                                <li>Care plans and goals</li>
+                                <li>Incident reports</li>
+                                <li>All associated data</li>
+                              </ul>
+                              <p className="mt-2 font-semibold">This action cannot be undone.</p>
+                            </div>
+                          </div>
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -625,7 +642,7 @@ export default function Patients() {
                           disabled={isDeleting}
                           className="bg-red-600 hover:bg-red-700"
                         >
-                          {isDeleting ? "Deleting..." : "Delete"}
+                          {isDeleting ? "Deleting..." : "Delete Patient & All Data"}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
