@@ -31,7 +31,7 @@ export default function Homepage() {
   });
 
   return (
-    <div className="min-h-screen" style={{backgroundImage: 'url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
+    <div className="min-h-screen" style={{backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10" />
