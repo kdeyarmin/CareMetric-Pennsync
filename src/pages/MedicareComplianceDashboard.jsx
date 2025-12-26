@@ -39,16 +39,21 @@ import AIComplianceAssistant from "../components/compliance/AIComplianceAssistan
 
 export default function MedicareComplianceDashboard() {
   const [timeRange, setTimeRange] = useState(30);
-  const [selectedNurse, setSelectedNurse] = useState("all");
-  const [selectedRule, setSelectedRule] = useState("all");
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [aiInsights, setAIInsights] = useState(null);
 
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
   const { data: audits = [] } = useQuery({
-    queryKey: ['complianceAudits', timeRange],
+    queryKey: ['myComplianceAudits', timeRange, currentUser?.email],
     queryFn: async () => {
-      return base44.entities.ComplianceAudit.list('-audit_date', 1000);
+      // Only get current nurse's audits
+      return base44.entities.ComplianceAudit.filter({ nurse_email: currentUser?.email }, '-audit_date', 1000);
     },
+    enabled: !!currentUser?.email,
     initialData: [],
   });
 
@@ -58,20 +63,11 @@ export default function MedicareComplianceDashboard() {
     initialData: [],
   });
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  const isAdmin = currentUser?.role === 'admin';
-
   // Filter audits by time range
   const cutoffDate = subDays(new Date(), timeRange);
   const filteredAudits = audits.filter(audit => {
     const auditDate = new Date(audit.audit_date || audit.created_date);
-    const afterCutoff = auditDate >= cutoffDate;
-    const matchesNurse = selectedNurse === "all" || audit.nurse_email === selectedNurse;
-    return afterCutoff && matchesNurse;
+    return auditDate >= cutoffDate;
   });
 
   // Calculate metrics
@@ -86,9 +82,6 @@ export default function MedicareComplianceDashboard() {
   const totalIssuesCount = filteredAudits.reduce((sum, a) => 
     sum + (a.issues?.length || 0), 0
   );
-
-  // Get unique nurses
-  const uniqueNurses = [...new Set(audits.map(a => a.nurse_email))].filter(Boolean);
 
   // Trend data - daily averages
   const trendData = [];
@@ -138,19 +131,6 @@ export default function MedicareComplianceDashboard() {
       percentage: ((data.count / filteredAudits.length) * 100).toFixed(1)
     }));
 
-  // Nurse performance comparison
-  const nursePerformance = uniqueNurses.map(email => {
-    const nurseAudits = filteredAudits.filter(a => a.nurse_email === email);
-    const avgScore = nurseAudits.length > 0
-      ? nurseAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / nurseAudits.length
-      : 0;
-    return {
-      nurse: email?.split('@')[0] || 'Unknown',
-      score: Math.round(avgScore),
-      audits: nurseAudits.length
-    };
-  }).sort((a, b) => b.score - a.score);
-
   // Rule violation frequency
   const ruleViolations = medicareRules.map(rule => {
     const violations = filteredAudits.reduce((count, audit) => {
@@ -173,7 +153,7 @@ export default function MedicareComplianceDashboard() {
     setIsGeneratingInsights(true);
     try {
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Analyze Medicare compliance data for Pennsylvania home health agency and provide executive insights.
+        prompt: `Analyze Medicare compliance data for an independent home health nurse and provide personalized insights.
 
 COMPLIANCE METRICS:
 - Time Period: Last ${timeRange} days
@@ -182,29 +162,26 @@ COMPLIANCE METRICS:
 - Critical Issues: ${criticalIssuesCount}
 - Total Issues: ${totalIssuesCount}
 
-TOP 5 MOST FREQUENT ISSUES:
+TOP 5 MOST FREQUENT ISSUES IN MY DOCUMENTATION:
 ${topIssues.slice(0, 5).map(i => `- ${i.name}: ${i.count} occurrences (${i.percentage}% of audits) - ${i.cop_reference}`).join('\n')}
-
-NURSE PERFORMANCE (Top 5):
-${nursePerformance.slice(0, 5).map(n => `- ${n.nurse}: ${n.score}% avg (${n.audits} audits)`).join('\n')}
 
 TOP RULE VIOLATIONS:
 ${ruleViolations.slice(0, 5).map(r => `- ${r.rule} (${r.cop}): ${r.violations} violations`).join('\n')}
 
-Provide strategic insights for agency leadership:
+Provide personalized insights for this individual nurse:
 
-1. OVERALL ASSESSMENT: Current compliance posture (excellent, good, concerning, critical)
-2. CRITICAL PRIORITIES: Top 3 areas requiring immediate attention with specific CoP references
-3. SYSTEMIC ISSUES: Patterns indicating training gaps or process problems
-4. NURSE DEVELOPMENT: Specific recommendations for staff improvement
-5. RISK AREAS: Which 42 CFR 484 requirements have highest violation rates
-6. ACTION PLAN: Prioritized 30-day action plan with measurable goals
-7. TREND ANALYSIS: Is compliance improving, stable, or declining
-8. RESOURCE ALLOCATION: Where to focus training and quality improvement resources
+1. OVERALL ASSESSMENT: My current compliance performance (excellent, good, needs improvement, critical)
+2. CRITICAL PRIORITIES: Top 3 areas I need to focus on immediately with specific CoP references
+3. LEARNING OPPORTUNITIES: Patterns showing where I need more training or practice
+4. PERSONAL DEVELOPMENT: Specific recommendations for improving my documentation
+5. RISK AREAS: Which 42 CFR 484 requirements I struggle with most
+6. ACTION PLAN: My personalized 30-day improvement plan with measurable goals
+7. TREND ANALYSIS: Am I improving, staying stable, or declining
+8. LEARNING FOCUS: Where to focus my training and skill development
 
-Focus on Medicare CoP compliance for Pennsylvania home health.
+Focus on Medicare CoP compliance for individual nurse practice improvement.
 
-Return JSON with sections: overall_assessment, critical_priorities (array), systemic_issues (array), nurse_development (array), risk_areas (array), action_plan (array), trend_analysis, resource_recommendations.`,
+Return JSON with sections: overall_assessment, critical_priorities (array), learning_opportunities (array), personal_development (array), risk_areas (array), action_plan (array), trend_analysis, learning_focus (array).`,
         response_json_schema: {
           type: "object",
           properties: {
@@ -221,8 +198,8 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
                 }
               }
             },
-            systemic_issues: { type: "array", items: { type: "string" } },
-            nurse_development: { type: "array", items: { type: "string" } },
+            learning_opportunities: { type: "array", items: { type: "string" } },
+            personal_development: { type: "array", items: { type: "string" } },
             risk_areas: { 
               type: "array",
               items: {
@@ -247,7 +224,7 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
               }
             },
             trend_analysis: { type: "string" },
-            resource_recommendations: { type: "array", items: { type: "string" } }
+            learning_focus: { type: "array", items: { type: "string" } }
           }
         }
       });
@@ -271,8 +248,8 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
               <Shield className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Medicare Compliance Dashboard</h1>
-              <p className="text-gray-600">42 CFR 484 CoP Monitoring for Pennsylvania Home Health</p>
+              <h1 className="text-3xl font-bold text-gray-900">My Medicare Compliance</h1>
+              <p className="text-gray-600">Personal Compliance Tracking & Improvement</p>
             </div>
           </div>
           <Button onClick={generateAIInsights} disabled={isGeneratingInsights}>
@@ -303,20 +280,6 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
               <SelectItem value="90">Last 90 Days</SelectItem>
             </SelectContent>
           </Select>
-
-          {isAdmin && (
-            <Select value={selectedNurse} onValueChange={setSelectedNurse}>
-              <SelectTrigger className="w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Nurses</SelectItem>
-                {uniqueNurses.map(nurse => (
-                  <SelectItem key={nurse} value={nurse}>{nurse}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
         </div>
       </div>
 
@@ -326,7 +289,7 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm mb-1">Avg Compliance</p>
+                <p className="text-blue-100 text-sm mb-1">My Avg Compliance</p>
                 <p className="text-4xl font-bold">{avgComplianceScore.toFixed(1)}%</p>
               </div>
               <Shield className="w-12 h-12 text-blue-200" />
@@ -350,7 +313,7 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-100 text-sm mb-1">Total Issues</p>
+                <p className="text-orange-100 text-sm mb-1">My Total Issues</p>
                 <p className="text-4xl font-bold">{totalIssuesCount}</p>
               </div>
               <FileText className="w-12 h-12 text-orange-200" />
@@ -362,7 +325,7 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-sm mb-1">Audits Reviewed</p>
+                <p className="text-green-100 text-sm mb-1">My Audits</p>
                 <p className="text-4xl font-bold">{filteredAudits.length}</p>
               </div>
               <Calendar className="w-12 h-12 text-green-200" />
@@ -389,7 +352,7 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
 
             {/* Critical Priorities */}
             <div>
-              <h3 className="font-bold text-gray-900 mb-3">Critical Priorities (Immediate Action Required)</h3>
+              <h3 className="font-bold text-gray-900 mb-3">My Critical Focus Areas</h3>
               <div className="space-y-2">
                 {aiInsights.critical_priorities?.map((priority, idx) => (
                   <Card key={idx} className="border-l-4 border-l-red-500 bg-red-50">
@@ -408,9 +371,33 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
               </div>
             </div>
 
+            {/* Learning Opportunities */}
+            {aiInsights.learning_opportunities?.length > 0 && (
+              <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                <h3 className="font-bold text-blue-900 mb-2">My Learning Opportunities</h3>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  {aiInsights.learning_opportunities.map((opp, idx) => (
+                    <li key={idx}>• {opp}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Personal Development */}
+            {aiInsights.personal_development?.length > 0 && (
+              <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200">
+                <h3 className="font-bold text-green-900 mb-2">Personal Development Recommendations</h3>
+                <ul className="text-sm text-green-800 space-y-1">
+                  {aiInsights.personal_development.map((dev, idx) => (
+                    <li key={idx}>• {dev}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* 30-Day Action Plan */}
             <div>
-              <h3 className="font-bold text-gray-900 mb-3">30-Day Action Plan</h3>
+              <h3 className="font-bold text-gray-900 mb-3">My 30-Day Improvement Plan</h3>
               <div className="space-y-2">
                 {aiInsights.action_plan?.map((action, idx) => (
                   <div key={idx} className="bg-white p-3 rounded border flex items-start gap-3">
@@ -420,15 +407,26 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">{action.action}</p>
                       <div className="flex gap-3 mt-1 text-xs text-gray-600">
-                        <span><strong>Owner:</strong> {action.owner}</span>
                         <span><strong>Timeline:</strong> {action.timeline}</span>
-                        <span><strong>Metric:</strong> {action.success_metric}</span>
+                        <span><strong>Success Metric:</strong> {action.success_metric}</span>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
+            {/* Learning Focus */}
+            {aiInsights.learning_focus?.length > 0 && (
+              <div className="bg-purple-50 p-4 rounded-lg border-2 border-purple-200">
+                <h3 className="font-bold text-purple-900 mb-2">My Learning Focus Areas</h3>
+                <ul className="text-sm text-purple-800 space-y-1">
+                  {aiInsights.learning_focus.map((focus, idx) => (
+                    <li key={idx}>• {focus}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Trend Analysis */}
             <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
@@ -440,12 +438,11 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
       )}
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="risk">Risk Scoring</TabsTrigger>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="issues">Top Issues</TabsTrigger>
-          <TabsTrigger value="nurses">Nurse Performance</TabsTrigger>
+          <TabsTrigger value="trends">My Trends</TabsTrigger>
+          <TabsTrigger value="issues">My Issues</TabsTrigger>
           <TabsTrigger value="tools">Tools</TabsTrigger>
         </TabsList>
 
@@ -540,7 +537,7 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
         <TabsContent value="trends" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Compliance Score Trend</CardTitle>
+              <CardTitle className="text-lg">My Compliance Score Trend</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
@@ -585,7 +582,7 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
         <TabsContent value="issues" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Most Frequent Documentation Gaps</CardTitle>
+              <CardTitle className="text-lg">My Most Frequent Documentation Gaps</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
@@ -657,79 +654,13 @@ Return JSON with sections: overall_assessment, critical_priorities (array), syst
           </Card>
         </TabsContent>
 
-        {/* Nurse Performance Tab */}
-        <TabsContent value="nurses" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Nurse Compliance Comparison</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={nursePerformance}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="nurse" />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="score" fill="#3B82F6" name="Avg Compliance %" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Nurse Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Nurse Performance Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {nursePerformance.map((nurse, idx) => {
-                  const nurseAudits = filteredAudits.filter(a => a.nurse_email?.split('@')[0] === nurse.nurse);
-                  const criticalCount = nurseAudits.reduce((sum, a) => 
-                    sum + (a.issues?.filter(i => i.severity === 'critical').length || 0), 0
-                  );
-
-                  return (
-                    <div key={idx} className="p-4 bg-gray-50 rounded border">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                            <Users className="w-5 h-5 text-white" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">{nurse.nurse}</p>
-                            <p className="text-xs text-gray-600">{nurse.audits} audits reviewed</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <Badge className={
-                            nurse.score >= 90 ? 'bg-green-600' :
-                            nurse.score >= 80 ? 'bg-blue-600' :
-                            nurse.score >= 70 ? 'bg-yellow-600' : 'bg-red-600'
-                          }>
-                            {nurse.score}%
-                          </Badge>
-                          {criticalCount > 0 && (
-                            <p className="text-xs text-red-600 mt-1">{criticalCount} critical issues</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         {/* Tools Tab */}
         <TabsContent value="tools" className="space-y-6">
           {/* AI Compliance Q&A Assistant */}
           <AIComplianceAssistant />
 
           <div className="grid md:grid-cols-2 gap-6">
-            <ComplianceReportGenerator dateRange={timeRange} nurseEmail={selectedNurse === "all" ? null : selectedNurse} />
+            <ComplianceReportGenerator dateRange={timeRange} nurseEmail={currentUser?.email} />
             <ProactiveComplianceMonitor autoMonitor={true} />
           </div>
           
