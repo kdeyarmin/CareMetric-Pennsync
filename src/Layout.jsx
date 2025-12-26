@@ -87,7 +87,7 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
 
   const navCategories = [
     {
-      category: "My Practice",
+      category: "",
       items: [
         { name: "Home", icon: Home, page: "Homepage" },
         { name: "Dashboard", icon: Home, page: "Dashboard" },
