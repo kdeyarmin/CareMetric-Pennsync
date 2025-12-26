@@ -417,7 +417,7 @@ export default function Features() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Features Guide</h1>
-        <p className="text-gray-600">Learn how to use Penn Sync to streamline your nursing practice</p>
+        <p className="text-gray-600">Learn how to use CareMetric AI to streamline your nursing practice</p>
       </div>
 
       {/* Search */}
