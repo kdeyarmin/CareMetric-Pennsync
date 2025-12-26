@@ -221,11 +221,6 @@ export default function Dashboard() {
       {/* Admin Announcements */}
       <AnnouncementsWidget />
 
-      {/* Task Notifications */}
-      <div className="mb-6">
-        <TaskNotifications userEmail={currentUser?.email} />
-      </div>
-
       {/* Nurse Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
