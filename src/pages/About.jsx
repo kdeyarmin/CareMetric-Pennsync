@@ -165,9 +165,9 @@ export default function About() {
         <div className="text-center space-y-4 py-8">
           <div className="flex justify-center mb-4">
             <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg"
+              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
               alt="CareMetric AI Logo"
-              className="w-24 h-24 rounded-2xl shadow-2xl"
+              className="w-24 h-24 object-contain"
             />
           </div>
           <h1 className="text-5xl md:text-6xl font-bold text-gray-900">

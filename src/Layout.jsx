@@ -219,9 +219,9 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
         <div className="h-16 flex items-center justify-between px-3 border-b border-gray-200">
           <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
             <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
+              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" 
               alt="CareMetric AI Logo" 
-              className="w-8 h-8 rounded-lg flex-shrink-0"
+              className="w-8 h-8 object-contain flex-shrink-0"
             />
             {!sidebarCollapsed && <span className="font-bold text-lg text-gray-900">CareMetric AI</span>}
           </Link>
@@ -336,9 +336,9 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-blue-600 shadow-sm border-b border-blue-700 h-16 flex items-center justify-between px-4 print:hidden">
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
           <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/4cdbb3c5a_EB4F3981-36F5-46A4-8E0C-4B53A58EAE88.jpeg" 
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" 
             alt="CareMetric AI Logo" 
-            className="w-8 h-8 rounded-lg"
+            className="w-8 h-8 object-contain"
           />
           <span className="font-bold text-lg text-white">CareMetric AI</span>
         </Link>
