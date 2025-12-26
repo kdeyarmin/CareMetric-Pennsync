@@ -162,11 +162,18 @@ export default function DataRetentionSettings() {
             </Alert>
 
             <div className="space-y-3 text-sm">
-              <h3 className="font-bold text-gray-900 text-base">Legal Statement:</h3>
+              <h3 className="font-bold text-gray-900 text-base">HIPAA Privacy and Security Statement</h3>
               
-              <p className="text-gray-700">
-                By selecting to save patient information in this application, you acknowledge and agree to the following:
+              <p className="text-gray-700 font-medium">
+                By selecting to save patient information in this application, you acknowledge and agree to the following terms regarding Protected Health Information (PHI):
               </p>
+
+              <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 space-y-2">
+                <h4 className="font-semibold text-gray-900">Privacy Rule Compliance</h4>
+                <p className="text-gray-700">
+                  You affirm that your use and disclosure of PHI through this application complies with the HIPAA Privacy Rule (45 CFR Part 160 and Part 164, Subparts A and E). You will only access, use, and disclose the minimum necessary PHI required to accomplish the intended purpose.
+                </p>
+              </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
                 <h4 className="font-semibold text-gray-900">1. HIPAA Compliance Responsibility</h4>
@@ -176,12 +183,16 @@ export default function DataRetentionSettings() {
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-                <h4 className="font-semibold text-gray-900">2. Data Security</h4>
+                <h4 className="font-semibold text-gray-900">2. Security Rule Requirements</h4>
+                <p className="text-gray-700">
+                  You acknowledge your responsibility to implement and maintain appropriate administrative, physical, and technical safeguards as required by the HIPAA Security Rule (45 CFR Part 164, Subparts A and C) including:
+                </p>
                 <ul className="list-disc list-inside space-y-1 text-gray-700 ml-2">
-                  <li>Keep your account credentials secure and confidential</li>
-                  <li>Never share your login information with unauthorized individuals</li>
-                  <li>Always logout when using shared or public devices</li>
-                  <li>Ensure your device has appropriate security measures (passwords, encryption)</li>
+                  <li><strong>Access Controls:</strong> Keep account credentials secure and confidential; never share login information</li>
+                  <li><strong>Device Security:</strong> Ensure devices used to access PHI have passwords, encryption, and anti-malware protection</li>
+                  <li><strong>Session Management:</strong> Always logout when finished, especially on shared or public devices</li>
+                  <li><strong>Physical Safeguards:</strong> Prevent unauthorized physical access to devices containing PHI</li>
+                  <li><strong>Audit Controls:</strong> Understand that all access to PHI is logged and monitored</li>
                 </ul>
               </div>
 
@@ -193,22 +204,52 @@ export default function DataRetentionSettings() {
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-                <h4 className="font-semibold text-gray-900">4. Data Breach Reporting</h4>
+                <h4 className="font-semibold text-gray-900">4. Breach Notification Requirements</h4>
                 <p className="text-gray-700">
-                  In the event of a suspected data breach or unauthorized access, you must immediately take appropriate action according to your organization's policies and applicable law.
+                  You agree to immediately report any suspected breach of PHI, including unauthorized access, use, or disclosure. You understand that breach notification requirements under 45 CFR §164.400-414 may apply, and you will follow your organization's incident response procedures and notify appropriate parties without unreasonable delay.
                 </p>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-                <h4 className="font-semibold text-gray-900">5. Right to Delete</h4>
+                <h4 className="font-semibold text-gray-900">5. Individual Rights</h4>
                 <p className="text-gray-700">
-                  You may change this setting at any time to delete all saved patient data. You can also manually delete individual patient records as needed.
+                  You acknowledge that patients have rights under HIPAA including the right to access their PHI, request amendments, receive an accounting of disclosures, and request restrictions on uses and disclosures. You will honor these rights in accordance with applicable law.
                 </p>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4">
-                <p className="text-gray-800 font-medium">
-                  <strong>Recommendation:</strong> If you work in multiple settings or use shared devices, consider using "Delete on Logout" mode for maximum security. Patient data can always be re-entered when needed.
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                <h4 className="font-semibold text-gray-900">6. Data Retention and Disposal</h4>
+                <p className="text-gray-700">
+                  You may change this setting at any time to delete all saved patient data. You understand that secure deletion of PHI is required when it is no longer needed. You can manually delete individual patient records as needed, and understand that deletion is permanent and cannot be undone.
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                <h4 className="font-semibold text-gray-900">7. No Business Associate Agreement (BAA)</h4>
+                <p className="text-gray-700">
+                  <strong>IMPORTANT:</strong> This application serves as a tool for individual nurse use. If you are using this application on behalf of a covered entity (healthcare provider, health plan, or healthcare clearinghouse), you acknowledge that your organization may need to obtain a Business Associate Agreement (BAA) with Penn Sync before storing PHI. Consult with your organization's compliance officer or legal counsel.
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                <h4 className="font-semibold text-gray-900">8. State Law Compliance</h4>
+                <p className="text-gray-700">
+                  You acknowledge that state privacy laws may impose additional requirements beyond HIPAA, and you are responsible for complying with all applicable state and federal privacy and security laws.
+                </p>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 space-y-2">
+                <p className="text-gray-800">
+                  <strong>⚠️ Security Recommendation:</strong> For maximum privacy and security, especially if you work in multiple settings or use shared/public devices, we strongly recommend selecting "Delete on Logout" mode. This ensures PHI is never retained longer than necessary and eliminates risk of unauthorized access.
+                </p>
+                <p className="text-gray-700 text-xs mt-2">
+                  Patient data can always be re-entered when needed. The AI recommendations will still function effectively even without saved historical data.
+                </p>
+              </div>
+
+              <div className="bg-red-50 border-2 border-red-400 rounded-lg p-4 mt-4">
+                <p className="text-red-900 font-bold text-center">
+                  By clicking "I Accept" below, you certify that you have read, understood, and agree to comply with all terms of this HIPAA Privacy and Security Statement.
                 </p>
               </div>
             </div>
