@@ -65,6 +65,7 @@ import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import Settings from './pages/Settings';
 import Tasks from './pages/Tasks';
+import About from './pages/About';
 import __Layout from './Layout.jsx';
 
 
@@ -136,6 +137,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "Settings": Settings,
     "Tasks": Tasks,
+    "About": About,
 }
 
 export const pagesConfig = {
