@@ -25,7 +25,8 @@ import {
   Sparkles,
   Clock,
   BookOpen,
-  WifiOff
+  WifiOff,
+  Activity
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
@@ -107,7 +108,15 @@ export default function Layout({ children, currentPageName }) {
         { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
         { name: "Settings", icon: Settings, page: "Settings" }
       ]
-    }
+    },
+    ...(currentUser?.role === 'admin' ? [{
+      category: "Administration",
+      items: [
+        { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
+        { name: "User Management", icon: Users, page: "UserManagement" },
+        { name: "Audit Trail", icon: Activity, page: "AuditTrail" }
+      ]
+    }] : [])
   ];
 
   // Removed admin features for independent nurse use

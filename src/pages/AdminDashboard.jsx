@@ -1,843 +1,779 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Shield,
-  Users,
-  Activity,
-  Database,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  Lock,
-  Eye,
-  Search,
-  TrendingUp,
-  FileText,
-  Calendar,
-  Clock,
-  Mail,
-  UserPlus,
-  RefreshCw,
-  Edit,
-  Trash2,
-  Download,
-  BarChart3,
-  Settings,
-  DollarSign,
-  Target,
-  Award,
-  Phone
+import { 
+  Users, FileText, TrendingUp, DollarSign, Shield, 
+  GraduationCap, AlertTriangle, Activity, Clock, 
+  CheckCircle2, BarChart3, Calendar, Zap, Brain,
+  UserCheck, Award, Target
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
-import { formatEastern } from "@/components/utils/timezone";
-import VoiceCommandListener from "../components/voice/VoiceCommandListener";
-import { getCommandsForContext } from "../components/voice/voiceCommands";
-import QualityMetricsDashboard from "../components/admin/QualityMetricsDashboard";
-import UserManagement from "../components/admin/UserManagement";
-import ReportsCenter from "../components/admin/ReportsCenter";
-import SystemSettings from "../components/admin/SystemSettings";
-import UserActivityLog from "../components/admin/UserActivityLog";
-import NoteConversionReport from "../components/admin/NoteConversionReport";
-import AIAutoTagger from "../components/admin/AIAutoTagger";
-import AIKPIReportGenerator from "../components/admin/AIKPIReportGenerator";
-import AnnouncementManager from "../components/admin/AnnouncementManager";
-import { calculateStats } from "@/components/utils/statsCalculator";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import AIStaffPerformanceAnalytics from "../components/analytics/AIStaffPerformanceAnalytics";
-import ClinicalNoteReviewer from "../components/review/ClinicalNoteReviewer";
-import AIConfigurationManager from "../components/admin/AIConfigurationManager";
+import { formatEastern } from "@/components/utils/timezone";
+import { calculateStats, formatNumber, formatCurrency } from "@/components/utils/statsCalculator";
 
 export default function AdminDashboard() {
-  const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [encryptionStatus, setEncryptionStatus] = useState(null);
-  const [isCheckingEncryption, setIsCheckingEncryption] = useState(false);
+  const [dateRange, setDateRange] = useState(30);
 
-  // Check if user is admin
-  const { data: currentUser, isLoading: userLoading } = useQuery({
+  const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
-
-  // Fetch all users
-  const { data: users = [], isLoading: usersLoading } = useQuery({
+  const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list('-created_date'),
-    initialData: [],
-    enabled: isAdmin,
+    queryFn: () => base44.entities.User.list(),
   });
 
-  // Fetch security logs
-  const { data: securityLogs = [], isLoading: logsLoading } = useQuery({
-    queryKey: ['securityLogs'],
-    queryFn: () => base44.entities.SecurityLog.list('-timestamp', 100),
-    initialData: [],
-    enabled: isAdmin,
-  });
-
-  // Fetch all patients
-  const { data: patients = [] } = useQuery({
+  const { data: allPatients = [] } = useQuery({
     queryKey: ['allPatients'],
     queryFn: () => base44.entities.Patient.list(),
-    initialData: [],
-    enabled: isAdmin,
   });
 
-  // Fetch all visits
-  const { data: visits = [] } = useQuery({
+  const { data: allVisits = [] } = useQuery({
     queryKey: ['allVisits'],
-    queryFn: () => base44.entities.Visit.list('-visit_date', 500),
-    initialData: [],
-    enabled: isAdmin,
-  });
-
-  // Fetch all incidents
-  const { data: incidents = [] } = useQuery({
-    queryKey: ['allIncidents'],
-    queryFn: () => base44.entities.Incident.list('-incident_date', 200),
-    initialData: [],
-    enabled: isAdmin,
+    queryFn: () => base44.entities.Visit.list('-visit_date'),
   });
 
   const { data: allNoteConversions = [] } = useQuery({
     queryKey: ['allNoteConversions'],
-    queryFn: () => base44.entities.NoteConversion.list('-created_date', 1000),
-    initialData: [],
-    enabled: isAdmin,
+    queryFn: () => base44.entities.NoteConversion.list('-created_date'),
   });
 
-  // Fetch user activities and compliance audits
-  const { data: userActivities = [] } = useQuery({
-    queryKey: ['allUserActivities'],
-    queryFn: () => base44.entities.UserActivity.list('-created_date', 1000),
-    initialData: [],
-    enabled: isAdmin,
-  });
-
-  const { data: complianceAudits = [] } = useQuery({
+  const { data: allComplianceAudits = [] } = useQuery({
     queryKey: ['allComplianceAudits'],
-    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 500),
-    initialData: [],
-    enabled: isAdmin,
+    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date'),
   });
 
-  // Voice command handler
-  const handleVoiceCommand = (action, spokenText) => {
-    switch (action) {
-      case 'view_users':
-        const usersTab = document.querySelector('button[value="users"]');
-        if (usersTab) usersTab.click();
-        break;
-      case 'view_security_logs':
-        const logsTab = document.querySelector('button[value="security"]');
-        if (logsTab) logsTab.click();
-        break;
-      case 'view_quality_metrics':
-        const qualityTab = document.querySelector('button[value="quality"]');
-        if (qualityTab) qualityTab.click();
-        break;
-      case 'view_reports':
-        const reportsTab = document.querySelector('button[value="reports"]');
-        if (reportsTab) reportsTab.click();
-        break;
-      case 'refresh_admin':
-        queryClient.invalidateQueries({ queryKey: ['allUsers'] });
-        queryClient.invalidateQueries({ queryKey: ['securityLogs'] });
-        queryClient.invalidateQueries({ queryKey: ['allPatients'] });
-        queryClient.invalidateQueries({ queryKey: ['allVisits'] });
-        queryClient.invalidateQueries({ queryKey: ['allIncidents'] });
-        alert('Admin data refreshed!');
-        break;
-      default:
-        console.log('Unhandled voice command:', action);
-    }
-  };
+  const { data: allTrainingCompletions = [] } = useQuery({
+    queryKey: ['allTrainingCompletions'],
+    queryFn: () => base44.entities.TrainingCompletion.list(),
+  });
 
-  // Define date ranges
-  const last30Days = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-  const completedVisits = visits.filter(v => v.status === 'completed').length;
+  const { data: allIncidents = [] } = useQuery({
+    queryKey: ['allIncidents'],
+    queryFn: () => base44.entities.Incident.list('-incident_date'),
+  });
 
-  // Calculate centralized metrics
-  const stats = React.useMemo(() => {
-    return calculateStats({
-      visits,
-      noteConversions: allNoteConversions,
-      users,
-      patients,
-      incidents,
-      complianceAudits,
-      userActivities,
-      dateRange: 30
+  const { data: allTasks = [] } = useQuery({
+    queryKey: ['allTasks'],
+    queryFn: () => base44.entities.Task.list(),
+  });
+
+  const { data: allActivity = [] } = useQuery({
+    queryKey: ['allUserActivity'],
+    queryFn: () => base44.entities.UserActivity.list('-created_date', 100),
+  });
+
+  const { data: allAlerts = [] } = useQuery({
+    queryKey: ['allAlerts'],
+    queryFn: () => base44.entities.PatientAlert.list('-created_date'),
+  });
+
+  // Calculate comprehensive statistics
+  const stats = useMemo(() => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - dateRange);
+
+    const inRangeVisits = allVisits.filter(v => new Date(v.created_date) >= cutoffDate);
+    const inRangeConversions = allNoteConversions.filter(n => new Date(n.created_date) >= cutoffDate);
+    const inRangeAudits = allComplianceAudits.filter(a => new Date(a.audit_date) >= cutoffDate);
+    const inRangeTraining = allTrainingCompletions.filter(t => t.completion_date && new Date(t.completion_date) >= cutoffDate);
+    const inRangeIncidents = allIncidents.filter(i => new Date(i.incident_date) >= cutoffDate);
+
+    return {
+      // User metrics
+      totalUsers: allUsers.length,
+      activeUsers: allUsers.filter(u => u.is_approved).length,
+      pendingUsers: allUsers.filter(u => !u.is_approved).length,
+      
+      // Patient metrics
+      totalPatients: allPatients.length,
+      activePatients: allPatients.filter(p => p.status === 'active').length,
+      
+      // Visit metrics
+      totalVisits: inRangeVisits.length,
+      completedVisits: inRangeVisits.filter(v => v.status === 'completed').length,
+      avgVisitsPerDay: (inRangeVisits.length / dateRange).toFixed(1),
+      
+      // Documentation metrics
+      totalEnhancements: inRangeConversions.length,
+      avgQualityScore: inRangeConversions.length > 0
+        ? (inRangeConversions.reduce((sum, n) => sum + (n.quality_score || 0), 0) / inRangeConversions.length).toFixed(1)
+        : 0,
+      avgComplianceScore: inRangeConversions.length > 0
+        ? (inRangeConversions.reduce((sum, n) => sum + (n.enhanced_note_compliance || 0), 0) / inRangeConversions.length).toFixed(1)
+        : 0,
+      avgComplianceImprovement: inRangeConversions.length > 0
+        ? (inRangeConversions.filter(n => n.compliance_improvement).reduce((sum, n) => sum + n.compliance_improvement, 0) / inRangeConversions.filter(n => n.compliance_improvement).length).toFixed(1)
+        : 0,
+      totalTimeSaved: Math.round(inRangeConversions.length * 8.5),
+      
+      // Compliance metrics
+      totalAudits: inRangeAudits.length,
+      passedAudits: inRangeAudits.filter(a => a.status === 'passed').length,
+      flaggedAudits: inRangeAudits.filter(a => a.status === 'flagged' || a.status === 'critical').length,
+      avgAuditScore: inRangeAudits.length > 0
+        ? (inRangeAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / inRangeAudits.length).toFixed(1)
+        : 0,
+      
+      // Training metrics
+      totalTrainingCompleted: inRangeTraining.filter(t => t.status === 'completed').length,
+      avgTrainingScore: inRangeTraining.filter(t => t.score).length > 0
+        ? (inRangeTraining.filter(t => t.score).reduce((sum, t) => sum + t.score, 0) / inRangeTraining.filter(t => t.score).length).toFixed(1)
+        : 0,
+      
+      // Incident metrics
+      totalIncidents: inRangeIncidents.length,
+      criticalIncidents: inRangeIncidents.filter(i => i.severity === 'high').length,
+      
+      // Task metrics
+      pendingTasks: allTasks.filter(t => t.status === 'pending').length,
+      overdueTasks: allTasks.filter(t => t.status === 'pending' && t.due_date && new Date(t.due_date) < new Date()).length,
+      
+      // Alert metrics
+      activeAlerts: allAlerts.filter(a => a.status === 'active').length,
+      criticalAlerts: allAlerts.filter(a => a.status === 'active' && a.severity === 'critical').length,
+      
+      // AI adoption
+      aiAdoptionRate: allUsers.length > 0
+        ? ((inRangeConversions.map(c => c.nurse_email).filter((v, i, a) => a.indexOf(v) === i).length / allUsers.filter(u => u.is_approved).length) * 100).toFixed(0)
+        : 0
+    };
+  }, [allUsers, allPatients, allVisits, allNoteConversions, allComplianceAudits, allTrainingCompletions, allIncidents, allTasks, allAlerts, dateRange]);
+
+  // Top performers
+  const topPerformers = useMemo(() => {
+    const nurseStats = {};
+    
+    allNoteConversions.forEach(conv => {
+      if (!nurseStats[conv.nurse_email]) {
+        nurseStats[conv.nurse_email] = {
+          email: conv.nurse_email,
+          enhancements: 0,
+          totalQuality: 0,
+          totalCompliance: 0
+        };
+      }
+      nurseStats[conv.nurse_email].enhancements++;
+      nurseStats[conv.nurse_email].totalQuality += conv.quality_score || 0;
+      nurseStats[conv.nurse_email].totalCompliance += conv.enhanced_note_compliance || 0;
     });
-  }, [visits, allNoteConversions, users, patients, incidents, complianceAudits, userActivities]);
 
-  // Run encryption verification
-  const verifyEncryption = async () => {
-    setIsCheckingEncryption(true);
-    try {
-      const testLog = await base44.entities.SecurityLog.create({
-        timestamp: new Date().toISOString(),
-        user_email: currentUser.email,
-        user_role: 'admin',
-        action: 'ENCRYPTION_TEST',
-        details: {
-          test_phi: 'Test Patient Data - SSN: 123-45-6789',
-          test_diagnosis: 'Test Diagnosis: Diabetes Type 2',
-          encryption_verification: true
-        },
-        ip_address: 'encryption-test',
-        user_agent: 'admin-panel'
-      });
+    return Object.values(nurseStats)
+      .map(n => ({
+        ...n,
+        avgQuality: (n.totalQuality / n.enhancements).toFixed(0),
+        avgCompliance: (n.totalCompliance / n.enhancements).toFixed(0)
+      }))
+      .sort((a, b) => b.avgCompliance - a.avgCompliance)
+      .slice(0, 5);
+  }, [allNoteConversions]);
 
-      const retrieved = await base44.entities.SecurityLog.filter({
-        id: testLog.id
-      });
+  // Recent activity
+  const recentActivity = allActivity.slice(0, 10);
 
-      const dataIntact = retrieved.length > 0 &&
-                        retrieved[0].action === 'ENCRYPTION_TEST' &&
-                        retrieved[0].details?.encryption_verification === true;
+  // Compliance trends
+  const complianceTrend = useMemo(() => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return date.toISOString().split('T')[0];
+    });
 
-      await base44.entities.SecurityLog.delete(testLog.id);
-
-      const checks = {
-        'Data Storage': testLog.id ? true : false,
-        'Data Retrieval': retrieved.length > 0,
-        'Data Integrity': dataIntact,
-        'Penn Sync Platform Encryption': true
+    return last7Days.map(date => {
+      const dayAudits = allComplianceAudits.filter(a => 
+        a.audit_date && a.audit_date.startsWith(date)
+      );
+      return {
+        date,
+        avgScore: dayAudits.length > 0
+          ? (dayAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / dayAudits.length).toFixed(0)
+          : 0,
+        count: dayAudits.length
       };
+    });
+  }, [allComplianceAudits]);
 
-      const allPassed = Object.values(checks).every(v => v === true);
-
-      setEncryptionStatus({
-        status: allPassed ? 'pass' : 'fail',
-        checks,
-        timestamp: new Date().toISOString(),
-        message: allPassed
-          ? '✅ All encryption checks passed. Data is encrypted at rest by the Penn Sync platform.'
-          : '⚠️ Some encryption checks failed.'
-      });
-
-    } catch (error) {
-      console.error('Encryption verification error:', error);
-      setEncryptionStatus({
-        status: 'error',
-        message: `❌ Encryption verification failed: ${error.message}`,
-        timestamp: new Date().toISOString()
-      });
-    }
-    setIsCheckingEncryption(false);
-  };
-
-  // Security metrics
-  const unauthorizedAttempts = securityLogs.filter(log =>
-    log.action?.includes('UNAUTHORIZED') || log.action?.includes('ACCESS_DENIED')
-  ).length;
-
-  const aiApiCalls = securityLogs.filter(log =>
-    log.action === 'AI_API_CALL'
-  ).length;
-
-  // Filter logs
-  const filteredLogs = securityLogs.filter(log =>
-    log.action?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.user_email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Security event counts
-  const securityEventCounts = securityLogs.reduce((acc, log) => {
-    const action = log.action || 'Unknown';
-    acc[action] = (acc[action] || 0) + 1;
-    return acc;
-  }, {});
-
-  // Check if user is loading or not admin
-  if (userLoading) {
+  if (currentUser?.role !== 'admin') {
     return (
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="p-8 max-w-4xl mx-auto">
         <Card>
-          <CardContent className="p-12 text-center text-gray-500">
-            Loading Penn Sync Admin Dashboard...
+          <CardContent className="p-12 text-center">
+            <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Admin Access Required</h2>
+            <p className="text-gray-600">This page is only accessible to administrators.</p>
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="p-8 max-w-7xl mx-auto">
-        <Alert className="border-red-300 bg-red-50">
-          <AlertTriangle className="w-5 h-5 text-red-600" />
-          <AlertDescription className="text-red-900">
-            <p className="font-semibold mb-2">Access Denied</p>
-            <p>You do not have administrator privileges. This incident has been logged.</p>
-          </AlertDescription>
-        </Alert>
       </div>
     );
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-4 sm:mb-6 md:mb-8">
-        <div className="flex items-center gap-2 sm:gap-3 mb-2">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
-            <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Penn Sync Admin Portal</h1>
-            <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Comprehensive system management and analytics</p>
-          </div>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+          <p className="text-gray-600">Comprehensive analytics and system overview</p>
+        </div>
+        <div className="flex gap-2">
+          {[7, 30, 90].map(days => (
+            <Button
+              key={days}
+              size="sm"
+              variant={dateRange === days ? "default" : "outline"}
+              onClick={() => setDateRange(days)}
+            >
+              {days}d
+            </Button>
+          ))}
         </div>
       </div>
 
-        {/* Announcements Management */}
-        <div className="mb-4 sm:mb-6">
-          <AnnouncementManager />
-        </div>
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <Users className="w-8 h-8 text-blue-600" />
+              <Badge className="bg-blue-600">{stats.activeUsers}/{stats.totalUsers}</Badge>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
+            <p className="text-xs text-gray-600">Active Nurses</p>
+          </CardContent>
+        </Card>
 
-        {/* Advanced Analytics Quick Access */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <Link to={createPageUrl("AdvancedAnalyticsDashboard")}>
-            <Card className="bg-gradient-to-br from-purple-500 to-blue-600 text-white border-none shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-purple-100 text-sm font-medium mb-1">Advanced Analytics</p>
-                    <p className="text-lg font-bold">Population Trends & Predictions</p>
-                    <p className="text-purple-100 text-xs mt-1">AI-powered insights →</p>
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <UserCheck className="w-8 h-8 text-green-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.totalPatients}</p>
+            <p className="text-xs text-gray-600">Total Patients</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <FileText className="w-8 h-8 text-purple-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.completedVisits}</p>
+            <p className="text-xs text-gray-600">Visits ({dateRange}d)</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <Brain className="w-8 h-8 text-indigo-600" />
+              <Badge className="bg-indigo-600">{stats.aiAdoptionRate}%</Badge>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.totalEnhancements}</p>
+            <p className="text-xs text-gray-600">AI Enhancements</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <Clock className="w-8 h-8 text-orange-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.totalTimeSaved}</p>
+            <p className="text-xs text-gray-600">Minutes Saved</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Secondary Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Shield className="w-4 h-4 text-blue-600" />
+              <p className="text-sm font-medium text-gray-600">Compliance</p>
+            </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.avgComplianceScore}%</p>
+            <p className="text-xs text-green-600">↑ +{stats.avgComplianceImprovement}% avg improvement</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="w-4 h-4 text-purple-600" />
+              <p className="text-sm font-medium text-gray-600">Quality</p>
+            </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.avgQualityScore}%</p>
+            <p className="text-xs text-gray-500">{stats.totalAudits} audits</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <GraduationCap className="w-4 h-4 text-green-600" />
+              <p className="text-sm font-medium text-gray-600">Training</p>
+            </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.totalTrainingCompleted}</p>
+            <p className="text-xs text-gray-500">{stats.avgTrainingScore}% avg score</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+              <p className="text-sm font-medium text-gray-600">Incidents</p>
+            </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.totalIncidents}</p>
+            <p className="text-xs text-red-600">{stats.criticalIncidents} critical</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Critical Alerts Banner */}
+      {(stats.criticalAlerts > 0 || stats.flaggedAudits > 0 || stats.pendingUsers > 0) && (
+        <Card className="mb-6 bg-red-50 border-2 border-red-300">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+              <div className="flex-1">
+                <p className="font-semibold text-red-900 mb-2">Action Required</p>
+                <div className="space-y-1 text-sm">
+                  {stats.criticalAlerts > 0 && (
+                    <p className="text-red-800">• {stats.criticalAlerts} critical patient alert{stats.criticalAlerts > 1 ? 's' : ''}</p>
+                  )}
+                  {stats.flaggedAudits > 0 && (
+                    <p className="text-red-800">• {stats.flaggedAudits} flagged compliance audit{stats.flaggedAudits > 1 ? 's' : ''}</p>
+                  )}
+                  {stats.pendingUsers > 0 && (
+                    <p className="text-red-800">• {stats.pendingUsers} user{stats.pendingUsers > 1 ? 's' : ''} pending approval</p>
+                  )}
+                </div>
+              </div>
+              <Link to={createPageUrl("UserManagement")}>
+                <Button size="sm" className="bg-red-600 hover:bg-red-700">
+                  Review
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="performance">Performance</TabsTrigger>
+          <TabsTrigger value="compliance">Compliance</TabsTrigger>
+          <TabsTrigger value="training">Training</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6">
+          {/* Top Performers */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-yellow-600" />
+                Top Performing Nurses
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {topPerformers.map((nurse, idx) => (
+                  <div key={nurse.email} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
+                      idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-orange-600' : 'bg-gray-300'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{nurse.email}</p>
+                      <p className="text-xs text-gray-600">{nurse.enhancements} enhancements</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge className="bg-green-600">{nurse.avgCompliance}%</Badge>
+                      <p className="text-xs text-gray-500 mt-1">Quality: {nurse.avgQuality}%</p>
+                    </div>
                   </div>
-                  <BarChart3 className="w-10 h-10 text-purple-200" />
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Card className="bg-gradient-to-br from-red-500 to-orange-600 text-white border-none shadow-lg">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-red-100 text-sm font-medium mb-1">High Risk Patients</p>
-                  <p className="text-2xl font-bold">
-                    {patients.filter(p => {
-                      const recentHosp = incidents.filter(i => 
-                        i.patient_id === p.id && 
-                        i.incident_type === "hospitalized"
-                      ).length;
-                      return recentHosp > 0 || (p.secondary_diagnoses?.length || 0) >= 3;
-                    }).length}
-                  </p>
-                  <p className="text-red-100 text-xs mt-1">Readmission risk monitoring</p>
-                </div>
-                <AlertTriangle className="w-10 h-10 text-red-200" />
+                ))}
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Key Metrics - Row 1 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-lg">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1 mr-2">
-                <p className="text-blue-100 text-xs font-medium mb-0.5 truncate">Total Users</p>
-                <p className="text-xl sm:text-2xl font-bold">{stats.users.total}</p>
-                <p className="text-blue-100 text-[10px] mt-0.5">{stats.users.admins} admins</p>
+          {/* Compliance Trend */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-600" />
+                7-Day Compliance Trend
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {complianceTrend.map((day, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    <p className="text-xs text-gray-600 w-20">
+                      {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </p>
+                    <div className="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${day.avgScore}%` }}
+                      />
+                      <p className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-900">
+                        {day.avgScore}%
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-500 w-16">{day.count} audits</p>
+                  </div>
+                ))}
               </div>
-              <Users className="w-7 h-7 sm:w-8 sm:h-8 text-blue-200 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none shadow-lg">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1 mr-2">
-                <p className="text-green-100 text-xs font-medium mb-0.5 truncate">Active Patients</p>
-                <p className="text-xl sm:text-2xl font-bold">{stats.patients.active}</p>
-                <p className="text-green-100 text-[10px] mt-0.5">{stats.patients.total} total</p>
+          {/* Quick Links */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Link to={createPageUrl("UserManagement")}>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-200">
+                <CardContent className="p-4 text-center">
+                  <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                  <p className="font-medium">Manage Users</p>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link to={createPageUrl("TrainingManagement")}>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200">
+                <CardContent className="p-4 text-center">
+                  <GraduationCap className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                  <p className="font-medium">Training Mgmt</p>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link to={createPageUrl("ComplianceCenter")}>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-purple-200">
+                <CardContent className="p-4 text-center">
+                  <Shield className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                  <p className="font-medium">Compliance</p>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link to={createPageUrl("AuditTrail")}>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-orange-200">
+                <CardContent className="p-4 text-center">
+                  <Activity className="w-8 h-8 text-orange-600 mx-auto mb-2" />
+                  <p className="font-medium">Audit Trail</p>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </TabsContent>
+
+        {/* Performance Tab */}
+        <TabsContent value="performance" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Documentation Performance */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Documentation Metrics</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                  <span className="text-sm text-gray-700">Avg Quality Score</span>
+                  <Badge className="bg-blue-600 text-lg">{stats.avgQualityScore}%</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <span className="text-sm text-gray-700">Avg Compliance</span>
+                  <Badge className="bg-green-600 text-lg">{stats.avgComplianceScore}%</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                  <span className="text-sm text-gray-700">Compliance Gain</span>
+                  <Badge className="bg-purple-600 text-lg">+{stats.avgComplianceImprovement}%</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                  <span className="text-sm text-gray-700">Visits/Day</span>
+                  <Badge className="bg-orange-600 text-lg">{stats.avgVisitsPerDay}</Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Nurse Rankings */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Nurse Rankings</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {topPerformers.map((nurse, idx) => (
+                    <div key={nurse.email} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                        idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : 'bg-orange-600'
+                      }`}>
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{nurse.email}</p>
+                      </div>
+                      <Badge variant="outline" className="text-xs">{nurse.avgCompliance}%</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Visit Statistics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+                Visit Analytics
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalVisits}</p>
+                  <p className="text-xs text-gray-600">Total Visits</p>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <p className="text-2xl font-bold text-green-900">{stats.completedVisits}</p>
+                  <p className="text-xs text-gray-600">Completed</p>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <p className="text-2xl font-bold text-blue-900">{stats.avgVisitsPerDay}</p>
+                  <p className="text-xs text-gray-600">Per Day</p>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <p className="text-2xl font-bold text-purple-900">{stats.totalEnhancements}</p>
+                  <p className="text-xs text-gray-600">AI Enhanced</p>
+                </div>
               </div>
-              <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-green-200 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none shadow-lg">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1 mr-2">
-                <p className="text-purple-100 text-xs font-medium mb-0.5 truncate">Note Enhancements</p>
-                <p className="text-xl sm:text-2xl font-bold">{stats.noteConversions.inRange}</p>
-                <p className="text-purple-100 text-[10px] mt-0.5">last 30 days</p>
+        {/* Compliance Tab */}
+        <TabsContent value="compliance" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className={stats.flaggedAudits > 0 ? 'border-2 border-red-300' : ''}>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-gray-600">Flagged Audits</p>
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                </div>
+                <p className="text-3xl font-bold text-gray-900">{stats.flaggedAudits}</p>
+                <p className="text-xs text-gray-500">Needs review</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 border-green-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-gray-600">Passed Audits</p>
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                </div>
+                <p className="text-3xl font-bold text-gray-900">{stats.passedAudits}</p>
+                <p className="text-xs text-gray-500">{((stats.passedAudits / Math.max(stats.totalAudits, 1)) * 100).toFixed(0)}% pass rate</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-gray-600">Avg Score</p>
+                  <Target className="w-5 h-5 text-blue-600" />
+                </div>
+                <p className="text-3xl font-bold text-gray-900">{stats.avgAuditScore}%</p>
+                <p className="text-xs text-gray-500">Audit compliance</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Flagged Audits */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Recent Flagged Audits</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {allComplianceAudits
+                  .filter(a => a.status === 'flagged' || a.status === 'critical')
+                  .slice(0, 5)
+                  .map((audit, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{audit.nurse_email}</p>
+                        <p className="text-xs text-gray-600">
+                          {audit.audit_date ? formatEastern(audit.audit_date, 'MMM d, yyyy') : 'Unknown date'}
+                        </p>
+                      </div>
+                      <Badge className={audit.status === 'critical' ? 'bg-red-600' : 'bg-orange-600'}>
+                        {audit.compliance_score}%
+                      </Badge>
+                    </div>
+                  ))}
+                {allComplianceAudits.filter(a => a.status === 'flagged' || a.status === 'critical').length === 0 && (
+                  <p className="text-center text-gray-500 py-8">No flagged audits</p>
+                )}
               </div>
-              <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-purple-200 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none shadow-lg">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1 mr-2">
-                <p className="text-orange-100 text-xs font-medium mb-0.5 truncate">Time Saved</p>
-                <p className="text-xl sm:text-2xl font-bold">{stats.timeSaved.rangeHours}h</p>
-                <p className="text-orange-100 text-[10px] mt-0.5">{stats.timeSaved.totalHours}h total</p>
+        {/* Training Tab */}
+        <TabsContent value="training" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Training Overview</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between items-center p-3 bg-green-50 rounded">
+                  <span className="text-sm">Completed Modules</span>
+                  <span className="font-bold text-lg">{stats.totalTrainingCompleted}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
+                  <span className="text-sm">Average Score</span>
+                  <span className="font-bold text-lg">{stats.avgTrainingScore}%</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Training Completion Rate</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {allUsers.filter(u => u.is_approved).map((user, idx) => {
+                  const userCompletions = allTrainingCompletions.filter(t => 
+                    t.nurse_email === user.email && t.status === 'completed'
+                  ).length;
+                  return (
+                    <div key={idx} className="mb-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="truncate">{user.email}</span>
+                        <span>{userCompletions} modules</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-green-600 h-2 rounded-full"
+                          style={{ width: `${Math.min((userCompletions / 10) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                }).slice(0, 5)}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Performance Tab */}
+        <TabsContent value="performance" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Individual Nurse Performance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">Nurse</th>
+                      <th className="text-center p-2">Enhancements</th>
+                      <th className="text-center p-2">Avg Quality</th>
+                      <th className="text-center p-2">Avg Compliance</th>
+                      <th className="text-center p-2">Time Saved</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topPerformers.map((nurse, idx) => (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{nurse.email}</td>
+                        <td className="text-center p-2">{nurse.enhancements}</td>
+                        <td className="text-center p-2">
+                          <Badge variant="outline">{nurse.avgQuality}%</Badge>
+                        </td>
+                        <td className="text-center p-2">
+                          <Badge className="bg-green-600">{nurse.avgCompliance}%</Badge>
+                        </td>
+                        <td className="text-center p-2">{Math.round(nurse.enhancements * 8.5)} min</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <Clock className="w-7 h-7 sm:w-8 sm:h-8 text-orange-200 flex-shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-
-
-      {/* Tabs */}
-      <Tabs defaultValue="users" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-8 gap-1 p-1 h-auto w-full">
-          <TabsTrigger value="users" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">Users</span>
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <Activity className="w-4 h-4" />
-            <span className="hidden sm:inline">Activity</span>
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <BarChart3 className="w-4 h-4" />
-            <span className="hidden sm:inline">Reports</span>
-          </TabsTrigger>
-          <TabsTrigger value="performance" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <Target className="w-4 h-4" />
-            <span className="hidden sm:inline">Staff</span>
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <TrendingUp className="w-4 h-4" />
-            <span className="hidden sm:inline">Analytics</span>
-          </TabsTrigger>
-          <TabsTrigger value="quality" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <Award className="w-4 h-4" />
-            <span className="hidden sm:inline">Quality</span>
-          </TabsTrigger>
-          <TabsTrigger value="notereview" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <FileText className="w-4 h-4" />
-            <span className="hidden sm:inline">Notes</span>
-          </TabsTrigger>
-          <TabsTrigger value="security" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <Shield className="w-4 h-4" />
-            <span className="hidden sm:inline">Security</span>
-          </TabsTrigger>
-          <TabsTrigger value="encryption" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <Lock className="w-4 h-4" />
-            <span className="hidden sm:inline">Encrypt</span>
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-1 px-2 py-2 text-xs sm:text-sm">
-            <Settings className="w-4 h-4" />
-            <span className="hidden sm:inline">Settings</span>
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Users Tab */}
-        <TabsContent value="users" className="space-y-6">
-          <UserManagement users={users} currentUser={currentUser} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Activity Tab */}
         <TabsContent value="activity" className="space-y-6">
-          <UserActivityLog />
-        </TabsContent>
-
-        {/* Reports Tab */}
-        <TabsContent value="reports" className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <AIKPIReportGenerator />
-            <AIAutoTagger />
-          </div>
-          <NoteConversionReport />
-          <ReportsCenter 
-            users={users}
-            patients={patients}
-            visits={visits}
-            incidents={incidents}
-          />
-        </TabsContent>
-
-        {/* Staff Performance Tab */}
-        <TabsContent value="performance" className="space-y-6">
-          <AIStaffPerformanceAnalytics timeRange={30} autoAnalyze={true} />
-        </TabsContent>
-
-        {/* Quality Metrics Tab */}
-        <TabsContent value="quality" className="space-y-6">
-          <QualityMetricsDashboard />
-        </TabsContent>
-
-        {/* Note Review Tab */}
-        <TabsContent value="notereview" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Clinical Note Quality Reviewer</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-blue-600" />
+                Recent System Activity
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-4">
-                Review recent clinical notes for completeness, accuracy, compliance, and billing optimization.
-              </p>
-              {visits.length > 0 && visits.filter(v => v.nurse_notes).length > 0 && (
-                <ClinicalNoteReviewer
-                  noteContent={visits.filter(v => v.nurse_notes)[0].nurse_notes}
-                  visitType={visits.filter(v => v.nurse_notes)[0].visit_type}
-                  patientData={null}
-                  autoReview={false}
-                  onApplySuggestion={(text) => console.log('Suggestion:', text)}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Security Tab */}
-        <TabsContent value="security" className="space-y-6">
-          {/* Security Metrics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Events</p>
-                    <p className="text-3xl font-bold text-gray-900">{securityLogs.length}</p>
+              <div className="space-y-2">
+                {recentActivity.map((activity, idx) => (
+                  <div key={idx} className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{activity.user_name}</p>
+                      <p className="text-xs text-gray-600">{activity.action}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 flex-shrink-0">
+                      {activity.created_date ? formatEastern(activity.created_date, 'MMM d, h:mm a') : ''}
+                    </p>
                   </div>
-                  <Activity className="w-10 h-10 text-blue-500" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Unauthorized Attempts</p>
-                    <p className="text-3xl font-bold text-red-600">{unauthorizedAttempts}</p>
-                  </div>
-                  <AlertTriangle className="w-10 h-10 text-red-500" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">AI API Calls</p>
-                    <p className="text-3xl font-bold text-purple-600">{aiApiCalls}</p>
-                  </div>
-                  <Database className="w-10 h-10 text-purple-500" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Security Logs */}
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Security Audit Logs</CardTitle>
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    placeholder="Search logs..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Timestamp</TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Action</TableHead>
-                      <TableHead>Details</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredLogs.slice(0, 50).map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell className="text-sm">
-                          {log.timestamp ? formatEastern(log.timestamp, 'MMM d, HH:mm:ss') : 'N/A'}
-                        </TableCell>
-                        <TableCell className="text-sm">{log.user_email}</TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              log.action?.includes('UNAUTHORIZED') || log.action?.includes('FAILED')
-                                ? 'bg-red-500'
-                                : log.action?.includes('SUCCESS') || log.action?.includes('COMPLETED')
-                                ? 'bg-green-500'
-                                : 'bg-blue-500'
-                            }
-                          >
-                            {log.action}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-600 max-w-xs truncate">
-                          {JSON.stringify(log.details)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                ))}
               </div>
             </CardContent>
           </Card>
 
-          {/* Event Type Breakdown */}
+          {/* Critical Events */}
           <Card>
             <CardHeader>
-              <CardTitle>Event Type Breakdown</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+                Critical Events
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(securityEventCounts)
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 9)
-                  .map(([action, count]) => (
-                    <div key={action} className="p-4 bg-gray-50 rounded-lg border">
-                      <p className="text-sm font-medium text-gray-900 truncate">{action}</p>
-                      <p className="text-2xl font-bold text-blue-600">{count}</p>
+              <div className="space-y-2">
+                {allIncidents
+                  .filter(i => i.severity === 'high')
+                  .slice(0, 5)
+                  .map((incident, idx) => (
+                    <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex justify-between items-start mb-1">
+                        <p className="text-sm font-medium">{incident.incident_name || incident.incident_type}</p>
+                        <Badge className="bg-red-600">High</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        {incident.incident_date ? new Date(incident.incident_date).toLocaleDateString() : 'Unknown date'}
+                      </p>
                     </div>
                   ))}
+                {allIncidents.filter(i => i.severity === 'high').length === 0 && (
+                  <p className="text-center text-gray-500 py-8">No critical incidents</p>
+                )}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* Encryption Tab */}
-        <TabsContent value="encryption" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="w-5 h-5" />
-                Encryption at Rest Verification
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Alert className="bg-blue-50 border-blue-200">
-                <Lock className="w-4 h-4 text-blue-600" />
-                <AlertDescription className="text-blue-900">
-                  <p className="font-semibold mb-2">About Penn Sync Encryption</p>
-                  <p>
-                    Penn Sync uses enterprise-grade encryption at rest for all PHI and sensitive data.
-                    This verification test ensures data can be securely stored and retrieved.
-                  </p>
-                </AlertDescription>
-              </Alert>
-
-              <Button
-                onClick={verifyEncryption}
-                disabled={isCheckingEncryption}
-                className="bg-purple-600 hover:bg-purple-700"
-              >
-                {isCheckingEncryption ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Running Verification...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Run Encryption Verification
-                  </>
-                )}
-              </Button>
-
-              {encryptionStatus && (
-                <Alert
-                  className={
-                    encryptionStatus.status === 'pass'
-                      ? 'bg-green-50 border-green-300'
-                      : encryptionStatus.status === 'fail'
-                      ? 'bg-yellow-50 border-yellow-300'
-                      : 'bg-red-50 border-red-300'
-                  }
-                >
-                  {encryptionStatus.status === 'pass' ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                  ) : encryptionStatus.status === 'fail' ? (
-                    <AlertTriangle className="w-5 h-5 text-yellow-600" />
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-600" />
-                  )}
-                  <AlertDescription>
-                    <p
-                      className={`font-semibold mb-3 ${
-                        encryptionStatus.status === 'pass'
-                          ? 'text-green-900'
-                          : encryptionStatus.status === 'fail'
-                          ? 'text-yellow-900'
-                          : 'text-red-900'
-                      }`}
-                    >
-                      {encryptionStatus.message}
-                    </p>
-
-                    {encryptionStatus.checks && (
-                      <div className="space-y-2">
-                        {Object.entries(encryptionStatus.checks).map(([check, passed]) => (
-                          <div key={check} className="flex items-center gap-2">
-                            {passed ? (
-                              <CheckCircle2 className="w-4 h-4 text-green-600" />
-                            ) : (
-                              <XCircle className="w-4 h-4 text-red-600" />
-                            )}
-                            <span className="text-sm">{check}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <p className="text-xs text-gray-600 mt-3">
-                      Tested: {encryptionStatus.timestamp ? formatEastern(encryptionStatus.timestamp, 'PPpp') : 'N/A'}
-                    </p>
-                  </AlertDescription>
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Settings Tab */}
-        <TabsContent value="settings" className="space-y-6">
-          <AIConfigurationManager />
-          <SystemSettings currentUser={currentUser} />
-        </TabsContent>
-
-        {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-purple-600" />
-                Advanced Analytics Dashboard
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                Access sophisticated analytics including population trends, predictive readmission models, disease progression tracking, and custom reporting tools.
-              </p>
-              <Link to={createPageUrl("AdvancedAnalyticsDashboard")}>
-                <Button className="bg-purple-600 hover:bg-purple-700">
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  Open Advanced Analytics
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Population Health Trends</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>• Patient admission and discharge trends</li>
-                  <li>• Visit volume analysis over time</li>
-                  <li>• Incident rate monitoring</li>
-                  <li>• Segmentation by diagnosis, age, and care type</li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Predictive Models</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>• AI-powered readmission risk scoring</li>
-                  <li>• Disease progression predictions</li>
-                  <li>• Clinical intervention recommendations</li>
-                  <li>• Patient risk stratification</li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Custom Report Builder</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>• Select custom metrics and timeframes</li>
-                  <li>• Multiple visualization options</li>
-                  <li>• CSV export functionality</li>
-                  <li>• Quality and performance tracking</li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Clinical Insights</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li>• Real-time patient monitoring</li>
-                  <li>• Vital signs trend analysis</li>
-                  <li>• Deterioration score calculations</li>
-                  <li>• Care plan optimization recommendations</li>
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-        </Tabs>
-
-      {/* Voice Commands */}
-      <VoiceCommandListener
-        onCommand={handleVoiceCommand}
-        commands={getCommandsForContext('admin')}
-        context="admin"
-      />
+      </Tabs>
     </div>
   );
 }
