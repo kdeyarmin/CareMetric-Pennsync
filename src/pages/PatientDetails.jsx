@@ -300,7 +300,14 @@ export default function PatientDetails() {
                       {highAlertCount} High Alert{highAlertCount !== 1 ? 's' : ''}
                     </Badge>
                   )}
-
+                  {currentUser?.role === 'admin' && (
+                    <Link to={createPageUrl(`AuditTrail?entity=Patient&entityId=${patient.id}`)}>
+                      <Button variant="outline" size="sm">
+                        <Shield className="w-3 h-3 mr-1" />
+                        Audit Trail
+                      </Button>
+                    </Link>
+                  )}
                   {patient.status !== 'discharged' && (
                     <DischargeSummaryGenerator 
                       patientId={patientId} 

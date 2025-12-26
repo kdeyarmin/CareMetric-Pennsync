@@ -179,6 +179,12 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      {/* New Features Banner */}
+      <NewFeaturesBanner />
+
+      {/* Admin Announcements */}
+      <AnnouncementsWidget />
+
       {/* Nurse Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
@@ -215,19 +221,19 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Link to={createPageUrl("Patients")}>
+        <Link to={createPageUrl("CarePlanManagement")}>
           <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 hover:border-green-400">
             <CardContent className="p-6 text-center">
-              <User className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">My Patients</h3>
+              <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
+              <h3 className="font-semibold text-gray-900">Care Plans</h3>
             </CardContent>
           </Card>
         </Link>
-        <Link to={createPageUrl("CarePlanManagement")}>
+        <Link to={createPageUrl("PatientEducationHub")}>
           <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 hover:border-purple-400">
             <CardContent className="p-6 text-center">
-              <CheckCircle2 className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">Care Plans</h3>
+              <User className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+              <h3 className="font-semibold text-gray-900">Patient Education</h3>
             </CardContent>
           </Card>
         </Link>
@@ -235,67 +241,47 @@ export default function Dashboard() {
           <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-orange-200 hover:border-orange-400">
             <CardContent className="p-6 text-center">
               <Calendar className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-gray-900">My Learning</h3>
+              <h3 className="font-semibold text-gray-900">Nurse Training Hub</h3>
             </CardContent>
           </Card>
         </Link>
       </div>
 
-      {/* My Patients - High Priority Care Needed */}
+      {/* Proactive Care Gap Identification */}
+      <div className="mb-6">
+        <ProactiveCareGapIdentifier
+          patients={patients}
+          visits={visits}
+          carePlans={carePlans}
+          alerts={[]}
+          autoAnalyze={false}
+          maxGaps={8}
+          compact={false}
+        />
+      </div>
+
+      {/* High-Risk Patient Alerts */}
       <div className="mb-6">
         <RiskAlertWidget showAllPatients={true} compact={false} />
       </div>
 
-      {/* Today's Schedule */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-blue-600" />
-            Today's Visits
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {visits.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p>No visits scheduled for today</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {visits.map(visit => {
-                const patient = patients.find(p => p.id === visit.patient_id);
-                return (
-                  <Card key={visit.id} className="border-l-4 border-l-blue-500">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-gray-900">
-                            {patient?.first_name} {patient?.last_name}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {visit.visit_type?.replace(/_/g, ' ')} • {visit.visit_time || 'No time set'}
-                          </p>
-                        </div>
-                        <Badge className={visit.status === 'completed' ? 'bg-green-600' : 'bg-blue-600'}>
-                          {visit.status}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Offline Data Manager */}
+      <div className="mb-6">
+        <OfflineDataManager />
+      </div>
 
-      {/* My Performance & Learning */}
+      {/* Dashboard Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
         <ComplianceAlertNotifications 
           nurseEmail={currentUser?.email}
           showAll={false}
           maxAlerts={5}
           compact={true}
+        />
+        <SmartRouteOptimizer
+          visits={visits.filter(v => v.status === 'scheduled')}
+          patients={patients}
+          onOptimizedSchedule={(order) => console.log('Optimized:', order)}
         />
         <IntelligentTaskPrioritization
           nurseEmail={currentUser?.email}
@@ -304,10 +290,37 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Offline Data Manager */}
+      {/* Proactive Clinical Support - Show for first scheduled patient */}
+      {visits.length > 0 && visits[0]?.patient_id && (
+        <div className="mb-6">
+          <ProactiveClinicalSupport 
+            patientId={visits[0].patient_id}
+            compact={true}
+          />
+        </div>
+      )}
+
+
+
+      {/* Real-time Patient Alerts */}
       <div className="mb-6">
-        <OfflineDataManager />
+        <RealTimePatientAlerts
+          patients={patients}
+          visits={visits}
+          carePlans={carePlans}
+          incidents={incidents}
+        />
       </div>
+
+      {/* Regulatory Alerts for Nurses */}
+      <div className="mb-6">
+        <NurseRegulatoryAlerts nurseEmail={currentUser?.email} compact={true} />
+      </div>
+
+
+
+      {/* Add Compliance Widget */}
+      <ComplianceDashboardWidget />
 
       {/* Enhanced Voice Commands */}
       <div className="fixed bottom-6 right-6 z-50">

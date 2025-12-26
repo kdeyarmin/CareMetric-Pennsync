@@ -44,8 +44,8 @@ export default function Layout({ children, currentPageName }) {
     window.scrollTo(0, 0);
   }, [currentPageName]);
 
-  const isAdmin = false; // Single nurse mode - no admin features
-  const isApproved = true; // Single nurse mode - no approval needed
+  const isAdmin = currentUser?.role === 'admin';
+  const isApproved = currentUser?.is_approved === true || isAdmin;
 
   // Track user login and session
   useEffect(() => {
@@ -83,30 +83,55 @@ export default function Layout({ children, currentPageName }) {
 
   const navCategories = [
     {
-      category: "My Practice",
+      category: "Overview",
       items: [
         { name: "Dashboard", icon: Home, page: "Dashboard" },
-        { name: "My Patients", icon: Users, page: "Patients" }
+        { name: "Patient Dashboard", icon: BarChart3, page: "PatientDashboard" }
+      ]
+    },
+    {
+      category: "Patient Care",
+      items: [
+        { name: "Patients", icon: Users, page: "Patients" },
+        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+        { name: "Alerts", icon: Bell, page: "PatientAlerts" },
+        { name: "Care Coordination", icon: Users, page: "CareCoordinationDashboard" }
       ]
     },
     {
       category: "Documentation",
       items: [
         { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
-        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
+        { name: "Referral Processor", icon: FileText, page: "ReferralProcessor" },
         { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
-        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
+        { name: "Education Generator", icon: BookOpen, page: "PatientEducationGenerator" }
       ]
     },
     {
-      category: "Professional Development",
+      category: "Quality & Compliance",
       items: [
-        { name: "My Training", icon: GraduationCap, page: "StaffTrainingHub" },
+        { name: "Medicare Compliance", icon: Shield, page: "MedicareComplianceDashboard" },
+        { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Guidelines Library", icon: BookOpen, page: "MedicareGuidelinesLibrary" },
-        { name: "Compliance Tools", icon: Shield, page: "MedicareComplianceDashboard" }
+        { name: "Clinical Insights", icon: BarChart3, page: "ClinicalInsightsDashboard" },
+        { name: "Features", icon: Sparkles, page: "Features" }
       ]
     }
   ];
+
+  const adminItems = [
+    { name: "Admin Dashboard", icon: Settings, page: "AdminDashboard" },
+    { name: "Advanced Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" },
+    { name: "Users & Settings", icon: Users, page: "UserManagement" },
+    { name: "Training Management", icon: GraduationCap, page: "TrainingManagement" },
+    { name: "Analytics & Performance", icon: BarChart3, page: "AgencyAnalytics" },
+    { name: "Compliance & Audit", icon: ClipboardList, page: "ComplianceRegulatory" },
+    { name: "Audit Trail", icon: Shield, page: "AuditTrail" },
+    { name: "Clinical & OASIS", icon: ClipboardList, page: "ClinicalPathwayManager" },
+    { name: "Import Patients", icon: Users, page: "ImportPatients" },
+    { name: "Patient Data Management", icon: Users, page: "PatientDataManagement" }
+    ];
 
   const handleLogout = async () => {
     // Log logout before actually logging out
@@ -129,7 +154,46 @@ export default function Layout({ children, currentPageName }) {
     return currentPageName === pageName;
   };
 
-  // No approval workflow for single nurse mode
+  // Show pending approval screen for unapproved users
+  if (currentUser && !isApproved) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <Card className="border-yellow-300 shadow-xl">
+            <CardContent className="p-8 text-center">
+              <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Clock className="w-10 h-10 text-yellow-600" />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-3">
+                Account Pending Approval
+              </h1>
+              <p className="text-gray-600 mb-6">
+                Your account has been created successfully. Please wait for an administrator to approve your access.
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-900">
+                  <strong>Account Details:</strong><br />
+                  {currentUser.full_name}<br />
+                  {currentUser.email}
+                </p>
+              </div>
+              <p className="text-sm text-gray-500 mb-6">
+                You will receive an email notification once your account is approved.
+              </p>
+              <Button
+                onClick={handleLogout}
+                variant="outline"
+                className="w-full"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-blue-100 flex">
@@ -220,9 +284,32 @@ export default function Layout({ children, currentPageName }) {
                   {!sidebarCollapsed && <span>{item.name}</span>}
                 </Link>
               ))}
-              </React.Fragment>
+              {catIndex === 0 && <div className="border-t border-gray-200 my-3" />}
+            </React.Fragment>
+          ))}
+
+          {isAdmin && (
+            <>
+              <div className="border-t border-gray-200 my-3" />
+              {!sidebarCollapsed && <p className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase">Admin</p>}
+              {adminItems.map((item) => (
+                <Link
+                  key={item.page}
+                  to={createPageUrl(item.page)}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive(item.page)
+                      ? "bg-blue-100 text-blue-700"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  }`}
+                  title={sidebarCollapsed ? item.name : undefined}
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!sidebarCollapsed && <span>{item.name}</span>}
+                </Link>
               ))}
-              </nav>
+            </>
+          )}
+        </nav>
 
         {/* User Section */}
         <div className="border-t border-gray-200 p-3">
@@ -297,9 +384,31 @@ export default function Layout({ children, currentPageName }) {
                       {item.name}
                     </Link>
                   ))}
-                  </React.Fragment>
+                  {catIndex === 0 && <div className="border-t border-gray-200 my-2" />}
+                </React.Fragment>
+              ))}
+              {isAdmin && (
+                <>
+                  <div className="border-t border-gray-200 my-3" />
+                  <p className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase">Admin</p>
+                  {adminItems.map((item) => (
+                    <Link
+                      key={item.page}
+                      to={createPageUrl(item.page)}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium ${
+                        isActive(item.page)
+                          ? "bg-blue-100 text-blue-700"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      <item.icon className="w-5 h-5" />
+                      {item.name}
+                    </Link>
                   ))}
-                  </nav>
+                </>
+              )}
+            </nav>
             <div className="flex-shrink-0 border-t border-gray-200 p-3">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
