@@ -421,11 +421,12 @@ export default function AdminDashboard() {
       )}
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="compliance">Compliance</TabsTrigger>
           <TabsTrigger value="training">Training</TabsTrigger>
+          <TabsTrigger value="ai-feedback">AI Feedback</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
@@ -866,6 +867,10 @@ export default function AdminDashboard() {
         </TabsContent>
 
         {/* Activity Tab */}
+        <TabsContent value="ai-feedback" className="space-y-6">
+          <AIFeedbackAnalytics />
+        </TabsContent>
+
         <TabsContent value="activity" className="space-y-6">
           <Card>
             <CardHeader>
