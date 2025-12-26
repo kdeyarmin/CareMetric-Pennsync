@@ -85,14 +85,7 @@ export default function Homepage() {
 
       {/* Key Stats */}
       <section className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="border-2 border-blue-200 bg-white/80 backdrop-blur">
-            <CardContent className="p-6 text-center">
-              <Brain className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-blue-600">AI-Powered</p>
-              <p className="text-sm text-gray-600 mt-2">Smart Documentation</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="border-2 border-green-200 bg-white/80 backdrop-blur">
             <CardContent className="p-6 text-center">
               <Clock className="w-12 h-12 text-green-600 mx-auto mb-3" />
