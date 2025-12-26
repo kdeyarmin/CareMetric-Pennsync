@@ -2,24 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mic, MicOff, Volume2, Languages, Settings } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Mic, MicOff, Volume2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
-const SUPPORTED_LANGUAGES = [
-  { code: 'en-US', name: 'English (US)', flag: '🇺🇸' },
-  { code: 'en-GB', name: 'English (UK)', flag: '🇬🇧' },
-  { code: 'es-ES', name: 'Spanish', flag: '🇪🇸' },
-  { code: 'fr-FR', name: 'French', flag: '🇫🇷' },
-  { code: 'de-DE', name: 'German', flag: '🇩🇪' },
-  { code: 'it-IT', name: 'Italian', flag: '🇮🇹' },
-  { code: 'pt-BR', name: 'Portuguese', flag: '🇧🇷' },
-  { code: 'zh-CN', name: 'Chinese', flag: '🇨🇳' },
-  { code: 'ja-JP', name: 'Japanese', flag: '🇯🇵' },
-  { code: 'ko-KR', name: 'Korean', flag: '🇰🇷' },
-  { code: 'ar-SA', name: 'Arabic', flag: '🇸🇦' },
-  { code: 'hi-IN', name: 'Hindi', flag: '🇮🇳' }
-];
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 
 export default function EnhancedVoiceCommands({
   onTranscription,
@@ -29,12 +15,19 @@ export default function EnhancedVoiceCommands({
   showSettings = true
 }) {
   const [listening, setListening] = useState(false);
-  const [language, setLanguage] = useState('en-US');
   const [interimText, setInterimText] = useState('');
   const [lastCommand, setLastCommand] = useState(null);
   const [commandMode, setCommandMode] = useState(mode);
   const [confidence, setConfidence] = useState(null);
   const recognitionRef = useRef(null);
+
+  // Get user's preferred language from settings
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const language = currentUser?.preferred_language || 'en-US';
 
   useEffect(() => {
     return () => {
@@ -239,31 +232,16 @@ export default function EnhancedVoiceCommands({
         </Button>
         
         {showSettings && (
-          <>
-            <Select value={language} onValueChange={setLanguage} disabled={listening}>
-              <SelectTrigger className="w-32 h-[44px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SUPPORTED_LANGUAGES.map(lang => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {lang.flag} {lang.name.split(' ')[0]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={toggleMode}
-              disabled={listening}
-              className="gap-1"
-            >
-              <Volume2 className="w-3 h-3" />
-              {commandMode === 'command' ? 'Commands' : 'Dictation'}
-            </Button>
-          </>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={toggleMode}
+            disabled={listening}
+            className="gap-1"
+          >
+            <Volume2 className="w-3 h-3" />
+            {commandMode === 'command' ? 'Commands' : 'Dictation'}
+          </Button>
         )}
       </div>
       
