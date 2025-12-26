@@ -208,9 +208,6 @@ export default function Dashboard() {
             <p className="text-white/80 text-xs sm:text-sm md:text-base mb-3">
               {isValid(new Date()) ? formatEastern(new Date(), 'EEEE, MMMM d, yyyy').replace(' ET', '') : new Date().toLocaleDateString()}
             </p>
-            <p className="text-white/90 text-sm">
-              Your independent nursing practice dashboard
-            </p>
           </div>
         </CardContent>
       </Card>
@@ -220,6 +217,11 @@ export default function Dashboard() {
 
       {/* Admin Announcements */}
       <AnnouncementsWidget />
+
+      {/* Task Notifications */}
+      <div className="mb-6">
+        <TaskNotifications userEmail={currentUser?.email} />
+      </div>
 
       {/* Nurse Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -245,11 +247,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Task Notifications */}
-      <div className="mb-6">
-        <TaskNotifications userEmail={currentUser?.email} />
       </div>
 
       {/* Quick Action Buttons */}
