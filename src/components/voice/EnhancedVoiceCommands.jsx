@@ -2,10 +2,16 @@ import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mic, MicOff, Volume2 } from "lucide-react";
+import { Mic, MicOff, Volume2, Settings } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function EnhancedVoiceCommands({
   onTranscription,
@@ -222,26 +228,34 @@ export default function EnhancedVoiceCommands({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <Button
-          size="default"
-          variant={listening ? "destructive" : "outline"}
+          size="lg"
+          variant={listening ? "destructive" : "default"}
           onClick={listening ? stopListening : startListening}
-          className="gap-2 min-h-[44px] px-4 flex-shrink-0"
+          className="gap-2 min-h-[48px] px-6 shadow-lg"
         >
-          {listening ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
-          <span className="text-sm md:text-base">{listening ? 'Stop' : 'Start'}</span>
+          {listening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          <span className="font-medium">{listening ? 'Stop' : 'Voice'}</span>
         </Button>
         
         {showSettings && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={toggleMode}
-            disabled={listening}
-            className="gap-1"
-          >
-            <Volume2 className="w-3 h-3" />
-            {commandMode === 'command' ? 'Commands' : 'Dictation'}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                disabled={listening}
+                className="h-[48px] w-[48px] shadow-lg"
+              >
+                <Settings className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={toggleMode} className="gap-2">
+                <Volume2 className="w-4 h-4" />
+                Mode: {commandMode === 'command' ? 'Commands' : 'Dictation'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
       
