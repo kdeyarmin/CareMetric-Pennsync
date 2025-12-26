@@ -196,14 +196,22 @@ Include sections: Overview, What You Need to Know, What to Do, Warning Signs, Qu
     navigator.clipboard.writeText(documentationText);
   };
 
-  const downloadHandout = (topic, handoutData) => {
-    const content = `# ${handoutData.handout_title}\n\nPatient: ${patient.first_name} ${patient.last_name}\nDate: ${new Date().toLocaleDateString()}\n\n---\n\n${handoutData.handout_content}`;
+  const downloadHandout = async (topic, handoutData) => {
+    const { formatTextDocument } = await import('../utils/branding');
     
-    const blob = new Blob([content], { type: 'text/markdown' });
+    const content = formatTextDocument(
+      `${handoutData.handout_title}\n\nPatient: ${patient.first_name} ${patient.last_name}\nDate: ${new Date().toLocaleDateString()}\n\n${handoutData.handout_content}`,
+      {
+        title: `Patient Education: ${topic}`,
+        date: new Date().toLocaleDateString()
+      }
+    );
+    
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${topic.replace(/\s+/g, '_')}_${patient.last_name}.md`;
+    a.download = `CareMetric_${topic.replace(/\s+/g, '_')}_${patient.last_name}.txt`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);

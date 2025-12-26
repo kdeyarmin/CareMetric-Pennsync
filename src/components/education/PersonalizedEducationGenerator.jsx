@@ -183,15 +183,42 @@ Return JSON with the complete material:`,
 
     setIsSending(true);
     try {
-      const fullText = `${educationMaterial.title}\n\n${educationMaterial.introduction}\n\n` +
-        educationMaterial.sections.map(s => `${s.section_title}\n${s.content}\n`).join('\n') +
-        `\n${educationMaterial.summary}`;
+      const { generateEmailTemplate } = await import('../utils/branding');
+      
+      const emailContent = `
+        <h2 style="color: #2563eb;">${educationMaterial.title}</h2>
+        <p>${educationMaterial.introduction}</p>
+        
+        ${educationMaterial.sections.map(s => `
+          <div style="margin: 20px 0;">
+            <h3 style="color: #3b82f6; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">${s.section_title}</h3>
+            <div style="white-space: pre-wrap; line-height: 1.8;">${s.content}</div>
+            ${s.key_points && s.key_points.length > 0 ? `
+              <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                <strong style="color: #2563eb;">Key Points:</strong>
+                <ul style="margin: 10px 0;">
+                  ${s.key_points.map(pt => `<li>${pt}</li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+          </div>
+        `).join('')}
+        
+        <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; border-left: 4px solid #22c55e; margin: 20px 0;">
+          <strong style="color: #16a34a;">Remember:</strong>
+          <p style="margin: 10px 0 0 0;">${educationMaterial.summary}</p>
+        </div>
+      `;
+
+      const htmlEmail = generateEmailTemplate(emailContent, {
+        subject: `Your Personal Health Education Guide - ${educationMaterial.title}`
+      });
 
       await base44.integrations.Core.SendEmail({
         to: patient.email,
-        from_name: "Penn Sync Care Team",
+        from_name: "CareMetric AI",
         subject: `Your Personal Health Education Guide - ${educationMaterial.title}`,
-        body: fullText
+        body: htmlEmail
       });
 
       alert(`Education material sent to ${patient.email}`);
