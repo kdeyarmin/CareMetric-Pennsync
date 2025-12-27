@@ -68,6 +68,7 @@ import About from './pages/About';
 import Homepage from './pages/Homepage';
 import SecurityAudit from './pages/SecurityAudit';
 import Test2FA from './pages/Test2FA';
+import ExportPatientData from './pages/ExportPatientData';
 import __Layout from './Layout.jsx';
 
 
@@ -142,6 +143,7 @@ export const PAGES = {
     "Homepage": Homepage,
     "SecurityAudit": SecurityAudit,
     "Test2FA": Test2FA,
+    "ExportPatientData": ExportPatientData,
 }
 
 export const pagesConfig = {
