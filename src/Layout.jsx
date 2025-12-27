@@ -26,7 +26,8 @@ import {
   Clock,
   BookOpen,
   WifiOff,
-  Activity
+  Activity,
+  CreditCard
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
@@ -112,6 +113,7 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
         { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Guidelines Library", icon: BookOpen, page: "MedicareGuidelinesLibrary" },
         { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
+        { name: "Billing", icon: CreditCard, page: "Billing" },
         { name: "Settings", icon: Settings, page: "Settings" }
       ]
     },

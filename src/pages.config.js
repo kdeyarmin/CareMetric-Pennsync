@@ -68,6 +68,9 @@ import About from './pages/About';
 import Homepage from './pages/Homepage';
 import SecurityAudit from './pages/SecurityAudit';
 import Test2FA from './pages/Test2FA';
+import SubscriptionPlans from './pages/SubscriptionPlans';
+import Billing from './pages/Billing';
+import PaymentSuccess from './pages/PaymentSuccess';
 import __Layout from './Layout.jsx';
 
 
@@ -142,6 +145,9 @@ export const PAGES = {
     "Homepage": Homepage,
     "SecurityAudit": SecurityAudit,
     "Test2FA": Test2FA,
+    "SubscriptionPlans": SubscriptionPlans,
+    "Billing": Billing,
+    "PaymentSuccess": PaymentSuccess,
 }
 
 export const pagesConfig = {
