@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { User, Edit3, Save, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { User, Edit3, Save, X, Shield } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DataRetentionSettings from "../components/settings/DataRetentionSettings";
@@ -16,7 +17,9 @@ export default function Settings() {
   const [formData, setFormData] = useState({
     full_name: '',
     credential_type: 'RN',
-    preferred_language: 'en-US'
+    preferred_language: 'en-US',
+    phone_number: '',
+    two_factor_enabled: false
   });
 
   const { data: currentUser } = useQuery({
@@ -29,7 +32,9 @@ export default function Settings() {
       setFormData({
         full_name: currentUser.full_name || '',
         credential_type: currentUser.credential_type || 'RN',
-        preferred_language: currentUser.preferred_language || 'en-US'
+        preferred_language: currentUser.preferred_language || 'en-US',
+        phone_number: currentUser.phone_number || '',
+        two_factor_enabled: currentUser.two_factor_enabled || false
       });
     }
   }, [currentUser]);
@@ -40,7 +45,9 @@ export default function Settings() {
       await base44.auth.updateMe({
         full_name: formData.full_name,
         credential_type: formData.credential_type,
-        preferred_language: formData.preferred_language
+        preferred_language: formData.preferred_language,
+        phone_number: formData.phone_number,
+        two_factor_enabled: formData.two_factor_enabled
       });
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setIsEditing(false);
@@ -161,6 +168,29 @@ export default function Settings() {
                   <Label className="text-gray-500">Email (Cannot be changed)</Label>
                   <p className="text-gray-900 mt-1">{currentUser?.email}</p>
                 </div>
+                <div>
+                  <Label htmlFor="phone_number">Phone Number (for 2FA)</Label>
+                  <Input
+                    id="phone_number"
+                    type="tel"
+                    value={formData.phone_number}
+                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                    placeholder="+1234567890"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Include country code (e.g., +1 for US)</p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Two-Factor Authentication</Label>
+                    <p className="text-xs text-gray-500 mt-1">Require SMS code on login</p>
+                  </div>
+                  <Switch
+                    checked={formData.two_factor_enabled}
+                    onCheckedChange={(checked) => setFormData({ ...formData, two_factor_enabled: checked })}
+                    disabled={!formData.phone_number}
+                  />
+                </div>
               </>
             ) : (
               <>
@@ -190,8 +220,46 @@ export default function Settings() {
                      '🇺🇸 English (US)'}
                   </p>
                 </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Phone Number</p>
+                  <p className="text-gray-900">{currentUser?.phone_number || 'Not set'}</p>
+                </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Two-Factor Authentication */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-green-600" />
+              Two-Factor Authentication
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-gray-600">
+                Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-blue-900">Status: {currentUser?.two_factor_enabled ? 'Enabled' : 'Disabled'}</p>
+                    {currentUser?.two_factor_enabled ? (
+                      <p className="text-sm text-blue-700 mt-1">
+                        You'll receive a verification code at {currentUser?.phone_number} when logging in.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-blue-700 mt-1">
+                        Enable 2FA by adding your phone number and toggling the switch above.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
