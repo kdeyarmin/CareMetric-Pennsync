@@ -27,6 +27,7 @@ import {
   Award,
   Lightbulb
 } from "lucide-react";
+import ProspectChatbot from "../components/marketing/ProspectChatbot";
 
 export default function Homepage() {
   const { data: currentUser } = useQuery({
@@ -506,6 +507,9 @@ export default function Homepage() {
           </div>
         </div>
       </footer>
+
+      {/* Prospect Chatbot */}
+      <ProspectChatbot />
     </div>
   );
 }
