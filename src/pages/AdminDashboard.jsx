@@ -9,7 +9,8 @@ import {
   Users, FileText, TrendingUp, DollarSign, Shield, 
   GraduationCap, AlertTriangle, Activity, Clock, 
   CheckCircle2, BarChart3, Calendar, Zap, Brain,
-  UserCheck, Award, Target, Search, ChevronLeft, ChevronRight
+  UserCheck, Award, Target, Search, ChevronLeft, ChevronRight,
+  RefreshCw, BookOpen
 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Link } from "react-router-dom";
@@ -24,6 +25,7 @@ export default function AdminDashboard() {
   const [activitySearch, setActivitySearch] = useState("");
   const [activityPage, setActivityPage] = useState(1);
   const activityPerPage = 10;
+  const queryClient = useQueryClient();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -78,6 +80,16 @@ export default function AdminDashboard() {
   const { data: allAlerts = [] } = useQuery({
     queryKey: ['allAlerts'],
     queryFn: () => base44.entities.PatientAlert.list('-created_date'),
+  });
+
+  const autoFetchGuidelinesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await base44.functions.invoke('autoFetchCMSGuidelines', {});
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['medicareGuidelines'] });
+    },
   });
 
   // Calculate comprehensive statistics
@@ -392,6 +404,39 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
+      {/* Auto-Fetch Guidelines Success/Error */}
+      {autoFetchGuidelinesMutation.isSuccess && (
+        <Card className="mb-6 bg-green-50 border-2 border-green-300">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
+              <div className="flex-1">
+                <p className="font-semibold text-green-900 mb-1">Guidelines Updated Successfully</p>
+                <p className="text-sm text-green-800">
+                  {autoFetchGuidelinesMutation.data?.message || 'CMS guidelines have been fetched and stored.'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {autoFetchGuidelinesMutation.isError && (
+        <Card className="mb-6 bg-red-50 border-2 border-red-300">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+              <div className="flex-1">
+                <p className="font-semibold text-red-900 mb-1">Failed to Fetch Guidelines</p>
+                <p className="text-sm text-red-800">
+                  {autoFetchGuidelinesMutation.error?.message || 'An error occurred while fetching CMS guidelines.'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Critical Alerts Banner */}
       {(stats.criticalAlerts > 0 || stats.flaggedAudits > 0 || stats.pendingUsers > 0) && (
         <Card className="mb-6 bg-red-50 border-2 border-red-300">
@@ -634,6 +679,21 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </Link>
+            <Card 
+              className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200"
+              onClick={() => autoFetchGuidelinesMutation.mutate()}
+            >
+              <CardContent className="p-4 text-center">
+                {autoFetchGuidelinesMutation.isPending ? (
+                  <RefreshCw className="w-8 h-8 text-green-600 mx-auto mb-2 animate-spin" />
+                ) : (
+                  <BookOpen className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                )}
+                <p className="font-medium">
+                  {autoFetchGuidelinesMutation.isPending ? 'Fetching...' : 'Update CMS Guidelines'}
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
