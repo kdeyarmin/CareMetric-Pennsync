@@ -63,6 +63,17 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Validate Account SID format
+    if (!accountSid.startsWith('AC')) {
+      return Response.json(
+        { 
+          error: 'Invalid Twilio Account SID',
+          details: 'TWILIO_ACCOUNT_SID must start with "AC" - please check your Twilio console for the correct Account SID'
+        },
+        { status: 500 }
+      );
+    }
+
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
     
     const formData = new URLSearchParams();
