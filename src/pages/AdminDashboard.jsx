@@ -119,8 +119,8 @@ export default function AdminDashboard() {
     return {
       // User metrics
       totalUsers: allUsers.length,
-      activeUsers: allUsers.filter(u => u.is_approved).length,
-      pendingUsers: allUsers.filter(u => !u.is_approved).length,
+      activeUsers: allUsers.length,
+      pendingUsers: 0,
       
       // Patient metrics
       totalPatients: allPatients.length,
