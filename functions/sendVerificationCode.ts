@@ -70,6 +70,8 @@ Deno.serve(async (req) => {
     formData.append('From', twilioPhoneNumber);
     formData.append('Body', `Your CareMetric AI verification code is: ${code}. This code expires in 10 minutes.`);
 
+    console.log('Attempting Twilio request with Account SID:', accountSid?.substring(0, 10) + '...');
+    
     const twilioResponse = await fetch(twilioUrl, {
       method: 'POST',
       headers: {
@@ -80,12 +82,19 @@ Deno.serve(async (req) => {
     });
 
     if (!twilioResponse.ok) {
-      const errorData = await twilioResponse.json();
-      console.error('Twilio error:', errorData);
+      const errorText = await twilioResponse.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { raw: errorText };
+      }
+      console.error('Twilio error response:', errorData);
       return Response.json(
         { 
-          error: 'Failed to send verification code via Twilio',
-          details: errorData.message || JSON.stringify(errorData)
+          error: 'Twilio authentication failed',
+          details: `${errorData.message || errorText} (Status: ${twilioResponse.status})`,
+          hint: 'Please verify your Twilio credentials are correct'
         },
         { status: 500 }
       );
