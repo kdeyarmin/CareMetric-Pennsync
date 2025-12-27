@@ -35,6 +35,8 @@ import AIChatAssistant from "../components/chat/AIChatAssistant";
 import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import ShareAppButton from "../components/marketing/ShareAppButton";
+import NotificationCenter from "../components/notifications/NotificationCenter";
+import InteractiveOnboarding from "../components/onboarding/InteractiveOnboarding";
 
       export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -230,14 +232,17 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
             />
             {!sidebarCollapsed && <span className="font-bold text-lg text-gray-900">CareMetric AI</span>}
           </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          >
-            {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </Button>
+          <div className="flex items-center gap-1">
+            {!sidebarCollapsed && <NotificationCenter />}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            >
+              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </Button>
+          </div>
         </div>
 
         {/* Navigation */}
@@ -352,9 +357,12 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
           />
           <span className="font-bold text-lg text-white">CareMetric AI</span>
         </Link>
-        <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white hover:bg-blue-700 h-12 w-12">
-          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </Button>
+        <div className="flex items-center gap-2">
+          <NotificationCenter />
+          <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white hover:bg-blue-700 h-12 w-12">
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </Button>
+        </div>
       </div>
 
       {/* Mobile Menu Overlay */}
@@ -433,6 +441,9 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
 
       {/* Mobile Quick Access Menu */}
       <MobileQuickAccessMenu />
+
+      {/* Interactive Onboarding */}
+      {currentUser && <InteractiveOnboarding />}
       </div>
       );
       }
