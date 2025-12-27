@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Send verification code error:', error);
     return Response.json(
-      { error: 'Failed to send verification code' },
+      { error: 'Failed to send verification code', details: error.message },
       { status: 500 }
     );
   }
