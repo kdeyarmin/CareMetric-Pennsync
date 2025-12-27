@@ -97,7 +97,6 @@ export default function Billing() {
                   <p className="text-sm text-gray-600 mb-1">Monthly Amount</p>
                   <p className="text-2xl font-bold text-gray-900">${subscription?.monthly_amount || 'N/A'}/month</p>
                 </div>
-              <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-600 mb-1 flex items-center gap-1">
@@ -181,11 +180,11 @@ export default function Billing() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600 font-bold">•</span>
-                <span className="text-gray-700">Cancel or modify your subscription</span>
+                <span className="text-gray-700">Cancel your subscription</span>
               </li>
             </ul>
 
-            {!isFreePlan && (
+            {hasSubscription && (
               <Button
                 onClick={handleManageBilling}
                 disabled={portalMutation.isPending}
