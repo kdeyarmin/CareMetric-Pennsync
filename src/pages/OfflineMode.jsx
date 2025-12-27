@@ -9,10 +9,13 @@ import { WifiOff, Wifi, Users, FileText, Database } from "lucide-react";
 import OfflinePatientSelector from "../components/mobile/OfflinePatientSelector";
 import OfflineSyncManager from "../components/mobile/OfflineSyncManager";
 import OfflineNoteEditor from "../components/mobile/OfflineNoteEditor";
+import OfflineCapabilitiesGuide from "../components/mobile/OfflineCapabilitiesGuide";
+import SyncConflictResolver from "../components/mobile/SyncConflictResolver";
 
 export default function OfflineMode() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [conflicts, setConflicts] = useState([]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -28,6 +31,12 @@ export default function OfflineMode() {
   }, []);
 
   const cachedPatients = JSON.parse(localStorage.getItem('offline_patient_data') || '[]');
+
+  const handleResolveConflict = (conflictId, resolution) => {
+    // Handle conflict resolution
+    setConflicts(prev => prev.filter(c => c.id !== conflictId));
+    // In a real implementation, sync the resolved data
+  };
 
   return (
     <div className="p-4 sm:p-6 md:p-8 max-w-6xl mx-auto">
@@ -45,17 +54,31 @@ export default function OfflineMode() {
         </div>
 
         <Alert className={isOnline ? 'bg-green-50 border-green-300' : 'bg-orange-50 border-orange-300'}>
-          <AlertDescription className="text-sm flex items-center gap-2">
+          <AlertDescription className="text-sm">
             {isOnline ? (
-              <>
-                <Wifi className="w-4 h-4 text-green-600" />
-                <span className="text-green-800">✅ Connected - Data will sync automatically</span>
-              </>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Wifi className="w-4 h-4 text-green-600" />
+                  <span className="text-green-800 font-semibold">✅ Connected - Auto-sync enabled</span>
+                </div>
+                <p className="text-green-700 text-xs">
+                  • Changes will sync immediately<br/>
+                  • Download patient data below to work offline<br/>
+                  • Pending offline notes will sync automatically
+                </p>
+              </div>
             ) : (
-              <>
-                <WifiOff className="w-4 h-4 text-orange-600" />
-                <span className="text-orange-800">⚠️ Offline - Using cached data</span>
-              </>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <WifiOff className="w-4 h-4 text-orange-600" />
+                  <span className="text-orange-800 font-semibold">⚠️ Offline Mode Active</span>
+                </div>
+                <p className="text-orange-700 text-xs">
+                  <strong>Available:</strong> View cached patients, create visit notes, record vitals<br/>
+                  <strong>Unavailable:</strong> Real-time data updates, AI enhancements, patient search<br/>
+                  <strong>Sync:</strong> All changes saved locally and will sync when online
+                </p>
+              </div>
             )}
           </AlertDescription>
         </Alert>
@@ -108,11 +131,14 @@ export default function OfflineMode() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-6">
+          <SyncConflictResolver conflicts={conflicts} onResolve={handleResolveConflict} />
           <OfflineSyncManager />
           <OfflinePatientSelector onCacheComplete={() => {}} />
         </div>
 
         <div className="space-y-6">
+          <OfflineCapabilitiesGuide isOnline={isOnline} />
+          
           {/* Cached Patients List */}
           <Card>
             <CardHeader>
