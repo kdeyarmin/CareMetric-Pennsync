@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Home,
   Users,
+  User,
   FileText,
   Calendar,
   ClipboardList,
