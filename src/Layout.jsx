@@ -432,14 +432,20 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       {/* Offline Indicator */}
       <OfflineIndicator />
 
-      {/* AI Chat Assistant */}
-      <div className="fixed bottom-20 right-4 z-50 lg:bottom-4">
+      {/* Floating Action Buttons - Horizontal Row */}
+      <div className="fixed bottom-20 left-0 right-0 z-50 flex items-center justify-center gap-4 px-4 lg:hidden">
+        <MobileQuickAccessMenu />
         {currentUser && <AIChatAssistant />}
       </div>
 
-      {/* Mobile Quick Access Menu */}
-      <div className="fixed bottom-20 left-4 z-50 lg:bottom-4">
-        <MobileQuickAccessMenu />
+      {/* Desktop Floating Buttons */}
+      <div className="hidden lg:block">
+        <div className="fixed bottom-4 right-4 z-50">
+          {currentUser && <AIChatAssistant />}
+        </div>
+        <div className="fixed bottom-4 left-4 z-50">
+          <MobileQuickAccessMenu />
+        </div>
       </div>
 
       {/* Bottom Navigation Bar */}
