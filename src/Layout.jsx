@@ -36,7 +36,7 @@ import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
-import InteractiveOnboarding from "../components/onboarding/InteractiveOnboarding";
+
 
       export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -443,8 +443,7 @@ import InteractiveOnboarding from "../components/onboarding/InteractiveOnboardin
       {/* Mobile Quick Access Menu */}
       <MobileQuickAccessMenu />
 
-      {/* Interactive Onboarding */}
-      {currentUser && <InteractiveOnboarding />}
+
       </div>
       );
       }
