@@ -4,13 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  MessageSquare, X, Send, Loader2, Bot, User, 
-  ThumbsUp, ThumbsDown, ExternalLink, Sparkles
+import {
+  MessageSquare,
+  X,
+  Send,
+  Loader2,
+  Bot,
+  User,
+  ThumbsUp,
+  ThumbsDown,
+  ExternalLink,
+  Sparkles
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import AIInsightFeedbackWidget from "../feedback/AIInsightFeedbackWidget";
 
@@ -19,13 +26,12 @@ export default function AIChatAssistant() {
   const [message, setMessage] = useState("");
   const [conversation, setConversation] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
   const [selectedMessageForFeedback, setSelectedMessageForFeedback] = useState(null);
   const scrollRef = useRef(null);
 
   const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me()
   });
 
   useEffect(() => {
@@ -34,14 +40,15 @@ export default function AIChatAssistant() {
     }
   }, [conversation]);
 
-  // Initial greeting when opening chat
   useEffect(() => {
     if (isOpen && conversation.length === 0) {
-      setConversation([{
-        role: 'assistant',
-        content: `Hi ${currentUser?.full_name || 'there'}! 👋 I'm your CareMetric AI Assistant. I can help you with:\n\n• Answering questions about your tasks and alerts\n• Finding relevant training materials\n• Explaining AI insights and recommendations\n• Collecting your feedback\n\nWhat would you like to know?`,
-        timestamp: new Date()
-      }]);
+      setConversation([
+        {
+          role: "assistant",
+          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your CareMetric AI Assistant.\n\nHow can I help you today?`,
+          timestamp: new Date()
+        }
+      ]);
     }
   }, [isOpen, currentUser]);
 
@@ -49,251 +56,125 @@ export default function AIChatAssistant() {
     if (!message.trim() || isLoading) return;
 
     const userMessage = {
-      role: 'user',
+      role: "user",
       content: message,
       timestamp: new Date()
     };
 
-    setConversation(prev => [...prev, userMessage]);
+    setConversation((prev) => [...prev, userMessage]);
     setMessage("");
     setIsLoading(true);
 
     try {
-      const response = await base44.functions.invoke('chatWithAI', {
-        message: message,
-        conversationHistory: conversation.slice(-6) // Last 6 messages for context
+      const response = await base44.functions.invoke("chatWithAI", {
+        message,
+        conversationHistory: conversation.slice(-6)
       });
 
-      const assistantMessage = {
-        role: 'assistant',
-        content: response.data.response,
-        suggested_actions: response.data.suggested_actions || [],
-        training_suggestions: response.data.training_suggestions || [],
-        timestamp: new Date()
-      };
-
-      setConversation(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      setConversation(prev => [...prev, {
-        role: 'assistant',
-        content: "I'm sorry, I encountered an error. Please try again.",
-        timestamp: new Date()
-      }]);
+      setConversation((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: response.data.response,
+          suggested_actions: response.data.suggested_actions || [],
+          training_suggestions: response.data.training_suggestions || [],
+          timestamp: new Date()
+        }
+      ]);
+    } catch {
+      setConversation((prev) => [
+        ...prev,
+        { role: "assistant", content: "Something went wrong.", timestamp: new Date() }
+      ]);
     }
 
     setIsLoading(false);
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  const handleQuickAction = (action, data) => {
-    if (action === 'navigate') {
-      window.location.href = createPageUrl(data.page);
-    } else if (action === 'feedback') {
-      setShowFeedback(true);
-    } else if (action === 'training') {
-      window.location.href = createPageUrl('StaffTrainingHub');
-    }
-  };
-
-  const handleFeedback = (messageIndex, helpful) => {
-    setSelectedMessageForFeedback({
-      index: messageIndex,
-      content: conversation[messageIndex].content,
-      helpful
-    });
-  };
-
+  /* =========================
+     CLOSED STATE (FAB)
+  ========================= */
   if (!isOpen) {
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 h-14 w-14 rounded-full shadow-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 touch-target"
         size="icon"
+        className="
+          h-14 w-14 rounded-full shadow-2xl
+          bg-gradient-to-r from-indigo-600 to-purple-600
+          hover:from-indigo-700 hover:to-purple-700
+          md:fixed md:bottom-6 md:right-6
+        "
       >
-        <MessageSquare className="w-6 h-6" />
+        <MessageSquare className="w-6 h-6 text-white" />
       </Button>
     );
   }
 
+  /* =========================
+     OPEN STATE
+  ========================= */
   return (
     <>
-      {/* Mobile overlay */}
-      <div className="fixed inset-0 z-50 bg-black/50 md:hidden" onClick={() => setIsOpen(false)} />
-      
-      {/* Chat window */}
-      <div className="fixed inset-0 md:inset-auto md:bottom-6 md:right-6 z-50 md:w-96 md:max-w-[calc(100vw-3rem)] p-4 md:p-0 flex items-end md:items-start">
-        <Card className="w-full md:max-w-none shadow-2xl border-2 border-indigo-300 max-h-[90vh] md:max-h-none flex flex-col">
-        <CardHeader className="pb-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-lg">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Bot className="w-5 h-5" />
-              AI Assistant
-              <Badge className="bg-white/20 text-white">Beta</Badge>
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsOpen(false)}
-              className="text-white hover:bg-white/20 h-8 w-8"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {/* Chat Messages */}
-          <ScrollArea ref={scrollRef} className="h-[50vh] md:h-96 p-3 md:p-4">
-            <div className="space-y-4">
-              {conversation.map((msg, idx) => (
-                <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+      {/* Mobile backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 z-50 md:hidden"
+        onClick={() => setIsOpen(false)}
+      />
+
+      {/* Chat Window */}
+      <div className="fixed inset-0 md:inset-auto md:bottom-6 md:right-6 z-50 p-4 flex items-end md:items-start">
+        <Card className="w-full md:w-96 max-h-[90vh] flex flex-col shadow-2xl border-2 border-indigo-300">
+          <CardHeader className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+            <div className="flex justify-between items-center">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Bot className="w-4 h-4" />
+                AI Assistant
+                <Badge className="bg-white/20 text-white">Beta</Badge>
+              </CardTitle>
+              <Button size="icon" variant="ghost" onClick={() => setIsOpen(false)}>
+                <X className="w-4 h-4 text-white" />
+              </Button>
+            </div>
+          </CardHeader>
+
+          <CardContent className="flex-1 p-0">
+            <ScrollArea ref={scrollRef} className="h-[50vh] md:h-96 p-4">
+              {conversation.map((msg, i) => (
+                <div key={i} className={`flex gap-3 mb-4 ${msg.role === "user" ? "justify-end" : ""}`}>
+                  {msg.role === "assistant" && (
+                    <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
                       <Bot className="w-4 h-4 text-white" />
                     </div>
                   )}
-                  
-                  <div className={`flex-1 max-w-[85%] md:max-w-[80%] ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
-                    <div className={`rounded-lg p-2.5 md:p-3 ${
-                      msg.role === 'user' 
-                        ? 'bg-indigo-600 text-white' 
-                        : 'bg-gray-100 text-gray-900'
-                    }`}>
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      
-                      {/* Suggested Actions */}
-                      {msg.suggested_actions && msg.suggested_actions.length > 0 && (
-                        <div className="mt-3 space-y-2">
-                          {msg.suggested_actions.map((action, actionIdx) => (
-                            <Button
-                              key={actionIdx}
-                              size="sm"
-                              variant="outline"
-                              className="w-full justify-start gap-2 bg-white text-gray-900"
-                              onClick={() => handleQuickAction(action.action, action.data)}
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              {action.label}
-                            </Button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Training Suggestions */}
-                      {msg.training_suggestions && msg.training_suggestions.length > 0 && (
-                        <div className="mt-3 space-y-1">
-                          <p className="text-xs font-semibold flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" />
-                            Recommended Training:
-                          </p>
-                          {msg.training_suggestions.map((suggestion, suggIdx) => (
-                            <p key={suggIdx} className="text-xs pl-4">• {suggestion}</p>
-                          ))}
-                          <Button
-                            size="sm"
-                            variant="link"
-                            className="text-xs p-0 h-auto text-indigo-600 hover:text-indigo-800"
-                            onClick={() => window.location.href = createPageUrl('StaffTrainingHub')}
-                          >
-                            View Training Hub →
-                          </Button>
-                        </div>
-                      )}
-                      
-                      {/* Feedback for assistant messages */}
-                      {msg.role === 'assistant' && idx > 0 && (
-                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs text-gray-500">Was this helpful?</p>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => handleFeedback(idx, true)}
-                          >
-                            <ThumbsUp className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => handleFeedback(idx, false)}
-                          >
-                            <ThumbsDown className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                  <div className={`rounded-lg p-3 max-w-[80%] ${msg.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100"}`}>
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                   </div>
-
-                  {msg.role === 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
-                      <User className="w-4 h-4 text-gray-700" />
+                  {msg.role === "user" && (
+                    <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                      <User className="w-4 h-4" />
                     </div>
                   )}
                 </div>
               ))}
+              {isLoading && <Loader2 className="animate-spin text-indigo-600" />}
+            </ScrollArea>
 
-              {isLoading && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="bg-gray-100 rounded-lg p-3">
-                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                  </div>
-                </div>
-              )}
+            <div className="p-3 border-t bg-white">
+              <div className="flex gap-2">
+                <Input
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                  placeholder="Ask me anything…"
+                />
+                <Button onClick={handleSendMessage} size="icon">
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
-          </ScrollArea>
-
-          {/* Feedback Widget */}
-          {selectedMessageForFeedback && (
-            <div className="p-4 border-t bg-gray-50">
-              <AIInsightFeedbackWidget
-                insightType="other"
-                insightContent={`AI Chat Response: ${selectedMessageForFeedback.content.substring(0, 200)}...`}
-                onFeedbackSubmitted={() => setSelectedMessageForFeedback(null)}
-                compact={true}
-              />
-            </div>
-          )}
-
-          {/* Input Area */}
-          <div className="p-3 md:p-4 border-t bg-white rounded-b-lg safe-bottom">
-            <div className="flex gap-2">
-              <Input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Ask me anything..."
-                className="flex-1 text-base md:text-sm"
-                disabled={isLoading}
-              />
-              <Button
-                onClick={handleSendMessage}
-                disabled={!message.trim() || isLoading}
-                className="bg-indigo-600 hover:bg-indigo-700 h-10 w-10 md:h-9 md:w-9 touch-target flex-shrink-0"
-                size="icon"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-5 h-5 md:w-4 md:h-4 animate-spin" />
-                ) : (
-                  <Send className="w-5 h-5 md:w-4 md:h-4" />
-                )}
-              </Button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2 hidden md:block">
-              Press Enter to send, Shift+Enter for new line
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       </div>
     </>
   );
