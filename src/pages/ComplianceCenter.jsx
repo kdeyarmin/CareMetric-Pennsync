@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import ComplianceCalendar from "../components/compliance/ComplianceCalendar";
+import AIComplianceAuditor from "../components/compliance/AIComplianceAuditor";
 
 export default function ComplianceCenter() {
   const navigate = useNavigate();
@@ -29,7 +30,10 @@ export default function ComplianceCenter() {
         </p>
       </div>
 
-      <ComplianceCalendar />
+      <div className="space-y-6">
+        <AIComplianceAuditor />
+        <ComplianceCalendar />
+      </div>
     </div>
   );
 }
