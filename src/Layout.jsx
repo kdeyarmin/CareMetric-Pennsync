@@ -334,6 +334,11 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
             <LogOut className="w-4 h-4" />
             {!sidebarCollapsed && <span className="ml-2">Logout</span>}
           </Button>
+          {!sidebarCollapsed && (
+            <div className="mt-2">
+              <ShareAppButton variant="ghost" size="sm" />
+            </div>
+          )}
         </div>
       </aside>
 
@@ -404,6 +409,9 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
               </Button>
+              <div className="mt-2">
+                <ShareAppButton variant="ghost" size="sm" />
+              </div>
             </div>
           </div>
         </div>
