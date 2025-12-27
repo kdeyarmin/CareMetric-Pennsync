@@ -22,7 +22,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Clock,
   BookOpen,
   Activity,
   CreditCard,
@@ -38,8 +37,8 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
 /* =========================
    Layout Constants
 ========================= */
-const MOBILE_BOTTOM_OFFSET = "calc(4.75rem + env(safe-area-inset-bottom))";
-const DESKTOP_BOTTOM_OFFSET = "calc(1rem + env(safe-area-inset-bottom))";
+const MOBILE_FAB_OFFSET = "calc(6.5rem + env(safe-area-inset-bottom))";
+const DESKTOP_FAB_OFFSET = "calc(1rem + env(safe-area-inset-bottom))";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -63,8 +62,8 @@ export default function Layout({ children, currentPageName }) {
         details: { logout_time: new Date().toISOString() },
         page: "logout"
       });
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
     }
     base44.auth.logout();
   };
@@ -97,7 +96,7 @@ export default function Layout({ children, currentPageName }) {
   ];
 
   return (
-    <div className="min-h-screen flex bg-blue-100">
+    <div className="min-h-screen bg-blue-100 flex">
       {/* ================= Desktop Sidebar ================= */}
       <aside className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${sidebarCollapsed ? "w-16" : "w-56"}`}>
         <div className="h-16 flex items-center justify-between px-3 border-b">
@@ -144,12 +143,55 @@ export default function Layout({ children, currentPageName }) {
       </aside>
 
       {/* ================= Mobile Header ================= */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-blue-600 flex items-center justify-between px-4 z-50">
-        <span className="font-bold text-white">CareMetric AI</span>
-        <Button size="icon" variant="ghost" className="text-white" onClick={() => setMobileMenuOpen(true)}>
-          <Menu />
-        </Button>
+      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-blue-600 flex items-center justify-between px-4 z-[100]">
+        <Link to={createPageUrl("Dashboard")} className="font-bold text-white">
+          CareMetric AI
+        </Link>
+        <div className="flex items-center gap-2">
+          <NotificationCenter />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="text-white"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            <Menu />
+          </Button>
+        </div>
       </header>
+
+      {/* ================= Mobile Menu Overlay ================= */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[90]"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div
+            className="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h-16 flex items-center justify-between px-4 border-b">
+              <span className="font-bold">Menu</span>
+              <Button size="icon" variant="ghost" onClick={() => setMobileMenuOpen(false)}>
+                <X />
+              </Button>
+            </div>
+            <nav className="p-4 space-y-1">
+              {navCategories.flatMap(c => c.items).map(item => (
+                <Link
+                  key={item.page}
+                  to={createPageUrl(item.page)}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100"
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.name}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </div>
+      )}
 
       {/* ================= Main Content ================= */}
       <main className="flex-1 pt-16 lg:pt-0 pb-32">
@@ -158,26 +200,30 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Floating Buttons ================= */}
       <div
-        className="fixed left-0 right-0 z-50 flex justify-center gap-4 lg:hidden"
-        style={{ bottom: MOBILE_BOTTOM_OFFSET }}
+        className="fixed left-0 right-0 z-50 flex justify-center gap-4 px-4 lg:hidden pointer-events-none"
+        style={{ bottom: MOBILE_FAB_OFFSET }}
       >
-        <MobileQuickAccessMenu />
-        {currentUser && <AIChatAssistant />}
+        <div className="pointer-events-auto">
+          <MobileQuickAccessMenu />
+        </div>
+        <div className="pointer-events-auto">
+          {currentUser && <AIChatAssistant />}
+        </div>
       </div>
 
       {/* ================= Desktop Floating Buttons ================= */}
       <div className="hidden lg:block">
-        <div className="fixed right-4 z-50" style={{ bottom: DESKTOP_BOTTOM_OFFSET }}>
-          <AIChatAssistant />
+        <div className="fixed right-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
+          {currentUser && <AIChatAssistant />}
         </div>
-        <div className="fixed left-4 z-50" style={{ bottom: DESKTOP_BOTTOM_OFFSET }}>
+        <div className="fixed left-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
           <MobileQuickAccessMenu />
         </div>
       </div>
 
-      {/* ================= Bottom Nav ================= */}
+      {/* ================= Bottom Navigation ================= */}
       <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t shadow lg:hidden z-40">
-        <div className="flex justify-around items-center h-full">
+        <div className="flex items-center justify-around h-full">
           <Link to={createPageUrl("Dashboard")} className={isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}>
             <Home />
           </Link>
