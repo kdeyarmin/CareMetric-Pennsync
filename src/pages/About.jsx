@@ -270,7 +270,7 @@ export default function About() {
                 </div>
                 <h3 className="text-xl font-bold text-gray-900">Less Documentation Time</h3>
                 <p className="text-gray-600">
-                  AI converts voice notes to Medicare-compliant documentation in seconds. 
+                  AI converts voice notes to Medicare-compliant documentation in seconds, reducing documentation time by 70%. 
                   Spend less time charting, more time caring. Typical nurses save 2-3 hours per day.
                 </p>
               </div>

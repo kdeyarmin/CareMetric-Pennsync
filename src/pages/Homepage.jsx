@@ -79,7 +79,7 @@ export default function Homepage() {
           <Card className="border-2 border-green-200 bg-white/80 backdrop-blur">
             <CardContent className="p-6 text-center">
               <Clock className="w-12 h-12 text-green-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-green-600">50%</p>
+              <p className="text-3xl font-bold text-green-600">70%</p>
               <p className="text-sm text-gray-600 mt-2">Time Saved on Notes</p>
             </CardContent>
           </Card>
