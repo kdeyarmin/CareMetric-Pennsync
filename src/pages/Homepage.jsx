@@ -29,6 +29,7 @@ import {
   DollarSign
 } from "lucide-react";
 import ProspectChatbot from "../components/marketing/ProspectChatbot";
+import ShareAppButton from "../components/marketing/ShareAppButton";
 
 export default function Homepage() {
   const { data: currentUser } = useQuery({
@@ -93,6 +94,10 @@ export default function Homepage() {
                   <DollarSign className="w-5 h-5 ml-2" />
                 </Button>
               </Link>
+            </div>
+            
+            <div className="mt-6 flex justify-center">
+              <ShareAppButton variant="ghost" size="lg" />
             </div>
           </div>
         </div>

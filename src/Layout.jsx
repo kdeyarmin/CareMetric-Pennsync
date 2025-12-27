@@ -34,6 +34,7 @@ import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
 import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
+import ShareAppButton from "../components/marketing/ShareAppButton";
 
       export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
