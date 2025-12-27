@@ -53,6 +53,16 @@ Deno.serve(async (req) => {
     const authToken = Deno.env.get('TWILIO_AUTH_TOKEN');
     const twilioPhoneNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
 
+    if (!accountSid || !authToken || !twilioPhoneNumber) {
+      return Response.json(
+        { 
+          error: 'Twilio credentials not configured',
+          details: 'Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_PHONE_NUMBER'
+        },
+        { status: 500 }
+      );
+    }
+
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
     
     const formData = new URLSearchParams();
