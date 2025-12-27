@@ -21,13 +21,12 @@ Deno.serve(async (req) => {
     // Get plan type from request body
     const { plan } = await req.json();
     
-    // Get subscription settings
-    const settings = await base44.entities.SubscriptionSettings.list();
+    // Map plan to Stripe price IDs (from Stripe product catalog)
     const planMapping = {
-      'monthly': settings[0]?.stripe_monthly_price_id,
-      'quarterly': settings[0]?.stripe_quarterly_price_id,
-      'biannual': settings[0]?.stripe_biannual_price_id,
-      'yearly': settings[0]?.stripe_yearly_price_id
+      'monthly': 'price_1SioNUCEZXcVOdjd7EzodOpc',
+      'quarterly': 'price_1SioSoCEZXcVOdjdPYzUvQiX',
+      'biannual': 'price_1SioOnCEZXcVOdjdM5Ou6Wqj',
+      'yearly': 'price_1SioPVCEZXcVOdjdLjX5A9AR'
     };
     const priceId = planMapping[plan || 'monthly'];
     
