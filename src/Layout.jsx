@@ -114,6 +114,7 @@ import InteractiveOnboarding from "../components/onboarding/InteractiveOnboardin
         { name: "Features Guide", icon: Sparkles, page: "Features" },
         { name: "Pricing", icon: CreditCard, page: "Pricing" },
         { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
+        { name: "Education Library", icon: BookOpen, page: "PatientEducationLibrary" },
         { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Guidelines Library", icon: BookOpen, page: "MedicareGuidelinesLibrary" },
         { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },

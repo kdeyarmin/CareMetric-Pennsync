@@ -73,6 +73,7 @@ import Billing from './pages/Billing';
 import PaymentSuccess from './pages/PaymentSuccess';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import Pricing from './pages/Pricing';
+import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import __Layout from './Layout.jsx';
 
 
@@ -152,6 +153,7 @@ export const PAGES = {
     "PaymentSuccess": PaymentSuccess,
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
     "Pricing": Pricing,
+    "PatientEducationLibrary": PatientEducationLibrary,
 }
 
 export const pagesConfig = {
