@@ -67,10 +67,16 @@ Deno.serve(async (req) => {
     });
 
     // Clean up old verification codes for this user
-    await base44.asServiceRole.entities.VerificationCode.deleteMany({
+    const oldCodes = await base44.asServiceRole.entities.VerificationCode.filter({
       user_email: user_email,
       verified: false
     });
+    
+    for (const old of oldCodes) {
+      if (old.id !== verificationRecord.id) {
+        await base44.asServiceRole.entities.VerificationCode.delete(old.id);
+      }
+    }
 
     return Response.json({
       success: true,

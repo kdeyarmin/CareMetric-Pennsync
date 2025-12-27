@@ -19,10 +19,14 @@ Deno.serve(async (req) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     // Delete any existing unverified codes for this user
-    await base44.asServiceRole.entities.VerificationCode.deleteMany({
+    const existingCodes = await base44.asServiceRole.entities.VerificationCode.filter({
       user_email: user_email,
       verified: false
     });
+    
+    for (const existing of existingCodes) {
+      await base44.asServiceRole.entities.VerificationCode.delete(existing.id);
+    }
 
     // Store verification code
     await base44.asServiceRole.entities.VerificationCode.create({
