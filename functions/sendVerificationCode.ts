@@ -73,7 +73,10 @@ Deno.serve(async (req) => {
       const errorData = await twilioResponse.json();
       console.error('Twilio error:', errorData);
       return Response.json(
-        { error: 'Failed to send verification code' },
+        { 
+          error: 'Failed to send verification code via Twilio',
+          details: errorData.message || JSON.stringify(errorData)
+        },
         { status: 500 }
       );
     }
