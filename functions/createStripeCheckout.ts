@@ -18,9 +18,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Get plan type from request body
+    const { plan } = await req.json();
+    
     // Get subscription settings
     const settings = await base44.entities.SubscriptionSettings.list();
-    const priceId = settings[0]?.stripe_price_id;
+    const planMapping = {
+      'monthly': settings[0]?.stripe_monthly_price_id,
+      'quarterly': settings[0]?.stripe_quarterly_price_id,
+      'biannual': settings[0]?.stripe_biannual_price_id,
+      'yearly': settings[0]?.stripe_yearly_price_id
+    };
+    const priceId = planMapping[plan || 'monthly'];
     
     if (!priceId) {
       return Response.json({ error: 'Subscription not configured' }, { status: 400 });
