@@ -112,7 +112,8 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
         { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Guidelines Library", icon: BookOpen, page: "MedicareGuidelinesLibrary" },
         { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
-        { name: "Settings", icon: Settings, page: "Settings" }
+        { name: "Settings", icon: Settings, page: "Settings" },
+        { name: "Test 2FA", icon: Shield, page: "Test2FA" }
       ]
     },
     ...(currentUser?.role === 'admin' ? [{
