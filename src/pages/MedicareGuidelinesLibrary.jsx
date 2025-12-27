@@ -34,7 +34,8 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  Trash2
+  Trash2,
+  RefreshCw
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -91,6 +92,16 @@ export default function MedicareGuidelinesLibrary() {
       queryClient.invalidateQueries({ queryKey: ['medicareGuidelines'] });
       setDialogOpen(false);
       setSelectedGuideline(null);
+    },
+  });
+
+  const autoFetchMutation = useMutation({
+    mutationFn: async () => {
+      const response = await base44.functions.invoke('autoFetchCMSGuidelines', {});
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['medicareGuidelines'] });
     },
   });
 
@@ -167,13 +178,32 @@ export default function MedicareGuidelinesLibrary() {
             </p>
           </div>
           {isAdmin && (
-            <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Guideline
-                </Button>
-              </DialogTrigger>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => autoFetchMutation.mutate()}
+                disabled={autoFetchMutation.isPending}
+                variant="outline"
+                className="border-green-500 text-green-700 hover:bg-green-50"
+              >
+                {autoFetchMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Auto-Fetching...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Auto-Fetch CMS Guidelines
+                  </>
+                )}
+              </Button>
+              <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Manual
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>Fetch Medicare Guideline from CMS.gov</DialogTitle>
@@ -278,6 +308,25 @@ export default function MedicareGuidelinesLibrary() {
                 </div>
               </DialogContent>
             </Dialog>
+            </div>
+          )}
+          
+          {autoFetchMutation.isSuccess && (
+            <Alert className="mb-4 border-green-500 bg-green-50">
+              <CheckCircle2 className="w-4 h-4 text-green-600" />
+              <AlertDescription className="text-green-800">
+                {autoFetchMutation.data?.message || 'Guidelines fetched successfully!'}
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {autoFetchMutation.isError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="w-4 h-4" />
+              <AlertDescription>
+                {autoFetchMutation.error?.message || 'Failed to fetch guidelines automatically'}
+              </AlertDescription>
+            </Alert>
           )}
         </div>
 
