@@ -37,7 +37,7 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
 /* =========================
    Layout Constants
 ========================= */
-const MOBILE_FAB_OFFSET = "calc(6.5rem + env(safe-area-inset-bottom))";
+const MOBILE_FAB_OFFSET = "calc(8.5rem + env(safe-area-inset-bottom))";
 const DESKTOP_FAB_OFFSET = "calc(1rem + env(safe-area-inset-bottom))";
 
 export default function Layout({ children, currentPageName }) {
@@ -217,7 +217,7 @@ export default function Layout({ children, currentPageName }) {
           {currentUser && <AIChatAssistant />}
         </div>
         <div className="fixed left-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
-          <MobileQuickAccessMenu />
+          <MobileQuickAccessMenu className="h-12 w-12 lg:h-14 lg:w-14" side="top" sideOffset={12}/>
         </div>
       </div>
 
