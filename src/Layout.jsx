@@ -200,7 +200,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Floating Buttons ================= */}
       <div
-        className="fixed left-0 right-0 z-50 flex justify-center gap-4 px-4 lg:hidden pointer-events-none"
+        className="fixed z-50 flex gap-4 px-4 lg:hidden pointer-events-none right-0"
         style={{ bottom: MOBILE_FAB_OFFSET }}
       >
         <div className="pointer-events-auto">
@@ -210,6 +210,7 @@ export default function Layout({ children, currentPageName }) {
           {currentUser && <AIChatAssistant />}
         </div>
       </div>
+
 
       {/* ================= Desktop Floating Buttons ================= */}
       <div className="hidden lg:block">
