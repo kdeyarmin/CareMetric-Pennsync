@@ -433,7 +433,7 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       <OfflineIndicator />
 
       {/* Floating Action Buttons - Horizontal Row */}
-      <div className="fixed bottom-20 left-0 right-0 z-50 flex items-center justify-center gap-4 px-4 lg:hidden">
+      <div className="fixed bottom-80 left-0 right-0 z-50 flex items-center justify-center gap-4 px-4 lg:hidden">
         <MobileQuickAccessMenu />
         {currentUser && <AIChatAssistant />}
       </div>
