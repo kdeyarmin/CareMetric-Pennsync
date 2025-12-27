@@ -10,7 +10,7 @@ import {
   GraduationCap, AlertTriangle, Activity, Clock, 
   CheckCircle2, BarChart3, Calendar, Zap, Brain,
   UserCheck, Award, Target, Search, ChevronLeft, ChevronRight,
-  RefreshCw, BookOpen
+  RefreshCw, BookOpen, Download, CreditCard, TrendingDown
 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Link } from "react-router-dom";
@@ -81,6 +81,18 @@ export default function AdminDashboard() {
   const { data: allAlerts = [] } = useQuery({
     queryKey: ['allAlerts'],
     queryFn: () => base44.entities.PatientAlert.list('-created_date'),
+  });
+
+  const { data: allSubscriptions = [] } = useQuery({
+    queryKey: ['allSubscriptions'],
+    queryFn: () => base44.asServiceRole.entities.Subscription.list('-created_date'),
+    enabled: currentUser?.role === 'admin'
+  });
+
+  const { data: allPayments = [] } = useQuery({
+    queryKey: ['allPayments'],
+    queryFn: () => base44.entities.Payment.list('-payment_date'),
+    enabled: currentUser?.role === 'admin'
   });
 
   const autoFetchGuidelinesMutation = useMutation({
@@ -164,6 +176,112 @@ export default function AdminDashboard() {
         : 0
     };
   }, [allUsers, allPatients, allVisits, allNoteConversions, allComplianceAudits, allTrainingCompletions, allIncidents, allTasks, allAlerts, dateRange]);
+
+  // Subscription & Revenue Metrics
+  const subscriptionStats = useMemo(() => {
+    const activeSubscriptions = allSubscriptions.filter(s => s.status === 'active');
+    const trialingSubscriptions = allSubscriptions.filter(s => s.status === 'trialing');
+    const canceledSubscriptions = allSubscriptions.filter(s => s.status === 'canceled');
+    const totalMRR = activeSubscriptions.reduce((sum, s) => sum + (s.monthly_amount || 0), 0);
+    const totalRevenue = allPayments.filter(p => p.status === 'succeeded').reduce((sum, p) => sum + (p.amount || 0), 0);
+    const avgRevenuePerUser = activeSubscriptions.length > 0 ? totalMRR / activeSubscriptions.length : 0;
+    
+    return {
+      activeSubscriptions: activeSubscriptions.length,
+      trialingSubscriptions: trialingSubscriptions.length,
+      canceledSubscriptions: canceledSubscriptions.length,
+      totalMRR,
+      totalRevenue,
+      avgRevenuePerUser,
+      churnRate: allSubscriptions.length > 0 
+        ? ((canceledSubscriptions.length / allSubscriptions.length) * 100).toFixed(1) 
+        : 0
+    };
+  }, [allSubscriptions, allPayments]);
+
+  // MRR Trend Data (30 days)
+  const mrrTrendData = useMemo(() => {
+    const last30Days = Array.from({ length: 30 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (29 - i));
+      return date.toISOString().split('T')[0];
+    });
+
+    return last30Days.map(date => {
+      const dayPayments = allPayments.filter(p => 
+        p.payment_date && p.payment_date.startsWith(date) && p.status === 'succeeded'
+      );
+      const dayRevenue = dayPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      return {
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        revenue: dayRevenue,
+        count: dayPayments.length
+      };
+    });
+  }, [allPayments]);
+
+  // Subscription Status Distribution
+  const subscriptionDistribution = useMemo(() => {
+    const statusCounts = allSubscriptions.reduce((acc, sub) => {
+      acc[sub.status] = (acc[sub.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(statusCounts).map(([status, count]) => ({
+      name: status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      value: count,
+      color: status === 'active' ? '#10B981' : status === 'trialing' ? '#3B82F6' : status === 'canceled' ? '#EF4444' : '#F59E0B'
+    }));
+  }, [allSubscriptions]);
+
+  // Export data functionality
+  const exportData = () => {
+    const data = {
+      exportDate: new Date().toISOString(),
+      dateRange: `${dateRange} days`,
+      userMetrics: {
+        totalUsers: stats.totalUsers,
+        activeUsers: stats.activeUsers,
+        pendingUsers: stats.pendingUsers
+      },
+      subscriptionMetrics: subscriptionStats,
+      patientMetrics: {
+        totalPatients: stats.totalPatients,
+        activePatients: stats.activePatients
+      },
+      visitMetrics: {
+        totalVisits: stats.totalVisits,
+        completedVisits: stats.completedVisits,
+        avgVisitsPerDay: stats.avgVisitsPerDay
+      },
+      documentationMetrics: {
+        totalEnhancements: stats.totalEnhancements,
+        avgQualityScore: stats.avgQualityScore,
+        avgComplianceScore: stats.avgComplianceScore,
+        totalTimeSaved: stats.totalTimeSaved
+      },
+      complianceMetrics: {
+        totalAudits: stats.totalAudits,
+        passedAudits: stats.passedAudits,
+        flaggedAudits: stats.flaggedAudits,
+        avgAuditScore: stats.avgAuditScore
+      },
+      topPerformers,
+      recentPayments: allPayments.slice(0, 50),
+      subscriptions: allSubscriptions
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `admin-dashboard-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   // Top performers
   const topPerformers = useMemo(() => {
@@ -290,6 +408,14 @@ export default function AdminDashboard() {
           <p className="text-gray-600">Comprehensive analytics and system overview</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={exportData}
+            variant="outline"
+            size="sm"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export Data
+          </Button>
           {[7, 30, 90].map(days => (
             <Button
               key={days}
@@ -469,8 +595,9 @@ export default function AdminDashboard() {
       )}
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="revenue">Revenue</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="compliance">Compliance</TabsTrigger>
           <TabsTrigger value="training">Training</TabsTrigger>
@@ -480,6 +607,49 @@ export default function AdminDashboard() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {/* Subscription Metrics Row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <DollarSign className="w-8 h-8 text-green-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Monthly Recurring Revenue</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <CreditCard className="w-8 h-8 text-blue-600" />
+                  <Badge className="bg-blue-600">{subscriptionStats.activeSubscriptions}</Badge>
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
+                <p className="text-xs text-gray-600">Active Subscriptions</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <TrendingUp className="w-8 h-8 text-purple-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Total Revenue</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <TrendingDown className="w-8 h-8 text-orange-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{subscriptionStats.churnRate}%</p>
+                <p className="text-xs text-gray-600">Churn Rate</p>
+              </CardContent>
+            </Card>
+          </div>
           {/* Top Performers */}
           <Card>
             <CardHeader>
