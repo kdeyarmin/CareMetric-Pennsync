@@ -129,15 +129,18 @@ export default function OfflineMode() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-6">
-          <SyncConflictResolver conflicts={conflicts} onResolve={handleResolveConflict} />
-          <OfflineSyncManager />
-          <OfflinePatientSelector onCacheComplete={() => {}} />
+          <OfflineCapabilitiesGuide isOnline={isOnline} />
         </div>
 
         <div className="space-y-6">
-          <OfflineCapabilitiesGuide isOnline={isOnline} />
+          <SyncConflictResolver conflicts={conflicts} onResolve={handleResolveConflict} />
+          <OfflineSyncManager />
+        </div>
+
+        <div className="space-y-6">
+          <OfflinePatientSelector onCacheComplete={() => {}} />
           
           {/* Cached Patients List */}
           <Card>
