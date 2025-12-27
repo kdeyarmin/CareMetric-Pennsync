@@ -433,10 +433,14 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       <OfflineIndicator />
 
       {/* AI Chat Assistant */}
-      {currentUser && <AIChatAssistant />}
+      <div className="fixed bottom-20 right-4 z-50">
+        {currentUser && <AIChatAssistant />}
+      </div>
 
       {/* Mobile Quick Access Menu */}
-      <MobileQuickAccessMenu />
+      <div className="fixed bottom-20 right-20 z-50">
+        <MobileQuickAccessMenu />
+      </div>
 
       {/* Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-lg safe-bottom print:hidden">
