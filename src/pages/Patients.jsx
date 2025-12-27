@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, User, Phone, MapPin, FileText, X, Trash2 } from "lucide-react";
+import { Plus, Search, User, Phone, MapPin, FileText, X, Trash2, Download } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format, isValid } from 'date-fns';
@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 
 import PatientForm from "../components/patient/PatientForm";
@@ -31,6 +32,7 @@ import PaginatedPatientList from "../components/patient/PaginatedPatientList";
 import PatientFileUpdateUploader from "../components/patient/PatientFileUpdateUploader";
 import FavoriteButton from "../components/navigation/FavoriteButton";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
+import PatientDataExporter from "../components/export/PatientDataExporter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +59,7 @@ export default function Patients() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [patientsToMerge, setPatientsToMerge] = useState({ patient1: null, patient2: null });
   const [showReferralUpload, setShowReferralUpload] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -336,6 +339,21 @@ export default function Patients() {
             <FavoriteButton type="page" id="Patients" name="Patients" />
           </div>
         <div className="flex gap-2">
+          <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
+                <Download className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Export</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Export Patient Data</DialogTitle>
+              </DialogHeader>
+              <PatientDataExporter />
+            </DialogContent>
+          </Dialog>
+          
           <Button
             onClick={() => setShowReferralUpload(true)}
             variant="outline"
