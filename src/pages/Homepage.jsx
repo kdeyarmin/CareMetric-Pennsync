@@ -94,6 +94,11 @@ export default function Homepage() {
                   <DollarSign className="w-5 h-5 ml-2" />
                 </Button>
               </Link>
+              <Link to={createPageUrl("About")}>
+                <Button size="lg" variant="ghost" className="text-lg px-8 py-6">
+                  Learn More
+                </Button>
+              </Link>
             </div>
             
             <div className="mt-6 flex justify-center">
