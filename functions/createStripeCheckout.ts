@@ -54,6 +54,9 @@ Deno.serve(async (req) => {
       customerId = customer.id;
     }
 
+    // Check if user already had a subscription (no trial for renewals)
+    const trialDays = existingSubs.length > 0 ? null : (settings[0]?.trial_days || 14);
+
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -69,9 +72,11 @@ Deno.serve(async (req) => {
       metadata: {
         user_email: user.email
       },
-      subscription_data: {
-        trial_period_days: settings[0]?.trial_days || 14
-      }
+      ...(trialDays && {
+        subscription_data: {
+          trial_period_days: trialDays
+        }
+      })
     });
 
     return Response.json({ url: session.url });
