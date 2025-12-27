@@ -47,7 +47,7 @@ export default function Test2FA() {
       console.error('Send error:', error);
       setSendResult({
         success: false,
-        message: error.message || 'Failed to send verification code'
+        message: error.response?.data?.details || error.response?.data?.error || error.message || 'Failed to send verification code'
       });
     } finally {
       setIsSending(false);
