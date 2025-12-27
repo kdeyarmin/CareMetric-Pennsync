@@ -64,11 +64,15 @@ Deno.serve(async (req) => {
 
         guidelines.push({
           title,
+          url: url,
           source_url: url,
-          content: content.substring(0, 5000), // Limit content length
-          category: 'cms_guideline',
+          content_markdown: content.substring(0, 5000),
+          summary: content.substring(0, 200) + '...',
+          category: 'clinical_documentation',
           effective_date: new Date().toISOString().split('T')[0],
-          last_updated: new Date().toISOString()
+          last_fetched_date: new Date().toISOString(),
+          is_active: true,
+          keywords: ['CMS', 'Medicare', 'Home Health']
         });
 
         successCount++;
@@ -89,8 +93,9 @@ Deno.serve(async (req) => {
         if (existing.length > 0) {
           // Update existing guideline
           await base44.asServiceRole.entities.MedicareGuideline.update(existing[0].id, {
-            content: guideline.content,
-            last_updated: guideline.last_updated
+            content_markdown: guideline.content_markdown,
+            summary: guideline.summary,
+            last_fetched_date: guideline.last_fetched_date
           });
         } else {
           // Create new guideline
