@@ -30,7 +30,7 @@ export default function About() {
     {
       icon: Clock,
       title: "Save 2-3 Hours Daily",
-      description: "AI-powered documentation automation reduces charting time by 50%, giving you more time for patient care.",
+      description: "AI-powered documentation automation reduces charting time by 70%, giving you more time for patient care.",
       color: "from-blue-500 to-cyan-500"
     },
     {
@@ -153,7 +153,7 @@ export default function About() {
 
   const timeMetrics = [
     { label: "Average Daily Time Saved", value: "2-3 hours", icon: Clock, color: "text-blue-600" },
-    { label: "Documentation Time Reduction", value: "50%", icon: Zap, color: "text-green-600" },
+    { label: "Documentation Time Reduction", value: "70%", icon: Zap, color: "text-green-600" },
     { label: "Compliance Score Improvement", value: "+15-25%", icon: TrendingUp, color: "text-purple-600" },
     { label: "Hospitalization Reduction", value: "30%", icon: Heart, color: "text-red-600" }
   ];
