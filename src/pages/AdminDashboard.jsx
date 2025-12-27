@@ -19,7 +19,7 @@ import { formatEastern } from "@/components/utils/timezone";
 import { calculateStats, formatNumber, formatCurrency } from "@/components/utils/statsCalculator";
 import AIFeedbackAnalytics from "../components/admin/AIFeedbackAnalytics";
 import { Input } from "@/components/ui/input";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
