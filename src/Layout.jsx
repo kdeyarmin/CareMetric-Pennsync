@@ -433,62 +433,62 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       <OfflineIndicator />
 
       {/* AI Chat Assistant */}
-      <div className="fixed bottom-20 right-4 z-50">
+      <div className="fixed bottom-24 right-4 z-50 lg:bottom-4">
         {currentUser && <AIChatAssistant />}
       </div>
 
       {/* Mobile Quick Access Menu */}
-      <div className="fixed bottom-20 right-20 z-50">
+      <div className="fixed bottom-24 left-4 z-50 lg:bottom-4">
         <MobileQuickAccessMenu />
       </div>
 
       {/* Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-lg safe-bottom print:hidden">
-        <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
+        <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
           <Link
             to={createPageUrl("Dashboard")}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors gap-0.5 ${
               isActive("Dashboard") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            <Home className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Dashboard</span>
+            <Home className="w-5 h-5" />
+            <span className="text-[10px] font-medium leading-tight">Dashboard</span>
           </Link>
           <Link
             to={createPageUrl("SmartNoteAssistant")}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors gap-0.5 ${
               isActive("SmartNoteAssistant") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            <Brain className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Smart Notes</span>
+            <Brain className="w-5 h-5" />
+            <span className="text-[10px] font-medium leading-tight">Smart Notes</span>
           </Link>
           <Link
             to={createPageUrl("CarePlanManagement")}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors gap-0.5 ${
               isActive("CarePlanManagement") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            <Target className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Care Plans</span>
+            <Target className="w-5 h-5" />
+            <span className="text-[10px] font-medium leading-tight">Care Plans</span>
           </Link>
           <Link
             to={createPageUrl("PatientAlerts")}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors gap-0.5 ${
               isActive("PatientAlerts") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            <Bell className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Alerts</span>
+            <Bell className="w-5 h-5" />
+            <span className="text-[10px] font-medium leading-tight">Alerts</span>
           </Link>
           <Link
             to={createPageUrl("Settings")}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors gap-0.5 ${
               isActive("Settings") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            <User className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Profile</span>
+            <User className="w-5 h-5" />
+            <span className="text-[10px] font-medium leading-tight">Profile</span>
           </Link>
         </div>
       </nav>
