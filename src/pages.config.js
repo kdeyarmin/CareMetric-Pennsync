@@ -71,6 +71,7 @@ import Test2FA from './pages/Test2FA';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Billing from './pages/Billing';
 import PaymentSuccess from './pages/PaymentSuccess';
+import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import __Layout from './Layout.jsx';
 
 
@@ -148,6 +149,7 @@ export const PAGES = {
     "SubscriptionPlans": SubscriptionPlans,
     "Billing": Billing,
     "PaymentSuccess": PaymentSuccess,
+    "AdminSubscriptionManagement": AdminSubscriptionManagement,
 }
 
 export const pagesConfig = {

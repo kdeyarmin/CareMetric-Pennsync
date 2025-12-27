@@ -12,18 +12,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { plan } = await req.json();
+    // Get subscription settings
+    const settings = await base44.entities.SubscriptionSettings.list();
+    const priceId = settings[0]?.stripe_price_id;
     
-    // Get price ID based on plan
-    const priceIds = {
-      basic: Deno.env.get('STRIPE_PRICE_ID_BASIC'),
-      pro: Deno.env.get('STRIPE_PRICE_ID_PRO'),
-      enterprise: Deno.env.get('STRIPE_PRICE_ID_ENTERPRISE')
-    };
-    
-    const priceId = priceIds[plan];
     if (!priceId) {
-      return Response.json({ error: 'Invalid plan' }, { status: 400 });
+      return Response.json({ error: 'Subscription not configured' }, { status: 400 });
     }
 
     // Check if user already has a subscription
@@ -58,8 +52,10 @@ Deno.serve(async (req) => {
       success_url: `${req.headers.get('origin')}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.headers.get('origin')}/billing`,
       metadata: {
-        user_email: user.email,
-        plan: plan
+        user_email: user.email
+      },
+      subscription_data: {
+        trial_period_days: settings[0]?.trial_days || 14
       }
     });
 

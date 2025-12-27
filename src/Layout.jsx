@@ -122,6 +122,7 @@ import Breadcrumbs from "../components/navigation/Breadcrumbs";
       items: [
         { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
         { name: "User Management", icon: Users, page: "UserManagement" },
+        { name: "Subscription Management", icon: CreditCard, page: "AdminSubscriptionManagement" },
         { name: "Audit Trail", icon: Activity, page: "AuditTrail" }
       ]
     }] : [])

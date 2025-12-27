@@ -4,13 +4,13 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Crown, Zap, Building2 } from "lucide-react";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
 export default function SubscriptionPlans() {
   const navigate = useNavigate();
-  const [loadingPlan, setLoadingPlan] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -24,9 +24,17 @@ export default function SubscriptionPlans() {
     select: (data) => data[0]
   });
 
+  const { data: settings } = useQuery({
+    queryKey: ['subscriptionSettings'],
+    queryFn: async () => {
+      const result = await base44.entities.SubscriptionSettings.list();
+      return result[0];
+    }
+  });
+
   const checkoutMutation = useMutation({
-    mutationFn: async (plan) => {
-      const response = await base44.functions.invoke('createStripeCheckout', { plan });
+    mutationFn: async () => {
+      const response = await base44.functions.invoke('createStripeCheckout', {});
       return response.data;
     },
     onSuccess: (data) => {
@@ -34,170 +42,126 @@ export default function SubscriptionPlans() {
     },
     onError: (error) => {
       alert('Failed to start checkout: ' + error.message);
-      setLoadingPlan(null);
+      setIsLoading(false);
     }
   });
 
-  const handleSubscribe = (plan) => {
-    setLoadingPlan(plan);
-    checkoutMutation.mutate(plan);
+  const handleSubscribe = () => {
+    setIsLoading(true);
+    checkoutMutation.mutate();
   };
 
-  const plans = [
-    {
-      id: 'basic',
-      name: 'Basic',
-      icon: Crown,
-      price: '$29',
-      period: '/month',
-      description: 'Perfect for individual nurses',
-      features: [
-        'Up to 25 patients',
-        'AI-powered documentation',
-        'Basic compliance checking',
-        'Voice dictation',
-        'Email support'
-      ],
-      color: 'blue'
-    },
-    {
-      id: 'pro',
-      name: 'Pro',
-      icon: Zap,
-      price: '$79',
-      period: '/month',
-      description: 'For growing practices',
-      features: [
-        'Unlimited patients',
-        'Advanced AI features',
-        'Real-time compliance monitoring',
-        'Predictive analytics',
-        'Care plan automation',
-        'Priority support',
-        'OASIS integration'
-      ],
-      color: 'purple',
-      popular: true
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      icon: Building2,
-      price: '$199',
-      period: '/month',
-      description: 'For large agencies',
-      features: [
-        'Everything in Pro',
-        'Multi-user management',
-        'Custom integrations',
-        'Advanced analytics',
-        'Dedicated account manager',
-        'Custom training',
-        'SLA guarantee'
-      ],
-      color: 'indigo'
-    }
+  const hasActiveSubscription = subscription && subscription.status === 'active';
+  const monthlyPrice = settings?.monthly_price || 99;
+  const trialDays = settings?.trial_days || 14;
+  const features = settings?.features || [
+    'Unlimited patients',
+    'AI-powered documentation',
+    'Real-time compliance monitoring',
+    'Voice dictation',
+    'Predictive analytics',
+    'Care plan automation',
+    'OASIS integration',
+    'Priority support',
+    'All premium features'
   ];
 
-  const currentPlan = subscription?.plan || 'free';
-
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">Choose Your Plan</h1>
-        <p className="text-xl text-gray-600">Unlock powerful AI features for your home health practice</p>
-        {subscription && (
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">CareMetric AI Subscription</h1>
+        <p className="text-xl text-gray-600">Unlimited access to all AI-powered features</p>
+        {hasActiveSubscription && (
           <Badge className="mt-4 bg-green-600 text-lg px-4 py-2">
-            Current Plan: {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
+            ✓ Currently Subscribed
           </Badge>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-        {plans.map((plan) => {
-          const Icon = plan.icon;
-          const isCurrentPlan = currentPlan === plan.id;
-          const colorClasses = {
-            blue: 'from-blue-500 to-blue-600',
-            purple: 'from-purple-500 to-purple-600',
-            indigo: 'from-indigo-500 to-indigo-600'
-          };
+      <Card className="border-4 border-indigo-500 shadow-2xl">
+        <CardHeader className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-t-lg">
+          <div className="text-center">
+            <Sparkles className="w-16 h-16 mx-auto mb-3" />
+            <CardTitle className="text-3xl font-bold mb-2">Unlimited Plan</CardTitle>
+            <p className="text-white/90 text-lg mb-4">Everything you need to transform your practice</p>
+            <div className="text-6xl font-bold mb-2">${monthlyPrice}</div>
+            <div className="text-white/90 text-lg">/month</div>
+            <Badge className="mt-3 bg-yellow-500 text-yellow-900 px-4 py-1">
+              {trialDays}-Day Free Trial
+            </Badge>
+          </div>
+        </CardHeader>
 
-          return (
-            <Card 
-              key={plan.id}
-              className={`relative ${plan.popular ? 'border-4 border-purple-500 shadow-2xl scale-105' : 'border-2'}`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-purple-600 text-white px-6 py-1 text-sm">
-                    Most Popular
-                  </Badge>
-                </div>
-              )}
-              
-              <CardHeader className={`bg-gradient-to-br ${colorClasses[plan.color]} text-white rounded-t-lg`}>
-                <div className="text-center">
-                  <Icon className="w-12 h-12 mx-auto mb-3" />
-                  <CardTitle className="text-2xl font-bold mb-2">{plan.name}</CardTitle>
-                  <p className="text-white/90 text-sm mb-4">{plan.description}</p>
-                  <div className="text-5xl font-bold mb-1">{plan.price}</div>
-                  <div className="text-white/90">{plan.period}</div>
-                </div>
-              </CardHeader>
+        <CardContent className="p-8">
+          <div className="mb-8">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Everything Included:</h3>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {features.map((feature, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-700">{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
 
-              <CardContent className="p-6">
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span className="text-gray-700">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
+            <h4 className="font-semibold text-blue-900 mb-2">What You Get:</h4>
+            <ul className="space-y-1 text-sm text-blue-800">
+              <li>• Start with a {trialDays}-day free trial - no credit card required</li>
+              <li>• Cancel anytime, no commitments</li>
+              <li>• Full access to all features during trial</li>
+              <li>• Automatically converts to paid subscription after trial</li>
+            </ul>
+          </div>
 
-                <Button
-                  onClick={() => handleSubscribe(plan.id)}
-                  disabled={isCurrentPlan || loadingPlan === plan.id}
-                  className={`w-full ${
-                    isCurrentPlan 
-                      ? 'bg-gray-400' 
-                      : `bg-gradient-to-r ${colorClasses[plan.color]} hover:opacity-90`
-                  }`}
-                  size="lg"
-                >
-                  {loadingPlan === plan.id ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading...
-                    </>
-                  ) : isCurrentPlan ? (
-                    'Current Plan'
-                  ) : (
-                    'Subscribe Now'
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+          <Button
+            onClick={handleSubscribe}
+            disabled={hasActiveSubscription || isLoading}
+            className={`w-full ${
+              hasActiveSubscription 
+                ? 'bg-gray-400' 
+                : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700'
+            }`}
+            size="lg"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Loading...
+              </>
+            ) : hasActiveSubscription ? (
+              'Already Subscribed'
+            ) : (
+              `Start ${trialDays}-Day Free Trial`
+            )}
+          </Button>
 
-      <div className="text-center">
-        <Card className="inline-block bg-gray-50 border-2 border-dashed">
-          <CardContent className="p-6">
-            <p className="text-gray-700 mb-4">
-              Already subscribed? Manage your subscription in billing settings.
+          {!hasActiveSubscription && (
+            <p className="text-center text-sm text-gray-500 mt-4">
+              No credit card required for trial. Cancel anytime.
             </p>
-            <Button 
-              variant="outline"
-              onClick={() => navigate(createPageUrl("Billing"))}
-            >
-              Go to Billing
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {hasActiveSubscription && (
+        <div className="text-center mt-8">
+          <Card className="inline-block bg-gray-50 border-2 border-dashed">
+            <CardContent className="p-6">
+              <p className="text-gray-700 mb-4">
+                Manage your subscription and billing in settings
+              </p>
+              <Button 
+                variant="outline"
+                onClick={() => navigate(createPageUrl("Billing"))}
+              >
+                Go to Billing
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

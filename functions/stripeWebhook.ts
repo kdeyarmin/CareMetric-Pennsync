@@ -35,11 +35,11 @@ Deno.serve(async (req) => {
           user_email: session.metadata.user_email,
           stripe_customer_id: session.customer,
           stripe_subscription_id: subscription.id,
-          plan: session.metadata.plan,
           status: subscription.status,
           current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
           current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-          cancel_at_period_end: subscription.cancel_at_period_end
+          cancel_at_period_end: subscription.cancel_at_period_end,
+          monthly_amount: subscription.items.data[0].price.unit_amount / 100
         };
         
         if (existingSubs.length > 0) {
@@ -75,10 +75,27 @@ Deno.serve(async (req) => {
         
         if (existingSubs.length > 0) {
           await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, {
-            status: 'canceled',
-            plan: 'free'
+            status: 'canceled'
           });
         }
+        break;
+      }
+
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object;
+        
+        // Record payment
+        await base44.asServiceRole.entities.Payment.create({
+          user_email: invoice.customer_email,
+          stripe_payment_intent_id: invoice.payment_intent,
+          stripe_invoice_id: invoice.id,
+          amount: invoice.amount_paid / 100,
+          currency: invoice.currency,
+          status: 'succeeded',
+          payment_date: new Date(invoice.created * 1000).toISOString(),
+          period_start: new Date(invoice.period_start * 1000).toISOString(),
+          period_end: new Date(invoice.period_end * 1000).toISOString()
+        });
         break;
       }
 

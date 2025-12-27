@@ -24,16 +24,8 @@ export default function SubscriptionGate({
     select: (data) => data[0]
   });
 
-  // Plan hierarchy
-  const planHierarchy = {
-    free: 0,
-    basic: 1,
-    pro: 2,
-    enterprise: 3
-  };
-
-  const currentPlan = subscription?.plan || 'free';
-  const hasAccess = planHierarchy[currentPlan] >= planHierarchy[requiredPlan];
+  // Check if user has active subscription
+  const hasAccess = subscription && subscription.status === 'active';
 
   if (isLoading) {
     return (
@@ -56,15 +48,15 @@ export default function SubscriptionGate({
         </CardHeader>
         <CardContent>
           <p className="text-gray-700 mb-4">
-            {feature} requires a <strong className="text-orange-600">{requiredPlan}</strong> plan or higher.
+            {feature} requires an active subscription.
           </p>
           <p className="text-sm text-gray-600 mb-6">
-            Upgrade your subscription to unlock this feature and many more AI-powered tools.
+            Subscribe now to unlock all AI-powered features with unlimited usage.
           </p>
           <Link to={createPageUrl("SubscriptionPlans")}>
             <Button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700">
               <Crown className="w-4 h-4 mr-2" />
-              Upgrade Now
+              Subscribe Now
             </Button>
           </Link>
         </CardContent>

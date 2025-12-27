@@ -67,7 +67,7 @@ export default function Billing() {
     );
   }
 
-  const isFreePlan = !subscription || subscription.plan === 'free';
+  const hasSubscription = subscription && subscription.status === 'active';
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
@@ -82,21 +82,21 @@ export default function Billing() {
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Crown className="w-6 h-6 text-indigo-600" />
-              Current Plan
+              Subscription Status
             </span>
-            <Badge className={getStatusColor(subscription?.status || 'active')} variant="outline">
-              {subscription?.status || 'Free'}
+            <Badge className={getStatusColor(subscription?.status || 'inactive')} variant="outline">
+              {subscription?.status || 'No Active Subscription'}
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Plan</p>
-              <p className="text-2xl font-bold text-gray-900">{getPlanName(subscription?.plan)}</p>
-            </div>
-
-            {!isFreePlan && subscription && (
+            {hasSubscription && (
+              <>
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Monthly Amount</p>
+                  <p className="text-2xl font-bold text-gray-900">${subscription?.monthly_amount || 'N/A'}/month</p>
+                </div>
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -131,7 +131,7 @@ export default function Billing() {
             )}
 
             <div className="flex gap-3 pt-4 border-t">
-              {isFreePlan ? (
+              {!hasSubscription ? (
                 <Link to={createPageUrl("SubscriptionPlans")} className="flex-1">
                   <Button className="w-full bg-indigo-600 hover:bg-indigo-700" size="lg">
                     Upgrade to Premium
@@ -200,22 +200,23 @@ export default function Billing() {
         </CardContent>
       </Card>
 
-      {/* Plan Comparison */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Need a different plan?</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-600 mb-4">
-            Compare all available plans and features to find the best fit for your practice.
-          </p>
-          <Link to={createPageUrl("SubscriptionPlans")}>
-            <Button variant="outline">
-              View All Plans
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
+      {!hasSubscription && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Ready to get started?</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600 mb-4">
+              Subscribe now to unlock all AI-powered features with unlimited usage.
+            </p>
+            <Link to={createPageUrl("SubscriptionPlans")}>
+              <Button className="bg-indigo-600 hover:bg-indigo-700">
+                View Subscription Details
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
