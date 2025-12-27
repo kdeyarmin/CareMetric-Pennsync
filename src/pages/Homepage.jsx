@@ -53,10 +53,30 @@ export default function Homepage() {
             <p className="text-2xl md:text-3xl text-gray-700 mb-4 font-semibold">
               Your AI-Powered Clinical Documentation Assistant
             </p>
-            <p className="text-lg md:text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+            <p className="text-lg md:text-xl text-gray-600 mb-6 max-w-3xl mx-auto">
               Revolutionizing home health nursing with intelligent documentation, 
               predictive analytics, and personalized patient education
             </p>
+            
+            {/* Free Trial Banner */}
+            <div className="max-w-2xl mx-auto mb-8">
+              <Card className="border-4 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-2xl">
+                <CardContent className="p-6 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <Sparkles className="w-6 h-6 text-green-600" />
+                    <span className="text-2xl font-bold text-green-600">14-Day Free Trial</span>
+                    <Sparkles className="w-6 h-6 text-green-600" />
+                  </div>
+                  <p className="text-lg font-semibold text-gray-900 mb-2">
+                    Full Access • No Credit Card Required
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Try all premium features free for 14 days. Cancel anytime.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+            
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to={createPageUrl("Dashboard")}>
                 <Button
@@ -438,17 +458,29 @@ export default function Homepage() {
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
               Ready to Transform Your Documentation?
             </h2>
-            <p className="text-xl text-gray-600 mb-8">
+            <p className="text-xl text-gray-600 mb-6">
               Join nurses who are saving time, reducing stress, and improving patient outcomes
             </p>
-            <Link to={createPageUrl("Dashboard")}>
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
-                  Get Started Now
-                  <ArrowRight className="w-5 h-5 ml-2" />
-                </Button>
-            </Link>
+            
+            {/* Trial CTA Badge */}
+            <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-6 py-3 rounded-full mb-6 border-2 border-green-300">
+              <Clock className="w-5 h-5" />
+              <span className="font-bold">14-Day Free Trial • No Credit Card Required</span>
+            </div>
+            
+            <div>
+              <Link to={createPageUrl("Dashboard")}>
+                <Button
+                  size="lg"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
+                    Start Free Trial
+                    <ArrowRight className="w-5 h-5 ml-2" />
+                  </Button>
+              </Link>
+              <p className="text-sm text-gray-500 mt-3">
+                No commitment • Cancel anytime • Full access to all features
+              </p>
+            </div>
           </CardContent>
         </Card>
       </section>
