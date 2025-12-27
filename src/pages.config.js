@@ -72,6 +72,7 @@ import SubscriptionPlans from './pages/SubscriptionPlans';
 import Billing from './pages/Billing';
 import PaymentSuccess from './pages/PaymentSuccess';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
+import Pricing from './pages/Pricing';
 import __Layout from './Layout.jsx';
 
 
@@ -150,6 +151,7 @@ export const PAGES = {
     "Billing": Billing,
     "PaymentSuccess": PaymentSuccess,
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
+    "Pricing": Pricing,
 }
 
 export const pagesConfig = {

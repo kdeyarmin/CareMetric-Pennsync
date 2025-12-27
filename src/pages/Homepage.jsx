@@ -25,7 +25,8 @@ import {
   Zap,
   Home,
   Award,
-  Lightbulb
+  Lightbulb,
+  DollarSign
 } from "lucide-react";
 import ProspectChatbot from "../components/marketing/ProspectChatbot";
 
@@ -86,10 +87,10 @@ export default function Homepage() {
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
               </Link>
-              <Link to={createPageUrl("Features")}>
+              <Link to={createPageUrl("Pricing")}>
                 <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-2">
-                  Explore Features
-                  <Sparkles className="w-5 h-5 ml-2" />
+                  View Pricing
+                  <DollarSign className="w-5 h-5 ml-2" />
                 </Button>
               </Link>
             </div>
