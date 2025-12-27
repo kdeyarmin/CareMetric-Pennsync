@@ -62,17 +62,55 @@ Deno.serve(async (req) => {
           .replace(/\s+/g, ' ')
           .trim();
 
+        // Use AI to generate summary and extract key points
+        let aiSummary = content.substring(0, 200) + '...';
+        let keyPoints = [];
+        let keywords = ['CMS', 'Medicare', 'Home Health'];
+        
+        try {
+          const aiResponse = await base44.integrations.Core.InvokeLLM({
+            prompt: `Analyze this Medicare/CMS Home Health guideline and provide:
+1. A concise 2-3 sentence summary
+2. 5-7 key points that nurses need to know
+3. 5-8 relevant keywords/tags
+
+Guideline Title: ${title}
+Content: ${content.substring(0, 3000)}`,
+            response_json_schema: {
+              type: "object",
+              properties: {
+                summary: { type: "string" },
+                key_points: { 
+                  type: "array", 
+                  items: { type: "string" }
+                },
+                keywords: {
+                  type: "array",
+                  items: { type: "string" }
+                }
+              }
+            }
+          });
+          
+          if (aiResponse.summary) aiSummary = aiResponse.summary;
+          if (aiResponse.key_points) keyPoints = aiResponse.key_points;
+          if (aiResponse.keywords) keywords = aiResponse.keywords;
+        } catch (error) {
+          console.error('AI summary failed, using fallback:', error);
+        }
+
         guidelines.push({
           title,
           url: url,
           source_url: url,
           content_markdown: content.substring(0, 5000),
-          summary: content.substring(0, 200) + '...',
+          summary: aiSummary,
+          key_points: keyPoints,
           category: 'clinical_documentation',
           effective_date: new Date().toISOString().split('T')[0],
           last_fetched_date: new Date().toISOString(),
           is_active: true,
-          keywords: ['CMS', 'Medicare', 'Home Health']
+          keywords: keywords
         });
 
         successCount++;
@@ -95,6 +133,8 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.MedicareGuideline.update(existing[0].id, {
             content_markdown: guideline.content_markdown,
             summary: guideline.summary,
+            key_points: guideline.key_points,
+            keywords: guideline.keywords,
             last_fetched_date: guideline.last_fetched_date
           });
         } else {
