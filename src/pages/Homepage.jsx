@@ -5,6 +5,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Brain,
   Sparkles,
@@ -21,8 +22,11 @@ import {
   ArrowRight,
   Stethoscope,
   Activity,
-  Zap } from
-"lucide-react";
+  Zap,
+  Home,
+  Award,
+  Lightbulb
+} from "lucide-react";
 
 export default function Homepage() {
   const { data: currentUser } = useQuery({
@@ -41,7 +45,6 @@ export default function Homepage() {
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                 alt="CareMetric AI Logo"
                 className="w-20 h-20 object-contain" />
-
               <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 CareMetric AI
               </h1>
@@ -58,7 +61,7 @@ export default function Homepage() {
                 <Button
                   size="lg"
                   className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6">
-                    Sign Up
+                    Get Started
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
               </Link>
@@ -74,7 +77,7 @@ export default function Homepage() {
       </section>
 
       {/* Key Stats */}
-      <section className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
+      <section className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="border-2 border-green-200 bg-white/80 backdrop-blur">
             <CardContent className="p-6 text-center">
@@ -100,295 +103,330 @@ export default function Homepage() {
         </div>
       </section>
 
-      {/* Core Features */}
-      <section className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Everything You Need for Clinical Excellence
-          </h2>
-          <p className="text-xl text-gray-600">
-            Comprehensive tools designed specifically for home health nurses
-          </p>
-        </div>
+      {/* Main Content Tabs */}
+      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        <Tabs defaultValue="features" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 mb-8 h-auto bg-white/80 backdrop-blur">
+            <TabsTrigger value="features" className="text-base py-3 data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <FileText className="w-4 h-4 mr-2" />
+              Features
+            </TabsTrigger>
+            <TabsTrigger value="benefits" className="text-base py-3 data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <Award className="w-4 h-4 mr-2" />
+              Benefits
+            </TabsTrigger>
+            <TabsTrigger value="how-it-works" className="text-base py-3 data-[state=active]:bg-green-600 data-[state=active]:text-white">
+              <Lightbulb className="w-4 h-4 mr-2" />
+              How It Works
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Feature Cards */}
-          <Card className="border-2 border-blue-200 hover:shadow-xl transition-shadow bg-white">
-            <CardHeader>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
-                <Brain className="w-6 h-6 text-blue-600" />
-              </div>
-              <CardTitle className="text-xl">AI Smart Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                Transform rough notes into Medicare-compliant documentation in seconds. AI enhances clarity, completeness, and compliance.
-              </p>
-              <ul className="text-sm text-gray-700 space-y-2">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Real-time compliance checking</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Voice dictation support</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Automated quality scoring</span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-purple-200 hover:shadow-xl transition-shadow bg-white">
-            <CardHeader>
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
-                <Activity className="w-6 h-6 text-purple-600" />
-              </div>
-              <CardTitle className="text-xl">Patient Analytics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                AI-powered risk prediction and outcome tracking to identify patients who need extra attention.
-              </p>
-              <ul className="text-sm text-gray-700 space-y-2">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Readmission risk scoring</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Fall prevention tracking</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Outcome trend analysis</span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-green-200 hover:shadow-xl transition-shadow bg-white">
-            <CardHeader>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-3">
-                <Target className="w-6 h-6 text-green-600" />
-              </div>
-              <CardTitle className="text-xl">Care Plan Management</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                AI generates personalized care plans based on diagnosis, patient history, and best practices.
-              </p>
-              <ul className="text-sm text-gray-700 space-y-2">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Auto-generated interventions</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Progress tracking</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Goal achievement analytics</span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-orange-200 hover:shadow-xl transition-shadow bg-white">
-            <CardHeader>
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-3">
-                <BookOpen className="w-6 h-6 text-orange-600" />
-              </div>
-              <CardTitle className="text-xl">Patient Education</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                Generate personalized education materials tailored to each patient's conditions and learning needs.
-              </p>
-              <ul className="text-sm text-gray-700 space-y-2">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Simplified explanations</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Custom handouts</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Teach-back prompts</span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-indigo-200 hover:shadow-xl transition-shadow bg-white">
-            <CardHeader>
-              <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-3">
-                <Shield className="w-6 h-6 text-indigo-600" />
-              </div>
-              <CardTitle className="text-xl">Compliance Monitoring</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                Real-time Medicare compliance checking and proactive regulatory alerts keep you audit-ready.
-              </p>
-              <ul className="text-sm text-gray-700 space-y-2">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Automated auditing</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Regulatory updates</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Quality scoring</span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 border-pink-200 hover:shadow-xl transition-shadow bg-white">
-            <CardHeader>
-              <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mb-3">
-                <Stethoscope className="w-6 h-6 text-pink-600" />
-              </div>
-              <CardTitle className="text-xl">Clinical Decision Support</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                AI analyzes patient data to provide evidence-based recommendations and early warning alerts.
-              </p>
-              <ul className="text-sm text-gray-700 space-y-2">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Medication interaction alerts</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Deterioration prediction</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>Evidence-based guidance</span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      {/* Benefits Section */}
-      <section className="bg-gradient-to-r from-blue-600 to-purple-600 py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Why Nurses Love CareMetric AI
-            </h2>
-            <p className="text-xl text-blue-100">
-              Designed by nurses, for nurses
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <Clock className="w-10 h-10 text-white mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Save Time</h3>
-              <p className="text-blue-100">
-                Reduce documentation time by up to 70%, giving you more time for patient care
+          {/* Features Tab */}
+          <TabsContent value="features" className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-4xl font-bold text-gray-900 mb-4">
+                Everything You Need for Clinical Excellence
+              </h2>
+              <p className="text-xl text-gray-600">
+                Comprehensive tools designed specifically for home health nurses
               </p>
             </div>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <Zap className="w-10 h-10 text-white mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Reduce Stress</h3>
-              <p className="text-blue-100">
-                Eliminate compliance anxiety with automated checks and real-time guidance
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Card className="border-2 border-blue-200 hover:shadow-xl transition-shadow bg-white">
+                <CardHeader>
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
+                    <Brain className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <CardTitle className="text-xl">AI Smart Notes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 mb-4">
+                    Transform rough notes into Medicare-compliant documentation in seconds. AI enhances clarity, completeness, and compliance.
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Real-time compliance checking</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Voice dictation support</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Automated quality scoring</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 border-purple-200 hover:shadow-xl transition-shadow bg-white">
+                <CardHeader>
+                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
+                    <Activity className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <CardTitle className="text-xl">Patient Analytics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 mb-4">
+                    AI-powered risk prediction and outcome tracking to identify patients who need extra attention.
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Readmission risk scoring</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Fall prevention tracking</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Outcome trend analysis</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 border-green-200 hover:shadow-xl transition-shadow bg-white">
+                <CardHeader>
+                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-3">
+                    <Target className="w-6 h-6 text-green-600" />
+                  </div>
+                  <CardTitle className="text-xl">Care Plan Management</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 mb-4">
+                    AI generates personalized care plans based on diagnosis, patient history, and best practices.
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Auto-generated interventions</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Progress tracking</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Goal achievement analytics</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 border-orange-200 hover:shadow-xl transition-shadow bg-white">
+                <CardHeader>
+                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-3">
+                    <BookOpen className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <CardTitle className="text-xl">Patient Education</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 mb-4">
+                    Generate personalized education materials tailored to each patient's conditions and learning needs.
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Simplified explanations</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Custom handouts</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Teach-back prompts</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 border-indigo-200 hover:shadow-xl transition-shadow bg-white">
+                <CardHeader>
+                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-3">
+                    <Shield className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <CardTitle className="text-xl">Compliance Monitoring</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 mb-4">
+                    Real-time Medicare compliance checking and proactive regulatory alerts keep you audit-ready.
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Automated auditing</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Regulatory updates</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Quality scoring</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 border-pink-200 hover:shadow-xl transition-shadow bg-white">
+                <CardHeader>
+                  <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mb-3">
+                    <Stethoscope className="w-6 h-6 text-pink-600" />
+                  </div>
+                  <CardTitle className="text-xl">Clinical Decision Support</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 mb-4">
+                    AI analyzes patient data to provide evidence-based recommendations and early warning alerts.
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-2">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Medication interaction alerts</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Deterioration prediction</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>Evidence-based guidance</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Benefits Tab */}
+          <TabsContent value="benefits" className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-4xl font-bold text-gray-900 mb-4">
+                Why Nurses Love CareMetric AI
+              </h2>
+              <p className="text-xl text-gray-600">
+                Designed by nurses, for nurses
               </p>
             </div>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <TrendingUp className="w-10 h-10 text-white mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Improve Outcomes</h3>
-              <p className="text-blue-100">
-                Predictive analytics help prevent adverse events and readmissions
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6">
+                  <Clock className="w-10 h-10 text-blue-600 mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Save Time</h3>
+                  <p className="text-gray-600">
+                    Reduce documentation time by up to 70%, giving you more time for patient care
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6">
+                  <Zap className="w-10 h-10 text-purple-600 mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Reduce Stress</h3>
+                  <p className="text-gray-600">
+                    Eliminate compliance anxiety with automated checks and real-time guidance
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6">
+                  <TrendingUp className="w-10 h-10 text-green-600 mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Improve Outcomes</h3>
+                  <p className="text-gray-600">
+                    Predictive analytics help prevent adverse events and readmissions
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6">
+                  <Heart className="w-10 h-10 text-red-600 mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Better Patient Care</h3>
+                  <p className="text-gray-600">
+                    Personalized education and care plans improve patient engagement
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6">
+                  <BarChart3 className="w-10 h-10 text-indigo-600 mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Data-Driven Insights</h3>
+                  <p className="text-gray-600">
+                    Track outcomes, identify trends, and continuously improve care quality
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6">
+                  <Users className="w-10 h-10 text-orange-600 mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Easy Collaboration</h3>
+                  <p className="text-gray-600">
+                    Seamless team coordination and comprehensive patient tracking
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* How It Works Tab */}
+          <TabsContent value="how-it-works" className="space-y-6">
+            <div className="text-center mb-12">
+              <h2 className="text-4xl font-bold text-gray-900 mb-4">
+                Simple, Powerful, Effective
+              </h2>
+              <p className="text-xl text-gray-600">
+                Get started in minutes, master in days
               </p>
             </div>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <Heart className="w-10 h-10 text-white mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Better Patient Care</h3>
-              <p className="text-blue-100">
-                Personalized education and care plans improve patient engagement
-              </p>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6 text-center">
+                  <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+                    1
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Document Your Visit</h3>
+                  <p className="text-gray-600">
+                    Use voice dictation or type rough notes during or after your patient visit
+                  </p>
+                </CardContent>
+              </Card>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <BarChart3 className="w-10 h-10 text-white mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Data-Driven Insights</h3>
-              <p className="text-blue-100">
-                Track outcomes, identify trends, and continuously improve care quality
-              </p>
-            </div>
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6 text-center">
+                  <div className="w-16 h-16 bg-purple-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+                    2
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">AI Enhances & Validates</h3>
+                  <p className="text-gray-600">
+                    AI transforms your notes into compliant documentation and checks for quality
+                  </p>
+                </CardContent>
+              </Card>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-              <Users className="w-10 h-10 text-white mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Easy Collaboration</h3>
-              <p className="text-blue-100">
-                Seamless team coordination and comprehensive patient tracking
-              </p>
+              <Card className="border-2 hover:shadow-xl transition-shadow bg-white">
+                <CardContent className="p-6 text-center">
+                  <div className="w-16 h-16 bg-green-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+                    3
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Review & Submit</h3>
+                  <p className="text-gray-600">
+                    Quick review, make any adjustments, and submit with confidence
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Simple, Powerful, Effective
-          </h2>
-          <p className="text-xl text-gray-600">
-            Get started in minutes, master in days
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
-              1
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Document Your Visit</h3>
-            <p className="text-gray-600">
-              Use voice dictation or type rough notes during or after your patient visit
-            </p>
-          </div>
-
-          <div className="text-center">
-            <div className="w-16 h-16 bg-purple-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
-              2
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">AI Enhances & Validates</h3>
-            <p className="text-gray-600">
-              AI transforms your notes into compliant documentation and checks for quality
-            </p>
-          </div>
-
-          <div className="text-center">
-            <div className="w-16 h-16 bg-green-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
-              3
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Review & Submit</h3>
-            <p className="text-gray-600">
-              Quick review, make any adjustments, and submit with confidence
-            </p>
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
       </section>
 
       {/* CTA Section */}
@@ -396,8 +434,8 @@ export default function Homepage() {
         <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-purple-50">
           <CardContent className="p-12 text-center">
             <Sparkles className="w-16 h-16 text-purple-600 mx-auto mb-4" />
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Ready to Transform how you document?
-
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Ready to Transform Your Documentation?
             </h2>
             <p className="text-xl text-gray-600 mb-8">
               Join nurses who are saving time, reducing stress, and improving patient outcomes
@@ -406,7 +444,7 @@ export default function Homepage() {
               <Button
                 size="lg"
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
-                  Sign Up
+                  Get Started Now
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
             </Link>
@@ -424,7 +462,6 @@ export default function Homepage() {
                   src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                   alt="CareMetric AI Logo"
                   className="w-10 h-10 object-contain" />
-
                 <span className="text-xl font-bold">CareMetric AI</span>
               </div>
               <p className="text-gray-400">
@@ -469,6 +506,6 @@ export default function Homepage() {
           </div>
         </div>
       </footer>
-    </div>);
-
+    </div>
+  );
 }
