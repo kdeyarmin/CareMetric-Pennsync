@@ -421,6 +421,189 @@ export default function About() {
           </CardContent>
         </Card>
 
+        {/* Legal Documents Section */}
+        <div className="space-y-6">
+          <div className="text-center mb-8">
+            <h2 className="text-4xl font-bold text-gray-900 mb-3">Legal & Compliance</h2>
+            <p className="text-lg text-gray-600">Our commitment to security, privacy, and compliance</p>
+          </div>
+
+          {/* Terms of Use */}
+          <Card className="border-2 border-gray-200">
+            <CardHeader className="bg-blue-600 text-white">
+              <CardTitle className="text-2xl flex items-center gap-3">
+                <FileText className="w-8 h-8" />
+                Terms of Use
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <p className="text-sm text-gray-500 mb-4">
+                <strong>Effective Date:</strong> December 27, 2025 | <strong>Last Updated:</strong> December 27, 2025
+              </p>
+              
+              <div className="prose max-w-none text-gray-700 space-y-3">
+                <p>These Terms of Use constitute a legally binding agreement between you and CareMetric AI, LLC governing your use of the CareMetric AI platform and services.</p>
+                
+                <p>CareMetric AI provides artificial intelligence tools to assist healthcare professionals in drafting and enhancing clinical documentation. The Service is intended to support efficiency only and does not replace professional clinical judgment.</p>
+                
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 my-4">
+                  <p className="font-semibold text-yellow-800">Important Acknowledgments:</p>
+                  <ul className="list-disc ml-6 mt-2 space-y-1 text-yellow-900">
+                    <li>The Service uses artificial intelligence and outputs may contain errors, omissions, or inaccuracies</li>
+                    <li>You accept all risks associated with reliance on AI-generated content</li>
+                    <li>Every AI-generated note must be personally reviewed, edited, and approved by you before submission</li>
+                    <li>You remain solely responsible for all documentation</li>
+                  </ul>
+                </div>
+                
+                <p>The Service does not provide medical, legal, or billing advice and is not a medical device.</p>
+                
+                <p>You agree to comply with all applicable laws including HIPAA, HITECH, and state regulations.</p>
+                
+                <p>If Protected Health Information (PHI) is used, a Business Associate Agreement must be executed prior to use.</p>
+                
+                <p className="font-semibold">Disclaimers & Limitations:</p>
+                <ul className="list-disc ml-6 space-y-1">
+                  <li>The Service is provided 'as is' without warranties</li>
+                  <li>CareMetric AI disclaims all implied warranties</li>
+                  <li>CareMetric AI shall not be liable for indirect or consequential damages</li>
+                  <li>Liability is limited to fees paid in the prior 12 months</li>
+                </ul>
+                
+                <p>You agree to indemnify CareMetric AI for claims arising from your use of the Service.</p>
+                
+                <p className="text-sm text-gray-600 mt-4">
+                  <strong>Contact:</strong> support@caremetricai.com
+                </p>
+              </div>
+              
+              <div className="pt-4 border-t">
+                <a 
+                  href="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/3e29f0f2b_CareMetric_AI_Terms_of_Use1.pdf" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2"
+                >
+                  <FileText className="w-4 h-4" />
+                  Download Full Terms of Use (PDF)
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Business Associate Agreement */}
+          <Card className="border-2 border-gray-200">
+            <CardHeader className="bg-purple-600 text-white">
+              <CardTitle className="text-2xl flex items-center gap-3">
+                <Shield className="w-8 h-8" />
+                Business Associate Agreement (BAA)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <p className="text-sm text-gray-500 mb-4">
+                <strong>Effective Date:</strong> December 27, 2025
+              </p>
+              
+              <div className="prose max-w-none text-gray-700 space-y-3">
+                <p>This Business Associate Agreement (BAA) is entered into between CareMetric AI, LLC and the Covered Entity.</p>
+                
+                <p>This BAA is intended to comply with HIPAA and HITECH requirements regarding the protection of Protected Health Information (PHI).</p>
+                
+                <p className="font-semibold">Key Commitments:</p>
+                <ul className="list-disc ml-6 space-y-2">
+                  <li>Business Associate agrees to use and disclose PHI only as permitted by this Agreement or as required by law</li>
+                  <li>Implement appropriate safeguards to prevent use or disclosure of PHI other than as permitted</li>
+                  <li>Report to Covered Entity any use or disclosure of PHI not provided for by this Agreement, including breaches of unsecured PHI</li>
+                  <li>Ensure that any subcontractors agree to the same restrictions and conditions</li>
+                  <li>Make PHI available for access and amendment as required by HIPAA</li>
+                  <li>Make internal practices available to the Secretary of HHS upon request</li>
+                  <li>Upon termination, return or destroy all PHI if feasible</li>
+                </ul>
+                
+                <div className="bg-green-50 border-l-4 border-green-400 p-4 my-4">
+                  <p className="font-semibold text-green-800">HIPAA Compliance Commitment</p>
+                  <p className="text-green-900 mt-2">
+                    CareMetric AI is committed to maintaining the highest standards of data protection and HIPAA compliance. 
+                    We implement administrative, physical, and technical safeguards to protect all Protected Health Information.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t">
+                <a 
+                  href="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/66f812e1a_CareMetric_AI_BAA.pdf" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-purple-600 hover:text-purple-800 font-medium flex items-center gap-2"
+                >
+                  <Shield className="w-4 h-4" />
+                  Download Full BAA (PDF)
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Privacy Policy */}
+          <Card className="border-2 border-gray-200">
+            <CardHeader className="bg-green-600 text-white">
+              <CardTitle className="text-2xl flex items-center gap-3">
+                <Users className="w-8 h-8" />
+                Privacy Policy
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <p className="text-sm text-gray-500 mb-4">
+                <strong>Effective Date:</strong> December 27, 2025 | <strong>Last Updated:</strong> December 27, 2025
+              </p>
+              
+              <div className="prose max-w-none text-gray-700 space-y-3">
+                <p>This Privacy Policy describes how CareMetric AI, LLC collects, uses, and protects your information.</p>
+                
+                <p className="font-semibold">Information Collection & Use:</p>
+                <ul className="list-disc ml-6 space-y-2">
+                  <li>We collect information you provide directly, including account details and any data entered into the Service</li>
+                  <li>If PHI is submitted under a valid BAA, we use it solely to provide the Service and as permitted by law</li>
+                  <li>We implement administrative, physical, and technical safeguards to protect data</li>
+                </ul>
+                
+                <p className="font-semibold">Your Privacy Rights:</p>
+                <ul className="list-disc ml-6 space-y-2">
+                  <li><strong>No Sale of Data:</strong> We do not sell your personal information</li>
+                  <li><strong>Limited Sharing:</strong> We may share information with service providers who assist in operating the Service, subject to confidentiality obligations</li>
+                  <li><strong>Access & Control:</strong> You may request access, correction, or deletion of your information where permitted by law</li>
+                  <li><strong>Data Retention:</strong> We retain information only as long as necessary to provide the Service or comply with legal obligations</li>
+                </ul>
+                
+                <div className="bg-blue-50 border-l-4 border-blue-400 p-4 my-4">
+                  <p className="font-semibold text-blue-800">Your Data, Your Control</p>
+                  <p className="text-blue-900 mt-2">
+                    We are committed to transparency and giving you control over your data. 
+                    Contact us anytime to exercise your privacy rights or ask questions about how we handle your information.
+                  </p>
+                </div>
+                
+                <p>We may update this Privacy Policy from time to time. Continued use constitutes acceptance.</p>
+                
+                <p className="text-sm text-gray-600 mt-4">
+                  <strong>Contact:</strong> support@caremetricai.com for privacy questions
+                </p>
+              </div>
+              
+              <div className="pt-4 border-t">
+                <a 
+                  href="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/739d2eba9_CareMetric_AI_Privacy_Policy.pdf" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-green-600 hover:text-green-800 font-medium flex items-center gap-2"
+                >
+                  <FileText className="w-4 h-4" />
+                  Download Full Privacy Policy (PDF)
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Footer CTA */}
         <div className="text-center py-12 space-y-4">
           <h2 className="text-4xl font-bold text-gray-900">
