@@ -200,7 +200,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Floating Buttons ================= */}
       <div
-        className="fixed z-50 flex gap-4 px-4 lg:hidden pointer-events-none right-0"
+        className="fixed z-50 flex gap-10 px-4 lg:hidden pointer-events-none right-0"
         style={{ bottom: MOBILE_FAB_OFFSET }}
       >
         <div className="pointer-events-auto">
