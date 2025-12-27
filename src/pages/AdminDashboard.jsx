@@ -656,14 +656,7 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </Link>
-            <Link to={createPageUrl("ComplianceCenter")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-purple-200">
-                <CardContent className="p-4 text-center">
-                  <Shield className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                  <p className="font-medium">Compliance</p>
-                </CardContent>
-              </Card>
-            </Link>
+
             <Link to={createPageUrl("AuditTrail")}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-orange-200">
                 <CardContent className="p-4 text-center">
