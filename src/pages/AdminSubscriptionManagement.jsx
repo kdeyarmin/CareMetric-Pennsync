@@ -14,8 +14,14 @@ export default function AdminSubscriptionManagement() {
   const queryClient = useQueryClient();
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({
-    monthly_price: 99,
-    stripe_price_id: '',
+    monthly_price: 39.99,
+    stripe_monthly_price_id: '',
+    quarterly_price: 99,
+    stripe_quarterly_price_id: '',
+    biannual_price: 210,
+    stripe_biannual_price_id: '',
+    yearly_price: 350,
+    stripe_yearly_price_id: '',
     trial_days: 14,
     features: []
   });
@@ -158,7 +164,7 @@ export default function AdminSubscriptionManagement() {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Settings className="w-5 h-5" />
-              Subscription Configuration
+              Subscription Plans & Pricing
             </CardTitle>
             <Button
               onClick={() => editMode ? handleSaveSettings() : setEditMode(true)}
@@ -170,42 +176,121 @@ export default function AdminSubscriptionManagement() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <Label>Monthly Price ($)</Label>
-                <Input
-                  type="number"
-                  value={formData.monthly_price}
-                  onChange={(e) => setFormData({...formData, monthly_price: parseFloat(e.target.value)})}
-                  disabled={!editMode}
-                  className="text-2xl font-bold"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Monthly Plan */}
+              <div className="border rounded-lg p-4 space-y-3 bg-gray-50">
+                <h3 className="font-semibold text-center">Monthly Plan</h3>
+                <div>
+                  <Label className="text-xs">Price ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.monthly_price}
+                    onChange={(e) => setFormData({...formData, monthly_price: parseFloat(e.target.value)})}
+                    disabled={!editMode}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Stripe Price ID</Label>
+                  <Input
+                    value={formData.stripe_monthly_price_id || ''}
+                    onChange={(e) => setFormData({...formData, stripe_monthly_price_id: e.target.value})}
+                    disabled={!editMode}
+                    placeholder="price_xxxxx"
+                    className="text-xs"
+                  />
+                </div>
               </div>
 
-              <div>
-                <Label>Trial Period (days)</Label>
-                <Input
-                  type="number"
-                  value={formData.trial_days}
-                  onChange={(e) => setFormData({...formData, trial_days: parseInt(e.target.value)})}
-                  disabled={!editMode}
-                />
+              {/* 3-Month Plan */}
+              <div className="border rounded-lg p-4 space-y-3 bg-gray-50">
+                <h3 className="font-semibold text-center">3-Month Plan</h3>
+                <div>
+                  <Label className="text-xs">Price ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.quarterly_price}
+                    onChange={(e) => setFormData({...formData, quarterly_price: parseFloat(e.target.value)})}
+                    disabled={!editMode}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Stripe Price ID</Label>
+                  <Input
+                    value={formData.stripe_quarterly_price_id || ''}
+                    onChange={(e) => setFormData({...formData, stripe_quarterly_price_id: e.target.value})}
+                    disabled={!editMode}
+                    placeholder="price_xxxxx"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* 6-Month Plan */}
+              <div className="border rounded-lg p-4 space-y-3 bg-gray-50">
+                <h3 className="font-semibold text-center">6-Month Plan</h3>
+                <div>
+                  <Label className="text-xs">Price ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.biannual_price}
+                    onChange={(e) => setFormData({...formData, biannual_price: parseFloat(e.target.value)})}
+                    disabled={!editMode}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Stripe Price ID</Label>
+                  <Input
+                    value={formData.stripe_biannual_price_id || ''}
+                    onChange={(e) => setFormData({...formData, stripe_biannual_price_id: e.target.value})}
+                    disabled={!editMode}
+                    placeholder="price_xxxxx"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Annual Plan */}
+              <div className="border rounded-lg p-4 space-y-3 bg-gray-50">
+                <h3 className="font-semibold text-center">Annual Plan</h3>
+                <div>
+                  <Label className="text-xs">Price ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.yearly_price}
+                    onChange={(e) => setFormData({...formData, yearly_price: parseFloat(e.target.value)})}
+                    disabled={!editMode}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Stripe Price ID</Label>
+                  <Input
+                    value={formData.stripe_yearly_price_id || ''}
+                    onChange={(e) => setFormData({...formData, stripe_yearly_price_id: e.target.value})}
+                    disabled={!editMode}
+                    placeholder="price_xxxxx"
+                    className="text-xs"
+                  />
+                </div>
               </div>
             </div>
 
             <div>
-              <Label>Stripe Price ID</Label>
+              <Label>Trial Period (days)</Label>
               <Input
-                value={formData.stripe_price_id}
-                onChange={(e) => setFormData({...formData, stripe_price_id: e.target.value})}
+                type="number"
+                value={formData.trial_days}
+                onChange={(e) => setFormData({...formData, trial_days: parseInt(e.target.value)})}
                 disabled={!editMode}
-                placeholder="price_xxxxx"
+                className="max-w-xs"
               />
-              <p className="text-xs text-gray-500 mt-1">Create this in your Stripe Dashboard</p>
             </div>
 
             <div>
-              <Label>Included Features</Label>
+              <Label>Included Features (All Plans)</Label>
               {editMode && (
                 <div className="flex gap-2 mb-3">
                   <Input
