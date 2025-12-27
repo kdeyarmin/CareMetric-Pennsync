@@ -25,7 +25,8 @@ import {
   Clock,
   BookOpen,
   Activity,
-  CreditCard
+  CreditCard,
+  Shield
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
