@@ -90,23 +90,18 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
   }, [currentUser?.email]);
 
   const navCategories = [
-    {
-      category: "",
-      items: [
-        { name: "Home", icon: Home, page: "Homepage" },
-        { name: "Dashboard", icon: Home, page: "Dashboard" },
-        { name: "My Patients", icon: Users, page: "Patients" }
-      ]
-    },
-    {
-      category: "Clinical Work",
-      items: [
-        { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
-        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-        { name: "Patient Alerts", icon: Bell, page: "PatientAlerts" },
-        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
-      ]
-    },
+      {
+        category: "",
+        items: [
+          { name: "My Patients", icon: Users, page: "Patients" }
+        ]
+      },
+      {
+        category: "Clinical Work",
+        items: [
+          { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
+        ]
+      },
     {
       category: "Resources",
       items: [
@@ -427,7 +422,7 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       )}
 
       {/* Main Content */}
-      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 min-h-screen" style={{backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
+      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 pb-20 min-h-screen" style={{backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
         <div className="p-4 lg:p-6">
           <Breadcrumbs currentPageName={currentPageName} />
           {children}
@@ -443,6 +438,56 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       {/* Mobile Quick Access Menu */}
       <MobileQuickAccessMenu />
 
+      {/* Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-lg safe-bottom print:hidden">
+        <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
+          <Link
+            to={createPageUrl("Dashboard")}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              isActive("Dashboard") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Home className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Dashboard</span>
+          </Link>
+          <Link
+            to={createPageUrl("SmartNoteAssistant")}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              isActive("SmartNoteAssistant") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Brain className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Smart Notes</span>
+          </Link>
+          <Link
+            to={createPageUrl("CarePlanManagement")}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              isActive("CarePlanManagement") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Target className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Care Plans</span>
+          </Link>
+          <Link
+            to={createPageUrl("PatientAlerts")}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              isActive("PatientAlerts") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Bell className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Alerts</span>
+          </Link>
+          <Link
+            to={createPageUrl("Settings")}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              isActive("Settings") ? "text-blue-600" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <User className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Profile</span>
+          </Link>
+        </div>
+      </nav>
 
       </div>
       );
