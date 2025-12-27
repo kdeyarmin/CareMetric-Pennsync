@@ -626,6 +626,14 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </Link>
+            <Link to={createPageUrl("Test2FA")}>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-red-200">
+                <CardContent className="p-4 text-center">
+                  <Shield className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                  <p className="font-medium">Test 2FA</p>
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </TabsContent>
 
