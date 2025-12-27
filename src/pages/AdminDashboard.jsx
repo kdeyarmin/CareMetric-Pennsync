@@ -1061,7 +1061,12 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
-        {/* Performance Tab */}
+        {/* AI Feedback Tab */}
+        <TabsContent value="ai-feedback" className="space-y-6">
+          <AIFeedbackAnalytics />
+        </TabsContent>
+
+        {/* Performance Tab - Individual Nurse Performance */}
         <TabsContent value="performance" className="space-y-6">
           <Card>
             <CardHeader>
@@ -1101,10 +1106,6 @@ export default function AdminDashboard() {
         </TabsContent>
 
         {/* Activity Tab */}
-        <TabsContent value="ai-feedback" className="space-y-6">
-          <AIFeedbackAnalytics />
-        </TabsContent>
-
         <TabsContent value="activity" className="space-y-6">
           <Card>
             <CardHeader>
