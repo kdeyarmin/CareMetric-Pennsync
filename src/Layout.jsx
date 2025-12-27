@@ -423,7 +423,7 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       )}
 
       {/* Main Content */}
-      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 pb-36 min-h-screen" style={{backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
+      <main className="flex-1 lg:overflow-auto pt-16 lg:pt-0 pb-20 min-h-screen" style={{backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
         <div className="p-4 lg:p-6">
           {children}
         </div>
@@ -433,12 +433,12 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
       <OfflineIndicator />
 
       {/* AI Chat Assistant */}
-      <div className="fixed bottom-28 right-4 z-50">
+      <div className="fixed bottom-20 right-4 z-50">
         {currentUser && <AIChatAssistant />}
       </div>
 
       {/* Mobile Quick Access Menu */}
-      <div className="fixed bottom-28 right-20 z-50">
+      <div className="fixed bottom-20 right-20 z-50">
         <MobileQuickAccessMenu />
       </div>
 
