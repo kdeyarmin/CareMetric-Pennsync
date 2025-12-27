@@ -35,7 +35,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Sparkles
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -46,6 +47,9 @@ export default function MedicareGuidelinesLibrary() {
   const [selectedGuideline, setSelectedGuideline] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [useSemanticSearch, setUseSemanticSearch] = useState(false);
+  const [semanticResults, setSemanticResults] = useState(null);
+  const [searchInterpretation, setSearchInterpretation] = useState("");
 
   // Form state for adding new guideline
   const [newGuidelineUrl, setNewGuidelineUrl] = useState("");
@@ -105,6 +109,17 @@ export default function MedicareGuidelinesLibrary() {
     },
   });
 
+  const semanticSearchMutation = useMutation({
+    mutationFn: async (query) => {
+      const response = await base44.functions.invoke('semanticSearchGuidelines', { query });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setSemanticResults(data.results);
+      setSearchInterpretation(data.interpretation || '');
+    },
+  });
+
   const handleAddGuideline = () => {
     const keywordsArray = newGuidelineKeywords
       .split(',')
@@ -121,16 +136,29 @@ export default function MedicareGuidelinesLibrary() {
     });
   };
 
-  const filteredGuidelines = guidelines.filter(guideline => {
-    const matchesSearch = searchTerm === "" || 
-      guideline.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      guideline.summary?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      guideline.keywords?.some(k => k.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesCategory = categoryFilter === "all" || guideline.category === categoryFilter;
-    
-    return matchesSearch && matchesCategory;
-  });
+  const handleSearch = () => {
+    if (useSemanticSearch && searchTerm.trim()) {
+      semanticSearchMutation.mutate(searchTerm);
+    } else {
+      setSemanticResults(null);
+      setSearchInterpretation('');
+    }
+  };
+
+  const filteredGuidelines = useSemanticSearch && semanticResults 
+    ? semanticResults.filter(guideline => 
+        categoryFilter === "all" || guideline.category === categoryFilter
+      )
+    : guidelines.filter(guideline => {
+        const matchesSearch = searchTerm === "" || 
+          guideline.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          guideline.summary?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          guideline.keywords?.some(k => k.toLowerCase().includes(searchTerm.toLowerCase()));
+        
+        const matchesCategory = categoryFilter === "all" || guideline.category === categoryFilter;
+        
+        return matchesSearch && matchesCategory;
+      });
 
   const getCategoryLabel = (category) => {
     const labels = {
@@ -331,34 +359,94 @@ export default function MedicareGuidelinesLibrary() {
         </div>
 
         {/* Search and Filter */}
-        <div className="flex gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <Input
-              placeholder="Search guidelines by title, keywords, or content..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+        <div className="space-y-3">
+          <div className="flex gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Input
+                placeholder={useSemanticSearch ? "Ask in natural language (e.g., 'What are the requirements for homebound status?')" : "Search guidelines by title, keywords, or content..."}
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (!useSemanticSearch) {
+                    setSemanticResults(null);
+                    setSearchInterpretation('');
+                  }
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && useSemanticSearch) {
+                    handleSearch();
+                  }
+                }}
+                className="pl-10"
+              />
+            </div>
+            {useSemanticSearch && (
+              <Button 
+                onClick={handleSearch}
+                disabled={!searchTerm.trim() || semanticSearchMutation.isPending}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                {semanticSearchMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    AI Search
+                  </>
+                )}
+              </Button>
+            )}
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                <SelectItem value="oasis">OASIS</SelectItem>
+                <SelectItem value="medicare_cop">Medicare CoP</SelectItem>
+                <SelectItem value="billing_reimbursement">Billing & Reimbursement</SelectItem>
+                <SelectItem value="clinical_documentation">Clinical Documentation</SelectItem>
+                <SelectItem value="home_health_regulations">Home Health Regulations</SelectItem>
+                <SelectItem value="hospice_regulations">Hospice Regulations</SelectItem>
+                <SelectItem value="quality_measures">Quality Measures</SelectItem>
+                <SelectItem value="compliance_audit">Compliance & Audit</SelectItem>
+                <SelectItem value="pdgm">PDGM</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="All Categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="oasis">OASIS</SelectItem>
-              <SelectItem value="medicare_cop">Medicare CoP</SelectItem>
-              <SelectItem value="billing_reimbursement">Billing & Reimbursement</SelectItem>
-              <SelectItem value="clinical_documentation">Clinical Documentation</SelectItem>
-              <SelectItem value="home_health_regulations">Home Health Regulations</SelectItem>
-              <SelectItem value="hospice_regulations">Hospice Regulations</SelectItem>
-              <SelectItem value="quality_measures">Quality Measures</SelectItem>
-              <SelectItem value="compliance_audit">Compliance & Audit</SelectItem>
-              <SelectItem value="pdgm">PDGM</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
-            </SelectContent>
-          </Select>
+          
+          {/* Search Mode Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setUseSemanticSearch(!useSemanticSearch);
+                setSemanticResults(null);
+                setSearchInterpretation('');
+              }}
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-purple-600 transition-colors"
+            >
+              <div className={`w-10 h-6 rounded-full transition-colors ${useSemanticSearch ? 'bg-purple-600' : 'bg-gray-300'} relative`}>
+                <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${useSemanticSearch ? 'translate-x-5' : 'translate-x-1'}`} />
+              </div>
+              <Sparkles className={`w-4 h-4 ${useSemanticSearch ? 'text-purple-600' : 'text-gray-400'}`} />
+              <span className={useSemanticSearch ? 'text-purple-600 font-medium' : ''}>
+                AI Semantic Search
+              </span>
+            </button>
+            {searchInterpretation && (
+              <Alert className="flex-1 py-2 border-purple-200 bg-purple-50">
+                <Sparkles className="w-4 h-4 text-purple-600" />
+                <AlertDescription className="text-sm text-purple-900">
+                  <strong>Search interpreted as:</strong> {searchInterpretation}
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
         </div>
       </div>
 
