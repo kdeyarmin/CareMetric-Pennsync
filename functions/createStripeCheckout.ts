@@ -57,6 +57,8 @@ Deno.serve(async (req) => {
     const trialDays = existingSubs.length > 0 ? null : 14;
 
     // Create checkout session
+    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/') || 'https://caremetricai.base44.app';
+    
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
@@ -66,14 +68,19 @@ Deno.serve(async (req) => {
           quantity: 1,
         },
       ],
-      success_url: `${req.headers.get('origin')}${createPageUrl('PaymentSuccess')}?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.get('origin')}${createPageUrl('Billing')}`,
+      success_url: `${origin}${createPageUrl('PaymentSuccess')}?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}${createPageUrl('SubscriptionPlans')}`,
       metadata: {
-        user_email: user.email
+        user_email: user.email,
+        user_id: user.id
       },
       ...(trialDays && {
         subscription_data: {
-          trial_period_days: trialDays
+          trial_period_days: trialDays,
+          metadata: {
+            user_email: user.email,
+            user_id: user.id
+          }
         }
       })
     });
