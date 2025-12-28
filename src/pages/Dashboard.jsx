@@ -32,6 +32,7 @@ import OfflineDataManager from "../components/mobile/OfflineDataManager";
 import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
 import ProactiveCareGapIdentifier from "../components/predictive/ProactiveCareGapIdentifier";
 import TaskNotifications from "../components/tasks/TaskNotifications";
+import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -217,6 +218,13 @@ export default function Dashboard() {
 
       {/* Admin Announcements */}
       <AnnouncementsWidget />
+
+      {/* Trial Status Banner */}
+      {subscription && subscription.status === 'trialing' && (
+        <div className="mb-6">
+          <TrialStatusBanner subscription={subscription} />
+        </div>
+      )}
 
       {/* Nurse Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">

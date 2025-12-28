@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 
 export default function Billing() {
   const { data: currentUser } = useQuery({
@@ -67,7 +68,7 @@ export default function Billing() {
     );
   }
 
-  const hasSubscription = subscription && subscription.status === 'active';
+  const hasSubscription = subscription && (subscription.status === 'active' || subscription.status === 'trialing');
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
@@ -75,6 +76,9 @@ export default function Billing() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Billing & Subscription</h1>
         <p className="text-gray-600">Manage your subscription and payment methods</p>
       </div>
+
+      {/* Trial Status Banner */}
+      {subscription && <TrialStatusBanner subscription={subscription} />}
 
       {/* Current Plan */}
       <Card className="mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-2">
