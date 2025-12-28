@@ -1,9 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import Stripe from 'npm:stripe@14.11.0';
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'), {
-  apiVersion: '2024-12-18.acacia'
-});
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
 function createPageUrl(pageName) {
   return `/${pageName.toLowerCase().replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}`;
@@ -57,19 +55,21 @@ Deno.serve(async (req) => {
     const trialDays = existingSubs.length > 0 ? null : 14;
 
     // Create checkout session
-    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/') || 'https://caremetricai.base44.app';
+    const referer = req.headers.get('referer') || '';
+    const origin = referer ? new URL(referer).origin : 'https://caremetricai.base44.app';
     
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
+      payment_method_types: ['card'],
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
-      success_url: `${origin}${createPageUrl('PaymentSuccess')}?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}${createPageUrl('SubscriptionPlans')}`,
+      success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/subscription-plans`,
       metadata: {
         user_email: user.email,
         user_id: user.id
