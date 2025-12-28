@@ -21,40 +21,18 @@ export const useAppleIAP = () => {
   useEffect(() => {
     // Check if Apple IAP is available (injected by native app)
     const checkIAP = () => {
-      try {
-        const webkit = window.webkit;
-        const messageHandlers = webkit?.messageHandlers;
-        
-        // Try to list all available handlers
-        let handlerNames = [];
-        if (messageHandlers) {
-          // Different ways to enumerate handlers
-          handlerNames = Object.getOwnPropertyNames(messageHandlers);
-          
-          console.log('=== IAP Bridge Debug ===');
-          console.log('window.webkit:', webkit);
-          console.log('messageHandlers:', messageHandlers);
-          console.log('Handler names:', handlerNames);
-          console.log('Checking for "iap" handler...');
-          console.log('messageHandlers.iap:', messageHandlers.iap);
-          console.log('messageHandlers["iap"]:', messageHandlers["iap"]);
-          
-          // Try different possible handler names
-          const possibleNames = ['iap', 'IAP', 'inAppPurchase', 'subscription', 'purchase'];
-          possibleNames.forEach(name => {
-            console.log(`Handler "${name}" exists:`, !!messageHandlers[name]);
-          });
-          console.log('======================');
-        } else {
-          console.log('messageHandlers not found on webkit object');
-        }
-        
-        const hasIAP = messageHandlers?.iap;
-        setIsReady(!!hasIAP);
-      } catch (error) {
-        console.error('Error checking IAP:', error);
-        setIsReady(false);
-      }
+      const hasIAP = window.webkit?.messageHandlers?.iap;
+      const messageHandlerKeys = window.webkit?.messageHandlers ? Object.keys(window.webkit.messageHandlers) : [];
+      
+      console.log('=== IAP Bridge Debug ===');
+      console.log('window.webkit exists:', !!window.webkit);
+      console.log('window.webkit.messageHandlers exists:', !!window.webkit?.messageHandlers);
+      console.log('Available message handlers:', messageHandlerKeys);
+      console.log('window.webkit.messageHandlers.iap exists:', !!hasIAP);
+      console.log('Full webkit object:', window.webkit);
+      console.log('======================');
+      
+      setIsReady(!!hasIAP);
     };
     
     checkIAP();
