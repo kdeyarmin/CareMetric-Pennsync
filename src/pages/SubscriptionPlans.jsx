@@ -35,14 +35,24 @@ export default function SubscriptionPlans() {
 
   const checkoutMutation = useMutation({
     mutationFn: async (plan) => {
+      console.log('Invoking createStripeCheckout with plan:', plan);
       const response = await base44.functions.invoke('createStripeCheckout', { plan });
+      console.log('Checkout response:', response);
       return response.data;
     },
     onSuccess: (data) => {
-      window.location.href = data.url;
+      console.log('Checkout successful, redirecting to:', data.url);
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        console.error('No URL in response');
+        alert('Failed to get checkout URL');
+        setIsLoading(false);
+      }
     },
     onError: (error) => {
-      alert('Failed to start checkout: ' + error.message);
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout: ' + (error.message || 'Unknown error'));
       setIsLoading(false);
     }
   });

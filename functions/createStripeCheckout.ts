@@ -9,15 +9,20 @@ function createPageUrl(pageName) {
 
 Deno.serve(async (req) => {
   try {
+    console.log('Checkout request received');
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     
     if (!user) {
+      console.error('User not authenticated');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    console.log('User authenticated:', user.email);
+
     // Get plan type from request body
     const { plan } = await req.json();
+    console.log('Plan selected:', plan);
     
     // Map plan to Stripe price IDs (from Stripe product catalog)
     const planMapping = {
@@ -29,8 +34,11 @@ Deno.serve(async (req) => {
     const priceId = planMapping[plan || 'monthly'];
     
     if (!priceId) {
-      return Response.json({ error: 'Subscription not configured' }, { status: 400 });
+      console.error('Invalid plan:', plan);
+      return Response.json({ error: 'Invalid plan selected' }, { status: 400 });
     }
+    
+    console.log('Price ID:', priceId);
 
     // Check if user already has a subscription
     const existingSubs = await base44.entities.Subscription.filter({ 
@@ -58,7 +66,11 @@ Deno.serve(async (req) => {
     const referer = req.headers.get('referer') || '';
     const origin = referer ? new URL(referer).origin : 'https://caremetricai.base44.app';
     
-    const session = await stripe.checkout.sessions.create({
+    console.log('Creating checkout session for customer:', customerId);
+    console.log('Origin:', origin);
+    console.log('Trial days:', trialDays);
+    
+    const sessionConfig = {
       customer: customerId,
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -73,22 +85,32 @@ Deno.serve(async (req) => {
       metadata: {
         user_email: user.email,
         user_id: user.id
-      },
-      ...(trialDays && {
-        subscription_data: {
-          trial_period_days: trialDays,
-          metadata: {
-            user_email: user.email,
-            user_id: user.id
-          }
+      }
+    };
+    
+    if (trialDays) {
+      sessionConfig.subscription_data = {
+        trial_period_days: trialDays,
+        metadata: {
+          user_email: user.email,
+          user_id: user.id
         }
-      })
-    });
+      };
+    }
+    
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+    
+    console.log('Checkout session created:', session.id);
+    console.log('Checkout URL:', session.url);
 
     return Response.json({ url: session.url });
     
   } catch (error) {
     console.error('Stripe checkout error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Error stack:', error.stack);
+    return Response.json({ 
+      error: error.message,
+      details: error.toString()
+    }, { status: 500 });
   }
 });
