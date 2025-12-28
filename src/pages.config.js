@@ -25,7 +25,6 @@ import DuplicatePatients from './pages/DuplicatePatients';
 import EULA from './pages/EULA';
 import Features from './pages/Features';
 import Home from './pages/Home';
-import Homepage from './pages/Homepage';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
@@ -110,7 +109,6 @@ export const PAGES = {
     "EULA": EULA,
     "Features": Features,
     "Home": Home,
-    "Homepage": Homepage,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
