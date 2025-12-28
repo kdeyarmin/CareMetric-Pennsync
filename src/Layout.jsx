@@ -84,7 +84,7 @@ export default function Layout({ children, currentPageName }) {
       items: [
         { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
         { name: "Education Library", icon: BookOpen, page: "PatientEducationLibrary" },
-        { name: "Training Hub", icon: GraduationCat, page: "StaffTrainingHub" },
+        { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
         { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
         { name: "Billing", icon: CreditCard, page: "Billing" },
         { name: "Settings", icon: Settings, page: "Settings" }
