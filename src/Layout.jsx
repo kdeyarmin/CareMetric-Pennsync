@@ -83,6 +83,14 @@ export default function Layout({ children, currentPageName }) {
         { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
       ]
     },
+    ...(currentUser?.role === 'admin' ? [{
+      category: "Admin",
+      items: [
+        { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
+        { name: "User Management", icon: Users, page: "Admin" },
+        { name: "System Logs", icon: Activity, page: "UserActivityLog" }
+      ]
+    }] : []),
     {
       category: "Resources",
       items: [

@@ -68,6 +68,7 @@ import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import StaffTraining from './pages/StaffTraining';
 import StaffTrainingHub from './pages/StaffTrainingHub';
 import SubscriptionPlans from './pages/SubscriptionPlans';
+import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import SystemMonitoring from './pages/SystemMonitoring';
 import Tasks from './pages/Tasks';
@@ -78,7 +79,6 @@ import TrainingManagement from './pages/TrainingManagement';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
-import Support from './pages/Support';
 import __Layout from './Layout.jsx';
 
 
@@ -153,6 +153,7 @@ export const PAGES = {
     "StaffTraining": StaffTraining,
     "StaffTrainingHub": StaffTrainingHub,
     "SubscriptionPlans": SubscriptionPlans,
+    "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "SystemMonitoring": SystemMonitoring,
     "Tasks": Tasks,
@@ -163,7 +164,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
-    "Support": Support,
 }
 
 export const pagesConfig = {
