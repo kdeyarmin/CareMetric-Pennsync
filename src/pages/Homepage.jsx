@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
@@ -28,170 +28,278 @@ import {
   Lightbulb,
   DollarSign
 } from "lucide-react";
+import { motion } from "framer-motion";
 import ProspectChatbot from "../components/marketing/ProspectChatbot";
 import ShareAppButton from "../components/marketing/ShareAppButton";
 
 export default function Homepage() {
+  const [scrollY, setScrollY] = useState(0);
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
 
+  useEffect(() => {
+    const handleScroll = () => setScrollY(window.scrollY);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
-    <div className="min-h-screen" style={{backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url(https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/aa0239e43_ChatGPTImageDec26202506_39_31PM.png)', backgroundSize: 'cover', backgroundAttachment: 'fixed', backgroundPosition: 'center'}}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      {/* Animated Background Elements */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-30">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl animate-pulse" />
+        <div className="absolute top-40 right-10 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl animate-pulse animation-delay-2000" />
+        <div className="absolute bottom-20 left-1/3 w-80 h-80 bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl animate-pulse animation-delay-4000" />
+      </div>
+
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="relative max-w-7xl mx-auto px-4 py-20 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-3 mb-6">
-              <img
+      <section className="relative overflow-hidden"
+        style={{ transform: `translateY(${scrollY * 0.3}px)` }}>
+        <div className="relative max-w-7xl mx-auto px-4 py-24 sm:px-6 lg:px-8">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-center"
+          >
+            <motion.div 
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="flex items-center justify-center gap-4 mb-8"
+            >
+              <motion.img
+                whileHover={{ rotate: 360, scale: 1.1 }}
+                transition={{ duration: 0.6 }}
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                 alt="CareMetric AI Logo"
-                className="w-20 h-20 object-contain" />
-              <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                className="w-24 h-24 object-contain drop-shadow-2xl" />
+              <h1 className="text-6xl md:text-8xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
                 CareMetric AI
               </h1>
-            </div>
-            <p className="text-2xl md:text-3xl text-gray-700 mb-4 font-semibold">
+            </motion.div>
+            <motion.p 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4, duration: 0.6 }}
+              className="text-3xl md:text-4xl text-gray-800 mb-4 font-bold tracking-tight"
+            >
               Your AI-Powered Clinical Documentation Assistant
-            </p>
-            <p className="text-lg md:text-xl text-gray-600 mb-6 max-w-3xl mx-auto">
+            </motion.p>
+            <motion.p 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.6, duration: 0.6 }}
+              className="text-xl md:text-2xl text-gray-600 mb-8 max-w-4xl mx-auto leading-relaxed"
+            >
               Revolutionizing home health nursing with intelligent documentation, 
               predictive analytics, and personalized patient education
-            </p>
+            </motion.p>
             
             {/* Free Trial Banner */}
-            <div className="max-w-2xl mx-auto mb-8">
-              <Card className="border-4 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-2xl">
-                <CardContent className="p-6 text-center">
-                  <div className="flex items-center justify-center gap-2 mb-3">
-                    <Sparkles className="w-6 h-6 text-green-600" />
-                    <span className="text-2xl font-bold text-green-600">14-Day Free Trial</span>
-                    <Sparkles className="w-6 h-6 text-green-600" />
-                  </div>
-                  <p className="text-lg font-semibold text-gray-900 mb-2">
-                    Full Access • No Credit Card Required
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Try all premium features free for 14 days. Cancel anytime.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.8, duration: 0.5 }}
+              className="max-w-2xl mx-auto mb-10"
+            >
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                className="relative"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-500 rounded-2xl blur-xl opacity-50" />
+                <Card className="relative border-0 bg-gradient-to-r from-green-400 to-emerald-500 shadow-2xl">
+                  <CardContent className="p-8 text-center">
+                    <motion.div 
+                      animate={{ rotate: [0, 10, -10, 0] }}
+                      transition={{ repeat: Infinity, duration: 3 }}
+                      className="flex items-center justify-center gap-2 mb-3"
+                    >
+                      <Sparkles className="w-7 h-7 text-white" />
+                      <span className="text-3xl font-extrabold text-white">14-Day Free Trial</span>
+                      <Sparkles className="w-7 h-7 text-white" />
+                    </motion.div>
+                    <p className="text-xl font-bold text-white mb-2">
+                      Full Access • No Credit Card Required
+                    </p>
+                    <p className="text-base text-green-50">
+                      Try all premium features free for 14 days. Cancel anytime.
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </motion.div>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1, duration: 0.6 }}
+              className="flex flex-col sm:flex-row gap-5 justify-center items-center"
+            >
               <Link to={createPageUrl("Dashboard")}>
-                <Button
-                  size="lg"
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6">
-                    Get Started
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-xl px-10 py-7 rounded-full shadow-2xl font-bold">
+                      Get Started Free
+                      <ArrowRight className="w-6 h-6 ml-2" />
+                    </Button>
+                </motion.div>
               </Link>
               <Link to={createPageUrl("Pricing")}>
-                <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-2">
-                  View Pricing
-                  <DollarSign className="w-5 h-5 ml-2" />
-                </Button>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button size="lg" variant="outline" className="text-xl px-10 py-7 border-3 rounded-full font-bold border-gray-300 hover:border-blue-600 hover:text-blue-600">
+                    View Pricing
+                    <DollarSign className="w-6 h-6 ml-2" />
+                  </Button>
+                </motion.div>
               </Link>
               <Link to={createPageUrl("About")}>
-                <Button size="lg" variant="ghost" className="text-lg px-8 py-6">
-                  Learn More
-                </Button>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button size="lg" variant="ghost" className="text-xl px-10 py-7 rounded-full font-semibold">
+                    Learn More
+                  </Button>
+                </motion.div>
               </Link>
-            </div>
+            </motion.div>
             
-            <div className="mt-6 flex justify-center">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.2, duration: 0.6 }}
+              className="mt-8 flex justify-center"
+            >
               <ShareAppButton variant="ghost" size="lg" />
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
       </section>
 
       {/* Key Stats */}
-      <section className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border-2 border-green-200 bg-white/80 backdrop-blur">
-            <CardContent className="p-6 text-center">
-              <Clock className="w-12 h-12 text-green-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-green-600">70%</p>
-              <p className="text-sm text-gray-600 mt-2">Time Saved on Notes</p>
-            </CardContent>
-          </Card>
-          <Card className="border-2 border-purple-200 bg-white/80 backdrop-blur">
-            <CardContent className="p-6 text-center">
-              <Shield className="w-12 h-12 text-purple-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-purple-600">100%</p>
-              <p className="text-sm text-gray-600 mt-2">Medicare Compliant</p>
-            </CardContent>
-          </Card>
-          <Card className="border-2 border-orange-200 bg-white/80 backdrop-blur">
-            <CardContent className="p-6 text-center">
-              <TrendingUp className="w-12 h-12 text-orange-600 mx-auto mb-3" />
-              <p className="text-3xl font-bold text-orange-600">95%+</p>
-              <p className="text-sm text-gray-600 mt-2">Quality Scores</p>
-            </CardContent>
-          </Card>
+      <section className="relative max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {[
+            { icon: Clock, value: "70%", label: "Time Saved on Notes", color: "green", delay: 0 },
+            { icon: Shield, value: "100%", label: "Medicare Compliant", color: "purple", delay: 0.2 },
+            { icon: TrendingUp, value: "95%+", label: "Quality Scores", color: "orange", delay: 0.4 }
+          ].map((stat, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 50 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: stat.delay, duration: 0.6 }}
+            >
+              <motion.div whileHover={{ y: -10, scale: 1.03 }}>
+                <Card className={`border-0 bg-white/90 backdrop-blur shadow-2xl overflow-hidden relative group`}>
+                  <div className={`absolute inset-0 bg-gradient-to-br from-${stat.color}-400 to-${stat.color}-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300`} />
+                  <CardContent className="p-8 text-center relative">
+                    <motion.div
+                      whileHover={{ rotate: 360 }}
+                      transition={{ duration: 0.6 }}
+                    >
+                      <stat.icon className={`w-16 h-16 text-${stat.color}-600 mx-auto mb-4`} />
+                    </motion.div>
+                    <motion.p 
+                      className={`text-5xl font-extrabold text-${stat.color}-600 mb-2`}
+                      whileHover={{ scale: 1.1 }}
+                    >
+                      {stat.value}
+                    </motion.p>
+                    <p className="text-base text-gray-700 font-semibold">{stat.label}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </motion.div>
+          ))}
         </div>
       </section>
 
       {/* Main Content Tabs */}
-      <section className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+      <section className="relative max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
         <Tabs defaultValue="features" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8 h-auto bg-white/80 backdrop-blur">
-            <TabsTrigger value="features" className="text-base py-3 data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-              <FileText className="w-4 h-4 mr-2" />
-              Features
-            </TabsTrigger>
-            <TabsTrigger value="benefits" className="text-base py-3 data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-              <Award className="w-4 h-4 mr-2" />
-              Benefits
-            </TabsTrigger>
-            <TabsTrigger value="how-it-works" className="text-base py-3 data-[state=active]:bg-green-600 data-[state=active]:text-white">
-              <Lightbulb className="w-4 h-4 mr-2" />
-              How It Works
-            </TabsTrigger>
-          </TabsList>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <TabsList className="grid w-full grid-cols-3 mb-12 h-auto bg-white/90 backdrop-blur shadow-xl rounded-2xl p-2">
+              <TabsTrigger value="features" className="text-lg py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all">
+                <FileText className="w-5 h-5 mr-2" />
+                Features
+              </TabsTrigger>
+              <TabsTrigger value="benefits" className="text-lg py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-purple-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all">
+                <Award className="w-5 h-5 mr-2" />
+                Benefits
+              </TabsTrigger>
+              <TabsTrigger value="how-it-works" className="text-lg py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-600 data-[state=active]:to-green-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all">
+                <Lightbulb className="w-5 h-5 mr-2" />
+                How It Works
+              </TabsTrigger>
+            </TabsList>
+          </motion.div>
 
           {/* Features Tab */}
-          <TabsContent value="features" className="space-y-6">
-            <div className="text-center mb-8">
-              <h2 className="text-4xl font-bold text-gray-900 mb-4">
+          <TabsContent value="features" className="space-y-8">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-12"
+            >
+              <h2 className="text-5xl font-extrabold text-gray-900 mb-6">
                 Everything You Need for Clinical Excellence
               </h2>
-              <p className="text-xl text-gray-600">
+              <p className="text-2xl text-gray-600 max-w-3xl mx-auto">
                 Comprehensive tools designed specifically for home health nurses
               </p>
-            </div>
+            </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <Card className="border-2 border-blue-200 hover:shadow-xl transition-shadow bg-white">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
-                    <Brain className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <CardTitle className="text-xl">AI Smart Notes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-600 mb-4">
-                    Transform rough notes into Medicare-compliant documentation in seconds. AI enhances clarity, completeness, and compliance.
-                  </p>
-                  <ul className="text-sm text-gray-700 space-y-2">
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>Real-time compliance checking</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>Voice dictation support</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>Automated quality scoring</span>
-                    </li>
-                  </ul>
-                </CardContent>
-              </Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0, duration: 0.5 }}
+              >
+                <motion.div whileHover={{ y: -8, scale: 1.02 }}>
+                  <Card className="border-0 shadow-2xl bg-white/95 backdrop-blur overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-700 opacity-0 group-hover:opacity-5 transition-opacity duration-300" />
+                    <CardHeader>
+                      <motion.div 
+                        whileHover={{ rotate: 360 }}
+                        transition={{ duration: 0.6 }}
+                        className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl flex items-center justify-center mb-4 shadow-lg"
+                      >
+                        <Brain className="w-8 h-8 text-white" />
+                      </motion.div>
+                      <CardTitle className="text-2xl font-bold">AI Smart Notes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-700 mb-6 text-base leading-relaxed">
+                        Transform rough notes into Medicare-compliant documentation in seconds. AI enhances clarity, completeness, and compliance.
+                      </p>
+                      <ul className="text-sm text-gray-700 space-y-3">
+                        <li className="flex items-start gap-3">
+                          <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Real-time compliance checking</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                          <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Voice dictation support</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                          <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Automated quality scoring</span>
+                        </li>
+                      </ul>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </motion.div>
 
               <Card className="border-2 border-purple-200 hover:shadow-xl transition-shadow bg-white">
                 <CardHeader>
