@@ -281,6 +281,25 @@ export default function SubscriptionPlans() {
           </Card>
         </div>
       )}
+
+      {/* Legal Links */}
+      <Card className="mt-8">
+        <CardContent className="p-6">
+          <div className="flex flex-wrap justify-center gap-4 text-sm text-gray-600">
+            <a href={createPageUrl("TermsOfUse")} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">
+              Terms of Use
+            </a>
+            <span className="text-gray-400">•</span>
+            <a href={createPageUrl("PrivacyPolicy")} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">
+              Privacy Policy
+            </a>
+            <span className="text-gray-400">•</span>
+            <a href={createPageUrl("EULA")} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">
+              EULA
+            </a>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

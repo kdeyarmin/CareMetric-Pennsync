@@ -20,13 +20,36 @@ export const useAppleIAP = () => {
 
   useEffect(() => {
     // Check if Apple IAP is available (injected by native app)
-    if (window.webkit?.messageHandlers?.iap) {
-      setIsReady(true);
-    }
+    const checkIAP = () => {
+      const hasIAP = window.webkit?.messageHandlers?.iap;
+      console.log('IAP availability check:', {
+        hasWebkit: !!window.webkit,
+        hasMessageHandlers: !!window.webkit?.messageHandlers,
+        hasIAP: hasIAP,
+        webkitKeys: window.webkit ? Object.keys(window.webkit) : []
+      });
+      setIsReady(!!hasIAP);
+    };
+    
+    checkIAP();
+    
+    // Re-check after a short delay in case the bridge loads asynchronously
+    const timer = setTimeout(checkIAP, 500);
+    return () => clearTimeout(timer);
   }, []);
 
   const purchaseSubscription = async (productId, userEmail) => {
-    if (!window.webkit?.messageHandlers?.iap) {
+    // Check for IAP handler availability
+    const hasIAPHandler = window.webkit?.messageHandlers?.iap;
+    
+    console.log('Apple IAP check:', {
+      hasWebkit: !!window.webkit,
+      hasMessageHandlers: !!window.webkit?.messageHandlers,
+      hasIAP: !!hasIAPHandler,
+      webkit: window.webkit
+    });
+    
+    if (!hasIAPHandler) {
       throw new Error('Apple IAP not available');
     }
 
