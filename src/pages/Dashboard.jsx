@@ -33,7 +33,6 @@ import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
 import ProactiveCareGapIdentifier from "../components/predictive/ProactiveCareGapIdentifier";
 import TaskNotifications from "../components/tasks/TaskNotifications";
 import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
-import AINudgesWidget from "../components/dashboard/AINudgesWidget";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -294,11 +293,6 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
-      </div>
-
-      {/* AI Smart Nudges - Priority Alerts */}
-      <div className="mb-6">
-        <AINudgesWidget />
       </div>
 
       {/* Task Notifications */}
