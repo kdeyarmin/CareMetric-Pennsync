@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
 
+export const publicPage = true;
+
 export default function DeleteAccount() {
   const navigate = useNavigate();
 
