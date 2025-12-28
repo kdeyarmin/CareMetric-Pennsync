@@ -65,7 +65,7 @@ export default function Layout({ children, currentPageName }) {
     } catch (e) {
       console.error(e);
     }
-    base44.auth.logout();
+    base44.auth.logout(createPageUrl("Home"));
   };
 
   const isActive = (page) => currentPageName === page;
