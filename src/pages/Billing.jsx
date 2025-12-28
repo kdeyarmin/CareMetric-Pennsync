@@ -294,6 +294,25 @@ export default function Billing() {
           </CardContent>
         </Card>
       )}
+
+      {/* Legal Links */}
+      <Card className="mt-6">
+        <CardContent className="p-6">
+          <div className="flex flex-wrap justify-center gap-4 text-sm text-gray-600">
+            <Link to={createPageUrl("TermsOfUse")} className="hover:text-blue-600 hover:underline">
+              Terms of Use
+            </Link>
+            <span className="text-gray-400">•</span>
+            <Link to={createPageUrl("PrivacyPolicy")} className="hover:text-blue-600 hover:underline">
+              Privacy Policy
+            </Link>
+            <span className="text-gray-400">•</span>
+            <Link to={createPageUrl("EULA")} className="hover:text-blue-600 hover:underline">
+              EULA
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

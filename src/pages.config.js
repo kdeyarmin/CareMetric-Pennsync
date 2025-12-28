@@ -75,6 +75,9 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import DeleteAccount from './pages/DeleteAccount';
+import TermsOfUse from './pages/TermsOfUse';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import EULA from './pages/EULA';
 import __Layout from './Layout.jsx';
 
 
@@ -156,6 +159,9 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "DeleteAccount": DeleteAccount,
+    "TermsOfUse": TermsOfUse,
+    "PrivacyPolicy": PrivacyPolicy,
+    "EULA": EULA,
 }
 
 export const pagesConfig = {
