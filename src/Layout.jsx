@@ -82,17 +82,20 @@ export default function Layout({ children, currentPageName }) {
     {
       category: "Resources",
       items: [
-        { name: "About CareMetric AI", icon: Sparkles, page: "About" },
-        { name: "Features Guide", icon: Sparkles, page: "Features" },
-        { name: "Pricing", icon: CreditCard, page: "Pricing" },
         { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
         { name: "Education Library", icon: BookOpen, page: "PatientEducationLibrary" },
-        { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
+        { name: "Training Hub", icon: GraduationCat, page: "StaffTrainingHub" },
         { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
         { name: "Billing", icon: CreditCard, page: "Billing" },
         { name: "Settings", icon: Settings, page: "Settings" }
       ]
     }
+  ];
+
+  const bottomNavItems = [
+    { name: "About CareMetric AI", icon: Sparkles, page: "About" },
+    { name: "Features Guide", icon: Sparkles, page: "Features" },
+    { name: "Pricing", icon: CreditCard, page: "Pricing" }
   ];
 
   return (
@@ -134,6 +137,22 @@ export default function Layout({ children, currentPageName }) {
         </nav>
 
         <div className="border-t p-3">
+          <div className="mb-3 space-y-1">
+            {bottomNavItems.map((item) => (
+              <Link
+                key={item.page}
+                to={createPageUrl(item.page)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md ${
+                  isActive(item.page)
+                    ? "bg-blue-100 text-blue-700"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                {!sidebarCollapsed && item.name}
+              </Link>
+            ))}
+          </div>
           <Button variant="ghost" className="w-full text-red-600" onClick={handleLogout}>
             <LogOut className="w-4 h-4 mr-2" />
             {!sidebarCollapsed && "Logout"}
