@@ -141,7 +141,7 @@ export default function Layout({ children, currentPageName }) {
       <aside className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${sidebarCollapsed ? "w-16" : "w-56"}`}>
         <div className="h-16 flex items-center justify-between px-3 border-b">
           <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
-            <img src="/logo.png" className="w-8 h-8" />
+            <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" className="w-8 h-8 object-contain" alt="CareMetric AI Logo" />
             {!sidebarCollapsed && <span className="font-bold">CareMetric AI</span>}
           </Link>
           <Button size="icon" variant="ghost" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
@@ -200,8 +200,9 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header ================= */}
       <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-blue-600 flex items-center justify-between px-4 z-[100]">
-        <Link to={createPageUrl("Dashboard")} className="font-bold text-white">
-          CareMetric AI
+        <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
+          <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" className="w-8 h-8 object-contain" alt="CareMetric AI Logo" />
+          <span className="font-bold text-white">CareMetric AI</span>
         </Link>
         <div className="flex items-center gap-2">
           <NotificationCenter />
