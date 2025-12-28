@@ -43,7 +43,12 @@ export default function SubscriptionPlans() {
     onSuccess: (data) => {
       console.log('Checkout successful, redirecting to:', data.url);
       if (data.url) {
-        window.location.href = data.url;
+        // Use window.top to break out of iframe (Base44 preview window)
+        if (window.top) {
+          window.top.location.href = data.url;
+        } else {
+          window.location.href = data.url;
+        }
       } else {
         console.error('No URL in response');
         alert('Failed to get checkout URL');
