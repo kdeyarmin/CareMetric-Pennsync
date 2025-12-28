@@ -34,7 +34,7 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
 
 export const publicPage = true;
 
-export default function HomePage() {
+export default function Home() {
   const [scrollY, setScrollY] = useState(0);
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
