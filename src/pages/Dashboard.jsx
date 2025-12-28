@@ -123,6 +123,13 @@ export default function Dashboard() {
     initialData: [],
   });
 
+  const { data: subscription } = useQuery({
+    queryKey: ['userSubscription', currentUser?.email],
+    queryFn: () => base44.entities.Subscription.filter({ user_email: currentUser.email }),
+    enabled: !!currentUser?.email,
+    select: (data) => data[0]
+  });
+
   // Handle errors gracefully
   if (visitsError || patientsError) {
     console.error('Dashboard data loading error:', visitsError || patientsError);
