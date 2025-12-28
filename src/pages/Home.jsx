@@ -23,7 +23,6 @@ import {
   Stethoscope,
   Activity,
   Zap,
-  Home,
   Award,
   Lightbulb,
   DollarSign
