@@ -22,20 +22,31 @@ export const useAppleIAP = () => {
     // Check if Apple IAP is available (injected by native app)
     const checkIAP = () => {
       const hasIAP = window.webkit?.messageHandlers?.iap;
-      console.log('IAP availability check:', {
-        hasWebkit: !!window.webkit,
-        hasMessageHandlers: !!window.webkit?.messageHandlers,
-        hasIAP: hasIAP,
-        webkitKeys: window.webkit ? Object.keys(window.webkit) : []
-      });
+      const messageHandlerKeys = window.webkit?.messageHandlers ? Object.keys(window.webkit.messageHandlers) : [];
+      
+      console.log('=== IAP Bridge Debug ===');
+      console.log('window.webkit exists:', !!window.webkit);
+      console.log('window.webkit.messageHandlers exists:', !!window.webkit?.messageHandlers);
+      console.log('Available message handlers:', messageHandlerKeys);
+      console.log('window.webkit.messageHandlers.iap exists:', !!hasIAP);
+      console.log('Full webkit object:', window.webkit);
+      console.log('======================');
+      
       setIsReady(!!hasIAP);
     };
     
     checkIAP();
     
-    // Re-check after a short delay in case the bridge loads asynchronously
-    const timer = setTimeout(checkIAP, 500);
-    return () => clearTimeout(timer);
+    // Re-check after delays in case the bridge loads asynchronously
+    const timer1 = setTimeout(checkIAP, 500);
+    const timer2 = setTimeout(checkIAP, 1000);
+    const timer3 = setTimeout(checkIAP, 2000);
+    
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
   }, []);
 
   const purchaseSubscription = async (productId, userEmail) => {
