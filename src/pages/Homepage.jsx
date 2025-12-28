@@ -32,6 +32,8 @@ import { motion } from "framer-motion";
 import ProspectChatbot from "../components/marketing/ProspectChatbot";
 import ShareAppButton from "../components/marketing/ShareAppButton";
 
+export const publicPage = true;
+
 export default function Homepage() {
   const [scrollY, setScrollY] = useState(0);
   const { data: currentUser } = useQuery({
@@ -661,6 +663,11 @@ export default function Homepage() {
                     About
                   </Link>
                 </li>
+                <li>
+                  <Link to={createPageUrl("Support")} className="hover:text-white transition-colors">
+                    Support
+                  </Link>
+                </li>
                 {currentUser &&
                 <li>
                     <Link to={createPageUrl("Dashboard")} className="hover:text-white transition-colors">
@@ -672,11 +679,24 @@ export default function Homepage() {
             </div>
 
             <div>
-              <h3 className="font-bold mb-4">Contact</h3>
-              <p className="text-gray-400">
-                Questions or feedback?<br />
-                We'd love to hear from you.
-              </p>
+              <h3 className="font-bold mb-4">Legal</h3>
+              <ul className="space-y-2 text-gray-400">
+                <li>
+                  <Link to={createPageUrl("TermsOfUse")} className="hover:text-white transition-colors">
+                    Terms of Use
+                  </Link>
+                </li>
+                <li>
+                  <Link to={createPageUrl("PrivacyPolicy")} className="hover:text-white transition-colors">
+                    Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link to={createPageUrl("EULA")} className="hover:text-white transition-colors">
+                    EULA
+                  </Link>
+                </li>
+              </ul>
             </div>
           </div>
 
