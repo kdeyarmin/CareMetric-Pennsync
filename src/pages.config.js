@@ -1,5 +1,7 @@
+import About from './pages/About';
 import Admin from './pages/Admin';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
@@ -7,6 +9,7 @@ import AgencySettings from './pages/AgencySettings';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import AuditTrail from './pages/AuditTrail';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
+import Billing from './pages/Billing';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
@@ -20,6 +23,7 @@ import DocumentationTraining from './pages/DocumentationTraining';
 import DuplicatePatients from './pages/DuplicatePatients';
 import Features from './pages/Features';
 import Home from './pages/Home';
+import Homepage from './pages/Homepage';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
@@ -45,41 +49,39 @@ import PatientDetails from './pages/PatientDetails';
 import PatientEducation from './pages/PatientEducation';
 import PatientEducationGenerator from './pages/PatientEducationGenerator';
 import PatientEducationHub from './pages/PatientEducationHub';
+import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
 import Patients from './pages/Patients';
+import PaymentSuccess from './pages/PaymentSuccess';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
+import Pricing from './pages/Pricing';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
+import SecurityAudit from './pages/SecurityAudit';
 import SecurityPolicy from './pages/SecurityPolicy';
+import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import StaffTraining from './pages/StaffTraining';
 import StaffTrainingHub from './pages/StaffTrainingHub';
+import SubscriptionPlans from './pages/SubscriptionPlans';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import SystemMonitoring from './pages/SystemMonitoring';
+import Tasks from './pages/Tasks';
 import TemplateLibrary from './pages/TemplateLibrary';
+import Test2FA from './pages/Test2FA';
 import TrainingManagement from './pages/TrainingManagement';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
-import Settings from './pages/Settings';
-import Tasks from './pages/Tasks';
-import About from './pages/About';
-import Homepage from './pages/Homepage';
-import SecurityAudit from './pages/SecurityAudit';
-import Test2FA from './pages/Test2FA';
-import SubscriptionPlans from './pages/SubscriptionPlans';
-import Billing from './pages/Billing';
-import PaymentSuccess from './pages/PaymentSuccess';
-import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
-import Pricing from './pages/Pricing';
-import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
+    "About": About,
     "Admin": Admin,
     "AdminDashboard": AdminDashboard,
+    "AdminSubscriptionManagement": AdminSubscriptionManagement,
     "AdminTrainingAnalytics": AdminTrainingAnalytics,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
@@ -87,6 +89,7 @@ export const PAGES = {
     "AnalyticsDashboard": AnalyticsDashboard,
     "AuditTrail": AuditTrail,
     "AutomaticCarePlans": AutomaticCarePlans,
+    "Billing": Billing,
     "CareCoordinationDashboard": CareCoordinationDashboard,
     "CarePlanManagement": CarePlanManagement,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
@@ -100,6 +103,7 @@ export const PAGES = {
     "DuplicatePatients": DuplicatePatients,
     "Features": Features,
     "Home": Home,
+    "Homepage": Homepage,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
@@ -125,35 +129,31 @@ export const PAGES = {
     "PatientEducation": PatientEducation,
     "PatientEducationGenerator": PatientEducationGenerator,
     "PatientEducationHub": PatientEducationHub,
+    "PatientEducationLibrary": PatientEducationLibrary,
     "PatientRecordDashboard": PatientRecordDashboard,
     "Patients": Patients,
+    "PaymentSuccess": PaymentSuccess,
     "PredictiveAnalytics": PredictiveAnalytics,
+    "Pricing": Pricing,
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
     "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
+    "SecurityAudit": SecurityAudit,
     "SecurityPolicy": SecurityPolicy,
+    "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
     "StaffTraining": StaffTraining,
     "StaffTrainingHub": StaffTrainingHub,
+    "SubscriptionPlans": SubscriptionPlans,
     "SystemJobMonitor": SystemJobMonitor,
     "SystemMonitoring": SystemMonitoring,
+    "Tasks": Tasks,
     "TemplateLibrary": TemplateLibrary,
+    "Test2FA": Test2FA,
     "TrainingManagement": TrainingManagement,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
-    "Settings": Settings,
-    "Tasks": Tasks,
-    "About": About,
-    "Homepage": Homepage,
-    "SecurityAudit": SecurityAudit,
-    "Test2FA": Test2FA,
-    "SubscriptionPlans": SubscriptionPlans,
-    "Billing": Billing,
-    "PaymentSuccess": PaymentSuccess,
-    "AdminSubscriptionManagement": AdminSubscriptionManagement,
-    "Pricing": Pricing,
-    "PatientEducationLibrary": PatientEducationLibrary,
 }
 
 export const pagesConfig = {

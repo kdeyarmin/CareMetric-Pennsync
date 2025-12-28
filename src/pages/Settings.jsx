@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { User, Edit3, Save, X, Shield } from "lucide-react";
+import { User, Edit3, Save, X, Shield, AlertTriangle } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DataRetentionSettings from "../components/settings/DataRetentionSettings";
@@ -14,6 +14,9 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
     credential_type: 'RN',
@@ -56,6 +59,25 @@ export default function Settings() {
       alert('Failed to update profile. Please try again.');
     }
     setIsSaving(false);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      alert('Please type DELETE to confirm');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const { deleteAccount } = await import('@/functions/deleteAccount');
+      await deleteAccount();
+      // Logout and redirect
+      base44.auth.logout('/');
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      alert('Failed to delete account. Please try again or contact support.');
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -265,6 +287,73 @@ export default function Settings() {
 
         {/* Data Retention Settings */}
         <DataRetentionSettings />
+
+        {/* Danger Zone */}
+        <Card className="border-red-200">
+          <CardHeader className="bg-red-50">
+            <CardTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="w-5 h-5" />
+              Danger Zone
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-red-900 mb-2">Delete Account</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Permanently delete your account and all associated data. This action cannot be undone.
+                  All patient records, visits, notes, and other data will be permanently removed.
+                </p>
+              </div>
+              
+              {!showDeleteConfirm ? (
+                <Button
+                  variant="destructive"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Delete My Account
+                </Button>
+              ) : (
+                <div className="border-2 border-red-200 rounded-lg p-4 bg-red-50">
+                  <p className="text-sm font-semibold text-red-900 mb-3">
+                    Are you absolutely sure? This action is permanent and irreversible.
+                  </p>
+                  <p className="text-sm text-gray-700 mb-3">
+                    Type <span className="font-mono font-bold">DELETE</span> to confirm:
+                  </p>
+                  <Input
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="Type DELETE"
+                    className="mb-3"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      onClick={handleDeleteAccount}
+                      disabled={deleteConfirmText !== 'DELETE' || isDeleting}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {isDeleting ? 'Deleting...' : 'Permanently Delete Account'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowDeleteConfirm(false);
+                        setDeleteConfirmText('');
+                      }}
+                      disabled={isDeleting}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
