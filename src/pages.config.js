@@ -17,10 +17,12 @@ import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import ComplianceRegulatory from './pages/ComplianceRegulatory';
 import Dashboard from './pages/Dashboard';
+import DeleteAccount from './pages/DeleteAccount';
 import DocumentGenerator from './pages/DocumentGenerator';
 import DocumentVisit from './pages/DocumentVisit';
 import DocumentationTraining from './pages/DocumentationTraining';
 import DuplicatePatients from './pages/DuplicatePatients';
+import EULA from './pages/EULA';
 import Features from './pages/Features';
 import Home from './pages/Home';
 import Homepage from './pages/Homepage';
@@ -55,6 +57,7 @@ import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
 import Pricing from './pages/Pricing';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
@@ -69,15 +72,12 @@ import SystemJobMonitor from './pages/SystemJobMonitor';
 import SystemMonitoring from './pages/SystemMonitoring';
 import Tasks from './pages/Tasks';
 import TemplateLibrary from './pages/TemplateLibrary';
+import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
 import TrainingManagement from './pages/TrainingManagement';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
-import DeleteAccount from './pages/DeleteAccount';
-import TermsOfUse from './pages/TermsOfUse';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import EULA from './pages/EULA';
 import __Layout from './Layout.jsx';
 
 
@@ -101,10 +101,12 @@ export const PAGES = {
     "ComplianceDashboard": ComplianceDashboard,
     "ComplianceRegulatory": ComplianceRegulatory,
     "Dashboard": Dashboard,
+    "DeleteAccount": DeleteAccount,
     "DocumentGenerator": DocumentGenerator,
     "DocumentVisit": DocumentVisit,
     "DocumentationTraining": DocumentationTraining,
     "DuplicatePatients": DuplicatePatients,
+    "EULA": EULA,
     "Features": Features,
     "Home": Home,
     "Homepage": Homepage,
@@ -139,6 +141,7 @@ export const PAGES = {
     "PaymentSuccess": PaymentSuccess,
     "PredictiveAnalytics": PredictiveAnalytics,
     "Pricing": Pricing,
+    "PrivacyPolicy": PrivacyPolicy,
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
     "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
@@ -153,15 +156,12 @@ export const PAGES = {
     "SystemMonitoring": SystemMonitoring,
     "Tasks": Tasks,
     "TemplateLibrary": TemplateLibrary,
+    "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
     "TrainingManagement": TrainingManagement,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
-    "DeleteAccount": DeleteAccount,
-    "TermsOfUse": TermsOfUse,
-    "PrivacyPolicy": PrivacyPolicy,
-    "EULA": EULA,
 }
 
 export const pagesConfig = {
