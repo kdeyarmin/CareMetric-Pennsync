@@ -83,14 +83,39 @@ export default function Layout({ children, currentPageName }) {
         { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
       ]
     },
-    ...(currentUser?.role === 'admin' ? [{
-      category: "Admin",
-      items: [
-        { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
-        { name: "User Management", icon: Users, page: "Admin" },
-        { name: "System Logs", icon: Activity, page: "UserActivityLog" }
-      ]
-    }] : []),
+    ...(currentUser?.role === 'admin' ? [
+      {
+        category: "Admin - Overview",
+        items: [
+          { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
+          { name: "Analytics", icon: Activity, page: "AdvancedAnalyticsDashboard" }
+        ]
+      },
+      {
+        category: "Admin - Users",
+        items: [
+          { name: "User Management", icon: Users, page: "Admin" },
+          { name: "Training Management", icon: GraduationCap, page: "TrainingManagement" }
+        ]
+      },
+      {
+        category: "Admin - System",
+        items: [
+          { name: "Activity Logs", icon: Activity, page: "UserActivityLog" },
+          { name: "Audit Trail", icon: Shield, page: "AuditTrail" },
+          { name: "Security Audit", icon: Shield, page: "SecurityAudit" },
+          { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" }
+        ]
+      },
+      {
+        category: "Admin - Settings",
+        items: [
+          { name: "Agency Settings", icon: Settings, page: "AgencySettings" },
+          { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" },
+          { name: "New Features", icon: Sparkles, page: "ManageNewFeatures" }
+        ]
+      }
+    ] : []),
     {
       category: "Resources",
       items: [
