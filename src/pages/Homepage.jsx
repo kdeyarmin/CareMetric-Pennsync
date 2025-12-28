@@ -138,16 +138,28 @@ export default function Homepage() {
               transition={{ delay: 1, duration: 0.6 }}
               className="flex flex-col sm:flex-row gap-5 justify-center items-center"
             >
-              <Link to={createPageUrl("Dashboard")}>
+              {currentUser ? (
+                <Link to={createPageUrl("Dashboard")}>
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <Button
+                      size="lg"
+                      className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-xl px-10 py-7 rounded-full shadow-2xl font-bold">
+                        Go to Dashboard
+                        <ArrowRight className="w-6 h-6 ml-2" />
+                      </Button>
+                  </motion.div>
+                </Link>
+              ) : (
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
                     size="lg"
+                    onClick={() => base44.auth.redirectToLogin()}
                     className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-xl px-10 py-7 rounded-full shadow-2xl font-bold">
-                      Get Started Free
+                      Sign In / Get Started
                       <ArrowRight className="w-6 h-6 ml-2" />
                     </Button>
                 </motion.div>
-              </Link>
+              )}
               <Link to={createPageUrl("Pricing")}>
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button size="lg" variant="outline" className="text-xl px-10 py-7 border-3 rounded-full font-bold border-gray-300 hover:border-blue-600 hover:text-blue-600">
@@ -588,14 +600,24 @@ export default function Homepage() {
             </div>
             
             <div>
-              <Link to={createPageUrl("Dashboard")}>
+              {currentUser ? (
+                <Link to={createPageUrl("Dashboard")}>
+                  <Button
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
+                      Go to Dashboard
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                </Link>
+              ) : (
                 <Button
                   size="lg"
+                  onClick={() => base44.auth.redirectToLogin()}
                   className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
-                    Start Free Trial
+                    Sign In to Start Trial
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
-              </Link>
+              )}
               <p className="text-sm text-gray-500 mt-3">
                 No commitment • Cancel anytime • Full access to all features
               </p>
