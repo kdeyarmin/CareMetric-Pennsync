@@ -77,7 +77,11 @@ export default function Layout({ children, currentPageName }) {
     },
     {
       category: "Clinical Work",
-      items: [{ name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }]
+      items: [
+        { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
+        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
+      ]
     },
     {
       category: "Resources",
