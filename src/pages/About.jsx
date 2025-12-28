@@ -26,6 +26,23 @@ import {
 } from "lucide-react";
 
 export default function About() {
+  useEffect(() => {
+    console.log('=== WEBKIT DEBUG FROM ABOUT PAGE ===');
+    console.log('window.webkit:', window.webkit);
+    console.log('window.webkit.messageHandlers:', window.webkit?.messageHandlers);
+    
+    if (window.webkit?.messageHandlers) {
+      const handlers = Object.getOwnPropertyNames(window.webkit.messageHandlers);
+      console.log('Available message handlers:', handlers);
+      
+      // Try each handler
+      handlers.forEach(name => {
+        console.log(`Handler "${name}":`, window.webkit.messageHandlers[name]);
+      });
+    }
+    console.log('=====================================');
+  }, []);
+
   const keyBenefits = [
     {
       icon: Clock,
