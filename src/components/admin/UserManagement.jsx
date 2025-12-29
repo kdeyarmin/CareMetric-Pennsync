@@ -69,7 +69,7 @@ export default function UserManagement({ users, currentUser }) {
   });
 
   // Fetch all subscriptions
-  const { data: subscriptions = [] } = base44.useQuery({
+  const { data: subscriptions = [] } = useQuery({
     queryKey: ['allSubscriptions'],
     queryFn: () => base44.entities.Subscription.list('-updated_date'),
     initialData: [],
