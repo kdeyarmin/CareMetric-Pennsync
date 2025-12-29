@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -241,6 +242,11 @@ Return JSON with sections: overall_assessment, critical_priorities (array), lear
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
   return (
+    <PremiumFeatureGate
+      featureName="Medicare Compliance Dashboard"
+      featureDescription="Monitor your Medicare compliance with real-time scoring, AI-powered insights, and personalized improvement plans. This premium feature ensures you stay audit-ready."
+      allowTrial={true}
+    >
     <div className="p-6 max-w-[1600px] mx-auto">
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
@@ -683,5 +689,6 @@ Return JSON with sections: overall_assessment, critical_priorities (array), lear
         </TabsContent>
       </Tabs>
     </div>
+    </PremiumFeatureGate>
   );
 }

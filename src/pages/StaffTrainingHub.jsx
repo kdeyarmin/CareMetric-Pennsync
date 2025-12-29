@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -140,6 +141,11 @@ export default function StaffTrainingHub() {
   const totalTime = trainingProgress.reduce((sum, p) => sum + (p.time_spent_minutes || 0), 0);
 
   return (
+    <PremiumFeatureGate
+      featureName="Training Hub"
+      featureDescription="Access personalized AI-powered training with interactive quizzes, patient simulations, and skill development plans. This premium feature accelerates your professional growth."
+      allowTrial={true}
+    >
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6">
@@ -619,5 +625,6 @@ export default function StaffTrainingHub() {
         </TabsContent>
         </Tabs>
         </div>
+    </PremiumFeatureGate>
         );
         }

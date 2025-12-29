@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -298,6 +299,11 @@ export default function Patients() {
   };
 
   return (
+    <PremiumFeatureGate
+      featureName="Patient Management"
+      featureDescription="Manage your patient roster with comprehensive profiles, medical histories, and AI-powered insights. This premium feature enables better clinical decision-making and personalized care planning."
+      allowTrial={true}
+    >
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
         <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
@@ -646,5 +652,6 @@ export default function Patients() {
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
+    </PremiumFeatureGate>
               );
             }

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AICarePlanSuggestionEngine from "../components/carePlan/AICarePlanSuggestionEngine";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -229,6 +230,11 @@ export default function CarePlanManagement() {
   const activePatients = Object.keys(groupedByPatient).length;
 
   return (
+    <PremiumFeatureGate
+      featureName="Care Plan Management"
+      featureDescription="Create, manage, and optimize patient care plans with AI-powered recommendations. This premium feature includes automated task generation and personalized education planning."
+      allowTrial={true}
+    >
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <Button
         variant="outline"
@@ -600,5 +606,6 @@ export default function CarePlanManagement() {
         )}
       </div>
     </div>
+    </PremiumFeatureGate>
   );
 }
