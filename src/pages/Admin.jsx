@@ -47,6 +47,7 @@ import UserPasswordReset from "../components/admin/UserPasswordReset";
 import AIAdminAnomalyDetector from "../components/admin/AIAdminAnomalyDetector";
 import DetailedAuditTrailViewer from "../components/admin/DetailedAuditTrailViewer";
 import UserManagement from "../components/admin/UserManagement";
+import RegulatoryComplianceManager from "../components/admin/RegulatoryComplianceManager";
 
 export default function Admin() {
   const queryClient = useQueryClient();
@@ -274,9 +275,10 @@ If you have any questions, please contact your administrator.`,
 
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
           <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
           <TabsTrigger value="users" className="text-xs sm:text-sm">User Management</TabsTrigger>
+          <TabsTrigger value="compliance" className="text-xs sm:text-sm">Compliance Rules</TabsTrigger>
           <TabsTrigger value="audit" className="text-xs sm:text-sm">Audit Trail</TabsTrigger>
           <TabsTrigger value="security" className="text-xs sm:text-sm">Security Logs</TabsTrigger>
           <TabsTrigger value="encryption" className="text-xs sm:text-sm">Encryption</TabsTrigger>
@@ -366,6 +368,11 @@ If you have any questions, please contact your administrator.`,
           <AIRoleSuggestions users={users} userActivity={userActivity} />
 
           <UserManagement users={users} currentUser={currentUser} />
+        </TabsContent>
+
+        {/* Compliance Rules Management Tab */}
+        <TabsContent value="compliance" className="space-y-6">
+          <RegulatoryComplianceManager />
         </TabsContent>
 
         {/* Audit Trail Tab */}
