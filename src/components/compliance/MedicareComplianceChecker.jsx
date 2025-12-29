@@ -70,7 +70,7 @@ Examples (Non-compliant): ${rule.examples_non_compliant?.[0] || 'N/A'}
 `).join('\n');
 
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a Medicare home health compliance expert. Analyze this clinical note against 42 CFR 484 Conditions of Participation for Pennsylvania home health agencies.
+        prompt: `You are a Medicare home health compliance expert with access to the latest 2025 CMS regulations. Analyze this clinical note against current 42 CFR 484 Conditions of Participation.
 
 CLINICAL NOTE:
 ${noteContent}
@@ -81,7 +81,7 @@ CONTEXT:
 - Nurse Type: ${nurseType}
 - Patient: ${patientData?.first_name} ${patientData?.last_name}
 
-MEDICARE COMPLIANCE RULES TO CHECK:
+INTERNAL COMPLIANCE RULES DATABASE:
 ${ruleContext}
 
 For EACH rule, determine:
@@ -101,7 +101,10 @@ CRITICAL REQUIREMENTS:
 
 ${nurseType === 'LPN' ? 'LPN-SPECIFIC: Must state "under RN supervision" and document care per established plan. Cannot perform comprehensive assessments or change care plans.' : ''}
 
+IMPORTANT: Also search current CMS.gov and Medicare sources for any 2025 updates or changes that may affect compliance beyond the internal rules.
+
 Return JSON with overall_compliance_score (0-100), rule_violations array with rule_name, cop_reference, status, missing_elements, evidence_found, remediation_text, compliant_example, severity.`,
+        add_context_from_internet: true,
         response_json_schema: {
           type: "object",
           properties: {
