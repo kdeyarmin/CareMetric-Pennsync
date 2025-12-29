@@ -47,7 +47,8 @@ export default function PremiumFeatureGate({
   const isAdmin = currentUser?.role === 'admin';
   const hasActiveSubscription = subscription && subscription.status === 'active';
   const hasTrialAccess = allowTrial && subscription && subscription.status === 'trialing';
-  const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess;
+  const hasLifetimeFree = subscription && subscription.status === 'lifetime_free';
+  const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess || hasLifetimeFree;
 
   // Show paywall if no access
   if (!hasAccess) {

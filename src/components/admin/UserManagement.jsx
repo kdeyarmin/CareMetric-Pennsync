@@ -429,26 +429,33 @@ export default function UserManagement({ users, currentUser }) {
                       )}
                     </TableCell>
                     <TableCell>
-                      {(() => {
-                        const sub = getUserSubscription(user.email);
-                        if (!sub || sub.status === 'free') {
-                          return (
-                            <Badge variant="outline" className="border-gray-300">
-                              Free
-                            </Badge>
-                          );
-                        }
-                        return (
-                          <Badge className={
-                            sub.status === 'active' ? 'bg-green-500' :
-                            sub.status === 'trialing' ? 'bg-blue-500' :
-                            sub.status === 'past_due' ? 'bg-red-500' :
-                            'bg-gray-500'
-                          }>
-                            {sub.plan_type || sub.status}
-                          </Badge>
-                        );
-                      })()}
+                     {(() => {
+                       const sub = getUserSubscription(user.email);
+                       if (!sub || sub.status === 'free') {
+                         return (
+                           <Badge variant="outline" className="border-gray-300">
+                             Free
+                           </Badge>
+                         );
+                       }
+                       if (sub.status === 'lifetime_free') {
+                         return (
+                           <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                             🎁 Lifetime Free
+                           </Badge>
+                         );
+                       }
+                       return (
+                         <Badge className={
+                           sub.status === 'active' ? 'bg-green-500' :
+                           sub.status === 'trialing' ? 'bg-blue-500' :
+                           sub.status === 'past_due' ? 'bg-red-500' :
+                           'bg-gray-500'
+                         }>
+                           {sub.plan_type || sub.status}
+                         </Badge>
+                       );
+                     })()}
                     </TableCell>
                     <TableCell className="text-sm text-gray-500">
                       {user.created_date ? format(new Date(user.created_date), 'MMM d, yyyy') : 'N/A'}
@@ -780,6 +787,7 @@ export default function UserManagement({ users, currentUser }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="free">Free (No Subscription)</SelectItem>
+                    <SelectItem value="lifetime_free">🎁 Lifetime Free Access</SelectItem>
                     <SelectItem value="trialing">Trialing</SelectItem>
                     <SelectItem value="active">Active (Paid)</SelectItem>
                     <SelectItem value="past_due">Past Due</SelectItem>
@@ -840,9 +848,12 @@ export default function UserManagement({ users, currentUser }) {
                 <AlertDescription className="text-yellow-900">
                   <p className="font-semibold mb-1">⚠️ Important Notes:</p>
                   <ul className="text-sm space-y-1">
-                    <li>• Setting status to "Free" removes all subscription requirements</li>
-                    <li>• This does not cancel Stripe subscriptions - handle that separately</li>
+                    <li>• <strong>Free:</strong> User has no subscription access</li>
+                    <li>• <strong>Lifetime Free:</strong> User has permanent access to all features (special grant)</li>
+                    <li>• <strong>Trialing:</strong> User is in free trial period</li>
+                    <li>• <strong>Active:</strong> User has paid subscription</li>
                     <li>• Changes take effect immediately for the user</li>
+                    <li>• This does not cancel Stripe subscriptions - handle that separately</li>
                   </ul>
                 </AlertDescription>
               </Alert>
