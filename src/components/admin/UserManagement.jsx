@@ -499,6 +499,42 @@ export default function UserManagement({ users, currentUser }) {
                         >
                           <CreditCard className="w-4 h-4" />
                         </Button>
+                        {(() => {
+                          const sub = getUserSubscription(user.email);
+                          if (!sub || sub.status !== 'lifetime_free') {
+                            return (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  if (confirm(`Grant ${user.full_name || user.email} lifetime free access to all features?`)) {
+                                    const existingSub = getUserSubscription(user.email);
+                                    if (existingSub) {
+                                      await updateSubscriptionMutation.mutateAsync({
+                                        subscriptionId: existingSub.id,
+                                        data: { status: 'lifetime_free', plan_type: 'lifetime_free' }
+                                      });
+                                    } else {
+                                      await updateSubscriptionMutation.mutateAsync({
+                                        subscriptionId: null,
+                                        data: { 
+                                          user_email: user.email,
+                                          status: 'lifetime_free', 
+                                          plan_type: 'lifetime_free' 
+                                        }
+                                      });
+                                    }
+                                  }
+                                }}
+                                title="Grant lifetime free access"
+                                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                              >
+                                🎁
+                              </Button>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     </TableCell>
                   </TableRow>
