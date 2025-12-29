@@ -280,8 +280,18 @@ export default function Dashboard() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-blue-600 font-medium mb-1">Note Enhancements</p>
-                <p className="text-3xl font-bold text-blue-900">{stats.noteConversions}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm text-blue-600 font-medium">Note Enhancements</p>
+                  {stats.noteConversions === 0 && (
+                    <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-300">Sample</Badge>
+                  )}
+                </div>
+                <p className="text-3xl font-bold text-blue-900">
+                  {stats.noteConversions === 0 ? '47' : stats.noteConversions}
+                </p>
+                {stats.noteConversions === 0 && (
+                  <p className="text-xs text-blue-600 mt-1">Start documenting to see your progress</p>
+                )}
               </div>
               <FileText className="w-12 h-12 text-blue-400" />
             </div>
@@ -291,8 +301,18 @@ export default function Dashboard() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-600 font-medium mb-1">Time Saved</p>
-                <p className="text-3xl font-bold text-green-900">{stats.timeSavedDisplay}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm text-green-600 font-medium">Time Saved</p>
+                  {stats.timeSavedDisplay === '0 hrs' && (
+                    <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300">Sample</Badge>
+                  )}
+                </div>
+                <p className="text-3xl font-bold text-green-900">
+                  {stats.timeSavedDisplay === '0 hrs' ? '23.5 hrs' : stats.timeSavedDisplay}
+                </p>
+                {stats.timeSavedDisplay === '0 hrs' && (
+                  <p className="text-xs text-green-600 mt-1">Your time savings will appear here</p>
+                )}
               </div>
               <Clock className="w-12 h-12 text-green-400" />
             </div>
