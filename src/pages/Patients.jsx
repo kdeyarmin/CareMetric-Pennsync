@@ -28,7 +28,6 @@ import ReferralUploadProcessor from "../components/referral/ReferralUploadProces
 import BulkPatientActions from "../components/patient/BulkPatientActions";
 import PatientMergeDialog from "../components/patient/PatientMergeDialog";
 import PaginatedPatientList from "../components/patient/PaginatedPatientList";
-import PatientFileUpdateUploader from "../components/patient/PatientFileUpdateUploader";
 import FavoriteButton from "../components/navigation/FavoriteButton";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import {
@@ -352,9 +351,6 @@ export default function Patients() {
           }}
         />
       )}
-
-      {/* Patient File Update Uploader */}
-      <PatientFileUpdateUploader />
 
       {/* Duplicate Detection Alert */}
       <DuplicatePatientManager />
