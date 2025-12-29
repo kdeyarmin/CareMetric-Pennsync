@@ -13,6 +13,9 @@ import WorkflowExecutionMonitor from "../components/workflow/WorkflowExecutionMo
 import AdvancedPatientOutcomesAnalytics from "../components/reporting/AdvancedPatientOutcomesAnalytics";
 import ReportTemplateBuilder from "../components/reporting/ReportTemplateBuilder";
 import BIToolIntegration from "../components/reporting/BIToolIntegration";
+import AIPatientHistorySummarizer from "../components/ai/AIPatientHistorySummarizer";
+import AIHealthRiskPredictor from "../components/ai/AIHealthRiskPredictor";
+import AICarePlanAdvisor from "../components/ai/AICarePlanAdvisor";
 
 export default function WorkflowAutomation() {
   const [activeTab, setActiveTab] = useState("workflows");
@@ -174,7 +177,17 @@ export default function WorkflowAutomation() {
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
-          <AdvancedPatientOutcomesAnalytics />
+          <div className="space-y-6">
+            <AdvancedPatientOutcomesAnalytics />
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <AIPatientHistorySummarizer />
+              <div className="space-y-6">
+                <AIHealthRiskPredictor />
+                <AICarePlanAdvisor />
+              </div>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="templates" className="mt-6">
