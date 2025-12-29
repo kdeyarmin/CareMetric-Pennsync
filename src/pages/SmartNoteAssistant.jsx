@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -1655,6 +1656,11 @@ Return JSON with:
   };
 
   return (
+    <PremiumFeatureGate
+      featureName="AI Smart Note Assistant"
+      featureDescription="Transform your rough notes into Medicare-compliant documentation with AI. This premium feature includes voice dictation, real-time compliance checking, and intelligent clinical suggestions."
+      allowTrial={true}
+    >
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-4 md:mb-6 flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
@@ -2840,5 +2846,6 @@ Return JSON with:
         onToggleVoice={() => setIsVoiceListening(!isVoiceListening)}
       />
     </div>
+    </PremiumFeatureGate>
   );
 }
