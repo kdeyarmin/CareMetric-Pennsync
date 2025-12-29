@@ -23,6 +23,7 @@ export default function Settings() {
   const [formData, setFormData] = useState({
     full_name: '',
     credential_type: 'RN',
+    service_type: 'home_health',
     preferred_language: 'en-US',
     phone_number: '',
     two_factor_enabled: false
@@ -47,6 +48,7 @@ export default function Settings() {
       setFormData({
         full_name: currentUser.full_name || '',
         credential_type: currentUser.credential_type || 'RN',
+        service_type: currentUser.service_type || 'home_health',
         preferred_language: currentUser.preferred_language || 'en-US',
         phone_number: currentUser.phone_number || '',
         two_factor_enabled: currentUser.two_factor_enabled || false
@@ -60,6 +62,7 @@ export default function Settings() {
       await base44.auth.updateMe({
         full_name: formData.full_name,
         credential_type: formData.credential_type,
+        service_type: formData.service_type,
         preferred_language: formData.preferred_language,
         phone_number: formData.phone_number,
         two_factor_enabled: formData.two_factor_enabled
@@ -177,6 +180,24 @@ export default function Settings() {
                   </Select>
                 </div>
                 <div>
+                  <Label htmlFor="service_type">Service Type</Label>
+                  <Select
+                    value={formData.service_type}
+                    onValueChange={(value) => setFormData({ ...formData, service_type: value })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="home_health">🏥 Home Health</SelectItem>
+                      <SelectItem value="hospice">🕊️ Hospice</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    This determines which compliance standards apply to your documentation
+                  </p>
+                </div>
+                <div>
                   <Label htmlFor="preferred_language">Preferred Language</Label>
                   <Select
                     value={formData.preferred_language}
@@ -239,6 +260,12 @@ export default function Settings() {
                 <div>
                   <p className="text-sm font-medium text-gray-500">Credential Type</p>
                   <p className="text-gray-900">{currentUser?.credential_type || 'RN'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Service Type</p>
+                  <p className="text-gray-900">
+                    {currentUser?.service_type === 'hospice' ? '🕊️ Hospice' : '🏥 Home Health'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Preferred Language</p>
