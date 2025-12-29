@@ -25,9 +25,18 @@ export default function Settings() {
     two_factor_enabled: false
   });
 
+  const navigate = useNavigate();
+
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        navigate(createPageUrl("Home"));
+        return null;
+      }
+    },
   });
 
   React.useEffect(() => {

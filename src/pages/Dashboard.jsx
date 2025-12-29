@@ -40,7 +40,14 @@ export default function Dashboard() {
 
     const { data: currentUser } = useQuery({
       queryKey: ['currentUser'],
-      queryFn: () => base44.auth.me(),
+      queryFn: async () => {
+        try {
+          return await base44.auth.me();
+        } catch (error) {
+          navigate(createPageUrl("Home"));
+          return null;
+        }
+      },
     });
 
     // Log page visit with user context
