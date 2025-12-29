@@ -80,7 +80,7 @@ export default function Layout({ children, currentPageName }) {
   const showNavigationUI = currentPageName !== "Home" && currentUser && !userLoading;
 
   const userNavItems = [
-    { name: "Home", icon: Home, page: "Home" },
+    { name: "Dashboard", icon: Home, page: "Dashboard" },
     { name: "My Patients", icon: Users, page: "Patients" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
