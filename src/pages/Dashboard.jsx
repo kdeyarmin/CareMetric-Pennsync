@@ -30,6 +30,7 @@ import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
 import ProactiveCareGapIdentifier from "../components/predictive/ProactiveCareGapIdentifier";
 import TaskNotifications from "../components/tasks/TaskNotifications";
 import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
+import PersonalizedCoachingDashboard from "../components/coaching/PersonalizedCoachingDashboard";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -371,6 +372,11 @@ export default function Dashboard() {
           complianceAudits={nurseComplianceAudits}
           pendingTasks={nurseTasks}
         />
+      </div>
+
+      {/* AI Coaching System */}
+      <div className="mb-6">
+        <PersonalizedCoachingDashboard nurseEmail={currentUser?.email} />
       </div>
 
       {/* Proactive Care Gap Identification */}
