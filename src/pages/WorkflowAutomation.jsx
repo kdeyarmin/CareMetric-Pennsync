@@ -10,6 +10,9 @@ import ApprovalQueue from "../components/workflow/ApprovalQueue";
 import NotificationRuleManager from "../components/workflow/NotificationRuleManager";
 import ScheduledReportManager from "../components/workflow/ScheduledReportManager";
 import WorkflowExecutionMonitor from "../components/workflow/WorkflowExecutionMonitor";
+import AdvancedPatientOutcomesAnalytics from "../components/reporting/AdvancedPatientOutcomesAnalytics";
+import ReportTemplateBuilder from "../components/reporting/ReportTemplateBuilder";
+import BIToolIntegration from "../components/reporting/BIToolIntegration";
 
 export default function WorkflowAutomation() {
   const [activeTab, setActiveTab] = useState("workflows");
