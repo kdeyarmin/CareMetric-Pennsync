@@ -217,6 +217,12 @@ export default function Dashboard() {
             <span className="font-medium text-gray-900">Dashboard</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Link to={createPageUrl("Dashboard")}>
+              <Button variant="outline" size="sm" className="gap-2">
+                <User className="w-4 h-4" />
+                My Dashboard
+              </Button>
+            </Link>
             <Link to={createPageUrl("Patients")}>
               <Button variant="outline" size="sm" className="gap-2">
                 <User className="w-4 h-4" />
