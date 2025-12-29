@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Failed to reset password' }, { status: 500 });
     }
 
-    // Log the password reset action
+    // Log the password reset action in both SecurityLog and AuditTrail
     await base44.asServiceRole.entities.SecurityLog.create({
       timestamp: new Date().toISOString(),
       user_email: adminUser.email,
@@ -57,6 +57,22 @@ Deno.serve(async (req) => {
       details: {
         target_user: user_email,
         reset_by: adminUser.email
+      }
+    });
+
+    // Detailed audit trail entry
+    await base44.asServiceRole.entities.AuditTrail.create({
+      timestamp: new Date().toISOString(),
+      user_email: adminUser.email,
+      user_role: 'admin',
+      action_type: 'PASSWORD_RESET',
+      action_description: `Admin ${adminUser.email} reset password for ${user_email}`,
+      target_entity_type: 'User',
+      target_entity_id: targetUser.id,
+      target_identifier: user_email,
+      change_details: {
+        reset_by: adminUser.email,
+        reset_method: 'admin_override'
       }
     });
 
