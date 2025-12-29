@@ -669,6 +669,11 @@ export default function Home() {
                   </Link>
                 </li>
                 <li>
+                  <Link to={createPageUrl("FAQ")} className="hover:text-white transition-colors">
+                    FAQ
+                  </Link>
+                </li>
+                <li>
                   <Link to={createPageUrl("Support")} className="hover:text-white transition-colors">
                     Support
                   </Link>
