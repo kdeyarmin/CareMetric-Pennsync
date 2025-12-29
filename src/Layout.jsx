@@ -71,6 +71,7 @@ export default function Layout({ children, currentPageName }) {
   const isActive = (page) => currentPageName === page;
 
   const userNavItems = [
+    { name: "Home", icon: Home, page: "Home" },
     { name: "My Patients", icon: Users, page: "Patients" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },

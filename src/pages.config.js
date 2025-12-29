@@ -22,6 +22,7 @@ import DocumentVisit from './pages/DocumentVisit';
 import DocumentationTraining from './pages/DocumentationTraining';
 import DuplicatePatients from './pages/DuplicatePatients';
 import EULA from './pages/EULA';
+import FAQ from './pages/FAQ';
 import Features from './pages/Features';
 import Home from './pages/Home';
 import ImportPatients from './pages/ImportPatients';
@@ -77,7 +78,6 @@ import TrainingManagement from './pages/TrainingManagement';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
-import FAQ from './pages/FAQ';
 import __Layout from './Layout.jsx';
 
 
@@ -106,6 +106,7 @@ export const PAGES = {
     "DocumentationTraining": DocumentationTraining,
     "DuplicatePatients": DuplicatePatients,
     "EULA": EULA,
+    "FAQ": FAQ,
     "Features": Features,
     "Home": Home,
     "ImportPatients": ImportPatients,
@@ -161,7 +162,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
-    "FAQ": FAQ,
 }
 
 export const pagesConfig = {
