@@ -90,10 +90,12 @@ export default function Layout({ children, currentPageName }) {
 
 
 
+  const showNavigation = currentPageName !== "Home";
+
   return (
     <div className="min-h-screen bg-blue-100 flex">
       {/* ================= Desktop Sidebar ================= */}
-      {currentUser && (
+      {showNavigation && currentUser && (
       <aside className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${sidebarCollapsed ? "w-16" : "w-56"}`}>
         <div className="h-16 flex items-center justify-between px-3 border-b">
           <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
@@ -172,7 +174,7 @@ export default function Layout({ children, currentPageName }) {
           )}
 
           {/* ================= Mobile Header ================= */}
-          {currentUser && (
+          {showNavigation && currentUser && (
           <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-blue-600 flex items-center justify-between px-4 z-[100]">
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
           <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" className="w-8 h-8 object-contain" alt="CareMetric AI Logo" />
@@ -193,7 +195,7 @@ export default function Layout({ children, currentPageName }) {
           )}
 
           {/* ================= Mobile Menu Overlay ================= */}
-          {currentUser && mobileMenuOpen && (
+          {showNavigation && currentUser && mobileMenuOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-[90]"
           onClick={() => setMobileMenuOpen(false)}
@@ -264,12 +266,12 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* ================= Main Content ================= */}
-      <main className={`flex-1 ${currentUser ? 'pt-16 lg:pt-0 pb-32' : ''}`}>
-        <div className={currentUser ? 'p-4 lg:p-6' : ''}>{children}</div>
+      <main className={`flex-1 ${showNavigation && currentUser ? 'pt-16 lg:pt-0 pb-32' : ''}`}>
+        <div className={showNavigation && currentUser ? 'p-4 lg:p-6' : ''}>{children}</div>
       </main>
 
       {/* ================= Mobile Floating Buttons ================= */}
-      {currentUser && (
+      {showNavigation && currentUser && (
       <div
         className="fixed z-50 flex gap-10 px-4 lg:hidden pointer-events-none right-0"
         style={{ bottom: MOBILE_FAB_OFFSET }}
@@ -285,7 +287,7 @@ export default function Layout({ children, currentPageName }) {
 
 
           {/* ================= Desktop Floating Buttons ================= */}
-          {currentUser && (
+          {showNavigation && currentUser && (
           <div className="hidden lg:block">
         <div className="fixed right-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
           {currentUser && <AIChatAssistant />}
@@ -297,7 +299,7 @@ export default function Layout({ children, currentPageName }) {
           )}
 
           {/* ================= Bottom Navigation ================= */}
-          {currentUser && (
+          {showNavigation && currentUser && (
           <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t shadow lg:hidden z-40">
         <div className="flex items-center justify-around h-full">
           <Link to={createPageUrl("Dashboard")} className={isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}>
@@ -319,7 +321,7 @@ export default function Layout({ children, currentPageName }) {
           </nav>
           )}
 
-          {currentUser && <OfflineIndicator />}
+          {showNavigation && currentUser && <OfflineIndicator />}
           </div>
           );
 }
