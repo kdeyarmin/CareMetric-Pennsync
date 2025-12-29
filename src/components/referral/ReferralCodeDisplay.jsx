@@ -1,14 +1,31 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Copy, Check, Gift, Users, DollarSign } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 
 export default function ReferralCodeDisplay({ user }) {
   const [copied, setCopied] = useState(false);
+  const queryClient = useQueryClient();
+
+  // Auto-generate referral code if user doesn't have one
+  useEffect(() => {
+    const generateCodeIfNeeded = async () => {
+      if (user && !user.referral_code) {
+        try {
+          const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+          await base44.auth.updateMe({ referral_code: code });
+          queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+        } catch (error) {
+          console.error('Failed to generate referral code:', error);
+        }
+      }
+    };
+    generateCodeIfNeeded();
+  }, [user, queryClient]);
 
   const { data: referrals = [] } = useQuery({
     queryKey: ['myReferrals', user?.email],
