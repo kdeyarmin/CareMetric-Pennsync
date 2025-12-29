@@ -76,7 +76,6 @@ export default function Layout({ children, currentPageName }) {
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
     { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
-    { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
     { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
     { name: "Settings", icon: Settings, page: "Settings" }
   ];
