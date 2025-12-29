@@ -252,12 +252,12 @@ If you have any questions, please contact your administrator.`,
 
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="users">User Management</TabsTrigger>
-          <TabsTrigger value="security">Security Logs</TabsTrigger>
-          <TabsTrigger value="encryption">Encryption</TabsTrigger>
-          <TabsTrigger value="data">Data Browser</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
+          <TabsTrigger value="users" className="text-xs sm:text-sm">User Management</TabsTrigger>
+          <TabsTrigger value="security" className="text-xs sm:text-sm">Security Logs</TabsTrigger>
+          <TabsTrigger value="encryption" className="text-xs sm:text-sm">Encryption</TabsTrigger>
+          <TabsTrigger value="data" className="text-xs sm:text-sm">Data Browser</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
