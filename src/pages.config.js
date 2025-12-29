@@ -5,7 +5,6 @@ import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
-import AgencySettings from './pages/AgencySettings';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import AuditTrail from './pages/AuditTrail';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
@@ -90,7 +89,6 @@ export const PAGES = {
     "AdminTrainingAnalytics": AdminTrainingAnalytics,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
-    "AgencySettings": AgencySettings,
     "AnalyticsDashboard": AnalyticsDashboard,
     "AuditTrail": AuditTrail,
     "AutomaticCarePlans": AutomaticCarePlans,
