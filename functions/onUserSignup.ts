@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
           care_scope: invitation.care_scope,
           phone: invitation.phone,
           credentials: invitation.credentials,
-          is_approved: true
+          is_approved: true,
+          service_type: 'home_health'
         });
 
         // Delete the invitation instead of updating it
