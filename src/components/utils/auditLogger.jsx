@@ -149,3 +149,28 @@ export async function logBulkOperation(operationType, entityType, count, details
     }
   });
 }
+
+// OASIS specific logging helper
+export const logOASISAction = async (action, details = {}) => {
+  try {
+    const user = await base44.auth.me();
+    await logAuditTrail({
+      actionType: 'OASIS_' + action.toUpperCase(),
+      actionDescription: `OASIS action: ${action}`,
+      targetEntityType: 'OASIS',
+      changeDetails: details,
+      currentUser: user
+    });
+  } catch (error) {
+    console.error('OASIS audit logging failed:', error);
+  }
+};
+
+// Audit action constants
+export const AuditActions = {
+  OASIS_UPLOAD: 'OASIS_UPLOAD',
+  OASIS_REVIEW: 'OASIS_REVIEW',
+  OASIS_COMPARE: 'OASIS_COMPARE',
+  OASIS_EXPORT: 'OASIS_EXPORT',
+  OASIS_DELETE: 'OASIS_DELETE'
+};
