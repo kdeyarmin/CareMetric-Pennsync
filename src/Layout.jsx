@@ -77,25 +77,31 @@ export default function Layout({ children, currentPageName }) {
         { name: "My Patients", icon: Users, page: "Patients" },
         { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
         { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-        { name: "Training", icon: GraduationCap, page: "StaffTrainingHub" }
+        { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
+        { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
+        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
+        { name: "Settings", icon: Settings, page: "Settings" }
       ]
     },
     ...(currentUser?.role === 'admin' ? [
       {
         category: "ADMIN",
         items: [
-          { name: "Dashboard", icon: BarChart3, page: "AdminDashboard" },
-          { name: "Users", icon: Users, page: "Admin" },
-          { name: "Settings", icon: Settings, page: "AgencySettings" }
+          { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
+          { name: "User & Training Mgmt", icon: Users, page: "Admin" },
+          { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
+          { name: "Agency Settings", icon: Settings, page: "AgencySettings" },
+          { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
         ]
       }
     ] : [])
   ];
 
   const bottomNavItems = [
-    { name: "Settings", icon: Settings, page: "Settings" },
     { name: "About", icon: Sparkles, page: "About" },
-    { name: "Pricing & Billing", icon: CreditCard, page: "Pricing" }
+    { name: "Features", icon: Sparkles, page: "Features" },
+    { name: "Pricing", icon: CreditCard, page: "Pricing" },
+    { name: "Billing", icon: CreditCard, page: "Billing" }
   ];
 
   return (
