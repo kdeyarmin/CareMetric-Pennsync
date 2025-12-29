@@ -40,24 +40,37 @@ export default function AIChatAssistant() {
     }
   }, [conversation]);
 
+  const suggestedQuestions = [
+    "How do I create a smart note?",
+    "How do I add a new patient?",
+    "How do care plans work?",
+    "How do I use voice dictation?",
+    "What's the compliance checker?",
+    "How do I track patient outcomes?",
+    "How do I use offline mode?",
+    "How do I generate patient education materials?"
+  ];
+
   useEffect(() => {
     if (isOpen && conversation.length === 0) {
       setConversation([
         {
           role: "assistant",
-          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your CareMetric AI Assistant.\n\nHow can I help you today?`,
-          timestamp: new Date()
+          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your CareMetric AI Assistant.\n\nI can help you with:\n• How to use features\n• Navigate the app\n• Troubleshoot issues\n• Best practices\n• Training resources\n\nWhat would you like to know?`,
+          timestamp: new Date(),
+          showSuggestions: true
         }
       ]);
     }
   }, [isOpen, currentUser]);
 
-  const handleSendMessage = async () => {
-    if (!message.trim() || isLoading) return;
+  const handleSendMessage = async (messageText) => {
+    const textToSend = messageText || message;
+    if (!textToSend.trim() || isLoading) return;
 
     const userMessage = {
       role: "user",
-      content: message,
+      content: textToSend,
       timestamp: new Date()
     };
 
@@ -67,8 +80,11 @@ export default function AIChatAssistant() {
 
     try {
       const response = await base44.functions.invoke("chatWithAI", {
-        message,
-        conversationHistory: conversation.slice(-6)
+        message: textToSend,
+        conversationHistory: conversation.slice(-6),
+        context: "user_support",
+        userEmail: currentUser?.email,
+        userRole: currentUser?.role
       });
 
       setConversation((prev) => [
@@ -77,14 +93,14 @@ export default function AIChatAssistant() {
           role: "assistant",
           content: response.data.response,
           suggested_actions: response.data.suggested_actions || [],
-          training_suggestions: response.data.training_suggestions || [],
+          related_pages: response.data.related_pages || [],
           timestamp: new Date()
         }
       ]);
     } catch {
       setConversation((prev) => [
         ...prev,
-        { role: "assistant", content: "Something went wrong.", timestamp: new Date() }
+        { role: "assistant", content: "Something went wrong. Please try again.", timestamp: new Date() }
       ]);
     }
 
@@ -96,18 +112,22 @@ export default function AIChatAssistant() {
   ========================= */
   if (!isOpen) {
     return (
-      <Button
-        onClick={() => setIsOpen(true)}
-        size="icon"
-        className="
-          h-14 w-14 rounded-full shadow-2xl
-          bg-gradient-to-r from-indigo-600 to-purple-600
-          hover:from-indigo-700 hover:to-purple-700
-          md:fixed md:bottom-6 md:right-6
-        "
-      >
-        <MessageSquare className="w-6 h-6 text-white" />
-      </Button>
+      <div className="relative">
+        <Button
+          onClick={() => setIsOpen(true)}
+          size="icon"
+          className="
+            h-16 w-16 rounded-full shadow-2xl
+            bg-gradient-to-r from-indigo-600 to-purple-600
+            hover:from-indigo-700 hover:to-purple-700
+            md:fixed md:bottom-6 md:right-6
+            animate-pulse
+          "
+        >
+          <Sparkles className="w-7 h-7 text-white" />
+        </Button>
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white animate-pulse" />
+      </div>
     );
   }
 
@@ -141,37 +161,81 @@ export default function AIChatAssistant() {
           <CardContent className="flex-1 p-0">
             <ScrollArea ref={scrollRef} className="h-[50vh] md:h-96 p-4">
               {conversation.map((msg, i) => (
-                <div key={i} className={`flex gap-3 mb-4 ${msg.role === "user" ? "justify-end" : ""}`}>
-                  {msg.role === "assistant" && (
-                    <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
-                      <Bot className="w-4 h-4 text-white" />
+                <div key={i}>
+                  <div className={`flex gap-3 mb-4 ${msg.role === "user" ? "justify-end" : ""}`}>
+                    {msg.role === "assistant" && (
+                      <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                    <div className={`rounded-lg p-3 max-w-[80%] ${msg.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100"}`}>
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      {msg.related_pages && msg.related_pages.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-300 space-y-2">
+                          {msg.related_pages.map((page, idx) => (
+                            <a
+                              key={idx}
+                              href={createPageUrl(page.page)}
+                              className="flex items-center gap-2 text-xs text-indigo-600 hover:underline"
+                              onClick={() => setIsOpen(false)}
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              {page.label}
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  <div className={`rounded-lg p-3 max-w-[80%] ${msg.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100"}`}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === "user" && (
+                      <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4" />
+                      </div>
+                    )}
                   </div>
-                  {msg.role === "user" && (
-                    <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                      <User className="w-4 h-4" />
+                  {msg.showSuggestions && (
+                    <div className="mb-4 space-y-2">
+                      <p className="text-xs text-gray-500 font-semibold px-2">Quick questions:</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        {suggestedQuestions.map((q, idx) => (
+                          <Button
+                            key={idx}
+                            variant="outline"
+                            size="sm"
+                            className="justify-start text-left text-xs h-auto py-2"
+                            onClick={() => handleSendMessage(q)}
+                          >
+                            {q}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               ))}
-              {isLoading && <Loader2 className="animate-spin text-indigo-600" />}
+              {isLoading && (
+                <div className="flex items-center gap-2 text-indigo-600">
+                  <Loader2 className="animate-spin w-4 h-4" />
+                  <span className="text-xs">Thinking...</span>
+                </div>
+              )}
             </ScrollArea>
 
-            <div className="p-3 border-t bg-white">
+            <div className="p-3 border-t bg-gray-50">
               <div className="flex gap-2">
                 <Input
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                  placeholder="Ask me anything…"
+                  placeholder="Ask me how to use CareMetric AI..."
+                  className="bg-white"
                 />
-                <Button onClick={handleSendMessage} size="icon">
+                <Button onClick={() => handleSendMessage()} size="icon" className="bg-gradient-to-r from-indigo-600 to-purple-600">
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                Ask about features, navigation, or best practices
+              </p>
             </div>
           </CardContent>
         </Card>
