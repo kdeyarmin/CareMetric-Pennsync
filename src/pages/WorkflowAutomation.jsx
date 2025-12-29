@@ -122,25 +122,37 @@ export default function WorkflowAutomation() {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="workflows" className="flex items-center gap-2">
-            <Workflow className="w-4 h-4" />
+        <TabsList className="grid w-full grid-cols-4 md:grid-cols-8 gap-1">
+          <TabsTrigger value="workflows" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <Workflow className="w-3 h-3 md:w-4 md:h-4" />
             <span className="hidden sm:inline">Workflows</span>
           </TabsTrigger>
-          <TabsTrigger value="approvals" className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
+          <TabsTrigger value="approvals" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <CheckCircle2 className="w-3 h-3 md:w-4 md:h-4" />
             <span className="hidden sm:inline">Approvals</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center gap-2">
-            <Bell className="w-4 h-4" />
-            <span className="hidden sm:inline">Notifications</span>
+          <TabsTrigger value="notifications" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <Bell className="w-3 h-3 md:w-4 md:h-4" />
+            <span className="hidden sm:inline">Notify</span>
           </TabsTrigger>
-          <TabsTrigger value="reports" className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
+          <TabsTrigger value="reports" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <Calendar className="w-3 h-3 md:w-4 md:h-4" />
             <span className="hidden sm:inline">Reports</span>
           </TabsTrigger>
-          <TabsTrigger value="monitor" className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
+          <TabsTrigger value="analytics" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <Settings className="w-3 h-3 md:w-4 md:h-4" />
+            <span className="hidden sm:inline">Analytics</span>
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <Settings className="w-3 h-3 md:w-4 md:h-4" />
+            <span className="hidden sm:inline">Templates</span>
+          </TabsTrigger>
+          <TabsTrigger value="bi-tools" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <Settings className="w-3 h-3 md:w-4 md:h-4" />
+            <span className="hidden sm:inline">BI Tools</span>
+          </TabsTrigger>
+          <TabsTrigger value="monitor" className="flex items-center gap-1 text-xs md:text-sm px-2">
+            <Clock className="w-3 h-3 md:w-4 md:h-4" />
             <span className="hidden sm:inline">Monitor</span>
           </TabsTrigger>
         </TabsList>
@@ -159,6 +171,18 @@ export default function WorkflowAutomation() {
 
         <TabsContent value="reports" className="mt-6">
           <ScheduledReportManager />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-6">
+          <AdvancedPatientOutcomesAnalytics />
+        </TabsContent>
+
+        <TabsContent value="templates" className="mt-6">
+          <ReportTemplateBuilder />
+        </TabsContent>
+
+        <TabsContent value="bi-tools" className="mt-6">
+          <BIToolIntegration />
         </TabsContent>
 
         <TabsContent value="monitor" className="mt-6">
