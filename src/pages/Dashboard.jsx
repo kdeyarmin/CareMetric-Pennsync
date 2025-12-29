@@ -9,9 +9,6 @@ import { createPageUrl } from "@/utils";
 import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
-import VoiceCommandListener from "../components/voice/VoiceCommandListener";
-import { getCommandsForContext } from "../components/voice/voiceCommands";
-import EnhancedVoiceCommands from "../components/voice/EnhancedVoiceCommands";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
 
 import RealTimePatientAlerts from "../components/dashboard/RealTimePatientAlerts";
@@ -397,17 +394,6 @@ export default function Dashboard() {
 
       {/* Add Compliance Widget */}
       <ComplianceDashboardWidget />
-
-      {/* Enhanced Voice Commands - Positioned in Center of Bottom Row */}
-      <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-50 lg:bottom-6 lg:left-auto lg:right-24 lg:translate-x-0">
-        <EnhancedVoiceCommands
-          onTranscription={(text) => console.log('Dictation:', text)}
-          onCommand={handleVoiceCommand}
-          commands={getCommandsForContext('dashboard')}
-          mode="command"
-          showSettings={true}
-        />
-      </div>
     </div>
   );
 }

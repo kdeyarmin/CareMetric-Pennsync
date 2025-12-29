@@ -20,9 +20,6 @@ import {
 } from "@/components/ui/dialog";
 
 import PatientForm from "../components/patient/PatientForm";
-import VoiceCommandListener from "../components/voice/VoiceCommandListener";
-import { getCommandsForContext } from "../components/voice/voiceCommands";
-import EnhancedVoiceCommands from "../components/voice/EnhancedVoiceCommands";
 import AIPatientSummaryReport from "../components/smartNote/AIPatientSummaryReport";
 import DuplicatePatientManager from "../components/patient/DuplicatePatientManager";
 import AdvancedPatientFilters from "../components/patient/AdvancedPatientFilters";
@@ -300,41 +297,6 @@ export default function Patients() {
     }
   };
 
-  // Voice command handler
-  const handleVoiceCommand = (action, spokenText) => {
-    switch (action) {
-      case 'add_patient':
-        setEditingPatient(null);
-        setShowForm(true);
-        break;
-      case 'schedule_visit':
-        // Open first patient's detail page or show message
-        if (patients.length > 0) {
-          alert('Please select a patient first to schedule a visit');
-        } else {
-          alert('No patients available. Please add a patient first.');
-        }
-        break;
-      case 'search_patients':
-        // Extract search term from spoken text
-        const searchKeywords = ['search for', 'find patient', 'look up', 'search patient', 'find'];
-        let extractedSearchTerm = spokenText;
-        for (const keyword of searchKeywords) {
-          if (extractedSearchTerm.toLowerCase().startsWith(keyword)) {
-            extractedSearchTerm = extractedSearchTerm.substring(keyword.length);
-            break;
-          }
-        }
-        extractedSearchTerm = extractedSearchTerm.trim();
-        if (extractedSearchTerm) {
-          setSearchTerm(extractedSearchTerm);
-        }
-        break;
-      default:
-        console.log('Unhandled voice command:', action);
-    }
-  };
-
   return (
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
@@ -607,17 +569,6 @@ export default function Patients() {
         patient1={patientsToMerge.patient1}
         patient2={patientsToMerge.patient2}
       />
-
-      {/* Enhanced Voice Commands */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <EnhancedVoiceCommands
-          onTranscription={(text) => setSearchTerm(text)}
-          onCommand={handleVoiceCommand}
-          commands={getCommandsForContext('patients')}
-          mode="command"
-          showSettings={true}
-        />
-      </div>
 
       {/* Referral Upload Dialog */}
       <Dialog open={showReferralUpload} onOpenChange={setShowReferralUpload}>
