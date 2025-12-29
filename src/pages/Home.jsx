@@ -64,7 +64,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative overflow-hidden"
         style={{ transform: `translateY(${scrollY * 0.3}px)` }}>
-        <div className="relative max-w-7xl mx-auto px-4 py-24 sm:px-6 lg:px-8">
+        <div className="relative max-w-7xl mx-auto px-4 py-12 sm:py-16 md:py-24 sm:px-6 lg:px-8">
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -75,15 +75,15 @@ export default function Home() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="flex items-center justify-center gap-4 mb-8"
+              className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-6 sm:mb-8"
             >
               <motion.img
                 whileHover={{ rotate: 360, scale: 1.1 }}
                 transition={{ duration: 0.6 }}
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                 alt="CareMetric AI Logo"
-                className="w-24 h-24 object-contain drop-shadow-2xl" />
-              <h1 className="text-6xl md:text-8xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
+                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 object-contain drop-shadow-2xl" />
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-8xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
                 CareMetric AI
               </h1>
             </motion.div>
@@ -91,7 +91,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4, duration: 0.6 }}
-              className="text-3xl md:text-4xl text-gray-800 mb-4 font-bold tracking-tight"
+              className="text-xl sm:text-2xl md:text-3xl lg:text-4xl text-gray-800 mb-3 sm:mb-4 font-bold tracking-tight px-2"
             >
               Your AI-Powered Clinical Documentation Assistant
             </motion.p>
@@ -99,7 +99,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.6, duration: 0.6 }}
-              className="text-xl md:text-2xl text-gray-600 mb-8 max-w-4xl mx-auto leading-relaxed"
+              className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-600 mb-6 sm:mb-8 max-w-4xl mx-auto leading-relaxed px-4"
             >
               Revolutionizing home health nursing with intelligent documentation, 
               predictive analytics, and personalized patient education
@@ -143,41 +143,41 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1, duration: 0.6 }}
-              className="flex flex-col sm:flex-row gap-5 justify-center items-center"
+              className="flex flex-col sm:flex-row gap-3 sm:gap-4 lg:gap-5 justify-center items-center px-4"
             >
               {currentUser ? (
-                <Link to={createPageUrl("Dashboard")}>
+                <Link to={createPageUrl("Dashboard")} className="w-full sm:w-auto">
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button
                       size="lg"
-                      className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-xl px-10 py-7 rounded-full shadow-2xl font-bold">
+                      className="w-full sm:w-auto bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-base sm:text-lg lg:text-xl px-6 sm:px-8 lg:px-10 py-5 sm:py-6 lg:py-7 rounded-full shadow-2xl font-bold">
                         Go to Dashboard
-                        <ArrowRight className="w-6 h-6 ml-2" />
+                        <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6 ml-2" />
                       </Button>
                   </motion.div>
                 </Link>
               ) : (
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="w-full sm:w-auto">
                   <Button
                     size="lg"
                     onClick={() => base44.auth.redirectToLogin()}
-                    className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-xl px-10 py-7 rounded-full shadow-2xl font-bold">
+                    className="w-full sm:w-auto bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-base sm:text-lg lg:text-xl px-6 sm:px-8 lg:px-10 py-5 sm:py-6 lg:py-7 rounded-full shadow-2xl font-bold">
                       Sign In / Get Started
-                      <ArrowRight className="w-6 h-6 ml-2" />
+                      <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6 ml-2" />
                     </Button>
                 </motion.div>
               )}
-              <Link to={createPageUrl("Pricing")}>
+              <Link to={createPageUrl("Pricing")} className="w-full sm:w-auto">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button size="lg" variant="outline" className="text-xl px-10 py-7 border-3 rounded-full font-bold border-gray-300 hover:border-blue-600 hover:text-blue-600">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg lg:text-xl px-6 sm:px-8 lg:px-10 py-5 sm:py-6 lg:py-7 border-3 rounded-full font-bold border-gray-300 hover:border-blue-600 hover:text-blue-600">
                     View Pricing
-                    <DollarSign className="w-6 h-6 ml-2" />
+                    <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 ml-2" />
                   </Button>
                 </motion.div>
               </Link>
-              <Link to={createPageUrl("About")}>
+              <Link to={createPageUrl("About")} className="w-full sm:w-auto">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button size="lg" variant="ghost" className="text-xl px-10 py-7 rounded-full font-semibold">
+                  <Button size="lg" variant="ghost" className="w-full sm:w-auto text-base sm:text-lg lg:text-xl px-6 sm:px-8 lg:px-10 py-5 sm:py-6 lg:py-7 rounded-full font-semibold">
                     Learn More
                   </Button>
                 </motion.div>
@@ -197,8 +197,8 @@ export default function Home() {
       </section>
 
       {/* Key Stats */}
-      <section className="relative max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <section className="relative max-w-7xl mx-auto px-4 py-8 sm:py-12 md:py-16 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
           {[
             { icon: Clock, value: "70%", label: "Time Saved on Notes", color: "green", delay: 0 },
             { icon: Shield, value: "100%", label: "Medicare Compliant", color: "purple", delay: 0.2 },
@@ -214,20 +214,20 @@ export default function Home() {
               <motion.div whileHover={{ y: -10, scale: 1.03 }}>
                 <Card className={`border-0 bg-white/90 backdrop-blur shadow-2xl overflow-hidden relative group`}>
                   <div className={`absolute inset-0 bg-gradient-to-br from-${stat.color}-400 to-${stat.color}-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300`} />
-                  <CardContent className="p-8 text-center relative">
+                  <CardContent className="p-4 sm:p-6 md:p-8 text-center relative">
                     <motion.div
                       whileHover={{ rotate: 360 }}
                       transition={{ duration: 0.6 }}
                     >
-                      <stat.icon className={`w-16 h-16 text-${stat.color}-600 mx-auto mb-4`} />
+                      <stat.icon className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 text-${stat.color}-600 mx-auto mb-3 sm:mb-4`} />
                     </motion.div>
                     <motion.p 
-                      className={`text-5xl font-extrabold text-${stat.color}-600 mb-2`}
+                      className={`text-3xl sm:text-4xl md:text-5xl font-extrabold text-${stat.color}-600 mb-1 sm:mb-2`}
                       whileHover={{ scale: 1.1 }}
                     >
                       {stat.value}
                     </motion.p>
-                    <p className="text-base text-gray-700 font-semibold">{stat.label}</p>
+                    <p className="text-sm sm:text-base text-gray-700 font-semibold">{stat.label}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -237,7 +237,7 @@ export default function Home() {
       </section>
 
       {/* Main Content Tabs */}
-      <section className="relative max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
+      <section className="relative max-w-7xl mx-auto px-4 py-8 sm:py-12 md:py-16 sm:px-6 lg:px-8">
         <Tabs defaultValue="features" className="w-full">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -245,39 +245,39 @@ export default function Home() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <TabsList className="grid w-full grid-cols-3 mb-12 h-auto bg-white/90 backdrop-blur shadow-xl rounded-2xl p-2">
-              <TabsTrigger value="features" className="text-lg py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all">
-                <FileText className="w-5 h-5 mr-2" />
-                Features
+            <TabsList className="grid w-full grid-cols-3 mb-8 sm:mb-10 md:mb-12 h-auto bg-white/90 backdrop-blur shadow-xl rounded-2xl p-1.5 sm:p-2">
+              <TabsTrigger value="features" className="text-xs sm:text-sm md:text-base lg:text-lg py-2 sm:py-3 md:py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all flex items-center justify-center gap-1 sm:gap-2">
+                <FileText className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
+                <span className="hidden sm:inline">Features</span>
               </TabsTrigger>
-              <TabsTrigger value="benefits" className="text-lg py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-purple-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all">
-                <Award className="w-5 h-5 mr-2" />
-                Benefits
+              <TabsTrigger value="benefits" className="text-xs sm:text-sm md:text-base lg:text-lg py-2 sm:py-3 md:py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-purple-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all flex items-center justify-center gap-1 sm:gap-2">
+                <Award className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
+                <span className="hidden sm:inline">Benefits</span>
               </TabsTrigger>
-              <TabsTrigger value="how-it-works" className="text-lg py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-600 data-[state=active]:to-green-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all">
-                <Lightbulb className="w-5 h-5 mr-2" />
-                How It Works
+              <TabsTrigger value="how-it-works" className="text-xs sm:text-sm md:text-base lg:text-lg py-2 sm:py-3 md:py-4 rounded-xl font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-600 data-[state=active]:to-green-700 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all flex items-center justify-center gap-1 sm:gap-2">
+                <Lightbulb className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
+                <span className="hidden sm:inline">How It Works</span>
               </TabsTrigger>
             </TabsList>
           </motion.div>
 
           {/* Features Tab */}
-          <TabsContent value="features" className="space-y-8">
+          <TabsContent value="features" className="space-y-6 sm:space-y-8">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6 }}
-              className="text-center mb-12"
+              className="text-center mb-8 sm:mb-10 md:mb-12 px-4"
             >
-              <h2 className="text-5xl font-extrabold text-gray-900 mb-6">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 sm:mb-6">
                 Everything You Need for Clinical Excellence
               </h2>
-              <p className="text-2xl text-gray-600 max-w-3xl mx-auto">
+              <p className="text-lg sm:text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto">
                 Comprehensive tools designed specifically for home health nurses
               </p>
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -589,43 +589,43 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="max-w-5xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
+      <section className="max-w-5xl mx-auto px-4 py-8 sm:py-12 md:py-16 sm:px-6 lg:px-8">
         <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-purple-50">
-          <CardContent className="p-12 text-center">
-            <Sparkles className="w-16 h-16 text-purple-600 mx-auto mb-4" />
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <CardContent className="p-6 sm:p-8 md:p-12 text-center">
+            <Sparkles className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-purple-600 mx-auto mb-3 sm:mb-4" />
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">
               Ready to Transform Your Documentation?
             </h2>
-            <p className="text-xl text-gray-600 mb-6">
+            <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-4 sm:mb-6 px-4">
               Join nurses who are saving time, reducing stress, and improving patient outcomes
             </p>
-            
+
             {/* Trial CTA Badge */}
-            <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-6 py-3 rounded-full mb-6 border-2 border-green-300">
-              <Clock className="w-5 h-5" />
+            <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 sm:px-6 py-2 sm:py-3 rounded-full mb-4 sm:mb-6 border-2 border-green-300 text-sm sm:text-base">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
               <span className="font-bold">14-Day Free Trial • No Credit Card Required</span>
             </div>
-            
-            <div>
+
+            <div className="px-4">
               {currentUser ? (
-                <Link to={createPageUrl("Dashboard")}>
+                <Link to={createPageUrl("Dashboard")} className="inline-block w-full sm:w-auto">
                   <Button
                     size="lg"
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
+                    className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-base sm:text-lg px-8 sm:px-12 py-5 sm:py-6">
                       Go to Dashboard
-                      <ArrowRight className="w-5 h-5 ml-2" />
+                      <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
                     </Button>
                 </Link>
               ) : (
                 <Button
                   size="lg"
                   onClick={() => base44.auth.redirectToLogin()}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-12 py-6">
+                  className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-base sm:text-lg px-8 sm:px-12 py-5 sm:py-6">
                     Sign In to Start Trial
-                    <ArrowRight className="w-5 h-5 ml-2" />
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
                   </Button>
               )}
-              <p className="text-sm text-gray-500 mt-3">
+              <p className="text-xs sm:text-sm text-gray-500 mt-3">
                 No commitment • Cancel anytime • Full access to all features
               </p>
             </div>
@@ -634,9 +634,9 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
+      <footer className="bg-gray-900 text-white py-8 sm:py-10 md:py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <img
@@ -705,7 +705,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+          <div className="border-t border-gray-800 mt-6 sm:mt-8 pt-6 sm:pt-8 text-center text-gray-400 text-sm sm:text-base">
             <p>&copy; 2025 CareMetric AI. All rights reserved.</p>
           </div>
         </div>
