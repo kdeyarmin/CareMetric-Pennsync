@@ -84,7 +84,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
     { name: "User & Training Mgmt", icon: Users, page: "Admin" },
     { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
-    { name: "Agency Settings", icon: Settings, page: "AgencySettings" },
+    { name: "System Settings", icon: Settings, page: "AgencySettings" },
     { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
   ] : [];
 
