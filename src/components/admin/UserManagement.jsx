@@ -43,7 +43,8 @@ import {
   Users,
   Loader2,
   Clock,
-  Download
+  Download,
+  CreditCard
 } from "lucide-react";
 import { format } from "date-fns";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -53,7 +54,9 @@ export default function UserManagement({ users, currentUser }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [editingSubscription, setEditingSubscription] = useState(null);
   const [isDownloadingRoster, setIsDownloadingRoster] = useState(false);
   
   const [inviteData, setInviteData] = useState({
@@ -63,6 +66,13 @@ export default function UserManagement({ users, currentUser }) {
     care_scope: "home_health",
     phone: "",
     credentials: ""
+  });
+
+  // Fetch all subscriptions
+  const { data: subscriptions = [] } = base44.useQuery({
+    queryKey: ['allSubscriptions'],
+    queryFn: () => base44.entities.Subscription.list('-updated_date'),
+    initialData: [],
   });
 
   // Update user mutation
@@ -85,6 +95,32 @@ export default function UserManagement({ users, currentUser }) {
     },
     onError: (error) => {
       alert('Failed to update user: ' + error.message);
+    }
+  });
+
+  // Update subscription mutation
+  const updateSubscriptionMutation = useMutation({
+    mutationFn: async ({ subscriptionId, data }) => {
+      if (subscriptionId) {
+        return await base44.entities.Subscription.update(subscriptionId, data);
+      } else {
+        return await base44.entities.Subscription.create(data);
+      }
+    },
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ['allSubscriptions'] });
+      
+      await logActivity('subscription_updated', {
+        entity_type: 'Subscription',
+        page: 'UserManagement'
+      });
+      
+      setShowSubscriptionDialog(false);
+      setEditingSubscription(null);
+      alert('Subscription updated successfully');
+    },
+    onError: (error) => {
+      alert('Failed to update subscription: ' + error.message);
     }
   });
 
@@ -150,6 +186,35 @@ export default function UserManagement({ users, currentUser }) {
     updateUserMutation.mutate({ userId: id, data: userData });
   };
 
+  const handleManageSubscription = (user) => {
+    const userSub = subscriptions.find(s => s.user_email === user.email);
+    setEditingSubscription({
+      user_email: user.email,
+      user_name: user.full_name,
+      subscriptionId: userSub?.id || null,
+      status: userSub?.status || 'free',
+      plan_type: userSub?.plan_type || 'free',
+      trial_end_date: userSub?.trial_end_date || null,
+      next_billing_date: userSub?.next_billing_date || null
+    });
+    setShowSubscriptionDialog(true);
+  };
+
+  const handleSaveSubscription = () => {
+    if (!editingSubscription) return;
+    
+    const { subscriptionId, user_email, user_name, ...subData } = editingSubscription;
+    
+    updateSubscriptionMutation.mutate({
+      subscriptionId,
+      data: {
+        user_email,
+        ...subData,
+        updated_date: new Date().toISOString()
+      }
+    });
+  };
+
   const handleApproveUser = async (userId) => {
     if (confirm('Approve this user to access the system?')) {
       updateUserMutation.mutate({ userId, data: { is_approved: true } });
@@ -180,6 +245,10 @@ export default function UserManagement({ users, currentUser }) {
     user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const getUserSubscription = (userEmail) => {
+    return subscriptions.find(s => s.user_email === userEmail);
+  };
 
   const pendingUsers = users.filter(u => !u.is_approved && u.role !== 'admin');
   const approvedUsers = users.filter(u => u.is_approved || u.role === 'admin');
@@ -282,6 +351,7 @@ export default function UserManagement({ users, currentUser }) {
                   <TableHead>Care Scope</TableHead>
                   <TableHead>Approval</TableHead>
                   <TableHead>Profile</TableHead>
+                  <TableHead>Subscription</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -358,6 +428,28 @@ export default function UserManagement({ users, currentUser }) {
                         <XCircle className="w-5 h-5 text-yellow-600" title="Incomplete profile" />
                       )}
                     </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const sub = getUserSubscription(user.email);
+                        if (!sub || sub.status === 'free') {
+                          return (
+                            <Badge variant="outline" className="border-gray-300">
+                              Free
+                            </Badge>
+                          );
+                        }
+                        return (
+                          <Badge className={
+                            sub.status === 'active' ? 'bg-green-500' :
+                            sub.status === 'trialing' ? 'bg-blue-500' :
+                            sub.status === 'past_due' ? 'bg-red-500' :
+                            'bg-gray-500'
+                          }>
+                            {sub.plan_type || sub.status}
+                          </Badge>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell className="text-sm text-gray-500">
                       {user.created_date ? format(new Date(user.created_date), 'MMM d, yyyy') : 'N/A'}
                     </TableCell>
@@ -388,8 +480,17 @@ export default function UserManagement({ users, currentUser }) {
                           size="sm"
                           variant="outline"
                           onClick={() => handleEditUser(user)}
+                          title="Edit user"
                         >
                           <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleManageSubscription(user)}
+                          title="Manage subscription"
+                        >
+                          <CreditCard className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -643,6 +744,125 @@ export default function UserManagement({ users, currentUser }) {
               className="bg-blue-600 hover:bg-blue-700"
             >
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Subscription Dialog */}
+      <Dialog open={showSubscriptionDialog} onOpenChange={setShowSubscriptionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage Subscription</DialogTitle>
+            <DialogDescription>
+              Update subscription status and plan for {editingSubscription?.user_name}
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingSubscription && (
+            <div className="space-y-4 py-4">
+              <Alert className="bg-blue-50 border-blue-200">
+                <CreditCard className="w-4 h-4 text-blue-600" />
+                <AlertDescription className="text-blue-900">
+                  <p className="font-semibold mb-1">User: {editingSubscription.user_email}</p>
+                  <p className="text-sm">Current Status: {editingSubscription.status}</p>
+                </AlertDescription>
+              </Alert>
+
+              <div>
+                <Label>Subscription Status</Label>
+                <Select 
+                  value={editingSubscription.status} 
+                  onValueChange={(value) => setEditingSubscription({...editingSubscription, status: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free (No Subscription)</SelectItem>
+                    <SelectItem value="trialing">Trialing</SelectItem>
+                    <SelectItem value="active">Active (Paid)</SelectItem>
+                    <SelectItem value="past_due">Past Due</SelectItem>
+                    <SelectItem value="canceled">Canceled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Plan Type</Label>
+                <Select 
+                  value={editingSubscription.plan_type} 
+                  onValueChange={(value) => setEditingSubscription({...editingSubscription, plan_type: value})}
+                  disabled={editingSubscription.status === 'free'}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="monthly">Monthly ($39.99)</SelectItem>
+                    <SelectItem value="quarterly">Quarterly ($115)</SelectItem>
+                    <SelectItem value="semi_annual">6 Months ($210)</SelectItem>
+                    <SelectItem value="annual">Annual ($350)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {editingSubscription.status === 'trialing' && (
+                <div>
+                  <Label>Trial End Date</Label>
+                  <Input
+                    type="date"
+                    value={editingSubscription.trial_end_date ? editingSubscription.trial_end_date.split('T')[0] : ''}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription, 
+                      trial_end_date: e.target.value ? new Date(e.target.value).toISOString() : null
+                    })}
+                  />
+                </div>
+              )}
+
+              {(editingSubscription.status === 'active' || editingSubscription.status === 'past_due') && (
+                <div>
+                  <Label>Next Billing Date</Label>
+                  <Input
+                    type="date"
+                    value={editingSubscription.next_billing_date ? editingSubscription.next_billing_date.split('T')[0] : ''}
+                    onChange={(e) => setEditingSubscription({
+                      ...editingSubscription, 
+                      next_billing_date: e.target.value ? new Date(e.target.value).toISOString() : null
+                    })}
+                  />
+                </div>
+              )}
+
+              <Alert className="bg-yellow-50 border-yellow-300">
+                <AlertDescription className="text-yellow-900">
+                  <p className="font-semibold mb-1">⚠️ Important Notes:</p>
+                  <ul className="text-sm space-y-1">
+                    <li>• Setting status to "Free" removes all subscription requirements</li>
+                    <li>• This does not cancel Stripe subscriptions - handle that separately</li>
+                    <li>• Changes take effect immediately for the user</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSubscriptionDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveSubscription}
+              disabled={updateSubscriptionMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {updateSubscriptionMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+              ) : (
+                'Save Changes'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
