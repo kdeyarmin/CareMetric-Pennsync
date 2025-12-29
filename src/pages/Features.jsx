@@ -13,6 +13,8 @@ import {
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
+export const publicPage = true;
+
 export default function Features() {
   const [searchTerm, setSearchTerm] = useState("");
 

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,9 +41,18 @@ import ModuleViewer from "../components/training/ModuleViewer";
 import AIQuizGenerator from "../components/training/AIQuizGenerator";
 
 export default function StaffTrainingHub() {
+  const navigate = useNavigate();
+  
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        navigate(createPageUrl("Home"));
+        return null;
+      }
+    },
   });
 
   const queryClient = useQueryClient();

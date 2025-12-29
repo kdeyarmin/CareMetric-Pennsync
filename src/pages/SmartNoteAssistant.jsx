@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -424,6 +426,7 @@ const useCachedAIResponse = (cacheKey, fetcher, ttl = 300000) => { // 5 min TTL
 };
 
 export default function SmartNoteAssistant() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [visitType, setVisitType] = useState("routine_visit");
@@ -466,7 +469,14 @@ export default function SmartNoteAssistant() {
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        navigate(createPageUrl("Home"));
+        return null;
+      }
+    },
   });
 
   // Log page visit
