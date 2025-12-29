@@ -332,8 +332,8 @@ export default function Layout({ children, currentPageName }) {
 
           {/* ================= Bottom Navigation ================= */}
           {showNavigation && currentUser && (
-          <nav className="fixed bottom-0 left-0 right-0 h-12 sm:h-14 bg-white border-t shadow lg:hidden z-40">
-              <div className="flex items-center justify-around h-full px-1">
+          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow lg:hidden z-40 pb-[env(safe-area-inset-bottom)]">
+              <div className="flex items-center justify-around h-12 sm:h-14 px-1">
                 <Link to={createPageUrl("Dashboard")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}`}>
                   <Home className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="text-[9px] sm:text-[10px]">Home</span>
