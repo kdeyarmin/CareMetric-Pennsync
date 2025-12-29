@@ -35,13 +35,15 @@ import {
   Search,
   Eye,
   Trash2,
-  Mail
+  Mail,
+  Key
 } from "lucide-react";
 import { format } from "date-fns";
 import SecurityEncryptionCheck from "../components/admin/SecurityEncryptionCheck";
 import AIAnomalyDetector from "../components/admin/AIAnomalyDetector";
 import AIRoleSuggestions from "../components/admin/AIRoleSuggestions";
 import AISystemHealthSummary from "../components/admin/AISystemHealthSummary";
+import UserPasswordReset from "../components/admin/UserPasswordReset";
 
 export default function Admin() {
   const queryClient = useQueryClient();
@@ -432,22 +434,33 @@ If you have any questions, please contact your administrator.`,
                         {format(new Date(user.created_date), 'MMM d, yyyy')}
                       </TableCell>
                       <TableCell>
-                        <Select
-                          value={user.role}
-                          onValueChange={(role) => updateUserRoleMutation.mutate({ 
-                            userId: user.id, 
-                            role 
-                          })}
-                          disabled={user.id === currentUser?.id}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="user">User</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={user.role}
+                            onValueChange={(role) => updateUserRoleMutation.mutate({ 
+                              userId: user.id, 
+                              role 
+                            })}
+                            disabled={user.id === currentUser?.id}
+                          >
+                            <SelectTrigger className="w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="user">User</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <UserPasswordReset
+                            user={user}
+                            trigger={
+                              <Button size="sm" variant="outline" className="gap-1">
+                                <Key className="w-3 h-3" />
+                                Reset
+                              </Button>
+                            }
+                          />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
