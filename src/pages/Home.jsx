@@ -37,7 +37,13 @@ export default function Home() {
   const [scrollY, setScrollY] = useState(0);
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        return null;
+      }
+    }
   });
 
   useEffect(() => {
