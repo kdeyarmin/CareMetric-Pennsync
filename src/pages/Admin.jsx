@@ -30,7 +30,13 @@ import {
   Database,
   Settings,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  UserPlus,
+  Search,
+  Eye,
+  Trash2,
+  Mail,
+  Key
 } from "lucide-react";
 import { format } from "date-fns";
 import SecurityEncryptionCheck from "../components/admin/SecurityEncryptionCheck";
@@ -45,7 +51,10 @@ import UserManagement from "../components/admin/UserManagement";
 export default function Admin() {
   const queryClient = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedTab, setSelectedTab] = useState("overview");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("user");
 
   // Check if current user is admin
   const { data: currentUser } = useQuery({
@@ -103,7 +112,14 @@ export default function Admin() {
     enabled: isAdmin === true,
   });
 
-
+  // Update user role mutation
+  const updateUserRoleMutation = useMutation({
+    mutationFn: ({ userId, role }) => base44.entities.User.update(userId, { role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+      alert('User role updated successfully');
+    },
+  });
 
   // Calculate metrics
   const totalUsers = users.length;
@@ -125,11 +141,47 @@ export default function Admin() {
       return sum + diff;
     }, 0) / (completedVisits || 1);
 
+  // Filter users by search
+  const filteredUsers = (users || []).filter(user =>
+    user && (
+      (user.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (user.full_name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+    )
+  );
+
   // Security events by type
   const securityEventCounts = securityLogs.reduce((acc, log) => {
     acc[log.action] = (acc[log.action] || 0) + 1;
     return acc;
   }, {});
+
+  const handleInviteUser = async () => {
+    if (!inviteEmail) {
+      alert('Please enter an email address');
+      return;
+    }
+    
+    try {
+      await base44.integrations.Core.SendEmail({
+        to: inviteEmail,
+        subject: 'Invitation to Join PennCares',
+        body: `You have been invited to join PennCares as a ${inviteRole === 'admin' ? 'Administrator' : 'User'}.
+        
+Please visit the app to create your account and start documenting patient visits.
+
+Role: ${inviteRole === 'admin' ? 'Administrator' : 'User'}
+
+If you have any questions, please contact your administrator.`,
+        from_name: 'PennCares Admin'
+      });
+      
+      alert('Invitation sent successfully!');
+      setInviteEmail('');
+    } catch (error) {
+      console.error('Failed to send invite:', error);
+      alert('Failed to send invitation. Please try again.');
+    }
+  };
 
   // Check if user is admin
   if (isAdmin === null) {
@@ -313,7 +365,6 @@ export default function Admin() {
           {/* AI Role Suggestions */}
           <AIRoleSuggestions users={users} userActivity={userActivity} />
 
-          {/* User Management Component */}
           <UserManagement users={users} currentUser={currentUser} />
         </TabsContent>
 
