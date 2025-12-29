@@ -26,6 +26,13 @@ Deno.serve(async (req) => {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
+        
+        // Skip if no subscription (payment mode instead of subscription mode)
+        if (!session.subscription) {
+          console.log('No subscription in session, skipping');
+          break;
+        }
+        
         const subscription = await stripe.subscriptions.retrieve(session.subscription);
         
         // Create or update subscription record

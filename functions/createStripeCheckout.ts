@@ -20,22 +20,13 @@ Deno.serve(async (req) => {
 
     console.log('User authenticated:', user.email);
 
-    // Get plan type from request body
-    const { plan } = await req.json();
-    console.log('Plan selected:', plan);
-    
-    // Map plan to Stripe price IDs (from Stripe product catalog)
-    const planMapping = {
-      'monthly': 'price_1SioNUCEZXcVOdjd7EzodOpc',
-      'quarterly': 'price_1SioSoCEZXcVOdjdPYzUvQiX',
-      'biannual': 'price_1SioOnCEZXcVOdjdM5Ou6Wqj',
-      'yearly': 'price_1SioPVCEZXcVOdjdLjX5A9AR'
-    };
-    const priceId = planMapping[plan || 'monthly'];
+    // Get priceId from request body
+    const { priceId } = await req.json();
+    console.log('Price ID selected:', priceId);
     
     if (!priceId) {
-      console.error('Invalid plan:', plan);
-      return Response.json({ error: 'Invalid plan selected' }, { status: 400 });
+      console.error('No price ID provided');
+      return Response.json({ error: 'Price ID is required' }, { status: 400 });
     }
     
     console.log('Price ID:', priceId);
