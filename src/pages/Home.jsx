@@ -200,7 +200,6 @@ export default function Home() {
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg lg:text-xl px-6 sm:px-8 lg:px-10 py-5 sm:py-6 lg:py-7 border-3 rounded-full font-bold border-gray-300 hover:border-blue-600 hover:text-blue-600">
                     View Pricing
-                    <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 ml-2" />
                   </Button>
                 </motion.div>
               </Link>
