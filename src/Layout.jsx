@@ -72,67 +72,36 @@ export default function Layout({ children, currentPageName }) {
 
   const navCategories = [
     {
-      category: "",
-      items: [{ name: "My Patients", icon: Users, page: "Patients" }]
-    },
-    {
-      category: "Clinical Work",
+      category: "MY WORKSPACE",
       items: [
+        { name: "My Patients", icon: Users, page: "Patients" },
         { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
         { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" }
+        { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
+        { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
+        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
+        { name: "Settings", icon: Settings, page: "Settings" }
       ]
     },
     ...(currentUser?.role === 'admin' ? [
       {
-        category: "Admin - Overview",
+        category: "ADMIN",
         items: [
-          { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
-          { name: "Analytics", icon: Activity, page: "AdvancedAnalyticsDashboard" }
-        ]
-      },
-      {
-        category: "Admin - Users",
-        items: [
-          { name: "User Management", icon: Users, page: "Admin" },
-          { name: "Training Management", icon: GraduationCap, page: "TrainingManagement" }
-        ]
-      },
-      {
-        category: "Admin - System",
-        items: [
-          { name: "Activity Logs", icon: Activity, page: "UserActivityLog" },
-          { name: "Audit Trail", icon: Shield, page: "AuditTrail" },
-          { name: "Security Audit", icon: Shield, page: "SecurityAudit" },
-          { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" }
-        ]
-      },
-      {
-        category: "Admin - Settings",
-        items: [
+          { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
+          { name: "User & Training Mgmt", icon: Users, page: "Admin" },
+          { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
           { name: "Agency Settings", icon: Settings, page: "AgencySettings" },
-          { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" },
-          { name: "New Features", icon: Sparkles, page: "ManageNewFeatures" }
+          { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
         ]
       }
-    ] : []),
-    {
-      category: "Resources",
-      items: [
-        { name: "Patient Education", icon: FileText, page: "PatientEducationHub" },
-        { name: "Education Library", icon: BookOpen, page: "PatientEducationLibrary" },
-        { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
-        { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
-        { name: "Billing", icon: CreditCard, page: "Billing" },
-        { name: "Settings", icon: Settings, page: "Settings" }
-      ]
-    }
+    ] : [])
   ];
 
   const bottomNavItems = [
-    { name: "About CareMetric AI", icon: Sparkles, page: "About" },
-    { name: "Features Guide", icon: Sparkles, page: "Features" },
-    { name: "Pricing", icon: CreditCard, page: "Pricing" }
+    { name: "About", icon: Sparkles, page: "About" },
+    { name: "Features", icon: Sparkles, page: "Features" },
+    { name: "Pricing", icon: CreditCard, page: "Pricing" },
+    { name: "Billing", icon: CreditCard, page: "Billing" }
   ];
 
   return (
