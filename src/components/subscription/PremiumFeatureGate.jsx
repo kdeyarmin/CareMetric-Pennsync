@@ -44,9 +44,10 @@ export default function PremiumFeatureGate({
   }
 
   // Check if user has access
+  const isAdmin = currentUser?.role === 'admin';
   const hasActiveSubscription = subscription && subscription.status === 'active';
   const hasTrialAccess = allowTrial && subscription && subscription.status === 'trialing';
-  const hasAccess = hasActiveSubscription || hasTrialAccess;
+  const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess;
 
   // Show paywall if no access
   if (!hasAccess) {
