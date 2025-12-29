@@ -128,13 +128,13 @@ export default function Layout({ children, currentPageName }) {
                 <Link
                   key={item.page}
                   to={createPageUrl(item.page)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md ${
+                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
                     isActive(item.page)
                       ? "bg-blue-100 text-blue-700"
                       : "text-gray-600 hover:bg-gray-100"
                   }`}
                 >
-                  <item.icon className="w-5 h-5" />
+                  <item.icon className="w-4 h-4" />
                   {!sidebarCollapsed && item.name}
                 </Link>
               ))}
@@ -148,13 +148,13 @@ export default function Layout({ children, currentPageName }) {
               <Link
                 key={item.page}
                 to={createPageUrl(item.page)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
                   isActive(item.page)
                     ? "bg-blue-100 text-blue-700"
                     : "text-gray-600 hover:bg-gray-100"
                 }`}
               >
-                <item.icon className="w-5 h-5" />
+                <item.icon className="w-4 h-4" />
                 {!sidebarCollapsed && item.name}
               </Link>
             ))}
@@ -208,9 +208,9 @@ export default function Layout({ children, currentPageName }) {
                   key={item.page}
                   to={createPageUrl(item.page)}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100"
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
                 >
-                  <item.icon className="w-5 h-5" />
+                  <item.icon className="w-4 h-4" />
                   {item.name}
                 </Link>
               ))}
@@ -220,9 +220,9 @@ export default function Layout({ children, currentPageName }) {
                     key={item.page}
                     to={createPageUrl(item.page)}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100"
+                    className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
                   >
-                    <item.icon className="w-5 h-5" />
+                    <item.icon className="w-4 h-4" />
                     {item.name}
                   </Link>
                 ))}
