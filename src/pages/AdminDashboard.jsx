@@ -1073,42 +1073,42 @@ export default function AdminDashboard() {
           </Card>
 
           {/* Quick Links */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <Link to={createPageUrl("UserManagement")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-200">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-200 h-full">
                 <CardContent className="p-4 text-center">
                   <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                  <p className="font-medium">Manage Users</p>
+                  <p className="font-medium text-sm">Manage Users</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("TrainingManagement")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200 h-full">
                 <CardContent className="p-4 text-center">
                   <GraduationCap className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                  <p className="font-medium">Training Mgmt</p>
+                  <p className="font-medium text-sm">Training Mgmt</p>
                 </CardContent>
               </Card>
             </Link>
 
             <Link to={createPageUrl("AuditTrail")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-orange-200">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-orange-200 h-full">
                 <CardContent className="p-4 text-center">
                   <Activity className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-                  <p className="font-medium">Audit Trail</p>
+                  <p className="font-medium text-sm">Audit Trail</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("Test2FA")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-red-200">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-red-200 h-full">
                 <CardContent className="p-4 text-center">
                   <Shield className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                  <p className="font-medium">Test 2FA</p>
+                  <p className="font-medium text-sm">Test 2FA</p>
                 </CardContent>
               </Card>
             </Link>
             <Card 
-              className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200"
+              className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200 h-full"
               onClick={() => autoFetchGuidelinesMutation.mutate()}
             >
               <CardContent className="p-4 text-center">
@@ -1117,7 +1117,7 @@ export default function AdminDashboard() {
                 ) : (
                   <BookOpen className="w-8 h-8 text-green-600 mx-auto mb-2" />
                 )}
-                <p className="font-medium">
+                <p className="font-medium text-sm">
                   {autoFetchGuidelinesMutation.isPending ? 'Fetching...' : 'Update CMS Guidelines'}
                 </p>
               </CardContent>
