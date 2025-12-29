@@ -12,7 +12,6 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import DataRetentionSettings from "../components/settings/DataRetentionSettings";
 import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
-import ReferralCodeInput from "../components/referral/ReferralCodeInput";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -302,7 +301,6 @@ export default function Settings() {
         <DataRetentionSettings />
 
         {/* Referral Program */}
-        <ReferralCodeInput user={currentUser} onSuccess={() => queryClient.invalidateQueries({ queryKey: ['currentUser'] })} />
         <ReferralCodeDisplay user={currentUser} />
 
         {/* Danger Zone */}
