@@ -12,6 +12,19 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No user data provided' }, { status: 400 });
     }
 
+    // Generate unique referral code for new user
+    const referralCode = crypto.randomUUID().slice(0, 8).toUpperCase();
+    console.log('Generated referral code:', referralCode);
+    
+    try {
+      await base44.asServiceRole.entities.User.update(user.id, {
+        referral_code: referralCode
+      });
+      console.log('Referral code saved for user:', user.email);
+    } catch (codeError) {
+      console.error('Failed to save referral code:', codeError);
+    }
+
     // Check if user was invited
     console.log('Checking for invitation...');
     const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ 

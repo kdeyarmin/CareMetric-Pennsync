@@ -49,6 +49,74 @@ Deno.serve(async (req) => {
         } else {
           await base44.asServiceRole.entities.Subscription.create(subscriptionData);
         }
+
+        // Process referral rewards for paid subscriptions
+        try {
+          const users = await base44.asServiceRole.entities.User.filter({ 
+            email: session.metadata.user_email 
+          });
+          
+          if (users.length > 0 && users[0].referred_by) {
+            const referredUser = users[0];
+            
+            // Find the referral record
+            const referrals = await base44.asServiceRole.entities.Referral.filter({
+              referred_user_id: referredUser.id,
+              status: 'trial_started'
+            });
+            
+            if (referrals.length > 0) {
+              const referral = referrals[0];
+              
+              // Update referral status
+              await base44.asServiceRole.entities.Referral.update(referral.id, {
+                status: 'converted_to_paid',
+                converted_to_paid_date: new Date().toISOString()
+              });
+              
+              // Get referrer
+              const referrers = await base44.asServiceRole.entities.User.filter({ 
+                id: referral.referrer_id 
+              });
+              
+              if (referrers.length > 0) {
+                const referrer = referrers[0];
+                
+                // Apply $5 credit to referrer's Stripe customer
+                const referrerSubs = await base44.asServiceRole.entities.Subscription.filter({
+                  user_email: referrer.email
+                });
+                
+                if (referrerSubs.length > 0) {
+                  const referrerStripeCustomerId = referrerSubs[0].stripe_customer_id;
+                  
+                  // Add $5 credit to customer balance (negative balance = credit)
+                  await stripe.customers.update(referrerStripeCustomerId, {
+                    balance: (await stripe.customers.retrieve(referrerStripeCustomerId)).balance - 500 // $5 in cents
+                  });
+                  
+                  // Update referral with reward info
+                  await base44.asServiceRole.entities.Referral.update(referral.id, {
+                    status: 'reward_issued',
+                    reward_amount: 5,
+                    reward_issued_date: new Date().toISOString()
+                  });
+                  
+                  // Update referrer's total credits
+                  await base44.asServiceRole.entities.User.update(referrer.id, {
+                    total_referral_credits: (referrer.total_referral_credits || 0) + 5
+                  });
+                  
+                  console.log(`Issued $5 credit to referrer ${referrer.email}`);
+                }
+              }
+            }
+          }
+        } catch (referralError) {
+          console.error('Referral processing error:', referralError);
+          // Don't fail the webhook if referral processing fails
+        }
+        
         break;
       }
 
