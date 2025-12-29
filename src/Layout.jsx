@@ -135,6 +135,16 @@ export default function Layout({ children, currentPageName }) {
 
           <div className="h-px bg-gray-200 my-3 mx-2"></div>
 
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-red-600 hover:bg-red-50 w-full"
+          >
+            <LogOut className="w-4 h-4" />
+            {!sidebarCollapsed && "Logout"}
+          </button>
+
+          <div className="h-px bg-gray-200 my-3 mx-2"></div>
+
           <Link to={createPageUrl("About")} className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${isActive("About") ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}>
             <Sparkles className="w-4 h-4" />
             {!sidebarCollapsed && "About"}
@@ -253,6 +263,20 @@ export default function Layout({ children, currentPageName }) {
                   ))}
                   </>
                   )}
+
+                  <div className="border-t pt-2 mt-2">
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="flex items-center gap-3 px-3 py-2 rounded hover:bg-red-50 text-sm text-red-600 w-full"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                  </div>
+
                   <div className="border-t pt-2 mt-2">
                   <Link to={createPageUrl("About")} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm">
                   <Sparkles className="w-4 h-4" />
