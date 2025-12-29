@@ -1777,16 +1777,16 @@ Return JSON with:
 
           {/* Step 1: Patient Selection - Enhanced */}
           <Card id="step-patient" className={`border-2 transition-all duration-300 ${currentStep === 'patient' ? 'border-blue-500 ring-4 ring-blue-200 shadow-xl' : 'border-gray-300'}`}>
-            <CardHeader className="py-5 md:py-6 bg-gradient-to-r from-blue-100 to-indigo-100">
-              <CardTitle className="text-lg md:text-xl flex items-center gap-3">
-                <div className={`p-2 rounded-full ${currentStep === 'patient' ? 'bg-blue-500' : 'bg-gray-400'}`}>
-                  <User className="w-5 h-5 text-white" />
+            <CardHeader className="py-4 sm:py-5 md:py-6 bg-gradient-to-r from-blue-100 to-indigo-100">
+              <CardTitle className="text-base sm:text-lg md:text-xl flex items-center gap-2 sm:gap-3">
+                <div className={`p-1.5 sm:p-2 rounded-full ${currentStep === 'patient' ? 'bg-blue-500' : 'bg-gray-400'}`}>
+                  <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </div>
-                <span>1. Select Patient & Visit Type</span>
-                {selectedPatient && <CheckCircle2 className="w-6 h-6 text-green-600 ml-auto animate-pulse" />}
+                <span className="flex-1 min-w-0 truncate">1. Select Patient & Visit Type</span>
+                {selectedPatient && <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 animate-pulse" />}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 md:p-6 space-y-4">
+            <CardContent className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                 <div>
                   <Label className="text-sm md:text-base mb-2 block">Patient</Label>
@@ -1860,16 +1860,16 @@ Return JSON with:
 
           {/* Step 2: Vitals - Enhanced */}
           <Card id="step-vitals" className={`border-2 transition-all duration-300 ${currentStep === 'vitals' ? 'border-green-500 ring-4 ring-green-200 shadow-xl' : 'border-gray-300'}`}>
-            <CardHeader className="py-5 md:py-6 bg-gradient-to-r from-green-100 to-emerald-100">
-              <CardTitle className="text-lg md:text-xl flex items-center gap-3">
-                <div className={`p-2 rounded-full ${currentStep === 'vitals' ? 'bg-green-500' : 'bg-gray-400'}`}>
-                  <Activity className="w-5 h-5 text-white" />
+            <CardHeader className="py-4 sm:py-5 md:py-6 bg-gradient-to-r from-green-100 to-emerald-100">
+              <CardTitle className="text-base sm:text-lg md:text-xl flex items-center gap-2 sm:gap-3">
+                <div className={`p-1.5 sm:p-2 rounded-full ${currentStep === 'vitals' ? 'bg-green-500' : 'bg-gray-400'}`}>
+                  <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </div>
-                <span>2. Vital Signs</span>
-                {(vitalSigns.bp || vitalSigns.hr) && <CheckCircle2 className="w-6 h-6 text-green-600 ml-auto animate-pulse" />}
+                <span className="flex-1 min-w-0">2. Vital Signs</span>
+                {(vitalSigns.bp || vitalSigns.hr) && <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 animate-pulse" />}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 md:p-6">
+            <CardContent className="p-3 sm:p-4 md:p-6">
               <SmartVitalsInput 
                 vitalSigns={vitalSigns} 
                 onChange={setVitalSigns} 
@@ -2152,14 +2152,14 @@ Return JSON with:
 
           {/* Step 3: Notes - Enhanced */}
           <Card id="step-notes" className={`border-2 transition-all duration-300 ${currentStep === 'notes' ? 'border-purple-500 ring-4 ring-purple-200 shadow-xl' : 'border-gray-300'}`}>
-          <CardHeader className="py-5 md:py-6 bg-gradient-to-r from-purple-100 to-pink-100">
-          <CardTitle className="text-lg md:text-xl flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className={`p-2 rounded-full ${currentStep === 'notes' ? 'bg-purple-500' : 'bg-gray-400'}`}>
-                <Edit3 className="w-5 h-5 text-white flex-shrink-0" />
+          <CardHeader className="py-4 sm:py-5 md:py-6 bg-gradient-to-r from-purple-100 to-pink-100">
+          <CardTitle className="text-base sm:text-lg md:text-xl flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+              <div className={`p-1.5 sm:p-2 rounded-full ${currentStep === 'notes' ? 'bg-purple-500' : 'bg-gray-400'}`}>
+                <Edit3 className="w-4 h-4 sm:w-5 sm:h-5 text-white flex-shrink-0" />
               </div>
               <span className="truncate">3. Your Notes</span>
-              {roughNote.length >= 20 && <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0 animate-pulse" />}
+              {roughNote.length >= 20 && <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 animate-pulse" />}
             </div>
             <VoiceHub 
               onTranscription={handleVoiceTranscription}
@@ -2323,19 +2323,19 @@ Return JSON with:
 
           {/* Step 4: Enhanced Note - Celebration */}
           {enhancedNote && (
-            <>
-              <Card id="step-enhance" className="border-4 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-2xl">
-                <CardHeader className="py-6 md:py-7 bg-gradient-to-r from-green-100 to-emerald-100">
-                  <CardTitle className="text-lg md:text-2xl flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-green-500 rounded-full">
-                        <CheckCircle2 className="w-6 h-6 text-white" />
-                      </div>
-                      <span>✨ Note Enhanced - Ready for EHR!</span>
+          <>
+            <Card id="step-enhance" className="border-4 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-2xl">
+              <CardHeader className="py-4 sm:py-5 md:py-6 lg:py-7 bg-gradient-to-r from-green-100 to-emerald-100">
+                <CardTitle className="text-base sm:text-lg md:text-xl lg:text-2xl flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="p-2 sm:p-3 bg-green-500 rounded-full">
+                      <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     </div>
-                    <span className="text-xs md:text-sm text-gray-600 font-normal sm:ml-auto bg-yellow-100 px-3 py-1 rounded-full">💡 Yellow highlights = areas needing completion</span>
-                  </CardTitle>
-                </CardHeader>
+                    <span className="text-sm sm:text-base md:text-lg lg:text-xl">✨ Note Enhanced!</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs md:text-sm text-gray-600 font-normal sm:ml-auto bg-yellow-100 px-2 sm:px-3 py-1 rounded-full">💡 Yellow = needs completion</span>
+                </CardTitle>
+              </CardHeader>
                 <CardContent className="p-4 md:p-6">
                   <RichTextNoteEditor
                     value={enhancedNote}

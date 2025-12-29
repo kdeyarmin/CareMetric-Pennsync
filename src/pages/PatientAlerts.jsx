@@ -43,19 +43,19 @@ export default function PatientAlerts() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-          <Bell className="w-8 h-8 text-orange-600" />
+      <div className="mb-4 sm:mb-6 lg:mb-8">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2 flex items-center gap-2 sm:gap-3">
+          <Bell className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600" />
           Patient Alerts
         </h1>
-        <p className="text-gray-600">
+        <p className="text-sm sm:text-base text-gray-600">
           AI-powered proactive identification of critical events and potential deteriorations
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Main Alerts Dashboard */}
         <div className="lg:col-span-2">
           <PatientAlertsDashboard showAllPatients={true} />
@@ -65,13 +65,13 @@ export default function PatientAlerts() {
         <div className="space-y-6">
           {/* Patient Selector for Analysis */}
           <Card className="border-blue-200">
-            <CardHeader className="py-3 bg-gradient-to-r from-blue-50 to-indigo-50">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Brain className="w-4 h-4 text-blue-600" />
+            <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                <Brain className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                 Analyze Patient
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <Select value={selectedPatientId || "none"} onValueChange={(val) => setSelectedPatientId(val === "none" ? "" : val)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select patient to analyze..." />

@@ -96,19 +96,19 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-        <p className="text-gray-600">Manage your account and data preferences</p>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-4xl mx-auto">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Settings</h1>
+        <p className="text-sm sm:text-base text-gray-600">Manage your account and data preferences</p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {/* Profile Info */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5 text-blue-600" />
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                 Profile Information
               </CardTitle>
               {!isEditing ? (
@@ -116,13 +116,13 @@ export default function Settings() {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsEditing(true)}
-                  className="gap-2"
+                  className="gap-2 min-h-[44px] w-full sm:w-auto"
                 >
                   <Edit3 className="w-4 h-4" />
                   Edit Profile
                 </Button>
               ) : (
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     size="sm"
@@ -151,17 +151,17 @@ export default function Settings() {
               )}
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4">
             {isEditing ? (
               <>
                 <div>
-                  <Label htmlFor="full_name">Full Name</Label>
+                  <Label htmlFor="full_name" className="text-sm sm:text-base">Full Name</Label>
                   <Input
                     id="full_name"
                     value={formData.full_name}
                     onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                     placeholder="Enter your full name"
-                    className="mt-1"
+                    className="mt-1 h-11 sm:h-12 text-base"
                   />
                 </div>
                 <div>
@@ -333,15 +333,15 @@ export default function Settings() {
         {/* Danger Zone */}
         <Card className="border-red-200">
           <CardHeader className="bg-red-50">
-            <CardTitle className="flex items-center gap-2 text-red-700">
-              <AlertTriangle className="w-5 h-5" />
+            <CardTitle className="flex items-center gap-2 text-red-700 text-base sm:text-lg">
+              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
               Danger Zone
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
+          <CardContent className="pt-4 sm:pt-6">
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="font-semibold text-red-900 mb-2">Delete Account</h3>
+                <h3 className="font-semibold text-red-900 mb-2 text-sm sm:text-base">Delete Account</h3>
                 <p className="text-sm text-gray-600 mb-4">
                   Permanently delete your account and all associated data. This action cannot be undone.
                   All patient records, visits, notes, and other data will be permanently removed.
@@ -352,13 +352,13 @@ export default function Settings() {
                 <Button
                   variant="destructive"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-red-600 hover:bg-red-700 min-h-[44px] w-full sm:w-auto"
                 >
                   <AlertTriangle className="w-4 h-4 mr-2" />
                   Delete My Account
                 </Button>
               ) : (
-                <div className="border-2 border-red-200 rounded-lg p-4 bg-red-50">
+                <div className="border-2 border-red-200 rounded-lg p-3 sm:p-4 bg-red-50">
                   <p className="text-sm font-semibold text-red-900 mb-3">
                     Are you absolutely sure? This action is permanent and irreversible.
                   </p>
@@ -371,12 +371,12 @@ export default function Settings() {
                     placeholder="Type DELETE"
                     className="mb-3"
                   />
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                       variant="destructive"
                       onClick={handleDeleteAccount}
                       disabled={deleteConfirmText !== 'DELETE' || isDeleting}
-                      className="bg-red-600 hover:bg-red-700"
+                      className="bg-red-600 hover:bg-red-700 min-h-[44px]"
                     >
                       {isDeleting ? 'Deleting...' : 'Permanently Delete Account'}
                     </Button>
@@ -387,6 +387,7 @@ export default function Settings() {
                         setDeleteConfirmText('');
                       }}
                       disabled={isDeleting}
+                      className="min-h-[44px]"
                     >
                       Cancel
                     </Button>

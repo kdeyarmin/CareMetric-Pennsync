@@ -148,24 +148,24 @@ export default function StaffTrainingHub() {
     >
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <GraduationCap className="w-7 h-7 text-indigo-600" />
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <GraduationCap className="w-6 h-6 sm:w-7 sm:h-7 text-indigo-600" />
           My Training Hub
         </h1>
-        <p className="text-gray-600 mt-1">Your personalized training on documentation, compliance, and patient communication</p>
+        <p className="text-sm sm:text-base text-gray-600 mt-1">Your personalized training on documentation, compliance, and patient communication</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-xs">Quizzes Passed</p>
-                <p className="text-2xl font-bold">{completedQuizzes}</p>
+                <p className="text-blue-100 text-[10px] sm:text-xs">Quizzes Passed</p>
+                <p className="text-xl sm:text-2xl font-bold">{completedQuizzes}</p>
               </div>
-              <HelpCircle className="w-8 h-8 text-blue-200" />
+              <HelpCircle className="w-6 h-6 sm:w-8 sm:h-8 text-blue-200" />
             </div>
           </CardContent>
         </Card>
@@ -174,10 +174,10 @@ export default function StaffTrainingHub() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-xs">Simulations</p>
-                <p className="text-2xl font-bold">{completedSimulations}</p>
+                <p className="text-purple-100 text-[10px] sm:text-xs">Simulations</p>
+                <p className="text-xl sm:text-2xl font-bold">{completedSimulations}</p>
               </div>
-              <Play className="w-8 h-8 text-purple-200" />
+              <Play className="w-6 h-6 sm:w-8 sm:h-8 text-purple-200" />
             </div>
           </CardContent>
         </Card>
@@ -186,10 +186,10 @@ export default function StaffTrainingHub() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-xs">Avg Score</p>
-                <p className="text-2xl font-bold">{averageScore}%</p>
+                <p className="text-green-100 text-[10px] sm:text-xs">Avg Score</p>
+                <p className="text-xl sm:text-2xl font-bold">{averageScore}%</p>
               </div>
-              <Target className="w-8 h-8 text-green-200" />
+              <Target className="w-6 h-6 sm:w-8 sm:h-8 text-green-200" />
             </div>
           </CardContent>
         </Card>
@@ -198,10 +198,10 @@ export default function StaffTrainingHub() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-100 text-xs">Time Invested</p>
-                <p className="text-2xl font-bold">{totalTime}m</p>
+                <p className="text-orange-100 text-[10px] sm:text-xs">Time Invested</p>
+                <p className="text-xl sm:text-2xl font-bold">{totalTime}m</p>
               </div>
-              <Clock className="w-8 h-8 text-orange-200" />
+              <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-orange-200" />
             </div>
           </CardContent>
         </Card>
