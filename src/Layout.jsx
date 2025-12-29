@@ -70,32 +70,23 @@ export default function Layout({ children, currentPageName }) {
 
   const isActive = (page) => currentPageName === page;
 
-  const navCategories = [
-    {
-      category: "MY WORKSPACE",
-      items: [
-        { name: "My Patients", icon: Users, page: "Patients" },
-        { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
-        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-        { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
-        { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
-        { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
-        { name: "Settings", icon: Settings, page: "Settings" }
-      ]
-    },
-    ...(currentUser?.role === 'admin' ? [
-      {
-        category: "ADMIN",
-        items: [
-          { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
-          { name: "User & Training Mgmt", icon: Users, page: "Admin" },
-          { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
-          { name: "Agency Settings", icon: Settings, page: "AgencySettings" },
-          { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
-        ]
-      }
-    ] : [])
+  const userNavItems = [
+    { name: "My Patients", icon: Users, page: "Patients" },
+    { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
+    { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+    { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
+    { name: "Compliance Check", icon: Shield, page: "MedicareComplianceDashboard" },
+    { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
+    { name: "Settings", icon: Settings, page: "Settings" }
   ];
+
+  const adminNavItems = currentUser?.role === 'admin' ? [
+    { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
+    { name: "User & Training Mgmt", icon: Users, page: "Admin" },
+    { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
+    { name: "Agency Settings", icon: Settings, page: "AgencySettings" },
+    { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
+  ] : [];
 
   const bottomNavItems = [
     { name: "About", icon: Sparkles, page: "About" },
@@ -119,30 +110,47 @@ export default function Layout({ children, currentPageName }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
-          {navCategories.map((cat, i) => (
-            <React.Fragment key={i}>
-              {cat.category && !sidebarCollapsed && (
-                <p className="text-xs px-3 py-1 text-gray-400 uppercase">{cat.category}</p>
-              )}
-              {cat.items.map((item) => (
-                <Link
-                  key={item.page}
-                  to={createPageUrl(item.page)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                    isActive(item.page)
-                      ? "bg-blue-100 text-blue-700"
-                      : "text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {!sidebarCollapsed && item.name}
-                </Link>
-              ))}
-            </React.Fragment>
+          {userNavItems.map((item) => (
+            <Link
+              key={item.page}
+              to={createPageUrl(item.page)}
+              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                isActive(item.page)
+                  ? "bg-blue-100 text-blue-700"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              <item.icon className="w-4 h-4" />
+              {!sidebarCollapsed && item.name}
+            </Link>
           ))}
         </nav>
 
         <div className="border-t p-3">
+          {adminNavItems.length > 0 && (
+            <>
+              {!sidebarCollapsed && (
+                <p className="text-xs px-3 py-2 text-gray-400 uppercase font-semibold">Admin</p>
+              )}
+              <div className="mb-3 space-y-1">
+                {adminNavItems.map((item) => (
+                  <Link
+                    key={item.page}
+                    to={createPageUrl(item.page)}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                      isActive(item.page)
+                        ? "bg-blue-100 text-blue-700"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {!sidebarCollapsed && item.name}
+                  </Link>
+                ))}
+              </div>
+              <div className="border-t mb-3"></div>
+            </>
+          )}
           <div className="mb-3 space-y-1">
             {bottomNavItems.map((item) => (
               <Link
@@ -203,7 +211,7 @@ export default function Layout({ children, currentPageName }) {
               </Button>
             </div>
             <nav className="p-4 space-y-1">
-              {navCategories.flatMap(c => c.items).map(item => (
+              {userNavItems.map(item => (
                 <Link
                   key={item.page}
                   to={createPageUrl(item.page)}
@@ -214,6 +222,24 @@ export default function Layout({ children, currentPageName }) {
                   {item.name}
                 </Link>
               ))}
+              {adminNavItems.length > 0 && (
+                <>
+                  <div className="border-t pt-2 mt-2">
+                    <p className="text-xs px-3 py-2 text-gray-400 uppercase font-semibold">Admin</p>
+                    {adminNavItems.map(item => (
+                      <Link
+                        key={item.page}
+                        to={createPageUrl(item.page)}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                      >
+                        <item.icon className="w-4 h-4" />
+                        {item.name}
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
               <div className="border-t pt-2 mt-2">
                 {bottomNavItems.map(item => (
                   <Link
