@@ -139,6 +139,10 @@ export default function Layout({ children, currentPageName }) {
             <CreditCard className="w-4 h-4" />
             {!sidebarCollapsed && "Billing"}
           </Link>
+          <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-red-600 hover:bg-red-50 w-full">
+            <LogOut className="w-4 h-4" />
+            {!sidebarCollapsed && "Logout"}
+          </button>
 
           {adminNavItems.length > 0 && (
             <>
@@ -162,11 +166,7 @@ export default function Layout({ children, currentPageName }) {
         </nav>
 
         <div className="border-t p-3">
-          <Button variant="ghost" className="w-full text-red-600" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            {!sidebarCollapsed && "Logout"}
-          </Button>
-          {!sidebarCollapsed && <ShareAppButton className="mt-2" />}
+          {!sidebarCollapsed && <ShareAppButton />}
           </div>
           </aside>
           )}
@@ -250,9 +250,13 @@ export default function Layout({ children, currentPageName }) {
                   Pricing
                   </Link>
                   <Link to={createPageUrl("Billing")} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm">
-                  <CreditCard className="w-4 h-4" />
-                  Billing
+                    <CreditCard className="w-4 h-4" />
+                    Billing
                   </Link>
+                  <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-red-50 text-sm text-red-600 w-full">
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
                   </div>
             </nav>
           </div>
