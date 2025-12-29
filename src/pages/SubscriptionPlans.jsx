@@ -38,9 +38,9 @@ export default function SubscriptionPlans() {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: async (plan) => {
-      console.log('Invoking createStripeCheckout with plan:', plan);
-      const response = await base44.functions.invoke('createStripeCheckout', { plan });
+    mutationFn: async (priceId) => {
+      console.log('Invoking createStripeCheckout with priceId:', priceId);
+      const response = await base44.functions.invoke('createStripeCheckout', { priceId });
       console.log('Checkout response:', response);
       return response.data;
     },
@@ -108,7 +108,14 @@ export default function SubscriptionPlans() {
       }
     } else {
       // Use Stripe for web/Android
-      checkoutMutation.mutate(plan);
+      // Find the plan object to get the priceId
+      const planObj = plans.find(p => p.id === plan);
+      if (!planObj || !planObj.priceId) {
+        alert('Invalid plan selected');
+        setIsLoading(false);
+        return;
+      }
+      checkoutMutation.mutate(planObj.priceId);
     }
   };
 
@@ -133,33 +140,37 @@ export default function SubscriptionPlans() {
       price: settings?.monthly_price || 39.99,
       interval: '/month',
       popular: false,
-      savings: null
+      savings: null,
+      priceId: 'price_1SioNUCEZXcVOdjd7EzodOpc'
     },
     {
       id: 'quarterly',
       name: '3-Month',
-      price: settings?.quarterly_price || 99,
+      price: settings?.quarterly_price || 114.99,
       interval: '/3 months',
       popular: false,
-      savings: 'Save 17%'
+      savings: 'Save 4%',
+      priceId: 'price_1SioSoCEZXcVOdjdPYzUvQiX'
     },
     {
       id: 'biannual',
       name: '6-Month',
-      price: settings?.biannual_price || 210,
+      price: settings?.biannual_price || 209.99,
       interval: '/6 months',
       popular: true,
-      savings: 'Save 12%',
-      monthlyEquiv: '$35/mo'
+      savings: 'Save 13%',
+      monthlyEquiv: '$35/mo',
+      priceId: 'price_1SioOnCEZXcVOdjdM5Ou6Wqj'
     },
     {
       id: 'yearly',
       name: 'Annual',
-      price: settings?.yearly_price || 350,
+      price: settings?.yearly_price || 349.99,
       interval: '/year',
       popular: false,
       savings: 'Save 27%',
-      monthlyEquiv: '$29/mo'
+      monthlyEquiv: '$29/mo',
+      priceId: 'price_1SioPVCEZXcVOdjdLjX5A9AR'
     }
   ];
 
