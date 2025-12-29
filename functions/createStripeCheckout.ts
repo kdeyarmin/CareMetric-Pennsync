@@ -63,8 +63,7 @@ Deno.serve(async (req) => {
     const trialDays = existingSubs.length > 0 ? null : 14;
 
     // Create checkout session
-    const referer = req.headers.get('referer') || '';
-    const origin = referer ? new URL(referer).origin : 'https://caremetricai.base44.app';
+    const origin = 'https://www.caremetricai.com';
     
     console.log('Creating checkout session for customer:', customerId);
     console.log('Origin:', origin);

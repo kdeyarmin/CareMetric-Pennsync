@@ -11,7 +11,7 @@ import { Share2, Mail, Copy, Check } from "lucide-react";
 export default function ShareAppButton({ variant = "default", size = "default" }) {
   const [copied, setCopied] = useState(false);
   
-  const appUrl = window.location.origin;
+  const appUrl = 'https://www.caremetricai.com';
   const shareMessage = "Check out CareMetric AI - an amazing AI-powered clinical documentation assistant that saves nurses 2-3 hours daily!";
   
   const handleCopyLink = () => {

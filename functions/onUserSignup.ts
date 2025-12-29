@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     const emailBody = `
     Hello,
 
-    A new user has signed up for Penn Sync and is awaiting approval:
+    A new user has signed up for CareMetric AI and is awaiting approval:
 
     👤 Name: ${user.full_name || 'Not provided'}
     📧 Email: ${user.email}
@@ -95,37 +95,27 @@ Deno.serve(async (req) => {
     🎭 Role: ${user.role || 'user'}
 
     Action Required:
-    Please log in to Penn Sync and navigate to the User Management page to approve or review this user's access.
+    Please log in to CareMetric AI and navigate to the User Management page to approve or review this user's access.
 
-    ➡️ Go to Admin Dashboard > User Management
+    ➡️ https://www.caremetricai.com
 
     The user will not be able to access the system until approved by an administrator.
 
     Best regards,
-    Penn Sync System
+    CareMetric AI
     `.trim();
 
     // Send email to all admins
     const emailPromises = admins.map(admin => 
       base44.asServiceRole.integrations.Core.SendEmail({
         to: admin.email,
-        subject: `🔔 New User Awaiting Approval - Penn Sync`,
-        from_name: 'Penn Sync Notifications',
+        subject: `🔔 New User Awaiting Approval - CareMetric AI`,
+        from_name: 'CareMetric AI',
         body: `Hello ${admin.full_name || 'Admin'},\n\n${emailBody}`
       })
     );
 
-    // Also send notification to kdeyarmin@pennhospice.com
-    emailPromises.push(
-      base44.asServiceRole.integrations.Core.SendEmail({
-        to: 'kdeyarmin@pennhospice.com',
-        subject: `🔔 New User Awaiting Approval - Penn Sync`,
-        from_name: 'Penn Sync Notifications',
-        body: `Hello,\n\n${emailBody}`
-      })
-    );
-
-    console.log('Sending emails to admins and kdeyarmin@pennhospice.com...');
+    console.log('Sending emails to admins...');
     await Promise.all(emailPromises);
     console.log('Signup notification complete');
 
