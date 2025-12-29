@@ -25,6 +25,25 @@ Deno.serve(async (req) => {
       console.error('Failed to save referral code:', codeError);
     }
 
+    // Create 14-day free trial subscription for new user
+    console.log('Creating trial subscription for:', user.email);
+    try {
+      const trialEndDate = new Date();
+      trialEndDate.setDate(trialEndDate.getDate() + 14);
+      
+      await base44.asServiceRole.entities.Subscription.create({
+        user_email: user.email,
+        status: 'trialing',
+        trial_start: new Date().toISOString(),
+        trial_end: trialEndDate.toISOString(),
+        plan_name: '14-Day Free Trial',
+        payment_method: 'trial'
+      });
+      console.log('Trial subscription created for:', user.email);
+    } catch (trialError) {
+      console.error('Failed to create trial subscription:', trialError);
+    }
+
     // Check if user was invited
     console.log('Checking for invitation...');
     const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ 
