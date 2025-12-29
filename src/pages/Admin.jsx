@@ -39,6 +39,9 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import SecurityEncryptionCheck from "../components/admin/SecurityEncryptionCheck";
+import AIAnomalyDetector from "../components/admin/AIAnomalyDetector";
+import AIRoleSuggestions from "../components/admin/AIRoleSuggestions";
+import AISystemHealthSummary from "../components/admin/AISystemHealthSummary";
 
 export default function Admin() {
   const queryClient = useQueryClient();
@@ -86,6 +89,13 @@ export default function Admin() {
   const { data: securityLogs } = useQuery({
     queryKey: ['securityLogs'],
     queryFn: () => base44.entities.SecurityLog.list('-timestamp', 100),
+    initialData: [],
+    enabled: isAdmin === true,
+  });
+
+  const { data: userActivity = [] } = useQuery({
+    queryKey: ['userActivity'],
+    queryFn: () => base44.entities.UserActivity.list('-created_date', 200),
     initialData: [],
     enabled: isAdmin === true,
   });
@@ -262,6 +272,15 @@ If you have any questions, please contact your administrator.`,
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {/* AI System Health Summary */}
+          <AISystemHealthSummary
+            totalUsers={totalUsers}
+            activePatients={activePatients}
+            visitsThisWeek={visitsThisWeek}
+            avgDocTime={avgDocTime}
+            securityLogs={securityLogs}
+          />
+
           <Card>
             <CardHeader>
               <CardTitle>System Health</CardTitle>
@@ -330,6 +349,9 @@ If you have any questions, please contact your administrator.`,
 
         {/* User Management Tab */}
         <TabsContent value="users" className="space-y-6">
+          {/* AI Role Suggestions */}
+          <AIRoleSuggestions users={users} userActivity={userActivity} />
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -442,6 +464,9 @@ If you have any questions, please contact your administrator.`,
 
         {/* Security Logs Tab */}
         <TabsContent value="security" className="space-y-6">
+          {/* AI Anomaly Detection */}
+          <AIAnomalyDetector securityLogs={securityLogs} />
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
