@@ -160,14 +160,14 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
           {quizCategories.map((category) => (
             <Card
               key={category.id}
-              className="cursor-pointer hover:shadow-lg transition-all hover:border-blue-300"
+              className="cursor-pointer hover:shadow-lg transition-all hover:border-blue-300 overflow-hidden"
               onClick={() => generateQuiz(category)}
             >
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <HelpCircle className="w-6 h-6 text-blue-600" />
+              <CardContent className="p-4 sm:p-6 text-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <HelpCircle className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-1">{category.label}</h3>
+                <h3 className="font-semibold text-gray-900 mb-1 text-sm sm:text-base break-words">{category.label}</h3>
                 <p className="text-xs text-gray-500">{category.questions} questions</p>
               </CardContent>
             </Card>

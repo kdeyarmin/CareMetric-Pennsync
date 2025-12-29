@@ -256,18 +256,18 @@ Be constructive and educational.`,
           {simulationScenarios.map((scenario) => (
             <Card
               key={scenario.id}
-              className="cursor-pointer hover:shadow-lg transition-all hover:border-purple-300"
+              className="cursor-pointer hover:shadow-lg transition-all hover:border-purple-300 overflow-hidden"
               onClick={() => generateSimulation(scenario)}
             >
-              <CardContent className="p-5">
+              <CardContent className="p-4 sm:p-5">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Play className="w-5 h-5 text-purple-600" />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-gray-900">{scenario.title}</h3>
-                      <Badge variant="outline" className={`text-xs ${
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                      <h3 className="font-semibold text-gray-900 text-sm sm:text-base break-words">{scenario.title}</h3>
+                      <Badge variant="outline" className={`text-xs flex-shrink-0 w-fit ${
                         scenario.difficulty === 'Hard' ? 'bg-red-50 text-red-700' :
                         scenario.difficulty === 'Medium' ? 'bg-yellow-50 text-yellow-700' :
                         'bg-green-50 text-green-700'
@@ -275,8 +275,8 @@ Be constructive and educational.`,
                         {scenario.difficulty}
                       </Badge>
                     </div>
-                    <p className="text-sm text-gray-600">{scenario.description}</p>
-                    <Badge variant="outline" className="mt-2 text-xs">{scenario.category}</Badge>
+                    <p className="text-xs sm:text-sm text-gray-600 break-words">{scenario.description}</p>
+                    <Badge variant="outline" className="mt-2 text-xs w-fit">{scenario.category}</Badge>
                   </div>
                 </div>
               </CardContent>
