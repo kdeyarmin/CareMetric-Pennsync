@@ -208,6 +208,37 @@ export default function Dashboard() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen">
+      {/* Navigation Bar */}
+      <div className="mb-4 sm:mb-6 bg-white rounded-lg shadow-sm border p-3 sm:p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Link to={createPageUrl("Dashboard")} className="hover:text-blue-600">Home</Link>
+            <span>/</span>
+            <span className="font-medium text-gray-900">Dashboard</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link to={createPageUrl("Patients")}>
+              <Button variant="outline" size="sm" className="gap-2">
+                <User className="w-4 h-4" />
+                Patients
+              </Button>
+            </Link>
+            <Link to={createPageUrl("SmartNoteAssistant")}>
+              <Button variant="outline" size="sm" className="gap-2">
+                <FileText className="w-4 h-4" />
+                Smart Notes
+              </Button>
+            </Link>
+            <Link to={createPageUrl("CarePlanManagement")}>
+              <Button variant="outline" size="sm" className="gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Care Plans
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {/* Welcome Banner */}
       <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 text-white border-none shadow-xl overflow-hidden">
         <CardContent className="p-4 sm:p-6 md:p-8 relative">
