@@ -182,29 +182,29 @@ export default function Layout({ children, currentPageName }) {
 
           {/* ================= Mobile Header ================= */}
           {showNavigation && currentUser && (
-          <header className="lg:hidden fixed top-0 left-0 right-0 h-14 sm:h-16 bg-blue-600 flex items-center justify-between px-2 sm:px-4 z-[100]">
-          <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink">
-            <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" className="w-7 h-7 sm:w-8 sm:h-8 object-contain flex-shrink-0" alt="CareMetric AI Logo" />
-            <span className="font-bold text-white text-sm sm:text-base truncate">CareMetric AI</span>
+          <header className="lg:hidden fixed top-0 left-0 right-0 h-12 sm:h-14 bg-blue-600 flex items-center justify-between px-2 sm:px-3 z-[100]">
+          <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
+            <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" className="w-6 h-6 sm:w-7 sm:h-7 object-contain flex-shrink-0" alt="CareMetric AI Logo" />
+            <span className="font-bold text-white text-xs sm:text-sm truncate">CareMetric AI</span>
           </Link>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
             <NotificationCenter />
             <Button
               size="icon"
               variant="ghost"
-              className="text-white hover:bg-red-600 h-9 w-9 sm:h-10 sm:w-10"
+              className="text-white hover:bg-red-600 h-8 w-8 sm:h-9 sm:w-9"
               onClick={handleLogout}
               title="Logout"
             >
-              <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+              <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </Button>
             <Button
               size="icon"
               variant="ghost"
-              className="text-white h-9 w-9 sm:h-10 sm:w-10"
+              className="text-white h-8 w-8 sm:h-9 sm:w-9"
               onClick={() => setMobileMenuOpen(true)}
             >
-              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
             </Button>
             </div>
             </header>
@@ -220,10 +220,10 @@ export default function Layout({ children, currentPageName }) {
               className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white shadow-xl overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="h-14 sm:h-16 flex items-center justify-between px-3 sm:px-4 border-b sticky top-0 bg-white z-10">
-                <span className="font-bold text-base sm:text-lg">Menu</span>
-                <Button size="icon" variant="ghost" onClick={() => setMobileMenuOpen(false)} className="h-9 w-9">
-                  <X className="w-5 h-5" />
+              <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b sticky top-0 bg-white z-10">
+                <span className="font-bold text-sm sm:text-base">Menu</span>
+                <Button size="icon" variant="ghost" onClick={() => setMobileMenuOpen(false)} className="h-8 w-8 sm:h-9 sm:w-9">
+                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
                 </Button>
               </div>
               <nav className="p-3 sm:p-4 space-y-1">
@@ -278,7 +278,7 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* ================= Main Content ================= */}
-      <main className={`flex-1 ${showNavigation && currentUser ? 'pt-14 sm:pt-16 lg:pt-0 pb-20 sm:pb-24 lg:pb-32' : ''}`}>
+      <main className={`flex-1 ${showNavigation && currentUser ? 'pt-12 sm:pt-14 lg:pt-0 pb-16 sm:pb-20 lg:pb-32' : ''}`}>
         <div className={showNavigation && currentUser ? 'p-3 sm:p-4 lg:p-6' : ''}>{children}</div>
       </main>
 
@@ -312,27 +312,27 @@ export default function Layout({ children, currentPageName }) {
 
           {/* ================= Bottom Navigation ================= */}
           {showNavigation && currentUser && (
-          <nav className="fixed bottom-0 left-0 right-0 h-14 sm:h-16 bg-white border-t shadow lg:hidden z-40">
-              <div className="flex items-center justify-around h-full px-2">
-                <Link to={createPageUrl("Dashboard")} className={`flex flex-col items-center justify-center gap-0.5 py-1 ${isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}`}>
-                  <Home className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span className="text-[10px] sm:text-xs">Home</span>
+          <nav className="fixed bottom-0 left-0 right-0 h-12 sm:h-14 bg-white border-t shadow lg:hidden z-40">
+              <div className="flex items-center justify-around h-full px-1">
+                <Link to={createPageUrl("Dashboard")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}`}>
+                  <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-[9px] sm:text-[10px]">Home</span>
                 </Link>
-                <Link to={createPageUrl("SmartNoteAssistant")} className={`flex flex-col items-center justify-center gap-0.5 py-1 ${isActive("SmartNoteAssistant") ? "text-blue-600" : "text-gray-500"}`}>
-                  <Brain className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span className="text-[10px] sm:text-xs">Notes</span>
+                <Link to={createPageUrl("SmartNoteAssistant")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("SmartNoteAssistant") ? "text-blue-600" : "text-gray-500"}`}>
+                  <Brain className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-[9px] sm:text-[10px]">Notes</span>
                 </Link>
-                <Link to={createPageUrl("CarePlanManagement")} className={`flex flex-col items-center justify-center gap-0.5 py-1 ${isActive("CarePlanManagement") ? "text-blue-600" : "text-gray-500"}`}>
-                  <Target className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span className="text-[10px] sm:text-xs">Plans</span>
+                <Link to={createPageUrl("CarePlanManagement")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("CarePlanManagement") ? "text-blue-600" : "text-gray-500"}`}>
+                  <Target className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-[9px] sm:text-[10px]">Plans</span>
                 </Link>
-                <Link to={createPageUrl("PatientAlerts")} className={`flex flex-col items-center justify-center gap-0.5 py-1 ${isActive("PatientAlerts") ? "text-blue-600" : "text-gray-500"}`}>
-                  <Bell className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span className="text-[10px] sm:text-xs">Alerts</span>
+                <Link to={createPageUrl("PatientAlerts")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("PatientAlerts") ? "text-blue-600" : "text-gray-500"}`}>
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-[9px] sm:text-[10px]">Alerts</span>
                 </Link>
-                <Link to={createPageUrl("Settings")} className={`flex flex-col items-center justify-center gap-0.5 py-1 ${isActive("Settings") ? "text-blue-600" : "text-gray-500"}`}>
-                  <User className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span className="text-[10px] sm:text-xs">Settings</span>
+                <Link to={createPageUrl("Settings")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("Settings") ? "text-blue-600" : "text-gray-500"}`}>
+                  <User className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-[9px] sm:text-[10px]">Settings</span>
                 </Link>
                 </div>
                 </nav>
