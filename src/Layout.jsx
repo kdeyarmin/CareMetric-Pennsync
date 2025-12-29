@@ -44,9 +44,15 @@ export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const { data: currentUser } = useQuery({
+  const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ["currentUser"],
-    queryFn: () => base44.auth.me()
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        return null;
+      }
+    }
   });
 
   useEffect(() => {
@@ -70,6 +76,9 @@ export default function Layout({ children, currentPageName }) {
 
   const isActive = (page) => currentPageName === page;
 
+  // Show navigation on all pages except Home, and only when user is logged in
+  const showNavigationUI = currentPageName !== "Home" && currentUser && !userLoading;
+
   const userNavItems = [
     { name: "Home", icon: Home, page: "Home" },
     { name: "My Patients", icon: Users, page: "Patients" },
@@ -89,12 +98,10 @@ export default function Layout({ children, currentPageName }) {
 
 
 
-  const showNavigation = currentPageName !== "Home";
-
   return (
     <div className="min-h-screen bg-blue-100 flex">
       {/* ================= Desktop Sidebar ================= */}
-      {showNavigation && currentUser && (
+      {showNavigationUI && (
       <aside className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${sidebarCollapsed ? "w-16" : "w-56"}`}>
         <div className="h-16 flex items-center justify-between px-3 border-b">
           <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
@@ -187,7 +194,7 @@ export default function Layout({ children, currentPageName }) {
           )}
 
           {/* ================= Mobile Header ================= */}
-          {showNavigation && currentUser && (
+          {showNavigationUI && (
           <header className="lg:hidden fixed top-0 left-0 right-0 h-12 sm:h-14 bg-blue-600 flex items-center justify-between px-2 sm:px-3 z-[200]">
           <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
             <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png" className="w-6 h-6 sm:w-7 sm:h-7 object-contain flex-shrink-0" alt="CareMetric AI Logo" />
@@ -217,7 +224,7 @@ export default function Layout({ children, currentPageName }) {
             )}
 
           {/* ================= Mobile Menu Overlay ================= */}
-          {showNavigation && currentUser && mobileMenuOpen && (
+          {showNavigationUI && mobileMenuOpen && (
           <div
             className="fixed inset-0 bg-black/50 z-[90]"
             onClick={() => setMobileMenuOpen(false)}
@@ -298,12 +305,12 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* ================= Main Content ================= */}
-      <main className={`flex-1 ${showNavigation && currentUser ? 'pt-12 sm:pt-14 lg:pt-0 lg:pb-32' : ''}`} style={showNavigation && currentUser ? { paddingBottom: 'calc(3.5rem + max(env(safe-area-inset-bottom), 20px))' } : {}}>
-        <div className={showNavigation && currentUser ? 'p-3 sm:p-4 lg:p-6' : ''}>{children}</div>
+      <main className={`flex-1 ${showNavigationUI ? 'pt-12 sm:pt-14 lg:pt-0 lg:pb-32' : ''}`} style={showNavigationUI ? { paddingBottom: 'calc(3.5rem + max(env(safe-area-inset-bottom), 20px))' } : {}}>
+        <div className={showNavigationUI ? 'p-3 sm:p-4 lg:p-6' : ''}>{children}</div>
       </main>
 
       {/* ================= Mobile Floating Buttons ================= */}
-      {showNavigation && currentUser && (
+      {showNavigationUI && (
       <div
         className="fixed z-50 flex gap-10 px-4 lg:hidden pointer-events-none right-0"
         style={{ bottom: MOBILE_FAB_OFFSET }}
@@ -319,19 +326,19 @@ export default function Layout({ children, currentPageName }) {
 
 
           {/* ================= Desktop Floating Buttons ================= */}
-          {showNavigation && currentUser && (
+          {showNavigationUI && (
           <div className="hidden lg:block">
         <div className="fixed right-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
-          {currentUser && <AIChatAssistant />}
+          <AIChatAssistant />
         </div>
         <div className="fixed left-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
           <MobileQuickAccessMenu className="h-12 w-12 lg:h-14 lg:w-14" side="top" sideOffset={12}/>
-          </div>
-          </div>
-          )}
+        </div>
+      </div>
+      )}
 
           {/* ================= Bottom Navigation ================= */}
-          {showNavigation && currentUser && (
+          {showNavigationUI && (
           <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow lg:hidden z-40" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
               <div className="flex items-center justify-around h-12 sm:h-14 px-1">
                 <Link to={createPageUrl("Dashboard")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}`}>
@@ -358,7 +365,7 @@ export default function Layout({ children, currentPageName }) {
                 </nav>
                 )}
 
-          {showNavigation && currentUser && <OfflineIndicator />}
+          {showNavigationUI && <OfflineIndicator />}
           </div>
           );
 }
