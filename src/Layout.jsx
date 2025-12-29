@@ -88,12 +88,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
   ] : [];
 
-  const bottomNavItems = [
-    { name: "About", icon: Sparkles, page: "About" },
-    { name: "Features", icon: Sparkles, page: "Features" },
-    { name: "Pricing", icon: CreditCard, page: "Pricing" },
-    { name: "Billing", icon: CreditCard, page: "Billing" }
-  ];
+
 
   return (
     <div className="min-h-screen bg-blue-100 flex">
@@ -126,6 +121,25 @@ export default function Layout({ children, currentPageName }) {
             </Link>
           ))}
 
+          <div className="h-px bg-gray-200 my-3 mx-2"></div>
+
+          <Link to={createPageUrl("About")} className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${isActive("About") ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}>
+            <Sparkles className="w-4 h-4" />
+            {!sidebarCollapsed && "About"}
+          </Link>
+          <Link to={createPageUrl("Features")} className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${isActive("Features") ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}>
+            <Sparkles className="w-4 h-4" />
+            {!sidebarCollapsed && "Features"}
+          </Link>
+          <Link to={createPageUrl("Pricing")} className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${isActive("Pricing") ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}>
+            <CreditCard className="w-4 h-4" />
+            {!sidebarCollapsed && "Pricing"}
+          </Link>
+          <Link to={createPageUrl("Billing")} className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${isActive("Billing") ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"}`}>
+            <CreditCard className="w-4 h-4" />
+            {!sidebarCollapsed && "Billing"}
+          </Link>
+
           {adminNavItems.length > 0 && (
             <>
               <div className="h-1 bg-red-500 rounded-full my-3 mx-2"></div>
@@ -148,22 +162,6 @@ export default function Layout({ children, currentPageName }) {
         </nav>
 
         <div className="border-t p-3">
-          <div className="mb-3 space-y-1">
-            {bottomNavItems.map((item) => (
-              <Link
-                key={item.page}
-                to={createPageUrl(item.page)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                  isActive(item.page)
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                <item.icon className="w-4 h-4" />
-                {!sidebarCollapsed && item.name}
-              </Link>
-            ))}
-          </div>
           <Button variant="ghost" className="w-full text-red-600" onClick={handleLogout}>
             <LogOut className="w-4 h-4 mr-2" />
             {!sidebarCollapsed && "Logout"}
@@ -236,21 +234,26 @@ export default function Layout({ children, currentPageName }) {
                       {item.name}
                     </Link>
                   ))}
-                </>
-              )}
-              <div className="border-t pt-2 mt-2">
-                {bottomNavItems.map(item => (
-                  <Link
-                    key={item.page}
-                    to={createPageUrl(item.page)}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {item.name}
+                  </>
+                  )}
+                  <div className="border-t pt-2 mt-2">
+                  <Link to={createPageUrl("About")} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm">
+                  <Sparkles className="w-4 h-4" />
+                  About
                   </Link>
-                ))}
-              </div>
+                  <Link to={createPageUrl("Features")} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm">
+                  <Sparkles className="w-4 h-4" />
+                  Features
+                  </Link>
+                  <Link to={createPageUrl("Pricing")} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm">
+                  <CreditCard className="w-4 h-4" />
+                  Pricing
+                  </Link>
+                  <Link to={createPageUrl("Billing")} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm">
+                  <CreditCard className="w-4 h-4" />
+                  Billing
+                  </Link>
+                  </div>
             </nav>
           </div>
         </div>
