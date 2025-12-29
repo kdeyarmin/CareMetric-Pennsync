@@ -44,7 +44,7 @@ export default function Pricing() {
     },
     {
       name: "Quarterly",
-      price: 115,
+      price: 114.99,
       interval: "3 months",
       description: "Save 4% vs monthly",
       priceId: "price_1SioSoCEZXcVOdjdPYzUvQiX",
@@ -54,9 +54,9 @@ export default function Pricing() {
     },
     {
       name: "Semi-Annual",
-      price: 210,
+      price: 209.99,
       interval: "6 months",
-      description: "Save 12% vs monthly",
+      description: "Save 13% vs monthly",
       priceId: "price_1SioOnCEZXcVOdjdM5Ou6Wqj",
       popular: true,
       savings: "Save $30",
@@ -64,7 +64,7 @@ export default function Pricing() {
     },
     {
       name: "Annual",
-      price: 350,
+      price: 349.99,
       interval: "year",
       description: "Best value - Save 27%",
       priceId: "price_1SioPVCEZXcVOdjdLjX5A9AR",
