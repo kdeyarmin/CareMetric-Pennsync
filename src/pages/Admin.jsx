@@ -30,13 +30,7 @@ import {
   Database,
   Settings,
   AlertTriangle,
-  CheckCircle2,
-  UserPlus,
-  Search,
-  Eye,
-  Trash2,
-  Mail,
-  Key
+  CheckCircle2
 } from "lucide-react";
 import { format } from "date-fns";
 import SecurityEncryptionCheck from "../components/admin/SecurityEncryptionCheck";
@@ -46,14 +40,12 @@ import AISystemHealthSummary from "../components/admin/AISystemHealthSummary";
 import UserPasswordReset from "../components/admin/UserPasswordReset";
 import AIAdminAnomalyDetector from "../components/admin/AIAdminAnomalyDetector";
 import DetailedAuditTrailViewer from "../components/admin/DetailedAuditTrailViewer";
+import UserManagement from "../components/admin/UserManagement";
 
 export default function Admin() {
   const queryClient = useQueryClient();
   const [isAdmin, setIsAdmin] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
   const [selectedTab, setSelectedTab] = useState("overview");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("user");
 
   // Check if current user is admin
   const { data: currentUser } = useQuery({
@@ -111,14 +103,7 @@ export default function Admin() {
     enabled: isAdmin === true,
   });
 
-  // Update user role mutation
-  const updateUserRoleMutation = useMutation({
-    mutationFn: ({ userId, role }) => base44.entities.User.update(userId, { role }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
-      alert('User role updated successfully');
-    },
-  });
+
 
   // Calculate metrics
   const totalUsers = users.length;
@@ -140,47 +125,11 @@ export default function Admin() {
       return sum + diff;
     }, 0) / (completedVisits || 1);
 
-  // Filter users by search
-  const filteredUsers = (users || []).filter(user =>
-    user && (
-      (user.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-      (user.full_name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-    )
-  );
-
   // Security events by type
   const securityEventCounts = securityLogs.reduce((acc, log) => {
     acc[log.action] = (acc[log.action] || 0) + 1;
     return acc;
   }, {});
-
-  const handleInviteUser = async () => {
-    if (!inviteEmail) {
-      alert('Please enter an email address');
-      return;
-    }
-    
-    try {
-      await base44.integrations.Core.SendEmail({
-        to: inviteEmail,
-        subject: 'Invitation to Join PennCares',
-        body: `You have been invited to join PennCares as a ${inviteRole === 'admin' ? 'Administrator' : 'User'}.
-        
-Please visit the app to create your account and start documenting patient visits.
-
-Role: ${inviteRole === 'admin' ? 'Administrator' : 'User'}
-
-If you have any questions, please contact your administrator.`,
-        from_name: 'PennCares Admin'
-      });
-      
-      alert('Invitation sent successfully!');
-      setInviteEmail('');
-    } catch (error) {
-      console.error('Failed to send invite:', error);
-      alert('Failed to send invitation. Please try again.');
-    }
-  };
 
   // Check if user is admin
   if (isAdmin === null) {
@@ -364,120 +313,8 @@ If you have any questions, please contact your administrator.`,
           {/* AI Role Suggestions */}
           <AIRoleSuggestions users={users} userActivity={userActivity} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserPlus className="w-5 h-5" />
-                Invite New User
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="md:col-span-2">
-                  <Label htmlFor="inviteEmail">Email Address</Label>
-                  <Input
-                    id="inviteEmail"
-                    type="email"
-                    placeholder="user@example.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="inviteRole">Role</Label>
-                  <Select value={inviteRole} onValueChange={setInviteRole}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="admin">Administrator</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <Button
-                onClick={handleInviteUser}
-                className="mt-4 bg-blue-600 hover:bg-blue-700"
-              >
-                <Mail className="w-4 h-4 mr-2" />
-                Send Invitation
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>All Users ({filteredUsers.length})</CardTitle>
-              <div className="relative mt-4">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search users by name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Joined</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.full_name || 'N/A'}</TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        <Badge variant={user.role === 'admin' ? 'default' : 'outline'}>
-                          {user.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600">
-                        {format(new Date(user.created_date), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={user.role}
-                            onValueChange={(role) => updateUserRoleMutation.mutate({ 
-                              userId: user.id, 
-                              role 
-                            })}
-                            disabled={user.id === currentUser?.id}
-                          >
-                            <SelectTrigger className="w-28">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="user">User</SelectItem>
-                              <SelectItem value="admin">Admin</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <UserPasswordReset
-                            user={user}
-                            trigger={
-                              <Button size="sm" variant="outline" className="gap-1">
-                                <Key className="w-3 h-3" />
-                                Reset
-                              </Button>
-                            }
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          {/* User Management Component */}
+          <UserManagement users={users} currentUser={currentUser} />
         </TabsContent>
 
         {/* Audit Trail Tab */}
