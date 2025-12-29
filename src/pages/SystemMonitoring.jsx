@@ -50,15 +50,15 @@ export default function SystemMonitoring() {
     <div className="min-h-screen">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 md:px-6">
-            <TabsList className="grid w-full max-w-md grid-cols-2 h-14">
-              <TabsTrigger value="activity" className="gap-2">
-                <Activity className="w-4 h-4" />
-                User Activity
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6">
+            <TabsList className="grid w-full max-w-md grid-cols-2 h-12 sm:h-14 gap-1">
+              <TabsTrigger value="activity" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+                <Activity className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline">User </span>Activity
               </TabsTrigger>
-              <TabsTrigger value="jobs" className="gap-2">
-                <Cog className="w-4 h-4" />
-                System Jobs
+              <TabsTrigger value="jobs" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+                <Cog className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline">System </span>Jobs
               </TabsTrigger>
             </TabsList>
           </div>

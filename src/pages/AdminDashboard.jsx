@@ -401,20 +401,21 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600">Comprehensive analytics and system overview</p>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Admin Dashboard</h1>
+          <p className="text-xs sm:text-sm md:text-base text-gray-600 truncate">Comprehensive analytics and system overview</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
           <Button
             onClick={exportData}
             variant="outline"
             size="sm"
+            className="flex-1 sm:flex-initial min-h-[44px]"
           >
             <Download className="w-4 h-4 mr-2" />
-            Export Data
+            <span className="text-xs sm:text-sm">Export</span>
           </Button>
           {[7, 30, 90].map(days => (
             <Button
@@ -422,70 +423,71 @@ export default function AdminDashboard() {
               size="sm"
               variant={dateRange === days ? "default" : "outline"}
               onClick={() => setDateRange(days)}
+              className="min-h-[44px] px-3 sm:px-4"
             >
-              {days}d
+              <span className="text-xs sm:text-sm">{days}d</span>
             </Button>
           ))}
         </div>
       </div>
 
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <Users className="w-8 h-8 text-blue-600" />
-              <Badge className="bg-blue-600">{stats.activeUsers}/{stats.totalUsers}</Badge>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+              <Badge className="bg-blue-600 text-[10px] sm:text-xs">{stats.activeUsers}/{stats.totalUsers}</Badge>
             </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
-            <p className="text-xs text-gray-600">Active Nurses</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">Active Nurses</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <UserCheck className="w-8 h-8 text-green-600" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <UserCheck className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalPatients}</p>
-            <p className="text-xs text-gray-600">Total Patients</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalPatients}</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">Total Patients</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <FileText className="w-8 h-8 text-purple-600" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.completedVisits}</p>
-            <p className="text-xs text-gray-600">Visits ({dateRange}d)</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.completedVisits}</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">Visits ({dateRange}d)</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <Brain className="w-8 h-8 text-indigo-600" />
-              <Badge className="bg-indigo-600">{stats.aiAdoptionRate}%</Badge>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" />
+              <Badge className="bg-indigo-600 text-[10px] sm:text-xs">{stats.aiAdoptionRate}%</Badge>
             </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalEnhancements}</p>
-            <p className="text-xs text-gray-600">AI Enhancements</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalEnhancements}</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">AI Enhancements</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <Clock className="w-8 h-8 text-orange-600" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalTimeSaved}</p>
-            <p className="text-xs text-gray-600">Minutes Saved</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalTimeSaved}</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">Minutes Saved</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Secondary Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -594,15 +596,15 @@ export default function AdminDashboard() {
         </Card>
       )}
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="revenue">Revenue</TabsTrigger>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="compliance">Compliance</TabsTrigger>
-          <TabsTrigger value="training">Training</TabsTrigger>
-          <TabsTrigger value="ai-feedback">AI Feedback</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
+      <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1 h-auto p-1">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm py-2">Overview</TabsTrigger>
+          <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2">Revenue</TabsTrigger>
+          <TabsTrigger value="performance" className="text-xs sm:text-sm py-2">Performance</TabsTrigger>
+          <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2">Compliance</TabsTrigger>
+          <TabsTrigger value="training" className="text-xs sm:text-sm py-2">Training</TabsTrigger>
+          <TabsTrigger value="ai-feedback" className="text-xs sm:text-sm py-2">AI Feedback</TabsTrigger>
+          <TabsTrigger value="activity" className="text-xs sm:text-sm py-2">Activity</TabsTrigger>
         </TabsList>
 
         {/* Revenue Tab */}
@@ -1073,12 +1075,12 @@ export default function AdminDashboard() {
           </Card>
 
           {/* Quick Links */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
             <Link to={createPageUrl("UserManagement")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-200 h-full">
-                <CardContent className="p-4 text-center">
-                  <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Manage Users</p>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-200 h-full active:scale-95">
+                <CardContent className="p-3 sm:p-4 text-center touch-target flex flex-col items-center justify-center">
+                  <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 mx-auto mb-1 sm:mb-2" />
+                  <p className="font-medium text-xs sm:text-sm">Manage Users</p>
                 </CardContent>
               </Card>
             </Link>

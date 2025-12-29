@@ -109,77 +109,78 @@ export default function AdminSubscriptionManagement() {
   const totalPayments = allPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Subscription Management</h1>
-        <p className="text-gray-600">Configure pricing and manage all subscriptions</p>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="mb-4 sm:mb-6 md:mb-8">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">Subscription Management</h1>
+        <p className="text-xs sm:text-sm md:text-base text-gray-600">Configure pricing and manage all subscriptions</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Users className="w-8 h-8 text-blue-600" />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">{activeSubscriptions.length}</p>
-            <p className="text-sm text-gray-600">Active Subscribers</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{activeSubscriptions.length}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Active Subscribers</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <TrendingUp className="w-8 h-8 text-green-600" />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">${totalMRR.toFixed(2)}</p>
-            <p className="text-sm text-gray-600">Monthly Recurring Revenue</p>
+            <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">${totalMRR.toFixed(2)}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Monthly Recurring Revenue</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <CreditCard className="w-8 h-8 text-purple-600" />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">{allPayments.length}</p>
-            <p className="text-sm text-gray-600">Total Payments</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{allPayments.length}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Total Payments</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <DollarSign className="w-8 h-8 text-yellow-600" />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-600" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">${totalPayments.toFixed(2)}</p>
-            <p className="text-sm text-gray-600">Total Revenue</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900">${totalPayments.toFixed(2)}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Total Revenue</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Subscription Settings */}
-      <Card className="mb-8">
+      <Card className="mb-4 sm:mb-6 md:mb-8">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
               Subscription Plans & Pricing
             </CardTitle>
             <Button
               onClick={() => editMode ? handleSaveSettings() : setEditMode(true)}
               disabled={updateSettingsMutation.isPending}
+              className="min-h-[44px] w-full sm:w-auto text-sm"
             >
               {updateSettingsMutation.isPending ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Settings'}
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <CardContent className="p-3 sm:p-4 md:p-6">
+          <div className="space-y-4 sm:space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {/* Monthly Plan */}
-              <div className="border rounded-lg p-4 space-y-3 bg-gray-50">
-                <h3 className="font-semibold text-center">Monthly Plan</h3>
+              <div className="border rounded-lg p-3 sm:p-4 space-y-2 sm:space-y-3 bg-gray-50">
+                <h3 className="font-semibold text-center text-sm sm:text-base">Monthly Plan</h3>
                 <div>
                   <Label className="text-xs">Price ($)</Label>
                   <Input
@@ -325,12 +326,12 @@ export default function AdminSubscriptionManagement() {
       </Card>
 
       {/* All Subscriptions */}
-      <Card className="mb-8">
+      <Card className="mb-4 sm:mb-6 md:mb-8">
         <CardHeader>
-          <CardTitle>All Subscriptions ({allSubscriptions.length})</CardTitle>
+          <CardTitle className="text-base sm:text-lg">All Subscriptions ({allSubscriptions.length})</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
+        <CardContent className="p-3 sm:p-4 md:p-6">
+          <div className="overflow-x-auto -mx-3 sm:mx-0">
             <table className="w-full text-sm">
               <thead className="border-b">
                 <tr>
@@ -377,10 +378,10 @@ export default function AdminSubscriptionManagement() {
       {/* Payment History */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Payments</CardTitle>
+          <CardTitle className="text-base sm:text-lg">Recent Payments</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
+        <CardContent className="p-3 sm:p-4 md:p-6">
+          <div className="overflow-x-auto -mx-3 sm:mx-0">
             <table className="w-full text-sm">
               <thead className="border-b">
                 <tr>

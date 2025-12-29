@@ -1661,9 +1661,9 @@ Return JSON with:
       featureDescription="Transform your rough notes into Medicare-compliant documentation with AI. This premium feature includes voice dictation, real-time compliance checking, and intelligent clinical suggestions."
       allowTrial={true}
     >
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-4 md:mb-6 flex items-center justify-between gap-2 md:gap-4">
-        <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+    <div className="p-2 sm:p-3 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="mb-3 sm:mb-4 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-0 w-full sm:w-auto">
           {currentStep !== 'patient' && (
             <Button 
               variant="outline" 
@@ -1671,21 +1671,21 @@ Return JSON with:
               onClick={handleGoBack}
               className="gap-1 text-gray-600 hover:text-gray-900 flex-shrink-0 min-h-[44px] px-3"
             >
-              <ChevronLeft className="w-5 h-5" />
-              <span className="hidden md:inline">Back</span>
+              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden md:inline text-sm">Back</span>
             </Button>
           )}
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 truncate">Smart Note Assistant</h1>
-            <p className="text-sm md:text-base text-gray-600 hidden md:block">Transform rough notes into Medicare-compliant documentation</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 truncate">Smart Note Assistant</h1>
+            <p className="text-xs sm:text-sm md:text-base text-gray-600 hidden sm:block truncate">Transform rough notes into Medicare-compliant documentation</p>
           </div>
         </div>
-        <div className="flex gap-2 flex-shrink-0">
+        <div className="flex gap-2 flex-shrink-0 w-full sm:w-auto justify-end">
           <FavoriteButton type="page" id="SmartNoteAssistant" name="Smart Note Assistant" />
           <Button 
             variant="ghost" 
             size="default" 
-            className="text-gray-500 gap-1 min-h-[44px]"
+            className="text-gray-500 gap-1 min-h-[44px] px-2 sm:px-3"
             onClick={async () => {
               try {
                 const response = await base44.functions.invoke('generateSmartNoteGuide');
@@ -1713,11 +1713,11 @@ Return JSON with:
               }
             }}
           >
-            <HelpCircle className="w-5 h-5" />
-            <span className="hidden xl:inline">User Guide</span>
-          </Button>
-        </div>
-      </div>
+            <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden xl:inline text-sm">Guide</span>
+            </Button>
+            </div>
+            </div>
 
       {/* Enhanced Step Progress */}
       <EnhancedStepIndicator 
@@ -1772,8 +1772,8 @@ Return JSON with:
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 md:gap-6">
-        <div className="xl:col-span-3 space-y-4 md:space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+        <div className="xl:col-span-3 space-y-3 sm:space-y-4 md:space-y-6">
 
           {/* Step 1: Patient Selection - Enhanced */}
           <Card id="step-patient" className={`border-2 transition-all duration-300 ${currentStep === 'patient' ? 'border-blue-500 ring-4 ring-blue-200 shadow-xl' : 'border-gray-300'}`}>
@@ -1787,7 +1787,7 @@ Return JSON with:
               </CardTitle>
             </CardHeader>
             <CardContent className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
                 <div>
                   <Label className="text-sm md:text-base mb-2 block">Patient</Label>
                   <SearchablePatientSelect
@@ -2593,7 +2593,7 @@ Return JSON with:
         </div>
 
         {/* Enhanced AI Sidebar with Tabs */}
-        <div className="space-y-4 md:space-y-6">
+        <div className="space-y-3 sm:space-y-4 md:space-y-6">
           {/* Primary AI Assistant Card - Always Visible */}
           <DynamicAISidebar
             currentStep={currentStep}
