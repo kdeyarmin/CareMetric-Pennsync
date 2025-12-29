@@ -125,33 +125,29 @@ export default function Layout({ children, currentPageName }) {
               {!sidebarCollapsed && item.name}
             </Link>
           ))}
+
+          {adminNavItems.length > 0 && (
+            <>
+              <div className="h-1 bg-red-500 rounded-full my-3 mx-2"></div>
+              {adminNavItems.map((item) => (
+                <Link
+                  key={item.page}
+                  to={createPageUrl(item.page)}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                    isActive(item.page)
+                      ? "bg-blue-100 text-blue-700"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  <item.icon className="w-4 h-4" />
+                  {!sidebarCollapsed && item.name}
+                </Link>
+              ))}
+            </>
+          )}
         </nav>
 
         <div className="border-t p-3">
-          {adminNavItems.length > 0 && (
-            <>
-              {!sidebarCollapsed && (
-                <p className="text-xs px-3 py-2 text-gray-400 uppercase font-semibold">Admin</p>
-              )}
-              <div className="mb-3 space-y-1">
-                {adminNavItems.map((item) => (
-                  <Link
-                    key={item.page}
-                    to={createPageUrl(item.page)}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                      isActive(item.page)
-                        ? "bg-blue-100 text-blue-700"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {!sidebarCollapsed && item.name}
-                  </Link>
-                ))}
-              </div>
-              <div className="border-t mb-3"></div>
-            </>
-          )}
           <div className="mb-3 space-y-1">
             {bottomNavItems.map((item) => (
               <Link
@@ -228,20 +224,18 @@ export default function Layout({ children, currentPageName }) {
               ))}
               {adminNavItems.length > 0 && (
                 <>
-                  <div className="border-t pt-2 mt-2">
-                    <p className="text-xs px-3 py-2 text-gray-400 uppercase font-semibold">Admin</p>
-                    {adminNavItems.map(item => (
-                      <Link
-                        key={item.page}
-                        to={createPageUrl(item.page)}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
-                      >
-                        <item.icon className="w-4 h-4" />
-                        {item.name}
-                      </Link>
-                    ))}
-                  </div>
+                  <div className="h-1 bg-red-500 rounded-full my-3 mx-2"></div>
+                  {adminNavItems.map(item => (
+                    <Link
+                      key={item.page}
+                      to={createPageUrl(item.page)}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.name}
+                    </Link>
+                  ))}
                 </>
               )}
               <div className="border-t pt-2 mt-2">
