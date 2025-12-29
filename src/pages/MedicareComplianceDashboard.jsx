@@ -36,6 +36,7 @@ import ProactiveComplianceMonitor from "../components/compliance/ProactiveCompli
 import AdvancedComplianceRiskScoring from "../components/compliance/AdvancedComplianceRiskScoring";
 import AITrainingModuleGenerator from "../components/training/AITrainingModuleGenerator";
 import AIComplianceAssistant from "../components/compliance/AIComplianceAssistant";
+import AIComplianceAuditor from "../components/compliance/AIComplianceAuditor";
 
 export default function MedicareComplianceDashboard() {
   const [timeRange, setTimeRange] = useState(30);
@@ -656,6 +657,9 @@ Return JSON with sections: overall_assessment, critical_priorities (array), lear
 
         {/* Tools Tab */}
         <TabsContent value="tools" className="space-y-6">
+          {/* AI-Driven Compliance Auditor */}
+          <AIComplianceAuditor />
+          
           {/* AI Compliance Q&A Assistant */}
           <AIComplianceAssistant />
 
