@@ -298,7 +298,7 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* ================= Main Content ================= */}
-      <main className={`flex-1 ${showNavigation && currentUser ? 'pt-12 sm:pt-14 lg:pt-0 pb-16 sm:pb-20 lg:pb-32' : ''}`}>
+      <main className={`flex-1 ${showNavigation && currentUser ? 'pt-12 sm:pt-14 lg:pt-0 lg:pb-32' : ''}`} style={showNavigation && currentUser ? { paddingBottom: 'calc(3.5rem + max(env(safe-area-inset-bottom), 20px))' } : {}}>
         <div className={showNavigation && currentUser ? 'p-3 sm:p-4 lg:p-6' : ''}>{children}</div>
       </main>
 
@@ -332,7 +332,7 @@ export default function Layout({ children, currentPageName }) {
 
           {/* ================= Bottom Navigation ================= */}
           {showNavigation && currentUser && (
-          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow lg:hidden z-40 pb-[env(safe-area-inset-bottom)]">
+          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow lg:hidden z-40" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
               <div className="flex items-center justify-around h-12 sm:h-14 px-1">
                 <Link to={createPageUrl("Dashboard")} className={`flex flex-col items-center justify-center gap-0.5 py-0.5 ${isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}`}>
                   <Home className="w-4 h-4 sm:w-5 sm:h-5" />
