@@ -25,6 +25,8 @@ import {
   WifiOff
 } from "lucide-react";
 
+export const publicPage = true;
+
 export default function About() {
   useEffect(() => {
     console.log('=== WEBKIT DEBUG FROM ABOUT PAGE ===');
