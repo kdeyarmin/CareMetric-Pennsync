@@ -605,6 +605,270 @@ export default function AdminDashboard() {
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
+        {/* Revenue Tab */}
+        <TabsContent value="revenue" className="space-y-6">
+          {/* Revenue Overview Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <DollarSign className="w-8 h-8 text-green-600" />
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Monthly Recurring Revenue</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <CreditCard className="w-8 h-8 text-blue-600" />
+                  <Badge className="bg-blue-600">{subscriptionStats.activeSubscriptions}</Badge>
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
+                <p className="text-xs text-gray-600">Active Subscriptions</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <TrendingUp className="w-8 h-8 text-purple-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Total Revenue (All Time)</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <Users className="w-8 h-8 text-orange-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.avgRevenuePerUser.toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Avg Revenue Per User</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Subscription Status & Trial Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-blue-600" />
+                  Subscription Status Breakdown
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                      <span className="font-medium">Active Subscriptions</span>
+                    </div>
+                    <Badge className="bg-green-600 text-lg">{subscriptionStats.activeSubscriptions}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-blue-600" />
+                      <span className="font-medium">Trial Users</span>
+                    </div>
+                    <Badge className="bg-blue-600 text-lg">{subscriptionStats.trialingSubscriptions}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <TrendingDown className="w-5 h-5 text-red-600" />
+                      <span className="font-medium">Canceled</span>
+                    </div>
+                    <Badge className="bg-red-600 text-lg">{subscriptionStats.canceledSubscriptions}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <span className="font-medium">Churn Rate</span>
+                    <Badge variant="outline" className="text-lg">{subscriptionStats.churnRate}%</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-purple-600" />
+                  Subscription Distribution
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={subscriptionDistribution}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, value }) => `${name}: ${value}`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {subscriptionDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Revenue Trend Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-green-600" />
+                30-Day Revenue Trend
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={mrrTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{ fontSize: 12 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-white p-3 border border-gray-200 rounded shadow-lg">
+                            <p className="text-sm font-semibold">{payload[0].payload.date}</p>
+                            <p className="text-sm text-green-600">Revenue: ${payload[0].value.toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">{payload[0].payload.count} payments</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="revenue" 
+                    stroke="#10B981" 
+                    strokeWidth={3}
+                    dot={{ fill: '#10B981', r: 4 }}
+                    name="Daily Revenue"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Recent Payments */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-green-600" />
+                Recent Payments
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">Date</th>
+                      <th className="text-left p-2">User</th>
+                      <th className="text-center p-2">Amount</th>
+                      <th className="text-center p-2">Status</th>
+                      <th className="text-left p-2">Plan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPayments
+                      .slice(0, 10)
+                      .map((payment, idx) => (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="p-2">
+                            {payment.payment_date ? formatEastern(payment.payment_date, 'MMM d, yyyy') : 'N/A'}
+                          </td>
+                          <td className="p-2">{payment.user_email}</td>
+                          <td className="text-center p-2 font-semibold">${(payment.amount || 0).toFixed(2)}</td>
+                          <td className="text-center p-2">
+                            <Badge className={payment.status === 'succeeded' ? 'bg-green-600' : 'bg-red-600'}>
+                              {payment.status}
+                            </Badge>
+                          </td>
+                          <td className="p-2">{payment.plan_name || 'N/A'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {allPayments.length === 0 && (
+                  <p className="text-center text-gray-500 py-8">No payments yet</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Active Subscriptions List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                Active Subscriptions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">User</th>
+                      <th className="text-center p-2">Status</th>
+                      <th className="text-center p-2">Plan</th>
+                      <th className="text-center p-2">Monthly Amount</th>
+                      <th className="text-left p-2">Started</th>
+                      <th className="text-left p-2">Next Billing</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allSubscriptions
+                      .filter(s => s.status === 'active' || s.status === 'trialing')
+                      .slice(0, 20)
+                      .map((sub, idx) => (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="p-2">{sub.user_email}</td>
+                          <td className="text-center p-2">
+                            <Badge className={sub.status === 'active' ? 'bg-green-600' : 'bg-blue-600'}>
+                              {sub.status}
+                            </Badge>
+                          </td>
+                          <td className="text-center p-2">{sub.plan_name || 'N/A'}</td>
+                          <td className="text-center p-2 font-semibold">${(sub.monthly_amount || 0).toFixed(2)}</td>
+                          <td className="p-2">
+                            {sub.subscription_start ? formatEastern(sub.subscription_start, 'MMM d, yyyy') : 'N/A'}
+                          </td>
+                          <td className="p-2">
+                            {sub.current_period_end ? formatEastern(sub.current_period_end, 'MMM d, yyyy') : 'N/A'}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {allSubscriptions.filter(s => s.status === 'active' || s.status === 'trialing').length === 0 && (
+                  <p className="text-center text-gray-500 py-8">No active subscriptions</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
           {/* Subscription Metrics Row */}
