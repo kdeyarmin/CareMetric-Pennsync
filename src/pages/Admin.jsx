@@ -38,6 +38,7 @@ import {
   Mail
 } from "lucide-react";
 import { format } from "date-fns";
+import SecurityEncryptionCheck from "../components/admin/SecurityEncryptionCheck";
 
 export default function Admin() {
   const queryClient = useQueryClient();
@@ -251,10 +252,11 @@ If you have any questions, please contact your administrator.`,
 
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="security">Security Logs</TabsTrigger>
+          <TabsTrigger value="encryption">Encryption</TabsTrigger>
           <TabsTrigger value="data">Data Browser</TabsTrigger>
         </TabsList>
 
@@ -431,6 +433,11 @@ If you have any questions, please contact your administrator.`,
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Encryption & Security Tab */}
+        <TabsContent value="encryption" className="space-y-6">
+          <SecurityEncryptionCheck />
         </TabsContent>
 
         {/* Security Logs Tab */}
