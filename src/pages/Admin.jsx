@@ -189,23 +189,23 @@ If you have any questions, please contact your administrator.`,
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-        <p className="text-gray-600">Manage users, monitor system, and view security logs</p>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
+        <p className="text-sm sm:text-base text-gray-600">Manage users, monitor system, and view security logs</p>
       </div>
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm font-medium mb-1">Total Users</p>
-                <p className="text-4xl font-bold">{totalUsers}</p>
+                <p className="text-blue-100 text-xs sm:text-sm font-medium mb-1">Total Users</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{totalUsers}</p>
                 <p className="text-blue-100 text-xs mt-1">{adminUsers} admins</p>
               </div>
-              <Users className="w-12 h-12 text-blue-200" />
+              <Users className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-blue-200" />
             </div>
           </CardContent>
         </Card>

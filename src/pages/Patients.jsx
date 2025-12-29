@@ -336,34 +336,38 @@ export default function Patients() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 md:mb-8">
-        <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">My Patients</h1>
-              <p className="text-sm md:text-base text-gray-600 mt-1">Your personal patient roster - detailed patient information helps AI provide better recommendations</p>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
+          <div className="flex items-start gap-2 flex-1">
+            <div className="flex-1">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">My Patients</h1>
+              <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">Your personal patient roster - detailed patient information helps AI provide better recommendations</p>
             </div>
             <FavoriteButton type="page" id="Patients" name="Patients" />
           </div>
-        <div className="flex gap-2">
-          <Button
-            onClick={() => setShowReferralUpload(true)}
-            variant="outline"
-            className="border-blue-300 text-blue-700 hover:bg-blue-50"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Upload Referral</span>
-          </Button>
-          <Button
-            onClick={() => {
-              setEditingPatient(null);
-              setShowForm(true);
-            }}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Patient
-          </Button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button
+              onClick={() => setShowReferralUpload(true)}
+              variant="outline"
+              size="sm"
+              className="border-blue-300 text-blue-700 hover:bg-blue-50 flex-1 sm:flex-none"
+            >
+              <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="text-xs sm:text-sm">Upload</span>
+            </Button>
+            <Button
+              onClick={() => {
+                setEditingPatient(null);
+                setShowForm(true);
+              }}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-none"
+            >
+              <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="text-xs sm:text-sm">Add Patient</span>
+            </Button>
+          </div>
         </div>
       </div>
 

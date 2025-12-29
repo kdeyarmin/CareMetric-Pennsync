@@ -233,49 +233,49 @@ export default function StaffTrainingHub() {
 
       {/* Individual User Training Hub */}
       <Tabs defaultValue="aipath" className="w-full">
-          <TabsList className="grid grid-cols-11 w-full mb-6">
-            <TabsTrigger value="modules" className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4" />
+          <TabsList className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-1 w-full mb-6 h-auto p-1">
+            <TabsTrigger value="modules" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+              <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Modules</span>
             </TabsTrigger>
-            <TabsTrigger value="aipath" className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-indigo-50 data-[state=active]:bg-purple-100">
-              <Star className="w-4 h-4" />
+            <TabsTrigger value="aipath" className="flex items-center gap-1 bg-gradient-to-r from-purple-50 to-indigo-50 data-[state=active]:bg-purple-100 text-xs sm:text-sm px-2 py-2">
+              <Star className="w-3 h-3 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">AI Path</span>
             </TabsTrigger>
-            <TabsTrigger value="progress" className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
+            <TabsTrigger value="progress" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+              <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Progress</span>
             </TabsTrigger>
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
+          <TabsTrigger value="overview" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+            <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="survey" className="flex items-center gap-2 bg-gradient-to-r from-red-50 to-orange-50 data-[state=active]:bg-red-100">
-            <Trophy className="w-4 h-4" />
+          <TabsTrigger value="survey" className="flex items-center gap-1 bg-gradient-to-r from-red-50 to-orange-50 data-[state=active]:bg-red-100 text-xs sm:text-sm px-2 py-2">
+            <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Survey</span>
           </TabsTrigger>
-          <TabsTrigger value="videos" className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4" />
+          <TabsTrigger value="videos" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+            <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Videos</span>
           </TabsTrigger>
-          <TabsTrigger value="remediation" className="flex items-center gap-2">
-            <Target className="w-4 h-4" />
+          <TabsTrigger value="remediation" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+            <Target className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Remediation</span>
           </TabsTrigger>
-          <TabsTrigger value="myplan" className="flex items-center gap-2">
-            <Star className="w-4 h-4" />
+          <TabsTrigger value="myplan" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+            <Star className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">My Plan</span>
           </TabsTrigger>
-          <TabsTrigger value="learn" className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4" />
+          <TabsTrigger value="learn" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+            <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Learn</span>
           </TabsTrigger>
-          <TabsTrigger value="quiz" className="flex items-center gap-2">
-            <HelpCircle className="w-4 h-4" />
+          <TabsTrigger value="quiz" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+            <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Quiz</span>
           </TabsTrigger>
-          <TabsTrigger value="simulate" className="flex items-center gap-2">
-            <Play className="w-4 h-4" />
+          <TabsTrigger value="simulate" className="flex items-center gap-1 text-xs sm:text-sm px-2 py-2">
+            <Play className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Simulate</span>
           </TabsTrigger>
           </TabsList>
