@@ -77,6 +77,7 @@ import ConsolidatedAIFeedback from "../components/smartNote/ConsolidatedAIFeedba
 import NextStepsPanel from "../components/smartNote/NextStepsPanel";
 import UnifiedPatientOverview from "../components/smartNote/UnifiedPatientOverview";
 import UnifiedAISuggestions from "../components/smartNote/UnifiedAISuggestions";
+import EnhancedPatientContext from "../components/patient/EnhancedPatientContext";
 import DynamicAISidebar from "../components/smartNote/DynamicAISidebar";
 import { retrieveRelevantGuidelines, formatGuidelinesForPrompt } from "../components/smartNote/GuidelineContextRetriever";
 import FavoriteButton from "../components/navigation/FavoriteButton";
@@ -1754,46 +1755,13 @@ Return JSON with:
         complianceScore={enhancedNoteCompliance?.overall_score}
       />
 
-      {/* Enhanced Patient Overview */}
+      {/* Enhanced Patient Context */}
       {selectedPatient && (
-        <div className="mb-6 bg-blue-50 p-4 rounded-lg border-2 border-blue-300 shadow-lg">
-          <UnifiedPatientOverview
-            patient={selectedPatient}
-            carePlans={carePlans}
-            recentVisits={recentVisits}
-            patientOASIS={patientOASIS}
-            vitalSigns={vitalSigns}
-            diagnosis={finalDiagnosis}
-            onClear={() => setSelectedPatientId("")}
-            onSyncData={(syncData) => {
-              if (syncData.diagnosis) {
-                setDiagnosis("Custom (type below)");
-                setCustomDiagnosis(syncData.diagnosis);
-              }
-              const narrativeIntro = [];
-              if (syncData.diagnosis) narrativeIntro.push(`Patient with ${syncData.diagnosis}`);
-              if (syncData.comorbidities?.length > 0) {
-                narrativeIntro.push(`and ${syncData.comorbidities.slice(0, 3).join(', ')}`);
-              }
-              if (syncData.admissionSource === 'institutional') {
-                narrativeIntro.push('Recently discharged from facility.');
-              }
-              if (narrativeIntro.length > 0) {
-                setRoughNote(prev => narrativeIntro.join(' ') + '. ' + prev);
-              }
-            }}
-            onInsertTemplate={(template) => setRoughNote(prev => prev + '\n\n' + template)}
-          />
-          {/* Quick Patient Info Bar */}
-          {selectedPatient.allergies && (
-            <Alert className="mt-3 bg-red-50 border-red-300">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              <AlertDescription className="text-sm font-medium text-red-800">
-                <strong>ALLERGIES:</strong> {selectedPatient.allergies}
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
+        <EnhancedPatientContext
+          patient={selectedPatient}
+          visits={recentVisits}
+          carePlans={carePlans}
+        />
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
