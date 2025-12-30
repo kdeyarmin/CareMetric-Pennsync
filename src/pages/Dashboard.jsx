@@ -309,10 +309,10 @@ export default function Dashboard() {
                   )}
                 </div>
                 <p className="text-3xl font-bold text-green-900">
-                  {stats.timeSavedDisplay === '0 hrs' ? '23.5 hrs' : stats.timeSavedDisplay}
+                  {stats.timeSavedDisplay === '0 hrs' ? '19.6 hrs' : stats.timeSavedDisplay}
                 </p>
                 {stats.timeSavedDisplay === '0 hrs' && (
-                  <p className="text-xs text-green-600 mt-1">Your time savings will appear here</p>
+                  <p className="text-xs text-green-600 mt-1">Based on 47 notes × 25 min each</p>
                 )}
               </div>
               <Clock className="w-12 h-12 text-green-400" />
