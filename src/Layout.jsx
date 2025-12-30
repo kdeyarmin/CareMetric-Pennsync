@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
@@ -17,8 +17,6 @@ import {
   Target,
   Bell,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
   Sparkles,
   Activity,
   CreditCard
@@ -31,15 +29,14 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
 
 /* =========================
-   iOS-SAFE CONSTANTS
+   iOS Layout Constants
 ========================= */
-const HEADER_HEIGHT = "3.75rem";   // visible header (opaque)
-const NAV_HEIGHT = "4.25rem";      // taller bottom nav
-const FAB_OFFSET = "calc(4rem + env(safe-area-inset-bottom))";
+const HEADER_HEIGHT = "3.75rem";   // visible header
+const NAV_HEIGHT = "4.25rem";      // bottom nav
+const FAB_SIZE = "3.5rem";         // single FAB touch size
+const FAB_OFFSET = "calc(4.75rem + env(safe-area-inset-bottom))";
 
 export default function Layout({ children, currentPageName }) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
   const { data: currentUser, isLoading } = useQuery({
     queryKey: ["currentUser"],
     queryFn: async () => {
@@ -73,19 +70,24 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen bg-blue-100 flex overflow-x-hidden">
-      {/* ================= MOBILE HEADER (OPAQUE) ================= */}
+      {/* ================= SAFE-AREA TOP FILL (SOLID) ================= */}
+      {showNav && (
+        <div
+          className="fixed top-0 left-0 right-0 bg-blue-600 z-[210]"
+          style={{ height: "env(safe-area-inset-top)" }}
+        />
+      )}
+
+      {/* ================= MOBILE HEADER ================= */}
       {showNav && (
         <header
-          className="lg:hidden fixed top-0 left-0 right-0 z-[200] bg-blue-600"
+          className="lg:hidden fixed left-0 right-0 z-[200] bg-blue-600"
           style={{
-            height: `calc(${HEADER_HEIGHT} + env(safe-area-inset-top))`,
-            paddingTop: "env(safe-area-inset-top)"
+            top: "env(safe-area-inset-top)",
+            height: HEADER_HEIGHT
           }}
         >
-          <div
-            className="flex items-center justify-between px-3"
-            style={{ height: HEADER_HEIGHT }}
-          >
+          <div className="h-full flex items-center justify-between px-3">
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
               <img
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
@@ -132,22 +134,31 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </main>
 
-      {/* ================= FLOATING BUTTONS ================= */}
+      {/* ================= FLOATING ACTION BUTTONS (FIXED) ================= */}
       {showNav && (
         <div
-          className="fixed z-30 flex gap-4 right-3 pointer-events-none"
+          className="fixed z-30 flex flex-row items-center gap-3 right-3"
           style={{ bottom: FAB_OFFSET }}
         >
-          <div className="pointer-events-auto">
+          {/* Quick Access */}
+          <div
+            className="flex items-center justify-center"
+            style={{ width: FAB_SIZE, height: FAB_SIZE }}
+          >
             <MobileQuickAccessMenu />
           </div>
-          <div className="pointer-events-auto">
+
+          {/* AI Assistant */}
+          <div
+            className="flex items-center justify-center"
+            style={{ width: FAB_SIZE, height: FAB_SIZE }}
+          >
             <AIChatAssistant />
           </div>
         </div>
       )}
 
-      {/* ================= BOTTOM NAV (TALLER + SAFE) ================= */}
+      {/* ================= BOTTOM NAV ================= */}
       {showNav && (
         <nav
           className="fixed bottom-0 left-0 right-0 bg-white border-t shadow z-40 lg:hidden"
