@@ -222,96 +222,74 @@ export default function PatientDetails() {
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
       <Button
         variant="outline"
         onClick={() => navigate(createPageUrl("Patients"))}
-        className="mb-4 sm:mb-6"
+        className="mb-3 sm:mb-4 w-full sm:w-auto touch-target"
         size="sm"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        <span className="hidden sm:inline">Back to Patients</span>
-        <span className="sm:hidden">Back</span>
+        Back to Patients
       </Button>
 
-      <Card className={`mb-4 sm:mb-6 ${hasCriticalAlerts ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-300' : hasHighAlerts ? 'bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-300' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'}`}>
-        <CardContent className="p-3 sm:p-4 md:p-6">
-          <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
-            <div className={`w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center shadow-lg flex-shrink-0 relative ${hasCriticalAlerts ? 'bg-gradient-to-br from-red-500 to-orange-500' : hasHighAlerts ? 'bg-gradient-to-br from-orange-500 to-yellow-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'}`}>
-              <User className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-white" />
+      <Card className={`mb-3 sm:mb-4 ${hasCriticalAlerts ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-300' : hasHighAlerts ? 'bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-300' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'}`}>
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-start gap-3">
+            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-lg flex-shrink-0 relative ${hasCriticalAlerts ? 'bg-gradient-to-br from-red-500 to-orange-500' : hasHighAlerts ? 'bg-gradient-to-br from-orange-500 to-yellow-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'}`}>
+              <User className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
               {(hasCriticalAlerts || hasHighAlerts) && (
-                <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-600 rounded-full border-2 border-white animate-pulse flex items-center justify-center">
-                  <AlertTriangle className="w-2 h-2 sm:w-3 sm:h-3 text-white" />
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full border-2 border-white animate-pulse flex items-center justify-center">
+                  <AlertTriangle className="w-2.5 h-2.5 text-white" />
                 </div>
               )}
             </div>
-            <div className="flex-1 min-w-0 w-full">
-              <div className="flex flex-col gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-start gap-2">
-                    <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 break-words flex-1">
-                      {sanitizeInput(patient.first_name)} {sanitizeInput(patient.last_name)}
-                    </h1>
-                    <FavoriteButton 
-                      type="patient" 
-                      id={patient.id} 
-                      name={`${patient.first_name} ${patient.last_name}`} 
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
-                    <span>MRN: {sanitizeInput(patient.medical_record_number) || 'N/A'}</span>
-                    <span className="hidden sm:inline">•</span>
-                    <span className="block sm:inline w-full sm:w-auto">DOB: {patient.date_of_birth && isValid(new Date(patient.date_of_birth)) ? format(new Date(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-start gap-2">
-                  <Badge 
-                    className={`flex-shrink-0 ${patient.care_type === 'hospice' 
-                      ? 'bg-purple-100 text-purple-800 border-purple-200' 
-                      : 'bg-blue-100 text-blue-800 border-blue-200'
-                    }`}
-                  >
-                    {patient.care_type === 'hospice' ? 'Hospice' : 'Home Health'}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 break-words leading-tight">
+                  {sanitizeInput(patient.first_name)} {sanitizeInput(patient.last_name)}
+                </h1>
+                <FavoriteButton 
+                  type="patient" 
+                  id={patient.id} 
+                  name={`${patient.first_name} ${patient.last_name}`} 
+                />
+              </div>
+              <div className="flex flex-col gap-1 text-xs sm:text-sm text-gray-600 mb-2">
+                <span>MRN: {sanitizeInput(patient.medical_record_number) || 'N/A'}</span>
+                <span>DOB: {patient.date_of_birth && isValid(new Date(patient.date_of_birth)) ? format(new Date(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}</span>
+              </div>
+              <div className="flex flex-wrap items-start gap-1.5">
+                <Badge 
+                  className={`text-xs ${patient.care_type === 'hospice' 
+                    ? 'bg-purple-100 text-purple-800 border-purple-200' 
+                    : 'bg-blue-100 text-blue-800 border-blue-200'
+                  }`}
+                >
+                  {patient.care_type === 'hospice' ? 'Hospice' : 'Home Health'}
+                </Badge>
+                {patient.primary_diagnosis && (
+                  <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
+                    {sanitizeInput(patient.primary_diagnosis).length > 30 ? sanitizeInput(patient.primary_diagnosis).substring(0, 30) + '...' : sanitizeInput(patient.primary_diagnosis)}
                   </Badge>
-                  {patient.primary_diagnosis && (
-                    <Badge className="bg-green-100 text-green-800 border-green-200">
-                      {sanitizeInput(patient.primary_diagnosis)}
-                    </Badge>
-                  )}
-                  {patient.secondary_diagnoses && patient.secondary_diagnoses.length > 0 && (
-                    <>
-                      {patient.secondary_diagnoses.slice(0, 2).map((dx, idx) => (
-                        <Badge key={idx} variant="outline" className="bg-gray-50 text-gray-700">
-                          {sanitizeInput(dx)}
-                        </Badge>
-                      ))}
-                      {patient.secondary_diagnoses.length > 2 && (
-                        <Badge variant="outline" className="bg-gray-50 text-gray-500">
-                          +{patient.secondary_diagnoses.length - 2} more
-                        </Badge>
-                      )}
-                    </>
-                  )}
-                  {hasCriticalAlerts && (
-                    <Badge className="bg-red-600 text-white animate-pulse">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
-                      {criticalAlertCount} Critical Alert{criticalAlertCount !== 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                  {hasHighAlerts && !hasCriticalAlerts && (
-                    <Badge className="bg-orange-600 text-white">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
-                      {highAlertCount} High Alert{highAlertCount !== 1 ? 's' : ''}
-                    </Badge>
-                  )}
-
-                  {patient.status !== 'discharged' && (
-                    <DischargeSummaryGenerator 
-                      patientId={patientId} 
-                      onComplete={() => queryClient.invalidateQueries({ queryKey: ['patient', patientId] })}
-                    />
-                  )}
-                </div>
+                )}
+                {patient.secondary_diagnoses && patient.secondary_diagnoses.length > 0 && patient.secondary_diagnoses.length <= 2 && (
+                  <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">
+                    +{patient.secondary_diagnoses.length} more
+                  </Badge>
+                )}
+                {hasCriticalAlerts && (
+                  <Badge className="bg-red-600 text-white animate-pulse text-xs">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    {criticalAlertCount} Critical
+                  </Badge>
+                )}
+                {hasHighAlerts && !hasCriticalAlerts && (
+                  <Badge className="bg-orange-600 text-white text-xs">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    {highAlertCount} High
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -319,12 +297,12 @@ export default function PatientDetails() {
       </Card>
 
       {/* AI-Generated Recommendations from OASIS */}
-      <div className="mb-6">
+      <div className="mb-3 sm:mb-4">
         <PatientChartRecommendations patientId={patientId} />
       </div>
 
       {/* Care Coordination Tools */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
         <InterdisciplinaryTeamCoordinator
           patientId={patientId}
           patientData={patient}
@@ -346,7 +324,7 @@ export default function PatientDetails() {
 
       {/* Automated Task Assignment */}
       {(detectedCarePlanGaps || detectedMedicationIssues || activeAlerts.length > 0) && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <AutomatedTaskAssigner
             patientId={patientId}
             patientName={`${patient?.first_name} ${patient?.last_name}`}
@@ -358,17 +336,17 @@ export default function PatientDetails() {
       )}
 
       {/* AI Risk Analysis Panel */}
-      <div className="mb-6">
+      <div className="mb-3 sm:mb-4">
         <PatientRiskAnalysisPanel patientId={patientId} />
       </div>
 
       {/* Risk Alert Configuration */}
-      <div className="mb-6">
+      <div className="mb-3 sm:mb-4">
         <RiskAlertConfiguration patientId={patientId} />
       </div>
 
       {/* Risk Alerts & Predictive Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
         <RiskAlertWidget patientId={patientId} compact={false} />
         
         <PatientDeteriorationPredictor
@@ -408,12 +386,12 @@ export default function PatientDetails() {
       </div>
 
       {/* Vital Signs Trends Chart */}
-      <div className="mb-6">
+      <div className="mb-3 sm:mb-4">
         <VitalSignsTrendsChart visits={visits} patient={patient} />
       </div>
 
       {/* Patient Events Timeline */}
-      <div className="mb-6">
+      <div className="mb-3 sm:mb-4">
         <PatientEventsTimeline 
           visits={visits} 
           incidents={incidents} 
@@ -423,7 +401,7 @@ export default function PatientDetails() {
       </div>
 
       {/* AI Patient Dashboard Summary & Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
         <div className="lg:col-span-2">
           <AIPatientDashboardSummary
             patient={patient}
@@ -446,7 +424,7 @@ export default function PatientDetails() {
 
       {/* AI Compliance Auditor - Prominent */}
       {patient && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <AIComplianceAuditor
             patientId={patientId}
             autoRun={false}
@@ -457,7 +435,7 @@ export default function PatientDetails() {
 
       {/* AI Risk Stratification - Prominent */}
       {patient && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <PatientRiskStratification
             patient={patient}
             visits={visits}
@@ -470,7 +448,7 @@ export default function PatientDetails() {
 
       {/* AI Patient History Summary - Prominent */}
       {patient && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <AIPatientHistorySummary
             patient={patient}
             visits={visits}
@@ -484,7 +462,7 @@ export default function PatientDetails() {
 
       {/* AI Predictive Analytics - Outcomes & Interventions */}
       {patient && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <PredictiveAnalyticsPanel
             patient={patient}
             oasisData={patientOASIS[0]?.extracted_data}
@@ -497,7 +475,7 @@ export default function PatientDetails() {
 
       {/* AI Patient History Analyzer - Comprehensive Analysis with Gap Detection */}
       {patient && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <AIPatientHistoryAnalyzer
             patient={patient}
             visits={visits}
@@ -510,7 +488,7 @@ export default function PatientDetails() {
 
       {/* AI-Powered Clinical Analysis - Diagnoses, Risks, Care Recommendations */}
       {patient && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <AIPatientAnalyzer
             patient={patient}
             visits={visits}
@@ -522,7 +500,7 @@ export default function PatientDetails() {
 
       {/* Patient Summary Generator - Multiple Formats */}
       {patient && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <PatientSummaryGenerator
             patient={patient}
             visits={visits}
@@ -534,7 +512,7 @@ export default function PatientDetails() {
 
       {/* AI Care Plan Evolution */}
       {patient && carePlans.length > 0 && (
-        <div className="mb-6">
+        <div className="mb-3 sm:mb-4">
           <CarePlanEvolution
             patientId={patientId}
             patientName={`${patient.first_name} ${patient.last_name}`}
@@ -547,13 +525,13 @@ export default function PatientDetails() {
 
       {/* AI Care Plan Tools */}
       {patient && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
           <AICarePlanSuggestions 
             patient={patient} 
             existingCarePlans={carePlans}
             onAddCarePlan={(data) => createCarePlanMutation.mutate(data)}
           />
-          <div className="space-y-4 md:space-y-6">
+          <div className="space-y-3 sm:space-y-4">
             <CarePlanTimelinePredictor patient={patient} carePlans={carePlans} />
             <PatientFriendlyCarePlanSummary patient={patient} carePlans={carePlans} />
           </div>
@@ -562,7 +540,7 @@ export default function PatientDetails() {
 
       {/* Critical Alerts Banner */}
       {activeAlerts.length > 0 && (
-        <Alert className={`mb-6 ${hasCriticalAlerts ? 'bg-red-50 border-red-300' : 'bg-orange-50 border-orange-300'}`}>
+        <Alert className={`mb-3 sm:mb-4 ${hasCriticalAlerts ? 'bg-red-50 border-red-300' : 'bg-orange-50 border-orange-300'}`}>
           <AlertTriangle className={`w-4 h-4 ${hasCriticalAlerts ? 'text-red-600' : 'text-orange-600'}`} />
           <AlertDescription>
             <p className="font-semibold mb-1">Active Patient Alerts ({activeAlerts.length})</p>
@@ -578,15 +556,15 @@ export default function PatientDetails() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
         <Card>
-          <CardHeader className="p-3 sm:p-6">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <User className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+          <CardHeader className="p-3 sm:p-4">
+            <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+              <User className="w-4 h-4 text-blue-600" />
               Patient Information
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-6 space-y-2 sm:space-y-3">
+          <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
             <div>
               <p className="text-sm font-medium text-gray-500 flex items-center gap-1">
                 <MapPin className="w-3 h-3" />
@@ -615,13 +593,13 @@ export default function PatientDetails() {
         </Card>
 
         <Card>
-          <CardHeader className="p-3 sm:p-6">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
+          <CardHeader className="p-3 sm:p-4">
+            <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+              <Heart className="w-4 h-4 text-red-600" />
               Emergency Contact
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-6 space-y-2 sm:space-y-3">
+          <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
             {patient.emergency_contact_name ? (
               <>
                 <div>
@@ -651,15 +629,15 @@ export default function PatientDetails() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
         <Card>
-          <CardHeader className="p-3 sm:p-6">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <Stethoscope className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+          <CardHeader className="p-3 sm:p-4">
+            <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+              <Stethoscope className="w-4 h-4 text-green-600" />
               Physician & Payor
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-6 space-y-3 sm:space-y-4">
+          <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Primary Care Physician</p>
               {patient.physician_name ? (
@@ -717,25 +695,24 @@ export default function PatientDetails() {
       </div>
 
       {/* Detailed Medical Information Tabs */}
-      <Card className="mb-4 sm:mb-6">
-        <CardHeader className="p-3 sm:p-6">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+      <Card className="mb-3 sm:mb-4">
+        <CardHeader className="p-3 sm:p-4">
+          <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+            <Activity className="w-4 h-4 text-blue-600" />
             Medical Information
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-3 sm:p-6">
+        <CardContent className="p-3 sm:p-4">
           <Tabs defaultValue="allergies" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 gap-1">
-              <TabsTrigger value="allergies" className="text-xs sm:text-sm">Allergies</TabsTrigger>
-              <TabsTrigger value="medications" className="text-xs sm:text-sm">Meds</TabsTrigger>
-              <TabsTrigger value="history" className="text-xs sm:text-sm">History</TabsTrigger>
-              <TabsTrigger value="careplans" className="text-xs sm:text-sm">Plans</TabsTrigger>
-              <TabsTrigger value="visits" className="text-xs sm:text-sm">Visits</TabsTrigger>
-              <TabsTrigger value="documents" className="flex items-center gap-1 text-xs sm:text-sm">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 gap-0.5 h-auto p-0.5">
+              <TabsTrigger value="allergies" className="text-xs py-2">Allergies</TabsTrigger>
+              <TabsTrigger value="medications" className="text-xs py-2">Meds</TabsTrigger>
+              <TabsTrigger value="history" className="text-xs py-2">History</TabsTrigger>
+              <TabsTrigger value="careplans" className="text-xs py-2">Plans</TabsTrigger>
+              <TabsTrigger value="visits" className="text-xs py-2">Visits</TabsTrigger>
+              <TabsTrigger value="documents" className="flex items-center justify-center gap-1 text-xs py-2">
                 <Sparkles className="w-3 h-3" />
-                <span className="hidden sm:inline">Documents</span>
-                <span className="sm:hidden">Docs</span>
+                <span>Docs</span>
               </TabsTrigger>
             </TabsList>
 
@@ -1065,25 +1042,25 @@ export default function PatientDetails() {
       </Card>
 
       <Card>
-        <CardHeader className="p-3 sm:p-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
+        <CardHeader className="p-3 sm:p-4">
+          <div className="flex flex-col gap-3">
+            <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
               Quick Actions
             </CardTitle>
             <Button
               onClick={() => setShowVisitForm(!showVisitForm)}
-              className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto min-h-[44px]"
+              className="bg-blue-600 hover:bg-blue-700 w-full touch-target"
             >
               <Plus className="w-4 h-4 mr-2" />
               Schedule Visit
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="p-3 sm:p-6">
+        <CardContent className="p-3 sm:p-4">
           {showVisitForm && (
-            <Card className="mb-4 sm:mb-6 bg-blue-50 border-blue-200">
-              <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+            <Card className="mb-3 sm:mb-4 bg-blue-50 border-blue-200">
+              <CardContent className="p-3 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <Label className="text-sm">Visit Date</Label>
@@ -1123,12 +1100,12 @@ export default function PatientDetails() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex flex-col sm:flex-row justify-end gap-2">
-                  <Button variant="outline" onClick={() => setShowVisitForm(false)} className="w-full sm:w-auto min-h-[44px]">
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateVisit} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto min-h-[44px]">
+                <div className="flex flex-col gap-2">
+                  <Button onClick={handleCreateVisit} className="bg-blue-600 hover:bg-blue-700 w-full touch-target">
                     Create Visit
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowVisitForm(false)} className="w-full touch-target">
+                    Cancel
                   </Button>
                 </div>
               </CardContent>
