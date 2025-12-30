@@ -304,14 +304,14 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <p className="text-sm text-green-600 font-medium">Time Saved</p>
-                  {stats.timeSavedDisplay === '0 hrs' && (
+                  {stats.timeSavedMinutes === 0 && (
                     <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300">Sample</Badge>
                   )}
                 </div>
                 <p className="text-3xl font-bold text-green-900">
-                  {stats.timeSavedDisplay === '0 hrs' ? '19.6 hrs' : stats.timeSavedDisplay}
+                  {stats.timeSavedMinutes === 0 ? '19h 35m' : stats.timeSavedDisplay}
                 </p>
-                {stats.timeSavedDisplay === '0 hrs' && (
+                {stats.timeSavedMinutes === 0 && (
                   <p className="text-xs text-green-600 mt-1">Based on 47 notes × 25 min each</p>
                 )}
               </div>

@@ -61,8 +61,8 @@ export const calculateStats = (data) => {
   // ====================
   // TIME SAVINGS CALCULATIONS
   // ====================
-  // Each AI note enhancement saves ~15 minutes
-  const minutesPerNoteEnhancement = 15;
+  // Each AI note enhancement saves ~25 minutes
+  const minutesPerNoteEnhancement = 25;
   const totalTimeSavedMinutes = totalNoteConversions * minutesPerNoteEnhancement;
   const totalTimeSavedHours = Math.round(totalTimeSavedMinutes / 60);
   const timeSavedInRangeMinutes = noteConversionsInRange * minutesPerNoteEnhancement;
@@ -262,7 +262,7 @@ export const calculateNurseStats = (nurseEmail, data) => {
     return conversionDate >= startDate;
   }).length;
 
-  const timeSavedMinutes = totalConversions * 15;
+  const timeSavedMinutes = totalConversions * 25;
   const timeSavedHours = Math.round(timeSavedMinutes / 60);
 
   return {
