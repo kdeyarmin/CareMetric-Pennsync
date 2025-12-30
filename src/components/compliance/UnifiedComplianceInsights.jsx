@@ -307,6 +307,7 @@ export default function UnifiedComplianceInsights({
                           Apply Fix
                         </>
                       )}
+                    </Button>
                   </CardContent>
                 </Card>
               ))
