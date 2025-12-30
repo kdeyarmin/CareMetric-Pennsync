@@ -276,7 +276,7 @@ export default function Dashboard() {
       )}
 
       {/* Nurse Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -316,6 +316,27 @@ export default function Dashboard() {
                 )}
               </div>
               <Clock className="w-12 h-12 text-green-400" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm text-purple-600 font-medium">Monthly Savings</p>
+                  {stats.noteConversions === 0 && (
+                    <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-300">Sample</Badge>
+                  )}
+                </div>
+                <p className="text-3xl font-bold text-purple-900">
+                  {stats.noteConversions === 0 ? '98.3' : (parseFloat(stats.timeSavedDisplay) * 21 / 30).toFixed(1)}
+                </p>
+                <p className="text-xs text-purple-600 mt-1">
+                  hours • {stats.noteConversions === 0 ? '4.1' : ((parseFloat(stats.timeSavedDisplay) * 21 / 30) / 24).toFixed(1)} days
+                </p>
+              </div>
+              <Calendar className="w-12 h-12 text-purple-400" />
             </div>
           </CardContent>
         </Card>
