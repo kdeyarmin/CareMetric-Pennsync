@@ -1660,13 +1660,7 @@ Return JSON with:
         console.error('Adverse event prediction error:', riskError);
       }
 
-      logActivity(ActivityActions.VISIT_DOCUMENT, {
-        patient_id: selectedPatientId,
-        visit_date: visitDate,
-        visit_type: visitType,
-        note_length: enhancedNote.length,
-        page: 'SmartNoteAssistant'
-      });
+      // Removed duplicate visit document logging
     } catch (error) {
       console.error("Error saving note:", error);
     }
