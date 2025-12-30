@@ -20,8 +20,11 @@ export default function TimeSavingsCalculator() {
     return {
       dailyHours: dailyHours.toFixed(1),
       weeklyHours: weeklyHours.toFixed(1),
+      weeklyDays: (weeklyHours / 24).toFixed(1),
       monthlyHours: monthlyHours.toFixed(1),
-      yearlyHours: yearlyHours.toFixed(1)
+      monthlyDays: (monthlyHours / 24).toFixed(1),
+      yearlyHours: yearlyHours.toFixed(1),
+      yearlyDays: (yearlyHours / 24).toFixed(1)
     };
   };
 
@@ -96,11 +99,11 @@ export default function TimeSavingsCalculator() {
                   className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 sm:p-6 rounded-xl border-2 border-indigo-200 text-center"
                 >
                   <Calendar className="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 mx-auto mb-2" />
-                  <p className="text-xs sm:text-sm text-indigo-600 font-medium mb-1">Weekly Savings</p>
+                  <p className="text-xs sm:text-sm text-indigo-600 font-medium mb-1">Weekly Savings (5 days)</p>
                   <p className="text-3xl sm:text-4xl font-extrabold text-indigo-900">
                     {savings.weeklyHours}
                   </p>
-                  <p className="text-xs sm:text-sm text-indigo-700 font-medium">hours • 5 days</p>
+                  <p className="text-xs sm:text-sm text-indigo-700 font-medium">hours • {savings.weeklyDays} days</p>
                 </motion.div>
 
                 <motion.div
@@ -108,11 +111,11 @@ export default function TimeSavingsCalculator() {
                   className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 sm:p-6 rounded-xl border-2 border-purple-200 text-center"
                 >
                   <Calendar className="w-8 h-8 sm:w-10 sm:h-10 text-purple-600 mx-auto mb-2" />
-                  <p className="text-xs sm:text-sm text-purple-600 font-medium mb-1">Monthly Savings</p>
+                  <p className="text-xs sm:text-sm text-purple-600 font-medium mb-1">Monthly Savings (21 days)</p>
                   <p className="text-3xl sm:text-4xl font-extrabold text-purple-900">
                     {savings.monthlyHours}
                   </p>
-                  <p className="text-xs sm:text-sm text-purple-700 font-medium">hours • 21 days</p>
+                  <p className="text-xs sm:text-sm text-purple-700 font-medium">hours • {savings.monthlyDays} days</p>
                 </motion.div>
 
                 <motion.div
@@ -120,11 +123,11 @@ export default function TimeSavingsCalculator() {
                   className="bg-gradient-to-br from-green-50 to-green-100 p-4 sm:p-6 rounded-xl border-2 border-green-200 text-center"
                 >
                   <TrendingUp className="w-8 h-8 sm:w-10 sm:h-10 text-green-600 mx-auto mb-2" />
-                  <p className="text-xs sm:text-sm text-green-600 font-medium mb-1">Yearly Savings</p>
+                  <p className="text-xs sm:text-sm text-green-600 font-medium mb-1">Yearly Savings (252 days)</p>
                   <p className="text-3xl sm:text-4xl font-extrabold text-green-900">
                     {savings.yearlyHours}
                   </p>
-                  <p className="text-xs sm:text-sm text-green-700 font-medium">hours • 252 days</p>
+                  <p className="text-xs sm:text-sm text-green-700 font-medium">hours • {savings.yearlyDays} days</p>
                 </motion.div>
               </div>
 
