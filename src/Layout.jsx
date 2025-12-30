@@ -191,7 +191,7 @@ export default function Layout({ children, currentPageName }) {
       >
         <div className={`w-full max-w-full min-w-0 overflow-x-hidden ${showNavigationUI ? "p-3 sm:p-4 lg:p-6" : ""}`}>
           {children}
-        </div>
+        </div> 
       </main>
 
       {/* ================= Mobile Floating Buttons ================= */}
