@@ -24,6 +24,7 @@ import {
   Activity,
   CreditCard
 } from "lucide-react";
+
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
 import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
@@ -33,7 +34,8 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
 /* =========================
    Layout Constants
 ========================= */
-const MOBILE_FAB_OFFSET = "calc(4.5rem + env(safe-area-inset-bottom))";
+const MOBILE_NAV_HEIGHT = "3.5rem"; // bottom nav owns safe-area
+const MOBILE_FAB_OFFSET = "calc(3.25rem + env(safe-area-inset-bottom))";
 const DESKTOP_FAB_OFFSET = "calc(1rem + env(safe-area-inset-bottom))";
 
 export default function Layout({ children, currentPageName }) {
@@ -93,11 +95,15 @@ export default function Layout({ children, currentPageName }) {
       : [];
 
   return (
-    // 🔒 ROOT FIX: prevent horizontal overflow everywhere
+    /* ROOT: prevent horizontal overflow globally */
     <div className="min-h-screen bg-blue-100 flex overflow-x-hidden">
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
-        <aside className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${sidebarCollapsed ? "w-16" : "w-56"}`}>
+        <aside
+          className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${
+            sidebarCollapsed ? "w-16" : "w-56"
+          }`}
+        >
           <div className="h-16 flex items-center justify-between px-3 border-b">
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0">
               <img
@@ -123,7 +129,9 @@ export default function Layout({ children, currentPageName }) {
                 key={item.page}
                 to={createPageUrl(item.page)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                  isActive(item.page) ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+                  isActive(item.page)
+                    ? "bg-blue-100 text-blue-700"
+                    : "text-gray-600 hover:bg-gray-100"
                 }`}
               >
                 <item.icon className="w-4 h-4" />
@@ -139,7 +147,9 @@ export default function Layout({ children, currentPageName }) {
                     key={item.page}
                     to={createPageUrl(item.page)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                      isActive(item.page) ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+                      isActive(item.page)
+                        ? "bg-blue-100 text-blue-700"
+                        : "text-gray-600 hover:bg-gray-100"
                     }`}
                   >
                     <item.icon className="w-4 h-4" />
@@ -152,7 +162,10 @@ export default function Layout({ children, currentPageName }) {
 
           <div className="border-t p-3 space-y-2">
             {!sidebarCollapsed && <ShareAppButton />}
-            <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-red-600 hover:bg-red-50 w-full">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-red-600 hover:bg-red-50 w-full"
+            >
               <LogOut className="w-4 h-4" />
               {!sidebarCollapsed && "Logout"}
             </button>
@@ -187,17 +200,25 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Main Content ================= */}
       <main
         className={`flex-1 overflow-x-hidden ${showNavigationUI ? "pt-12 sm:pt-14 lg:pt-0" : ""}`}
-        style={showNavigationUI ? { paddingBottom: MOBILE_FAB_OFFSET } : {}}
+        style={
+          showNavigationUI
+            ? { paddingBottom: `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))` }
+            : {}
+        }
       >
-        <div className={`w-full max-w-full min-w-0 overflow-x-hidden ${showNavigationUI ? "p-3 sm:p-4 lg:p-6" : ""}`}>
+        <div
+          className={`w-full max-w-full min-w-0 overflow-x-hidden ${
+            showNavigationUI ? "p-3 sm:p-4 lg:p-6" : ""
+          }`}
+        >
           {children}
-        </div> 
+        </div>
       </main>
 
       {/* ================= Mobile Floating Buttons ================= */}
       {showNavigationUI && (
         <div
-          className="fixed z-50 flex gap-4 px-2 lg:hidden pointer-events-none right-2 max-w-full overflow-hidden"
+          className="fixed z-30 flex gap-4 px-2 lg:hidden pointer-events-none right-2 max-w-full overflow-hidden"
           style={{ bottom: MOBILE_FAB_OFFSET }}
         >
           <div className="pointer-events-auto">
@@ -219,6 +240,37 @@ export default function Layout({ children, currentPageName }) {
             <MobileQuickAccessMenu />
           </div>
         </div>
+      )}
+
+      {/* ================= Bottom Navigation ================= */}
+      {showNavigationUI && (
+        <nav
+          className="fixed bottom-0 left-0 right-0 bg-white border-t shadow lg:hidden z-40"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          <div className="flex items-center justify-around h-14 px-1">
+            <Link to={createPageUrl("Dashboard")} className={`flex flex-col items-center ${isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}`}>
+              <Home className="w-5 h-5" />
+              <span className="text-[10px]">Home</span>
+            </Link>
+            <Link to={createPageUrl("SmartNoteAssistant")} className={`flex flex-col items-center ${isActive("SmartNoteAssistant") ? "text-blue-600" : "text-gray-500"}`}>
+              <Brain className="w-5 h-5" />
+              <span className="text-[10px]">Notes</span>
+            </Link>
+            <Link to={createPageUrl("CarePlanManagement")} className={`flex flex-col items-center ${isActive("CarePlanManagement") ? "text-blue-600" : "text-gray-500"}`}>
+              <Target className="w-5 h-5" />
+              <span className="text-[10px]">Plans</span>
+            </Link>
+            <Link to={createPageUrl("PatientAlerts")} className={`flex flex-col items-center ${isActive("PatientAlerts") ? "text-blue-600" : "text-gray-500"}`}>
+              <Bell className="w-5 h-5" />
+              <span className="text-[10px]">Alerts</span>
+            </Link>
+            <Link to={createPageUrl("Settings")} className={`flex flex-col items-center ${isActive("Settings") ? "text-blue-600" : "text-gray-500"}`}>
+              <User className="w-5 h-5" />
+              <span className="text-[10px]">Settings</span>
+            </Link>
+          </div>
+        </nav>
       )}
 
       {showNavigationUI && <OfflineIndicator />}
