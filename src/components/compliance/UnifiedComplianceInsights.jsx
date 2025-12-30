@@ -37,7 +37,6 @@ export default function UnifiedComplianceInsights({
   onApplyFix,
   onApplyAllFixes,
   onCreateTask,
-  onViewTraining,
   isLoading = false
 }) {
   const [appliedFixes, setAppliedFixes] = useState(new Set());
@@ -291,35 +290,23 @@ export default function UnifiedComplianceInsights({
                       <p className="text-xs sm:text-sm text-gray-800">{violation.suggested_fix}</p>
                     </div>
 
-                    <div className="flex gap-2 mt-3">
-                      <Button
-                        size="sm"
-                        onClick={() => handleApplyFix(violation.suggested_fix, violation.element)}
-                        disabled={appliedFixes.has(violation.element)}
-                        className="flex-1 bg-green-600 hover:bg-green-700 min-h-[40px] text-xs sm:text-sm"
-                      >
-                        {appliedFixes.has(violation.element) ? (
-                          <>
-                            <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                            Applied
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                            Apply Fix
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onViewTraining?.(violation.element)}
-                        className="min-h-[40px] text-xs sm:text-sm"
-                      >
-                        <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                        Learn More
-                      </Button>
-                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleApplyFix(violation.suggested_fix, violation.element)}
+                      disabled={appliedFixes.has(violation.element)}
+                      className="w-full sm:w-auto bg-green-600 hover:bg-green-700 min-h-[40px] text-xs sm:text-sm mt-3"
+                    >
+                      {appliedFixes.has(violation.element) ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                          Applied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                          Apply Fix
+                        </>
+                      )}
                   </CardContent>
                 </Card>
               ))
@@ -613,6 +600,12 @@ export default function UnifiedComplianceInsights({
               <div className="flex items-center gap-2 text-xs sm:text-sm text-purple-700">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                 <span>{summary.oasis_items_mapped} OASIS items mapped automatically</span>
+              </div>
+            )}
+            {summary.training_recommendations_created > 0 && (
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-700">
+                <BookOpen className="w-4 h-4 flex-shrink-0" />
+                <span>{summary.training_recommendations_created} personalized training recommendations created</span>
               </div>
             )}
           </div>

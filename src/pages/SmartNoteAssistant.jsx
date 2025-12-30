@@ -2396,13 +2396,10 @@ Return JSON with:
                       assigned_to: currentUser?.email
                     });
                     queryClient.invalidateQueries({ queryKey: ['tasks'] });
+                    queryClient.invalidateQueries({ queryKey: ['nurseTrainingRecommendations', currentUser?.email] });
                   } catch (error) {
                     console.error('Error creating task:', error);
                   }
-                }}
-                onViewTraining={(topic) => {
-                  // Navigate to training with search
-                  window.open(createPageUrl("StaffTrainingHub") + `?search=${encodeURIComponent(topic)}`, '_blank');
                 }}
               />
 

@@ -266,6 +266,52 @@ What areas need nurse's clinical judgment or additional data collection?`,
       })
     ]);
 
+    // Save training recommendations for gaps identified
+    const trainingRecommendations = [];
+    
+    medicareCompliance.violations?.forEach(v => {
+      trainingRecommendations.push({
+        nurse_email: user.email,
+        recommendation_type: 'compliance',
+        recommendation_text: `Improve documentation of ${v.element}: ${v.issue}`,
+        source: 'compliance_checker',
+        severity: v.severity,
+        patient_id: patientId,
+        context_data: {
+          element: v.element,
+          note_snippet: enhancedNote.substring(0, 200),
+          full_context: v.suggested_fix
+        }
+      });
+    });
+
+    generalCompliance.guideline_gaps?.forEach(g => {
+      if (g.priority === 'high') {
+        trainingRecommendations.push({
+          nurse_email: user.email,
+          recommendation_type: 'clinical',
+          recommendation_text: `Review best practices for ${g.guideline}`,
+          source: 'compliance_checker',
+          severity: 'medium',
+          patient_id: patientId,
+          context_data: {
+            element: g.guideline,
+            note_snippet: enhancedNote.substring(0, 200),
+            full_context: g.recommendation
+          }
+        });
+      }
+    });
+
+    // Batch create training recommendations
+    if (trainingRecommendations.length > 0) {
+      try {
+        await base44.asServiceRole.entities.TrainingRecommendation.bulkCreate(trainingRecommendations);
+      } catch (error) {
+        console.error('Error saving training recommendations:', error);
+      }
+    }
+
     // Consolidate all findings
     const consolidatedInsights = {
       overall_compliance_score: medicareCompliance.overall_score || 0,
@@ -306,7 +352,8 @@ What areas need nurse's clinical judgment or additional data collection?`,
         critical_count: medicareCompliance.violations?.filter(v => v.severity === 'critical').length || 0,
         high_priority_count: medicareCompliance.violations?.filter(v => v.severity === 'high').length || 0,
         revenue_opportunity: pdgmAnalysis.estimated_revenue_gain || 0,
-        oasis_items_mapped: oasisMapping.mappings?.length || 0
+        oasis_items_mapped: oasisMapping.mappings?.length || 0,
+        training_recommendations_created: trainingRecommendations.length
       }
     };
 
