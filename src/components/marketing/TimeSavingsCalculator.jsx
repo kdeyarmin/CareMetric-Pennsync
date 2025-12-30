@@ -13,13 +13,15 @@ export default function TimeSavingsCalculator() {
     const minutesSavedPerVisit = 20;
     const dailyMinutes = visits * minutesSavedPerVisit;
     const dailyHours = dailyMinutes / 60;
+    const weeklyHours = dailyHours * 5;
     const monthlyHours = dailyHours * 21;
     const yearlyHours = dailyHours * 252;
 
     return {
       dailyHours: dailyHours.toFixed(1),
-      monthlyHours: Math.round(monthlyHours),
-      yearlyHours: Math.round(yearlyHours)
+      weeklyHours: weeklyHours.toFixed(1),
+      monthlyHours: monthlyHours.toFixed(1),
+      yearlyHours: yearlyHours.toFixed(1)
     };
   };
 
@@ -76,7 +78,7 @@ export default function TimeSavingsCalculator() {
               transition={{ duration: 0.5 }}
               className="space-y-4"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 sm:p-6 rounded-xl border-2 border-blue-200 text-center"
@@ -91,6 +93,18 @@ export default function TimeSavingsCalculator() {
 
                 <motion.div
                   whileHover={{ scale: 1.05 }}
+                  className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 sm:p-6 rounded-xl border-2 border-indigo-200 text-center"
+                >
+                  <Calendar className="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 mx-auto mb-2" />
+                  <p className="text-xs sm:text-sm text-indigo-600 font-medium mb-1">Weekly Savings</p>
+                  <p className="text-3xl sm:text-4xl font-extrabold text-indigo-900">
+                    {savings.weeklyHours}
+                  </p>
+                  <p className="text-xs sm:text-sm text-indigo-700 font-medium">hours • 5 days</p>
+                </motion.div>
+
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
                   className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 sm:p-6 rounded-xl border-2 border-purple-200 text-center"
                 >
                   <Calendar className="w-8 h-8 sm:w-10 sm:h-10 text-purple-600 mx-auto mb-2" />
@@ -98,7 +112,7 @@ export default function TimeSavingsCalculator() {
                   <p className="text-3xl sm:text-4xl font-extrabold text-purple-900">
                     {savings.monthlyHours}
                   </p>
-                  <p className="text-xs sm:text-sm text-purple-700 font-medium">hours</p>
+                  <p className="text-xs sm:text-sm text-purple-700 font-medium">hours • 21 days</p>
                 </motion.div>
 
                 <motion.div
@@ -110,7 +124,7 @@ export default function TimeSavingsCalculator() {
                   <p className="text-3xl sm:text-4xl font-extrabold text-green-900">
                     {savings.yearlyHours}
                   </p>
-                  <p className="text-xs sm:text-sm text-green-700 font-medium">hours</p>
+                  <p className="text-xs sm:text-sm text-green-700 font-medium">hours • 252 days</p>
                 </motion.div>
               </div>
 
