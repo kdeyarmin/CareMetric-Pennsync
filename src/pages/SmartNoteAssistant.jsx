@@ -119,6 +119,7 @@ import ProactiveComplianceWarnings from "../components/smartNote/ProactiveCompli
 import AdvancedVoiceCommands from "../components/voice/AdvancedVoiceCommands";
 import PatientEducationPanel from "../components/smartNote/PatientEducationPanel";
 import RealTimeNoteFeedback from "../components/smartNote/RealTimeNoteFeedback";
+import UnifiedComplianceInsights from "../components/compliance/UnifiedComplianceInsights";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -467,6 +468,8 @@ export default function SmartNoteAssistant() {
   const [isAnalyzingPDGM, setIsAnalyzingPDGM] = useState(false);
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [unifiedInsights, setUnifiedInsights] = useState(null);
+  const [isRunningUnifiedCheck, setIsRunningUnifiedCheck] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -656,6 +659,27 @@ export default function SmartNoteAssistant() {
       setEnhancedNoteCompliance(result.enhanced_compliance);
       setDocumentationGaps(result.documentation_gaps || []);
       setComplianceReviewComplete(false);
+
+      // Automatically run unified compliance check
+      setIsRunningUnifiedCheck(true);
+      try {
+        const complianceResult = await base44.functions.invoke('comprehensiveComplianceCheck', {
+          enhancedNote: result.enhanced_note,
+          roughNote,
+          visitType,
+          diagnosis: finalDiagnosis,
+          patientId: selectedPatientId,
+          vitalSigns,
+          nurseType: currentUser?.credential_type || 'RN'
+        });
+
+        if (complianceResult.success) {
+          setUnifiedInsights(complianceResult.insights);
+        }
+      } catch (complianceError) {
+        console.error('Unified compliance check error:', complianceError);
+      }
+      setIsRunningUnifiedCheck(false);
 
       // Log activity
       logActivity(ActivityActions.NOTE_ENHANCED, {
@@ -2350,6 +2374,38 @@ Return JSON with:
                 </CardContent>
               </Card>
 
+              {/* Unified Compliance Insights - All AI Feedback in One Place */}
+              <UnifiedComplianceInsights
+                insights={unifiedInsights}
+                isLoading={isRunningUnifiedCheck}
+                onApplyFix={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
+                onApplyAllFixes={(fixes) => {
+                  const combinedFixes = fixes.join('\n\n');
+                  setEnhancedNote(prev => prev + '\n\n' + combinedFixes);
+                }}
+                onCreateTask={async (taskDescription) => {
+                  try {
+                    await base44.entities.Task.create({
+                      patient_id: selectedPatientId,
+                      title: `Follow-up: ${taskDescription.substring(0, 100)}`,
+                      description: taskDescription,
+                      type: 'followup',
+                      priority: 'high',
+                      due_timeframe: '24_hours',
+                      source: 'ai_generated',
+                      assigned_to: currentUser?.email
+                    });
+                    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+                  } catch (error) {
+                    console.error('Error creating task:', error);
+                  }
+                }}
+                onViewTraining={(topic) => {
+                  // Navigate to training with search
+                  window.open(createPageUrl("StaffTrainingHub") + `?search=${encodeURIComponent(topic)}`, '_blank');
+                }}
+              />
+
               {/* Next Steps Panel - Clear action-oriented summary */}
               <NextStepsPanel
                 copied={copied}
@@ -2360,7 +2416,7 @@ Return JSON with:
                 onGenerateTasks={() => setActiveAccordion('tasks')}
                 onGenerateCarePlans={() => setActiveAccordion('careplans')}
                 onStartNew={handleClearNote}
-                complianceScore={enhancedNoteCompliance?.overall_score}
+                complianceScore={unifiedInsights?.overall_compliance_score || enhancedNoteCompliance?.overall_score}
               />
 
               {/* OASIS Automation Trigger */}
