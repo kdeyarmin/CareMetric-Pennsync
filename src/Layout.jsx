@@ -32,17 +32,17 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
 
 /* =========================
-   Layout Constants
+   iOS-Safe Constants
 ========================= */
-const MOBILE_NAV_HEIGHT = "3.5rem"; // bottom nav owns safe-area
-const MOBILE_FAB_OFFSET = "calc(3.25rem + env(safe-area-inset-bottom))";
-const DESKTOP_FAB_OFFSET = "calc(1rem + env(safe-area-inset-bottom))";
+const HEADER_HEIGHT = "3.5rem"; // visible header
+const NAV_HEIGHT = "3.5rem";    // visible bottom nav
+const FAB_OFFSET = "calc(3.25rem + env(safe-area-inset-bottom))";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const { data: currentUser, isLoading: userLoading } = useQuery({
+  const { data: currentUser, isLoading } = useQuery({
     queryKey: ["currentUser"],
     queryFn: async () => {
       try {
@@ -71,121 +71,29 @@ export default function Layout({ children, currentPageName }) {
   };
 
   const isActive = (page) => currentPageName === page;
-  const showNavigationUI = currentPageName !== "Home" && currentUser && !userLoading;
-
-  const userNavItems = [
-    { name: "Dashboard", icon: Home, page: "Dashboard" },
-    { name: "My Patients", icon: Users, page: "Patients" },
-    { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
-    { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-    { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
-    { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
-    { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
-    { name: "Settings", icon: Settings, page: "Settings" }
-  ];
-
-  const adminNavItems =
-    currentUser?.role === "admin"
-      ? [
-          { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
-          { name: "User & Training Mgmt", icon: Users, page: "Admin" },
-          { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
-          { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
-        ]
-      : [];
+  const showNav = currentPageName !== "Home" && currentUser && !isLoading;
 
   return (
-    /* ROOT: prevent horizontal overflow globally */
     <div className="min-h-screen bg-blue-100 flex overflow-x-hidden">
-      {/* ================= Desktop Sidebar ================= */}
-      {showNavigationUI && (
-        <aside
-          className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${
-            sidebarCollapsed ? "w-16" : "w-56"
-          }`}
-        >
-          <div className="h-16 flex items-center justify-between px-3 border-b">
-            <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0">
-              <img
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
-                className="w-8 h-8 object-contain"
-                alt="CareMetric AI Logo"
-              />
-              {!sidebarCollapsed && <span className="font-bold truncate">CareMetric AI</span>}
-            </Link>
-            <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={handleLogout} className="text-red-600 hover:bg-red-50">
-                <LogOut className="w-4 h-4" />
-              </Button>
-              <Button size="icon" variant="ghost" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
-                {sidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
-              </Button>
-            </div>
-          </div>
-
-          <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
-            {userNavItems.map((item) => (
-              <Link
-                key={item.page}
-                to={createPageUrl(item.page)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                  isActive(item.page)
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                <item.icon className="w-4 h-4" />
-                {!sidebarCollapsed && item.name}
-              </Link>
-            ))}
-
-            {adminNavItems.length > 0 && (
-              <>
-                <div className="h-px bg-gray-200 my-3" />
-                {adminNavItems.map((item) => (
-                  <Link
-                    key={item.page}
-                    to={createPageUrl(item.page)}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                      isActive(item.page)
-                        ? "bg-blue-100 text-blue-700"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {!sidebarCollapsed && item.name}
-                  </Link>
-                ))}
-              </>
-            )}
-          </nav>
-
-          <div className="border-t p-3 space-y-2">
-            {!sidebarCollapsed && <ShareAppButton />}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-red-600 hover:bg-red-50 w-full"
-            >
-              <LogOut className="w-4 h-4" />
-              {!sidebarCollapsed && "Logout"}
-            </button>
-          </div>
-        </aside>
-      )}
-
       {/* ================= Mobile Header ================= */}
-      {showNavigationUI && (
-        <header className="lg:hidden fixed top-0 left-0 right-0 h-12 sm:h-14 bg-blue-600 flex items-center justify-between px-2 z-[200] overflow-x-hidden">
-          <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0">
+      {showNav && (
+        <header
+          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 z-[200] flex items-center justify-between px-2"
+          style={{
+            height: `calc(${HEADER_HEIGHT} + env(safe-area-inset-top))`,
+            paddingTop: "env(safe-area-inset-top)"
+          }}
+        >
+          <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1">
             <img
               src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
-              className="w-6 h-6 object-contain flex-shrink-0"
-              alt="CareMetric AI Logo"
+              className="w-6 h-6"
+              alt="CareMetric AI"
             />
-            <span className="font-bold text-white text-xs truncate">CareMetric AI</span>
+            <span className="text-white font-bold text-xs">CareMetric AI</span>
           </Link>
 
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1">
             <NotificationCenter />
             <Button size="icon" variant="ghost" className="text-white h-8 w-8" onClick={handleLogout}>
               <LogOut className="w-4 h-4" />
@@ -197,29 +105,28 @@ export default function Layout({ children, currentPageName }) {
         </header>
       )}
 
-      {/* ================= Main Content ================= */}
+      {/* ================= Main ================= */}
       <main
-        className={`flex-1 overflow-x-hidden ${showNavigationUI ? "pt-12 sm:pt-14 lg:pt-0" : ""}`}
+        className="flex-1 overflow-x-hidden"
         style={
-          showNavigationUI
-            ? { paddingBottom: `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))` }
+          showNav
+            ? {
+                paddingTop: HEADER_HEIGHT,
+                paddingBottom: NAV_HEIGHT
+              }
             : {}
         }
       >
-        <div
-          className={`w-full max-w-full min-w-0 overflow-x-hidden ${
-            showNavigationUI ? "p-3 sm:p-4 lg:p-6" : ""
-          }`}
-        >
+        <div className="w-full max-w-full min-w-0 p-3">
           {children}
         </div>
       </main>
 
-      {/* ================= Mobile Floating Buttons ================= */}
-      {showNavigationUI && (
+      {/* ================= FABs ================= */}
+      {showNav && (
         <div
-          className="fixed z-30 flex gap-4 px-2 lg:hidden pointer-events-none right-2 max-w-full overflow-hidden"
-          style={{ bottom: MOBILE_FAB_OFFSET }}
+          className="fixed z-30 flex gap-4 right-2 pointer-events-none"
+          style={{ bottom: FAB_OFFSET }}
         >
           <div className="pointer-events-auto">
             <MobileQuickAccessMenu />
@@ -230,25 +137,16 @@ export default function Layout({ children, currentPageName }) {
         </div>
       )}
 
-      {/* ================= Desktop Floating Buttons ================= */}
-      {showNavigationUI && (
-        <div className="hidden lg:block">
-          <div className="fixed right-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
-            <AIChatAssistant />
-          </div>
-          <div className="fixed left-4 z-50" style={{ bottom: DESKTOP_FAB_OFFSET }}>
-            <MobileQuickAccessMenu />
-          </div>
-        </div>
-      )}
-
-      {/* ================= Bottom Navigation ================= */}
-      {showNavigationUI && (
+      {/* ================= Bottom Nav ================= */}
+      {showNav && (
         <nav
-          className="fixed bottom-0 left-0 right-0 bg-white border-t shadow lg:hidden z-40"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          className="fixed bottom-0 left-0 right-0 bg-white border-t shadow z-40 lg:hidden"
+          style={{
+            height: `calc(${NAV_HEIGHT} + env(safe-area-inset-bottom))`,
+            paddingBottom: "env(safe-area-inset-bottom)"
+          }}
         >
-          <div className="flex items-center justify-around h-14 px-1">
+          <div className="flex items-center justify-around h-full">
             <Link to={createPageUrl("Dashboard")} className={`flex flex-col items-center ${isActive("Dashboard") ? "text-blue-600" : "text-gray-500"}`}>
               <Home className="w-5 h-5" />
               <span className="text-[10px]">Home</span>
@@ -273,7 +171,7 @@ export default function Layout({ children, currentPageName }) {
         </nav>
       )}
 
-      {showNavigationUI && <OfflineIndicator />}
+      {showNav && <OfflineIndicator />}
     </div>
   );
 }
