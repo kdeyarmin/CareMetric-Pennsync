@@ -10,7 +10,7 @@ export default function TimeSavingsCalculator() {
 
   const calculateSavings = () => {
     const visits = parseFloat(visitsPerDay) || 0;
-    const minutesSavedPerVisit = 20;
+    const minutesSavedPerVisit = 25;
     const dailyMinutes = visits * minutesSavedPerVisit;
     const dailyHours = dailyMinutes / 60;
     const weeklyHours = dailyHours * 5;
