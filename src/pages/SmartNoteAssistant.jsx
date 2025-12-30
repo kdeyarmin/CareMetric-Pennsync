@@ -1673,31 +1673,32 @@ Return JSON with:
       featureDescription="Transform your rough notes into Medicare-compliant documentation with AI. This premium feature includes voice dictation, real-time compliance checking, and intelligent clinical suggestions."
       allowTrial={true}
     >
-    <div className="p-2 sm:p-3 md:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-3 sm:mb-4 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-0 w-full sm:w-auto">
+    <div className="w-full overflow-x-hidden">
+      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+      <div className="mb-3 sm:mb-4 flex flex-col gap-3 w-full overflow-hidden">
+        <div className="flex items-center gap-2 w-full overflow-hidden">
           {currentStep !== 'patient' && (
             <Button 
               variant="outline" 
-              size="default"
+              size="sm"
               onClick={handleGoBack}
-              className="gap-1 text-gray-600 hover:text-gray-900 flex-shrink-0 min-h-[44px] px-3"
+              className="gap-1 text-gray-600 hover:text-gray-900 flex-shrink-0 touch-target"
             >
-              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden md:inline text-sm">Back</span>
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden sm:inline text-sm">Back</span>
             </Button>
           )}
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 truncate">Smart Note Assistant</h1>
-            <p className="text-xs sm:text-sm md:text-base text-gray-600 hidden sm:block truncate">Transform rough notes into Medicare-compliant documentation</p>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">Smart Note Assistant</h1>
+            <p className="text-xs text-gray-600 hidden sm:block truncate">Transform rough notes into compliant docs</p>
           </div>
         </div>
-        <div className="flex gap-2 flex-shrink-0 w-full sm:w-auto justify-end">
+        <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
           <FavoriteButton type="page" id="SmartNoteAssistant" name="Smart Note Assistant" />
           <Button 
             variant="ghost" 
-            size="default" 
-            className="text-gray-500 gap-1 min-h-[44px] px-2 sm:px-3"
+            size="sm" 
+            className="text-gray-500 gap-1 touch-target flex-1 sm:flex-initial"
             onClick={async () => {
               try {
                 const response = await base44.functions.invoke('generateSmartNoteGuide');
@@ -1751,24 +1752,24 @@ Return JSON with:
         />
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
-        <div className="xl:col-span-3 space-y-3 sm:space-y-4 md:space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-3 sm:gap-4 w-full">
+        <div className="xl:col-span-3 space-y-3 sm:space-y-4 w-full overflow-hidden">
 
           {/* Step 1: Patient Selection - Enhanced */}
-          <Card id="step-patient" className={`border-2 transition-all duration-300 ${currentStep === 'patient' ? 'border-blue-500 ring-4 ring-blue-200 shadow-xl' : 'border-gray-300'}`}>
-            <CardHeader className="py-4 sm:py-5 md:py-6 bg-gradient-to-r from-blue-100 to-indigo-100">
-              <CardTitle className="text-base sm:text-lg md:text-xl flex items-center gap-2 sm:gap-3">
-                <div className={`p-1.5 sm:p-2 rounded-full ${currentStep === 'patient' ? 'bg-blue-500' : 'bg-gray-400'}`}>
-                  <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+          <Card id="step-patient" className={`border-2 transition-all duration-300 w-full overflow-hidden ${currentStep === 'patient' ? 'border-blue-500 ring-4 ring-blue-200 shadow-xl' : 'border-gray-300'}`}>
+            <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-blue-100 to-indigo-100">
+              <CardTitle className="text-sm sm:text-base md:text-lg flex items-center gap-2">
+                <div className={`p-1.5 rounded-full flex-shrink-0 ${currentStep === 'patient' ? 'bg-blue-500' : 'bg-gray-400'}`}>
+                  <User className="w-4 h-4 text-white" />
                 </div>
-                <span className="flex-1 min-w-0 truncate">1. Select Patient & Visit Type</span>
-                {selectedPatient && <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 animate-pulse" />}
+                <span className="flex-1 min-w-0 truncate">1. Select Patient & Visit</span>
+                {selectedPatient && <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
-                <div>
-                  <Label className="text-sm md:text-base mb-2 block">Patient</Label>
+            <CardContent className="p-3 sm:p-4 space-y-3 overflow-hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                <div className="w-full overflow-hidden">
+                  <Label className="text-xs sm:text-sm mb-1.5 block">Patient</Label>
                   <SearchablePatientSelect
                     patients={patients}
                     value={selectedPatientId}
@@ -1791,36 +1792,36 @@ Return JSON with:
                     placeholder="Search patients..."
                   />
                 </div>
-                <div>
-                  <Label className="text-sm md:text-base mb-2 block">Visit Date</Label>
+                <div className="w-full overflow-hidden">
+                  <Label className="text-xs sm:text-sm mb-1.5 block">Visit Date</Label>
                   <Input 
                     type="date" 
                     value={visitDate} 
                     onChange={(e) => setVisitDate(e.target.value)}
                     max={todayEastern()}
-                    className="h-11 md:h-12 text-base"
+                    className="h-11 text-sm w-full"
                   />
                 </div>
-                <div>
-                  <Label className="text-sm md:text-base mb-2 block">Visit Type</Label>
+                <div className="w-full overflow-hidden">
+                  <Label className="text-xs sm:text-sm mb-1.5 block">Visit Type</Label>
                   <Select value={visitType} onValueChange={setVisitType}>
-                    <SelectTrigger className="h-11 md:h-12 text-base"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-11 text-sm w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admission" className="text-base py-3">Admission</SelectItem>
-                      <SelectItem value="routine_visit" className="text-base py-3">Routine Visit</SelectItem>
-                      <SelectItem value="recertification" className="text-base py-3">Recertification</SelectItem>
-                      <SelectItem value="discharge" className="text-base py-3">Discharge</SelectItem>
-                      <SelectItem value="prn" className="text-base py-3">PRN Visit</SelectItem>
+                      <SelectItem value="admission" className="text-sm">Admission</SelectItem>
+                      <SelectItem value="routine_visit" className="text-sm">Routine Visit</SelectItem>
+                      <SelectItem value="recertification" className="text-sm">Recertification</SelectItem>
+                      <SelectItem value="discharge" className="text-sm">Discharge</SelectItem>
+                      <SelectItem value="prn" className="text-sm">PRN Visit</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="text-sm md:text-base mb-2 block">Diagnosis</Label>
+                <div className="w-full overflow-hidden">
+                  <Label className="text-xs sm:text-sm mb-1.5 block">Diagnosis</Label>
                   <Select value={diagnosis} onValueChange={setDiagnosis}>
-                    <SelectTrigger className="h-11 md:h-12 text-base"><SelectValue placeholder="Select..." /></SelectTrigger>
+                    <SelectTrigger className="h-11 text-sm w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
                     <SelectContent>
                       {commonDiagnoses.map((dx) => (
-                        <SelectItem key={dx} value={dx} className="text-base py-3">{dx}</SelectItem>
+                        <SelectItem key={dx} value={dx} className="text-sm">{dx}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1831,24 +1832,24 @@ Return JSON with:
                   placeholder="Enter custom diagnosis" 
                   value={customDiagnosis} 
                   onChange={(e) => setCustomDiagnosis(e.target.value)}
-                  className="h-11 md:h-12 text-base"
+                  className="h-11 text-sm w-full"
                 />
               )}
             </CardContent>
           </Card>
 
           {/* Step 2: Vitals - Enhanced */}
-          <Card id="step-vitals" className={`border-2 transition-all duration-300 ${currentStep === 'vitals' ? 'border-green-500 ring-4 ring-green-200 shadow-xl' : 'border-gray-300'}`}>
-            <CardHeader className="py-4 sm:py-5 md:py-6 bg-gradient-to-r from-green-100 to-emerald-100">
-              <CardTitle className="text-base sm:text-lg md:text-xl flex items-center gap-2 sm:gap-3">
-                <div className={`p-1.5 sm:p-2 rounded-full ${currentStep === 'vitals' ? 'bg-green-500' : 'bg-gray-400'}`}>
-                  <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+          <Card id="step-vitals" className={`border-2 transition-all duration-300 w-full overflow-hidden ${currentStep === 'vitals' ? 'border-green-500 shadow-lg' : 'border-gray-300'}`}>
+            <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-green-100 to-emerald-100">
+              <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                <div className={`p-1.5 rounded-full flex-shrink-0 ${currentStep === 'vitals' ? 'bg-green-500' : 'bg-gray-400'}`}>
+                  <Activity className="w-4 h-4 text-white" />
                 </div>
-                <span className="flex-1 min-w-0">2. Vital Signs</span>
-                {(vitalSigns.bp || vitalSigns.hr) && <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 animate-pulse" />}
+                <span className="flex-1 min-w-0 truncate">2. Vital Signs</span>
+                {(vitalSigns.bp || vitalSigns.hr) && <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 sm:p-4 md:p-6">
+            <CardContent className="p-3 sm:p-4 overflow-hidden">
               <SmartVitalsInput 
                 vitalSigns={vitalSigns} 
                 onChange={setVitalSigns} 
@@ -2130,24 +2131,26 @@ Return JSON with:
           )}
 
           {/* Step 3: Notes - Enhanced */}
-          <Card id="step-notes" className={`border-2 transition-all duration-300 ${currentStep === 'notes' ? 'border-purple-500 ring-4 ring-purple-200 shadow-xl' : 'border-gray-300'}`}>
-          <CardHeader className="py-4 sm:py-5 md:py-6 bg-gradient-to-r from-purple-100 to-pink-100">
-          <CardTitle className="text-base sm:text-lg md:text-xl flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-              <div className={`p-1.5 sm:p-2 rounded-full ${currentStep === 'notes' ? 'bg-purple-500' : 'bg-gray-400'}`}>
-                <Edit3 className="w-4 h-4 sm:w-5 sm:h-5 text-white flex-shrink-0" />
+          <Card id="step-notes" className={`border-2 transition-all duration-300 w-full overflow-hidden ${currentStep === 'notes' ? 'border-purple-500 shadow-lg' : 'border-gray-300'}`}>
+          <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-purple-100 to-pink-100">
+          <CardTitle className="text-sm sm:text-base flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+              <div className={`p-1.5 rounded-full flex-shrink-0 ${currentStep === 'notes' ? 'bg-purple-500' : 'bg-gray-400'}`}>
+                <Edit3 className="w-4 h-4 text-white" />
               </div>
-              <span className="truncate">3. Your Notes</span>
-              {roughNote.length >= 20 && <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 animate-pulse" />}
+              <span className="truncate text-sm sm:text-base">3. Your Notes</span>
+              {roughNote.length >= 20 && <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />}
             </div>
-            <VoiceHub 
-              onTranscription={handleVoiceTranscription}
-              onInterimTranscription={handleInterimTranscription}
-              onCommand={handleVoiceCommand}
-            />
+            <div className="w-full sm:w-auto">
+              <VoiceHub 
+                onTranscription={handleVoiceTranscription}
+                onInterimTranscription={handleInterimTranscription}
+                onCommand={handleVoiceCommand}
+              />
+            </div>
           </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 md:p-6 space-y-4">
+          <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-hidden">
           {/* Medical Terminology Processor */}
           {roughNote.length > 50 && (
             <MedicalTerminologyProcessor 
@@ -2156,7 +2159,7 @@ Return JSON with:
             />
           )}
               {/* Smart auto-complete textarea with phrase categories */}
-              <div className="relative">
+              <div className="relative w-full overflow-hidden">
                 <SmartAutoComplete
                   value={roughNote}
                   onChange={(value) => {
@@ -2165,9 +2168,9 @@ Return JSON with:
                     }
                     setRoughNote(value);
                   }}
-                  placeholder="Type or dictate your notes... Start typing trigger words like 'lungs', 'heart', 'wound' for quick phrases"
+                  placeholder="Type or dictate notes... Start typing 'lungs', 'heart', 'wound' for quick phrases"
                   diagnosis={finalDiagnosis}
-                  className="min-h-[150px]"
+                  className="min-h-[120px] sm:min-h-[150px] w-full text-sm"
                 />
                 {/* Interim voice transcription overlay */}
                 {interimVoiceText && (
@@ -2258,26 +2261,26 @@ Return JSON with:
 
             {/* Enhance Button - Prominent CTA */}
             {!enhancedNote && roughNote.length >= 20 && (
-              <Card className="border-4 border-purple-400 bg-gradient-to-r from-purple-100 to-pink-100 shadow-2xl animate-pulse">
-                <CardContent className="p-6">
-                  <div className="flex flex-col items-center gap-4 text-center">
-                    <div className="p-4 bg-purple-500 rounded-full">
-                      <Sparkles className="w-8 h-8 text-white" />
+              <Card className="border-4 border-purple-400 bg-gradient-to-r from-purple-100 to-pink-100 shadow-xl w-full overflow-hidden">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col items-center gap-3 sm:gap-4 text-center">
+                    <div className="p-3 sm:p-4 bg-purple-500 rounded-full">
+                      <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-purple-900 mb-1">Ready to Transform!</h3>
-                      <p className="text-sm text-purple-700">Click below to create your Medicare-compliant note</p>
+                      <h3 className="text-base sm:text-lg font-bold text-purple-900 mb-1">Ready to Transform!</h3>
+                      <p className="text-xs sm:text-sm text-purple-700">Create your Medicare-compliant note</p>
                     </div>
                     <Button
                       onClick={handleEnhanceNote}
                       disabled={isProcessing}
                       size="lg"
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 w-full sm:w-auto text-lg font-bold shadow-lg"
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 w-full touch-target text-base sm:text-lg font-bold shadow-lg"
                     >
                       {isProcessing ? (
-                        <><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-2" /> Enhancing...</>
+                        <><div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-white mr-2" /> Enhancing...</>
                       ) : (
-                        <><Sparkles className="w-6 h-6 mr-2" /> Enhance with AI</>
+                        <><Sparkles className="w-5 h-5 sm:w-6 sm:h-6 mr-2" /> Enhance with AI</>
                       )}
                     </Button>
                   </div>
@@ -2303,19 +2306,19 @@ Return JSON with:
           {/* Step 4: Enhanced Note - Celebration */}
           {enhancedNote && (
           <>
-            <Card id="step-enhance" className="border-4 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-2xl">
-              <CardHeader className="py-4 sm:py-5 md:py-6 lg:py-7 bg-gradient-to-r from-green-100 to-emerald-100">
-                <CardTitle className="text-base sm:text-lg md:text-xl lg:text-2xl flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-2 sm:p-3 bg-green-500 rounded-full">
-                      <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <Card id="step-enhance" className="border-4 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-xl w-full overflow-hidden">
+              <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-green-100 to-emerald-100">
+                <CardTitle className="text-sm sm:text-base md:text-lg flex flex-col gap-2 w-full">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-green-500 rounded-full flex-shrink-0">
+                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                     </div>
-                    <span className="text-sm sm:text-base md:text-lg lg:text-xl">✨ Note Enhanced!</span>
+                    <span className="text-sm sm:text-base truncate">✨ Note Enhanced!</span>
                   </div>
-                  <span className="text-[10px] sm:text-xs md:text-sm text-gray-600 font-normal sm:ml-auto bg-yellow-100 px-2 sm:px-3 py-1 rounded-full">💡 Yellow = needs completion</span>
+                  <span className="text-[10px] sm:text-xs text-gray-600 font-normal bg-yellow-100 px-2 py-1 rounded-full self-start">💡 Yellow = needs completion</span>
                 </CardTitle>
               </CardHeader>
-                <CardContent className="p-4 md:p-6">
+                <CardContent className="p-3 sm:p-4 overflow-hidden">
                   <RichTextNoteEditor
                     value={enhancedNote}
                     onChange={setEnhancedNote}
@@ -2386,20 +2389,20 @@ Return JSON with:
 
               {/* OASIS Automation Trigger */}
               {patientOASIS?.length > 0 && (
-                <Card className="border-2 border-purple-300 bg-gradient-to-r from-purple-50 to-pink-50">
-                  <CardContent className="p-4">
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-purple-600" />
-                        <div>
-                          <p className="text-sm font-medium">AI OASIS Automation Available</p>
-                          <p className="text-xs text-gray-600">Map note to OASIS with detailed justifications</p>
+                <Card className="border-2 border-purple-300 bg-gradient-to-r from-purple-50 to-pink-50 w-full overflow-hidden">
+                  <CardContent className="p-3 sm:p-4">
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">AI OASIS Automation</p>
+                          <p className="text-xs text-gray-600">Map note to OASIS items</p>
                         </div>
                       </div>
                       <Button
                         onClick={handleRunOASISAutomation}
                         disabled={isRunningOASISAutomation}
-                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 w-full sm:w-auto"
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 w-full touch-target"
                       >
                         {isRunningOASISAutomation ? (
                           <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" /> Analyzing...</>
@@ -2614,9 +2617,10 @@ Return JSON with:
         </div>
 
         {/* Enhanced AI Sidebar with Tabs */}
-        <div className="space-y-3 sm:space-y-4 md:space-y-6">
+        <div className="space-y-3 sm:space-y-4 w-full overflow-hidden xl:sticky xl:top-4">
           {/* Primary AI Assistant Card - Always Visible */}
-          <DynamicAISidebar
+          <div className="w-full overflow-hidden">
+            <DynamicAISidebar
             currentStep={currentStep}
             hasPatient={!!selectedPatientId}
             hasNotes={roughNote.length >= 20}
@@ -2633,31 +2637,32 @@ Return JSON with:
             onRemoveOASISLink={(idx) => setOasisLinkedItems(prev => prev.filter((_, i) => i !== idx))}
           />
 
+          </div>
           {/* Tabbed AI Tools - Only show when patient selected */}
           {selectedPatientId && (
-            <Card className="border-2 border-blue-200 shadow-lg">
+            <Card className="border-2 border-blue-200 shadow-lg w-full overflow-hidden">
               <CardHeader className="pb-3 bg-gradient-to-r from-blue-50 to-indigo-50">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Brain className="w-4 h-4 text-blue-600" />
-                  AI Tools & Resources
+                  AI Tools
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-hidden">
                 <Tabs value={activeAITab} onValueChange={setActiveAITab} className="w-full">
-                  <TabsList className="w-full grid grid-cols-3 rounded-none border-b">
-                    <TabsTrigger value="workflow" className="text-xs">
+                  <TabsList className="w-full grid grid-cols-3 rounded-none border-b h-auto p-0.5">
+                    <TabsTrigger value="workflow" className="text-xs py-2">
                       Workflow
                     </TabsTrigger>
-                    <TabsTrigger value="compliance" className="text-xs">
-                      Compliance
+                    <TabsTrigger value="compliance" className="text-xs py-2">
+                      Comply
                     </TabsTrigger>
-                    <TabsTrigger value="knowledge" className="text-xs">
-                      Knowledge
+                    <TabsTrigger value="knowledge" className="text-xs py-2">
+                      Info
                     </TabsTrigger>
                   </TabsList>
 
                   {/* Workflow Tab - Lazy Loaded */}
-                  <TabsContent value="workflow" className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
+                  <TabsContent value="workflow" className="p-3 sm:p-4 space-y-3 sm:space-y-4 max-h-[500px] sm:max-h-[600px] overflow-y-auto overflow-x-hidden">
                     {activeAITab === "workflow" && (
                       <>
                     {visitType && (
@@ -2706,7 +2711,7 @@ Return JSON with:
                   </TabsContent>
 
                   {/* Compliance Tab - Lazy Loaded */}
-                  <TabsContent value="compliance" className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
+                  <TabsContent value="compliance" className="p-3 sm:p-4 space-y-3 sm:space-y-4 max-h-[500px] sm:max-h-[600px] overflow-y-auto overflow-x-hidden">
                     {activeAITab === "compliance" && (
                       <>
                     <ComplianceTargetSettings
@@ -2780,7 +2785,7 @@ Return JSON with:
                   </TabsContent>
 
                   {/* Knowledge Tab - Lazy Loaded */}
-                  <TabsContent value="knowledge" className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
+                  <TabsContent value="knowledge" className="p-3 sm:p-4 space-y-3 sm:space-y-4 max-h-[500px] sm:max-h-[600px] overflow-y-auto overflow-x-hidden">
                     {activeAITab === "knowledge" && (
                      <>
                     <CustomPhrasesManager
@@ -2866,6 +2871,7 @@ Return JSON with:
         onGenerateTasks={() => setActiveAccordion('tasks')}
         onToggleVoice={() => setIsVoiceListening(!isVoiceListening)}
       />
+      </div>
     </div>
     </PremiumFeatureGate>
   );
