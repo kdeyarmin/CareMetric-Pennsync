@@ -141,34 +141,7 @@ export default function Home() {
               </motion.div>
             </motion.div>
 
-            {/* Referral Rewards Banner */}
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 1, duration: 0.5 }}
-              className="max-w-2xl mx-auto mb-10"
-            >
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                className="relative"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 rounded-2xl blur-xl opacity-50" />
-                <Card className="relative border-0 bg-gradient-to-r from-purple-500 to-pink-500 shadow-2xl">
-                  <CardContent className="p-6 text-center">
-                    <div className="flex items-center justify-center gap-2 mb-2">
-                      <DollarSign className="w-6 h-6 text-white" />
-                      <span className="text-2xl font-extrabold text-white">Earn $5 Per Referral</span>
-                    </div>
-                    <p className="text-base font-semibold text-white mb-1">
-                      Share CareMetric AI with colleagues and earn credits!
-                    </p>
-                    <p className="text-sm text-purple-50">
-                      Get $5.00 credit for each friend who subscribes • Credits apply to your renewal
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </motion.div>
+
             
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -270,35 +243,6 @@ export default function Home() {
             ))}
             </div>
 
-            {/* Referral Rewards Banner */}
-            <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="max-w-2xl mx-auto"
-            >
-            <motion.div
-            whileHover={{ scale: 1.02 }}
-            className="relative"
-            >
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 rounded-2xl blur-xl opacity-50" />
-            <Card className="relative border-0 bg-gradient-to-r from-purple-500 to-pink-500 shadow-2xl">
-              <CardContent className="p-6 text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <DollarSign className="w-6 h-6 text-white" />
-                  <span className="text-2xl font-extrabold text-white">Earn $5 Per Referral</span>
-                </div>
-                <p className="text-base font-semibold text-white mb-1">
-                  Share CareMetric AI with colleagues and earn credits!
-                </p>
-                <p className="text-sm text-purple-50">
-                  Get $5.00 credit for each friend who subscribes • Credits apply to your renewal
-                </p>
-              </CardContent>
-            </Card>
-            </motion.div>
-            </motion.div>
             </section>
 
       {/* Main Content Tabs */}
@@ -696,6 +640,38 @@ export default function Home() {
             </div>
           </CardContent>
         </Card>
+      </section>
+
+      {/* Referral Rewards Banner */}
+      <section className="relative max-w-7xl mx-auto px-4 py-8 sm:py-12 md:py-16 sm:px-6 lg:px-8">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="max-w-2xl mx-auto"
+        >
+          <motion.div
+            whileHover={{ scale: 1.02 }}
+            className="relative"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 rounded-2xl blur-xl opacity-50" />
+            <Card className="relative border-0 bg-gradient-to-r from-purple-500 to-pink-500 shadow-2xl">
+              <CardContent className="p-6 text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <DollarSign className="w-6 h-6 text-white" />
+                  <span className="text-2xl font-extrabold text-white">Earn $5 Per Referral</span>
+                </div>
+                <p className="text-base font-semibold text-white mb-1">
+                  Share CareMetric AI with colleagues and earn credits!
+                </p>
+                <p className="text-sm text-purple-50">
+                  Get $5.00 credit for each friend who subscribes • Credits apply to your renewal
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* Footer */}
