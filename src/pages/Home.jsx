@@ -30,6 +30,7 @@ import {
 import { motion } from "framer-motion";
 import ProspectChatbot from "../components/marketing/ProspectChatbot";
 import ShareAppButton from "../components/marketing/ShareAppButton";
+import TimeSavingsCalculator from "../components/marketing/TimeSavingsCalculator";
 
 export const publicPage = true;
 
@@ -222,6 +223,11 @@ export default function Home() {
             </motion.div>
           </motion.div>
         </div>
+      </section>
+
+      {/* Time Savings Calculator */}
+      <section className="relative max-w-4xl mx-auto px-4 py-8 sm:py-12 md:py-16 sm:px-6 lg:px-8">
+        <TimeSavingsCalculator />
       </section>
 
       {/* Key Stats */}

@@ -29,6 +29,7 @@ import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
 import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
+import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
 import NurseEducationVideos from './pages/NurseEducationVideos';
 import NursePerformanceDashboard from './pages/NursePerformanceDashboard';
 import NurseTraining from './pages/NurseTraining';
@@ -79,7 +80,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -115,6 +115,7 @@ export const PAGES = {
     "ManageNewFeatures": ManageNewFeatures,
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
     "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
+    "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
     "NurseEducationVideos": NurseEducationVideos,
     "NursePerformanceDashboard": NursePerformanceDashboard,
     "NurseTraining": NurseTraining,
@@ -165,7 +166,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
 }
 
 export const pagesConfig = {
