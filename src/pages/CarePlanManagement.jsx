@@ -412,7 +412,7 @@ export default function CarePlanManagement() {
             autoGenerate={true}
           />
           
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full">
             <AICarePlanRecommendations
               patient={selectedPatient}
               visits={patientVisits}
@@ -428,7 +428,7 @@ export default function CarePlanManagement() {
               }}
             />
           </div>
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full">
             <AIEducationRecommender
               patient={selectedPatient}
               carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
