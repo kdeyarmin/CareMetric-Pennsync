@@ -235,120 +235,128 @@ export default function CarePlanManagement() {
       featureDescription="Create, manage, and optimize patient care plans with AI-powered recommendations. This premium feature includes automated task generation and personalized education planning."
       allowTrial={true}
     >
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <Button
-        variant="outline"
-        onClick={() => navigate(createPageUrl("Dashboard"))}
-        className="mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Dashboard
-      </Button>
+    <div className="w-full overflow-x-hidden">
+      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 overflow-hidden">
+        <Button
+          variant="outline"
+          onClick={() => navigate(createPageUrl("Dashboard"))}
+          className="mb-3 sm:mb-4 w-full sm:w-auto touch-target"
+          size="sm"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Dashboard
+        </Button>
 
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
-            <Target className="w-6 h-6 text-white" />
+        <div className="mb-4 sm:mb-6 w-full overflow-hidden">
+          <div className="flex items-center gap-2 sm:gap-3 w-full">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
+              <Target className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">Care Plan Management</h1>
+              <p className="text-xs text-gray-600 hidden sm:block truncate">Manage and track patient care plans</p>
+            </div>
+            <div className="flex-shrink-0">
+              <FavoriteButton type="page" id="CarePlanManagement" name="Care Plan Management" />
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Care Plan Management</h1>
-            <p className="text-gray-600">Manage and track patient care plans</p>
-          </div>
-          <FavoriteButton type="page" id="CarePlanManagement" name="Care Plan Management" />
         </div>
-      </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+        {/* Statistics */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6 w-full">
+        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-lg overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100 text-sm font-medium mb-1">Total Plans</p>
-                <p className="text-4xl font-bold">{totalPlans}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-blue-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Total Plans</p>
+                <p className="text-2xl sm:text-3xl font-bold">{totalPlans}</p>
               </div>
-              <Target className="w-12 h-12 text-blue-200" />
+              <Target className="w-8 h-8 sm:w-10 sm:h-10 text-blue-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none shadow-lg overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100 text-sm font-medium mb-1">Active Plans</p>
-                <p className="text-4xl font-bold">{activePlans}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-green-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Active</p>
+                <p className="text-2xl sm:text-3xl font-bold">{activePlans}</p>
               </div>
-              <TrendingUp className="w-12 h-12 text-green-200" />
+              <TrendingUp className="w-8 h-8 sm:w-10 sm:h-10 text-green-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none shadow-lg overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-purple-100 text-sm font-medium mb-1">Goals Met</p>
-                <p className="text-4xl font-bold">{metGoals}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-purple-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Goals Met</p>
+                <p className="text-2xl sm:text-3xl font-bold">{metGoals}</p>
               </div>
-              <CheckCircle2 className="w-12 h-12 text-purple-200" />
+              <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-purple-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none shadow-lg overflow-hidden">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-orange-100 text-sm font-medium mb-1">Patients</p>
-                <p className="text-4xl font-bold">{activePatients}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-orange-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Patients</p>
+                <p className="text-2xl sm:text-3xl font-bold">{activePatients}</p>
               </div>
-              <User className="w-12 h-12 text-orange-200" />
+              <User className="w-8 h-8 sm:w-10 sm:h-10 text-orange-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
+      <Card className="mb-3 sm:mb-4 w-full overflow-hidden">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-col gap-3 w-full">
+            <div className="w-full relative overflow-hidden">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Search care plans or patients..."
+                placeholder="Search care plans..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 h-11 text-sm w-full"
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="met">Goal Met</SelectItem>
-                <SelectItem value="not_met">Not Met</SelectItem>
-                <SelectItem value="revised">Revised</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === "list" ? "default" : "outline"}
-                onClick={() => setViewMode("list")}
-                className={viewMode === "list" ? "bg-blue-600" : ""}
-              >
-                List View
-              </Button>
-              <Button
-                variant={viewMode === "timeline" ? "default" : "outline"}
-                onClick={() => setViewMode("timeline")}
-                className={viewMode === "timeline" ? "bg-blue-600" : ""}
-              >
-                Timeline View
-              </Button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-40 h-11 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-sm">All Status</SelectItem>
+                  <SelectItem value="active" className="text-sm">Active</SelectItem>
+                  <SelectItem value="met" className="text-sm">Goal Met</SelectItem>
+                  <SelectItem value="not_met" className="text-sm">Not Met</SelectItem>
+                  <SelectItem value="revised" className="text-sm">Revised</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button
+                  variant={viewMode === "list" ? "default" : "outline"}
+                  onClick={() => setViewMode("list")}
+                  size="sm"
+                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "list" ? "bg-blue-600" : ""}`}
+                >
+                  List
+                </Button>
+                <Button
+                  variant={viewMode === "timeline" ? "default" : "outline"}
+                  onClick={() => setViewMode("timeline")}
+                  size="sm"
+                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "timeline" ? "bg-blue-600" : ""}`}
+                >
+                  Timeline
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -356,7 +364,7 @@ export default function CarePlanManagement() {
 
       {/* AI Tools Section */}
       {selectedPatient && showAITools && (
-        <div className="space-y-6 mb-6">
+        <div className="space-y-3 sm:space-y-4 mb-3 sm:mb-4 w-full overflow-hidden">
           {/* AI Suggestion Engine */}
           <AICarePlanSuggestionEngine
             patientId={selectedPatient.id}
@@ -434,19 +442,19 @@ export default function CarePlanManagement() {
       )}
 
       {/* Care Plans by Patient */}
-      <div className="space-y-6">
+      <div className="space-y-3 sm:space-y-4 w-full overflow-hidden">
         {isLoading ? (
-          <Card>
-            <CardContent className="p-12 text-center text-gray-500">
+          <Card className="w-full">
+            <CardContent className="p-8 sm:p-12 text-center text-gray-500 text-sm">
               Loading care plans...
             </CardContent>
           </Card>
         ) : filteredCarePlans.length === 0 ? (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <Target className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No care plans found</h3>
-              <p className="text-gray-500">Try adjusting your search or filters.</p>
+          <Card className="w-full">
+            <CardContent className="p-8 sm:p-12 text-center">
+              <Target className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No care plans found</h3>
+              <p className="text-sm text-gray-500">Try adjusting your search or filters.</p>
             </CardContent>
           </Card>
         ) : viewMode === "timeline" ? (
@@ -455,20 +463,18 @@ export default function CarePlanManagement() {
             if (!patient) return null;
 
             return (
-              <div key={patientId} className="space-y-3">
-                <div className="flex items-center gap-3 p-4 bg-white rounded-lg border-2 border-blue-300">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md">
-                    <User className="w-6 h-6 text-white" />
+              <div key={patientId} className="space-y-3 w-full overflow-hidden">
+                <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 bg-white rounded-lg border-2 border-blue-300 w-full">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
+                    <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-gray-900">
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <h3 className="text-sm sm:text-base font-bold text-gray-900 truncate">
                       {patient.first_name} {patient.last_name}
                     </h3>
-                    <p className="text-sm text-gray-600">
-                      {patient.primary_diagnosis} • {plans.length} care plan{plans.length !== 1 ? 's' : ''}
+                    <p className="text-xs text-gray-600 truncate">
+                      {patient.primary_diagnosis} • {plans.length} plan{plans.length !== 1 ? 's' : ''}
                     </p>
-                  </div>
-                  <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant={selectedPatient?.id === patientId ? "default" : "outline"}
@@ -477,14 +483,16 @@ export default function CarePlanManagement() {
                         setShowAITools(true);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className={selectedPatient?.id === patientId ? "bg-purple-600 hover:bg-purple-700" : ""}
+                      className={`mt-2 w-full touch-target text-xs ${selectedPatient?.id === patientId ? "bg-purple-600 hover:bg-purple-700" : ""}`}
                     >
-                      <Sparkles className="w-4 h-4 mr-1" />
+                      <Sparkles className="w-3 h-3 mr-1" />
                       AI Tools
                     </Button>
                   </div>
                 </div>
-                <CarePlanTimeline carePlans={plans} patient={patient} />
+                <div className="w-full overflow-hidden">
+                  <CarePlanTimeline carePlans={plans} patient={patient} />
+                </div>
               </div>
             );
           })
@@ -494,23 +502,23 @@ export default function CarePlanManagement() {
             if (!patient) return null;
 
             return (
-              <Card key={patientId} className="border-l-4 border-l-blue-500">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md">
-                        <User className="w-6 h-6 text-white" />
+              <Card key={patientId} className="border-l-4 border-l-blue-500 w-full overflow-hidden">
+                <CardHeader className="p-3 sm:p-4">
+                  <div className="flex flex-col gap-3 w-full">
+                    <div className="flex items-start gap-2 sm:gap-3 w-full">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
+                        <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                       </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900">
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-900 truncate">
                           {patient.first_name} {patient.last_name}
                         </h3>
-                        <p className="text-sm text-gray-600">
-                          {patient.primary_diagnosis} • {plans.length} active care plan{plans.length !== 1 ? 's' : ''}
+                        <p className="text-xs sm:text-sm text-gray-600 truncate">
+                          {patient.primary_diagnosis} • {plans.length} plan{plans.length !== 1 ? 's' : ''}
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 w-full">
                       <Button
                         size="sm"
                         variant={selectedPatient?.id === patientId ? "default" : "outline"}
@@ -519,51 +527,52 @@ export default function CarePlanManagement() {
                           setShowAITools(true);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className={selectedPatient?.id === patientId ? "bg-purple-600 hover:bg-purple-700" : ""}
+                        className={`w-full sm:flex-1 touch-target text-xs ${selectedPatient?.id === patientId ? "bg-purple-600 hover:bg-purple-700" : ""}`}
                       >
-                        <Sparkles className="w-4 h-4 mr-1" />
+                        <Sparkles className="w-3 h-3 mr-1" />
                         AI Tools
                       </Button>
                       <Button
                         size="sm"
                         onClick={() => navigate(`${createPageUrl("PatientDetails")}?patientId=${patientId}`)}
                         variant="outline"
+                        className="w-full sm:flex-1 touch-target text-xs"
                       >
                         View Patient
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
+                <CardContent className="p-3 sm:p-4 overflow-hidden">
+                  <div className="space-y-3 w-full">
                     {plans.map((plan) => (
-                      <Card key={plan.id} className="bg-gray-50">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-semibold text-gray-900">{plan.problem}</h4>
-                                <Badge className={getStatusColor(plan.status)}>
+                      <Card key={plan.id} className="bg-gray-50 w-full overflow-hidden">
+                        <CardContent className="p-3 sm:p-4 overflow-hidden">
+                          <div className="flex flex-col gap-2 w-full">
+                            <div className="flex-1 min-w-0 overflow-hidden">
+                              <div className="flex items-start gap-2 mb-1 flex-wrap">
+                                <h4 className="font-semibold text-gray-900 text-sm break-words flex-1 min-w-0">{plan.problem}</h4>
+                                <Badge className={`${getStatusColor(plan.status)} flex-shrink-0 text-xs whitespace-nowrap`}>
                                   {plan.status.replace('_', ' ')}
                                 </Badge>
                               </div>
-                              <p className="text-sm text-gray-600 mb-2">{plan.goal}</p>
+                              <p className="text-xs sm:text-sm text-gray-600 mb-2 break-words">{plan.goal}</p>
                               
                               {plan.interventions && plan.interventions.length > 0 && (
                                 <div className="mt-2">
                                   <p className="text-xs font-medium text-gray-700 mb-1">Interventions:</p>
-                                  <ul className="list-disc ml-5 text-xs text-gray-600 space-y-0.5">
+                                  <ul className="list-disc ml-4 text-xs text-gray-600 space-y-0.5">
                                     {plan.interventions.map((intervention, idx) => (
-                                      <li key={idx}>{intervention}</li>
+                                      <li key={idx} className="break-words">{intervention}</li>
                                     ))}
                                   </ul>
                                 </div>
                               )}
 
-                              <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                                {plan.frequency && <span><strong>Frequency:</strong> {plan.frequency}</span>}
+                              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-2 text-xs text-gray-500">
+                                {plan.frequency && <span className="break-words"><strong>Frequency:</strong> {plan.frequency}</span>}
                                 {plan.target_date && (
-                                  <span>
+                                  <span className="whitespace-nowrap">
                                     <strong>Target:</strong> {format(new Date(plan.target_date), 'MMM d, yyyy')}
                                   </span>
                                 )}
@@ -571,28 +580,29 @@ export default function CarePlanManagement() {
                             </div>
                           </div>
 
-                          <div className="flex gap-2 pt-3 border-t">
+                          <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t w-full">
                             <Select
                               value={plan.status}
                               onValueChange={(newStatus) => handleStatusChange(plan.id, newStatus)}
                             >
-                              <SelectTrigger className="w-36">
+                              <SelectTrigger className="w-full sm:w-40 h-11 text-sm">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="met">Goal Met</SelectItem>
-                                <SelectItem value="not_met">Not Met</SelectItem>
-                                <SelectItem value="revised">Revised</SelectItem>
+                                <SelectItem value="active" className="text-sm">Active</SelectItem>
+                                <SelectItem value="met" className="text-sm">Goal Met</SelectItem>
+                                <SelectItem value="not_met" className="text-sm">Not Met</SelectItem>
+                                <SelectItem value="revised" className="text-sm">Revised</SelectItem>
                               </SelectContent>
                             </Select>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleDelete(plan.id)}
-                              className="text-red-600 hover:text-red-700"
+                              className="text-red-600 hover:text-red-700 touch-target w-full sm:w-auto"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4 mr-1 sm:mr-0" />
+                              <span className="sm:hidden">Delete</span>
                             </Button>
                           </div>
                         </CardContent>
@@ -604,6 +614,7 @@ export default function CarePlanManagement() {
             );
           })
         )}
+      </div>
       </div>
     </div>
     </PremiumFeatureGate>
