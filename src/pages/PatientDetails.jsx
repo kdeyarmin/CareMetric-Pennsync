@@ -222,46 +222,49 @@ export default function PatientDetails() {
   }
 
   return (
-    <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
-      <Button
-        variant="outline"
-        onClick={() => navigate(createPageUrl("Patients"))}
-        className="mb-3 sm:mb-4 w-full sm:w-auto touch-target"
-        size="sm"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Patients
-      </Button>
+    <div className="w-full overflow-x-hidden">
+      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+        <Button
+          variant="outline"
+          onClick={() => navigate(createPageUrl("Patients"))}
+          className="mb-3 sm:mb-4 w-full sm:w-auto touch-target"
+          size="sm"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Patients
+        </Button>
 
-      <Card className={`mb-3 sm:mb-4 ${hasCriticalAlerts ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-300' : hasHighAlerts ? 'bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-300' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'}`}>
-        <CardContent className="p-3 sm:p-4">
-          <div className="flex items-start gap-3">
-            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-lg flex-shrink-0 relative ${hasCriticalAlerts ? 'bg-gradient-to-br from-red-500 to-orange-500' : hasHighAlerts ? 'bg-gradient-to-br from-orange-500 to-yellow-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'}`}>
-              <User className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+      <Card className={`mb-3 sm:mb-4 w-full ${hasCriticalAlerts ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-300' : hasHighAlerts ? 'bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-300' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'}`}>
+        <CardContent className="p-3 sm:p-4 w-full overflow-hidden">
+          <div className="flex items-start gap-2 sm:gap-3 w-full">
+            <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-lg flex-shrink-0 relative ${hasCriticalAlerts ? 'bg-gradient-to-br from-red-500 to-orange-500' : hasHighAlerts ? 'bg-gradient-to-br from-orange-500 to-yellow-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'}`}>
+              <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               {(hasCriticalAlerts || hasHighAlerts) && (
-                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full border-2 border-white animate-pulse flex items-center justify-center">
-                  <AlertTriangle className="w-2.5 h-2.5 text-white" />
+                <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-600 rounded-full border-2 border-white animate-pulse flex items-center justify-center">
+                  <AlertTriangle className="w-2 h-2 sm:w-2.5 sm:h-2.5 text-white" />
                 </div>
               )}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 break-words leading-tight">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="flex items-start justify-between gap-2 mb-1.5">
+                <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 break-words leading-tight">
                   {sanitizeInput(patient.first_name)} {sanitizeInput(patient.last_name)}
                 </h1>
-                <FavoriteButton 
-                  type="patient" 
-                  id={patient.id} 
-                  name={`${patient.first_name} ${patient.last_name}`} 
-                />
+                <div className="flex-shrink-0">
+                  <FavoriteButton 
+                    type="patient" 
+                    id={patient.id} 
+                    name={`${patient.first_name} ${patient.last_name}`} 
+                  />
+                </div>
               </div>
-              <div className="flex flex-col gap-1 text-xs sm:text-sm text-gray-600 mb-2">
-                <span>MRN: {sanitizeInput(patient.medical_record_number) || 'N/A'}</span>
-                <span>DOB: {patient.date_of_birth && isValid(new Date(patient.date_of_birth)) ? format(new Date(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}</span>
+              <div className="flex flex-col gap-0.5 text-xs text-gray-600 mb-1.5 overflow-hidden">
+                <span className="truncate">MRN: {sanitizeInput(patient.medical_record_number) || 'N/A'}</span>
+                <span className="truncate">DOB: {patient.date_of_birth && isValid(new Date(patient.date_of_birth)) ? format(new Date(patient.date_of_birth), 'MM/dd/yyyy') : 'N/A'}</span>
               </div>
-              <div className="flex flex-wrap items-start gap-1.5">
+              <div className="flex flex-wrap items-start gap-1 overflow-hidden">
                 <Badge 
-                  className={`text-xs ${patient.care_type === 'hospice' 
+                  className={`text-xs whitespace-nowrap ${patient.care_type === 'hospice' 
                     ? 'bg-purple-100 text-purple-800 border-purple-200' 
                     : 'bg-blue-100 text-blue-800 border-blue-200'
                   }`}
@@ -269,23 +272,23 @@ export default function PatientDetails() {
                   {patient.care_type === 'hospice' ? 'Hospice' : 'Home Health'}
                 </Badge>
                 {patient.primary_diagnosis && (
-                  <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
-                    {sanitizeInput(patient.primary_diagnosis).length > 30 ? sanitizeInput(patient.primary_diagnosis).substring(0, 30) + '...' : sanitizeInput(patient.primary_diagnosis)}
+                  <Badge className="bg-green-100 text-green-800 border-green-200 text-xs max-w-[200px] truncate">
+                    {sanitizeInput(patient.primary_diagnosis)}
                   </Badge>
                 )}
-                {patient.secondary_diagnoses && patient.secondary_diagnoses.length > 0 && patient.secondary_diagnoses.length <= 2 && (
-                  <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">
+                {patient.secondary_diagnoses && patient.secondary_diagnoses.length > 0 && (
+                  <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs whitespace-nowrap">
                     +{patient.secondary_diagnoses.length} more
                   </Badge>
                 )}
                 {hasCriticalAlerts && (
-                  <Badge className="bg-red-600 text-white animate-pulse text-xs">
+                  <Badge className="bg-red-600 text-white animate-pulse text-xs whitespace-nowrap">
                     <AlertTriangle className="w-3 h-3 mr-1" />
                     {criticalAlertCount} Critical
                   </Badge>
                 )}
                 {hasHighAlerts && !hasCriticalAlerts && (
-                  <Badge className="bg-orange-600 text-white text-xs">
+                  <Badge className="bg-orange-600 text-white text-xs whitespace-nowrap">
                     <AlertTriangle className="w-3 h-3 mr-1" />
                     {highAlertCount} High
                   </Badge>
@@ -297,12 +300,12 @@ export default function PatientDetails() {
       </Card>
 
       {/* AI-Generated Recommendations from OASIS */}
-      <div className="mb-3 sm:mb-4">
+      <div className="mb-3 sm:mb-4 w-full overflow-hidden">
         <PatientChartRecommendations patientId={patientId} />
       </div>
 
       {/* Care Coordination Tools */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4 w-full">
         <InterdisciplinaryTeamCoordinator
           patientId={patientId}
           patientData={patient}
@@ -556,33 +559,33 @@ export default function PatientDetails() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4 w-full">
+        <Card className="w-full overflow-hidden">
           <CardHeader className="p-3 sm:p-4">
             <CardTitle className="text-sm sm:text-base flex items-center gap-2">
               <User className="w-4 h-4 text-blue-600" />
               Patient Information
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
-            <div>
+          <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3 overflow-hidden">
+            <div className="overflow-hidden">
               <p className="text-sm font-medium text-gray-500 flex items-center gap-1">
-                <MapPin className="w-3 h-3" />
+                <MapPin className="w-3 h-3 flex-shrink-0" />
                 Address
               </p>
-              <p className="text-gray-900">{sanitizeInput(patient.address) || 'Not specified'}</p>
+              <p className="text-gray-900 text-sm break-words">{sanitizeInput(patient.address) || 'Not specified'}</p>
             </div>
-            <div>
+            <div className="overflow-hidden">
               <p className="text-sm font-medium text-gray-500 flex items-center gap-1">
-                <Phone className="w-3 h-3" />
+                <Phone className="w-3 h-3 flex-shrink-0" />
                 Phone
               </p>
-              <p className="text-gray-900">{sanitizeInput(patient.phone) || 'Not specified'}</p>
+              <p className="text-gray-900 text-sm break-words">{sanitizeInput(patient.phone) || 'Not specified'}</p>
             </div>
             {patient.email && (
-              <div>
+              <div className="overflow-hidden">
                 <p className="text-sm font-medium text-gray-500">Email</p>
-                <p className="text-gray-900">{sanitizeInput(patient.email)}</p>
+                <p className="text-gray-900 text-sm break-all">{sanitizeInput(patient.email)}</p>
               </div>
             )}
             <div>
@@ -592,33 +595,33 @@ export default function PatientDetails() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="w-full overflow-hidden">
           <CardHeader className="p-3 sm:p-4">
             <CardTitle className="text-sm sm:text-base flex items-center gap-2">
               <Heart className="w-4 h-4 text-red-600" />
               Emergency Contact
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+          <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3 overflow-hidden">
             {patient.emergency_contact_name ? (
               <>
-                <div>
+                <div className="overflow-hidden">
                   <p className="text-sm font-medium text-gray-500">Name</p>
-                  <p className="text-gray-900">{sanitizeInput(patient.emergency_contact_name)}</p>
+                  <p className="text-gray-900 text-sm break-words">{sanitizeInput(patient.emergency_contact_name)}</p>
                 </div>
                 {patient.emergency_contact_relationship && (
-                  <div>
+                  <div className="overflow-hidden">
                     <p className="text-sm font-medium text-gray-500">Relationship</p>
-                    <p className="text-gray-900">{sanitizeInput(patient.emergency_contact_relationship)}</p>
+                    <p className="text-gray-900 text-sm break-words">{sanitizeInput(patient.emergency_contact_relationship)}</p>
                   </div>
                 )}
                 {patient.emergency_contact_phone && (
-                  <div>
+                  <div className="overflow-hidden">
                     <p className="text-sm font-medium text-gray-500 flex items-center gap-1">
-                      <Phone className="w-3 h-3" />
+                      <Phone className="w-3 h-3 flex-shrink-0" />
                       Phone
                     </p>
-                    <p className="text-gray-900">{sanitizeInput(patient.emergency_contact_phone)}</p>
+                    <p className="text-gray-900 text-sm break-words">{sanitizeInput(patient.emergency_contact_phone)}</p>
                   </div>
                 )}
               </>
@@ -629,28 +632,28 @@ export default function PatientDetails() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4 w-full">
+        <Card className="w-full overflow-hidden">
           <CardHeader className="p-3 sm:p-4">
             <CardTitle className="text-sm sm:text-base flex items-center gap-2">
               <Stethoscope className="w-4 h-4 text-green-600" />
               Physician & Payor
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+          <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-hidden">
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Primary Care Physician</p>
               {patient.physician_name ? (
-                <div className="space-y-2">
-                  <p className="text-gray-900 font-medium">{sanitizeInput(patient.physician_name)}</p>
+                <div className="space-y-2 overflow-hidden">
+                  <p className="text-gray-900 font-medium text-sm break-words">{sanitizeInput(patient.physician_name)}</p>
                   {patient.physician_phone && (
-                    <p className="text-sm text-gray-600 flex items-center gap-1">
-                      <Phone className="w-3 h-3" />
-                      {sanitizeInput(patient.physician_phone)}
+                    <p className="text-sm text-gray-600 flex items-center gap-1 break-words">
+                      <Phone className="w-3 h-3 flex-shrink-0" />
+                      <span className="break-all">{sanitizeInput(patient.physician_phone)}</span>
                     </p>
                   )}
                   {patient.physician_email && (
-                    <p className="text-sm text-gray-600">{sanitizeInput(patient.physician_email)}</p>
+                    <p className="text-sm text-gray-600 break-all">{sanitizeInput(patient.physician_email)}</p>
                   )}
                 </div>
               ) : (
@@ -695,15 +698,15 @@ export default function PatientDetails() {
       </div>
 
       {/* Detailed Medical Information Tabs */}
-      <Card className="mb-3 sm:mb-4">
+      <Card className="mb-3 sm:mb-4 w-full overflow-hidden">
         <CardHeader className="p-3 sm:p-4">
           <CardTitle className="text-sm sm:text-base flex items-center gap-2">
             <Activity className="w-4 h-4 text-blue-600" />
             Medical Information
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-3 sm:p-4">
-          <Tabs defaultValue="allergies" className="w-full">
+        <CardContent className="p-3 sm:p-4 overflow-hidden">
+          <Tabs defaultValue="allergies" className="w-full overflow-hidden">
             <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 gap-0.5 h-auto p-0.5">
               <TabsTrigger value="allergies" className="text-xs py-2">Allergies</TabsTrigger>
               <TabsTrigger value="medications" className="text-xs py-2">Meds</TabsTrigger>
@@ -1041,7 +1044,7 @@ export default function PatientDetails() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="w-full overflow-hidden">
         <CardHeader className="p-3 sm:p-4">
           <div className="flex flex-col gap-3">
             <CardTitle className="text-sm sm:text-base flex items-center gap-2">
@@ -1057,7 +1060,7 @@ export default function PatientDetails() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="p-3 sm:p-4">
+        <CardContent className="p-3 sm:p-4 overflow-hidden">
           {showVisitForm && (
             <Card className="mb-3 sm:mb-4 bg-blue-50 border-blue-200">
               <CardContent className="p-3 space-y-3">
@@ -1113,6 +1116,7 @@ export default function PatientDetails() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
