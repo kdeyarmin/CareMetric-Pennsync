@@ -121,6 +121,7 @@ import AdvancedVoiceCommands from "../components/voice/AdvancedVoiceCommands";
 import PatientEducationPanel from "../components/smartNote/PatientEducationPanel";
 import RealTimeNoteFeedback from "../components/smartNote/RealTimeNoteFeedback";
 import UnifiedComplianceInsights from "../components/compliance/UnifiedComplianceInsights";
+import AdverseEventPredictor from "../components/predictive/AdverseEventPredictor";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1647,24 +1648,16 @@ Return JSON with:
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       queryClient.invalidateQueries({ queryKey: ['patientRecentVisits', selectedPatientId] });
 
-      // Trigger predictive risk analysis after visit completion
+      // Trigger AI-powered adverse event prediction after visit completion
       try {
-        await base44.functions.invoke('predictiveRiskAnalysis', {
-          patient_id: selectedPatientId
+        await base44.functions.invoke('predictAdverseEvents', {
+          patient_id: selectedPatientId,
+          trigger_source: 'note_completion'
         });
         queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts', selectedPatientId] });
+        queryClient.invalidateQueries({ queryKey: ['allPatientRiskAlerts'] });
       } catch (riskError) {
-        console.error('Risk analysis error:', riskError);
-      }
-
-      // Trigger predictive risk analysis after visit completion
-      try {
-        await base44.functions.invoke('predictiveRiskAnalysis', {
-          patient_id: selectedPatientId
-        });
-        queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts', selectedPatientId] });
-      } catch (riskError) {
-        console.error('Risk analysis error:', riskError);
+        console.error('Adverse event prediction error:', riskError);
       }
 
       logActivity(ActivityActions.VISIT_DOCUMENT, {
@@ -2369,6 +2362,19 @@ Return JSON with:
                     console.error('Error creating task:', error);
                   }
                 }}
+              />
+
+              {/* AI Adverse Event Prediction - Automatically triggered */}
+              <AdverseEventPredictor
+                patientId={selectedPatientId}
+                autoRun={true}
+                onPredictionComplete={(result) => {
+                  if (result.new_alerts_created > 0) {
+                    queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts', selectedPatientId] });
+                    queryClient.invalidateQueries({ queryKey: ['allPatientRiskAlerts'] });
+                  }
+                }}
+                compact={false}
               />
 
               {/* Next Steps Panel - Clear action-oriented summary */}
