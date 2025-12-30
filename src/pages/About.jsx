@@ -181,36 +181,36 @@ export default function About() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Hero Section */}
-        <div className="text-center space-y-4 py-8">
-          <div className="flex justify-center mb-4">
+        <div className="text-center space-y-3 sm:space-y-4 py-6 sm:py-8">
+          <div className="flex justify-center mb-3 sm:mb-4">
             <img 
               src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
               alt="CareMetric AI Logo"
-              className="w-24 h-24 object-contain"
+              className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 object-contain"
             />
           </div>
-          <h1 className="text-5xl md:text-6xl font-bold text-gray-900">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 px-4">
             CareMetric AI
           </h1>
-          <p className="text-2xl md:text-3xl text-blue-600 font-semibold">
+          <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-blue-600 font-semibold px-4">
             AI-Powered Clinical Documentation & Care Management
           </p>
-          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+          <p className="text-sm sm:text-base md:text-lg text-gray-600 max-w-3xl mx-auto px-4">
             Empowering home health nurses with artificial intelligence to deliver better patient care, 
             reduce documentation burden, and ensure Medicare compliance—all while saving 2-3 hours every day.
           </p>
         </div>
 
         {/* Key Benefits */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           {keyBenefits.map((benefit, idx) => (
             <Card key={idx} className="border-2 border-gray-200 hover:shadow-2xl transition-all duration-300">
-              <CardContent className="p-6">
-                <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${benefit.color} flex items-center justify-center mb-4 shadow-lg`}>
-                  <benefit.icon className="w-8 h-8 text-white" />
+              <CardContent className="p-4 sm:p-6">
+                <div className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br ${benefit.color} flex items-center justify-center mb-3 sm:mb-4 shadow-lg`}>
+                  <benefit.icon className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">{benefit.title}</h3>
-                <p className="text-gray-600">{benefit.description}</p>
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">{benefit.title}</h3>
+                <p className="text-sm sm:text-base text-gray-600">{benefit.description}</p>
               </CardContent>
             </Card>
           ))}
@@ -218,16 +218,16 @@ export default function About() {
 
         {/* Time Savings Metrics */}
         <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardHeader>
-            <CardTitle className="text-2xl text-center">Proven Impact on Your Practice</CardTitle>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-xl sm:text-2xl text-center">Proven Impact on Your Practice</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
               {timeMetrics.map((metric, idx) => (
                 <div key={idx} className="text-center">
-                  <metric.icon className={`w-12 h-12 mx-auto mb-2 ${metric.color}`} />
-                  <p className={`text-3xl font-bold ${metric.color}`}>{metric.value}</p>
-                  <p className="text-sm text-gray-600 mt-1">{metric.label}</p>
+                  <metric.icon className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 mx-auto mb-2 ${metric.color}`} />
+                  <p className={`text-2xl sm:text-3xl font-bold ${metric.color}`}>{metric.value}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">{metric.label}</p>
                 </div>
               ))}
             </div>
@@ -235,36 +235,38 @@ export default function About() {
         </Card>
 
         {/* Features by Category */}
-        <div className="space-y-6">
-          <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold text-gray-900 mb-3">Complete Feature Set</h2>
-            <p className="text-lg text-gray-600">Everything you need to excel in home health nursing</p>
+        <div className="space-y-4 sm:space-y-6">
+          <div className="text-center mb-6 sm:mb-8 px-4">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2 sm:mb-3">Complete Feature Set</h2>
+            <p className="text-base sm:text-lg text-gray-600">Everything you need to excel in home health nursing</p>
           </div>
 
           {features.map((category, idx) => (
             <Card key={idx} className="border-2 border-gray-200">
-              <CardHeader className={`${category.color} text-white`}>
-                <CardTitle className="text-2xl flex items-center gap-3">
-                  <category.icon className="w-8 h-8" />
-                  {category.category}
-                  <Badge className="bg-white/20 text-white ml-auto">
+              <CardHeader className={`${category.color} text-white p-4 sm:p-6`}>
+                <CardTitle className="text-lg sm:text-xl md:text-2xl flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <category.icon className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 flex-shrink-0" />
+                    <span>{category.category}</span>
+                  </div>
+                  <Badge className="bg-white/20 text-white sm:ml-auto">
                     {category.items.length} Features
                   </Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CardContent className="p-4 sm:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                   {category.items.map((item, itemIdx) => (
-                    <div key={itemIdx} className="flex gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0 mt-1" />
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h4 className="font-semibold text-gray-900">{item.name}</h4>
-                          <Badge variant="outline" className="text-xs whitespace-nowrap">
+                    <div key={itemIdx} className="flex gap-2 sm:gap-3 p-3 sm:p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0 mt-1" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2 mb-1">
+                          <h4 className="font-semibold text-sm sm:text-base text-gray-900 break-words">{item.name}</h4>
+                          <Badge variant="outline" className="text-xs whitespace-nowrap flex-shrink-0">
                             {item.time}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600">{item.description}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">{item.description}</p>
                       </div>
                     </div>
                   ))}
@@ -276,41 +278,41 @@ export default function About() {
 
         {/* How It Helps */}
         <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
-          <CardHeader>
-            <CardTitle className="text-3xl text-center text-purple-900">
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-2xl sm:text-3xl text-center text-purple-900 px-4">
               How CareMetric AI Transforms Your Practice
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center space-y-3">
-                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center shadow-lg">
-                  <Clock className="w-10 h-10 text-white" />
+          <CardContent className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+              <div className="text-center space-y-2 sm:space-y-3 px-4">
+                <div className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 mx-auto bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center shadow-lg">
+                  <Clock className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">Less Documentation Time</h3>
-                <p className="text-gray-600">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">Less Documentation Time</h3>
+                <p className="text-sm sm:text-base text-gray-600">
                   AI converts voice notes to Medicare-compliant documentation in seconds, reducing documentation time by 70%. 
                   Spend less time charting, more time caring. Typical nurses save 2-3 hours per day.
                 </p>
               </div>
 
-              <div className="text-center space-y-3">
-                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center shadow-lg">
-                  <CheckCircle2 className="w-10 h-10 text-white" />
+              <div className="text-center space-y-2 sm:space-y-3 px-4">
+                <div className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 mx-auto bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+                  <CheckCircle2 className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">Higher Accuracy</h3>
-                <p className="text-gray-600">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">Higher Accuracy</h3>
+                <p className="text-sm sm:text-base text-gray-600">
                   Real-time compliance checking ensures every note meets requirements. 
                   AI catches errors before submission, preventing costly denials and improving quality scores by 15-25%.
                 </p>
               </div>
 
-              <div className="text-center space-y-3">
-                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
-                  <Heart className="w-10 h-10 text-white" />
+              <div className="text-center space-y-2 sm:space-y-3 px-4">
+                <div className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 mx-auto bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
+                  <Heart className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">Better Patient Outcomes</h3>
-                <p className="text-gray-600">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">Better Patient Outcomes</h3>
+                <p className="text-sm sm:text-base text-gray-600">
                   Predictive analytics identify risks before they escalate. 
                   AI-driven care plans and alerts help you intervene early, reducing hospitalizations by up to 30%.
                 </p>
@@ -321,23 +323,23 @@ export default function About() {
 
         {/* Built for Nurses */}
         <Card className="border-2 border-blue-300 bg-white">
-          <CardHeader>
-            <CardTitle className="text-3xl text-center">Built By Nurses, For Nurses</CardTitle>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-2xl sm:text-3xl text-center px-4">Built By Nurses, For Nurses</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="prose max-w-none text-gray-700 space-y-4">
-              <p className="text-lg text-center">
+          <CardContent className="p-4 sm:p-6">
+            <div className="prose max-w-none text-gray-700 space-y-3 sm:space-y-4">
+              <p className="text-base sm:text-lg text-center px-4">
                 CareMetric AI understands the challenges you face every day: overwhelming documentation requirements, 
                 complex regulations, time pressures, and the constant juggling of patient care with administrative tasks.
               </p>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                <div className="space-y-3">
-                  <h4 className="text-xl font-bold text-blue-900 flex items-center gap-2">
-                    <Stethoscope className="w-6 h-6" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6">
+                <div className="space-y-2 sm:space-y-3 px-4">
+                  <h4 className="text-lg sm:text-xl font-bold text-blue-900 flex items-center gap-2">
+                    <Stethoscope className="w-5 h-5 sm:w-6 sm:h-6" />
                     Clinical Excellence
                   </h4>
-                  <ul className="space-y-2">
+                  <ul className="space-y-1 sm:space-y-2">
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                       <span>Evidence-based recommendations at point of care</span>
@@ -357,12 +359,12 @@ export default function About() {
                   </ul>
                 </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-xl font-bold text-blue-900 flex items-center gap-2">
-                    <ClipboardCheck className="w-6 h-6" />
+                <div className="space-y-2 sm:space-y-3 px-4">
+                  <h4 className="text-lg sm:text-xl font-bold text-blue-900 flex items-center gap-2">
+                    <ClipboardCheck className="w-5 h-5 sm:w-6 sm:h-6" />
                     Documentation Made Easy
                   </h4>
-                  <ul className="space-y-2">
+                  <ul className="space-y-1 sm:space-y-2">
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                       <span>Voice-to-text with medical terminology understanding</span>
@@ -383,12 +385,12 @@ export default function About() {
                 </div>
               </div>
 
-              <div className="bg-gradient-to-r from-blue-100 to-purple-100 p-6 rounded-lg mt-6 text-center">
-                <p className="text-lg font-semibold text-gray-900">
+              <div className="bg-gradient-to-r from-blue-100 to-purple-100 p-4 sm:p-6 rounded-lg mt-4 sm:mt-6 text-center">
+                <p className="text-base sm:text-lg font-semibold text-gray-900 px-4">
                   "CareMetric AI gave me my evenings back. I used to spend 2-3 hours every night finishing documentation. 
                   Now I'm done before I leave my last patient's home."
                 </p>
-                <p className="text-sm text-gray-600 mt-2">— Home Health Nurse User</p>
+                <p className="text-xs sm:text-sm text-gray-600 mt-2">— Home Health Nurse User</p>
               </div>
             </div>
           </CardContent>
@@ -396,42 +398,42 @@ export default function About() {
 
         {/* Technology Section */}
         <Card className="border-2 border-indigo-300 bg-gradient-to-r from-indigo-50 to-blue-50">
-          <CardHeader>
-            <CardTitle className="text-3xl text-center">Powered by Advanced AI Technology</CardTitle>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-2xl sm:text-3xl text-center px-4">Powered by Advanced AI Technology</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Brain className="w-12 h-12 text-indigo-600" />
-                <h4 className="text-xl font-bold text-gray-900">Natural Language Processing</h4>
-                <p className="text-gray-600">
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+              <div className="space-y-2 sm:space-y-3 px-4">
+                <Brain className="w-10 h-10 sm:w-12 sm:h-12 text-indigo-600" />
+                <h4 className="text-lg sm:text-xl font-bold text-gray-900">Natural Language Processing</h4>
+                <p className="text-sm sm:text-base text-gray-600">
                   Our AI understands medical terminology, clinical context, and documentation requirements. 
                   It can read your rough notes, understand what you mean, and generate compliant documentation automatically.
                 </p>
               </div>
 
-              <div className="space-y-3">
-                <BarChart3 className="w-12 h-12 text-indigo-600" />
-                <h4 className="text-xl font-bold text-gray-900">Predictive Analytics</h4>
-                <p className="text-gray-600">
+              <div className="space-y-2 sm:space-y-3 px-4">
+                <BarChart3 className="w-10 h-10 sm:w-12 sm:h-12 text-indigo-600" />
+                <h4 className="text-lg sm:text-xl font-bold text-gray-900">Predictive Analytics</h4>
+                <p className="text-sm sm:text-base text-gray-600">
                   Machine learning models analyze patient data to predict risks, suggest interventions, 
                   and identify care gaps before they become problems. Stay ahead of patient needs.
                 </p>
               </div>
 
-              <div className="space-y-3">
-                <Shield className="w-12 h-12 text-indigo-600" />
-                <h4 className="text-xl font-bold text-gray-900">HIPAA Compliant & Secure</h4>
-                <p className="text-gray-600">
+              <div className="space-y-2 sm:space-y-3 px-4">
+                <Shield className="w-10 h-10 sm:w-12 sm:h-12 text-indigo-600" />
+                <h4 className="text-lg sm:text-xl font-bold text-gray-900">HIPAA Compliant & Secure</h4>
+                <p className="text-sm sm:text-base text-gray-600">
                   Bank-level encryption, secure data storage, and full HIPAA compliance. 
                   Your patient data is protected with the highest security standards.
                 </p>
               </div>
 
-              <div className="space-y-3">
-                <Zap className="w-12 h-12 text-indigo-600" />
-                <h4 className="text-xl font-bold text-gray-900">Continuous Learning</h4>
-                <p className="text-gray-600">
+              <div className="space-y-2 sm:space-y-3 px-4">
+                <Zap className="w-10 h-10 sm:w-12 sm:h-12 text-indigo-600" />
+                <h4 className="text-lg sm:text-xl font-bold text-gray-900">Continuous Learning</h4>
+                <p className="text-sm sm:text-base text-gray-600">
                   Our AI learns from the latest Medicare guidelines, clinical best practices, 
                   and your documentation patterns to provide increasingly personalized assistance.
                 </p>
@@ -441,21 +443,21 @@ export default function About() {
         </Card>
 
         {/* Legal Documents Section */}
-        <div className="space-y-6">
-          <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold text-gray-900 mb-3">Legal & Compliance</h2>
-            <p className="text-lg text-gray-600">Our commitment to security, privacy, and compliance</p>
+        <div className="space-y-4 sm:space-y-6">
+          <div className="text-center mb-6 sm:mb-8 px-4">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2 sm:mb-3">Legal & Compliance</h2>
+            <p className="text-base sm:text-lg text-gray-600">Our commitment to security, privacy, and compliance</p>
           </div>
 
           {/* Terms of Use */}
           <Card className="border-2 border-gray-200">
-            <CardHeader className="bg-blue-600 text-white">
-              <CardTitle className="text-2xl flex items-center gap-3">
-                <FileText className="w-8 h-8" />
-                Terms of Use
+            <CardHeader className="bg-blue-600 text-white p-4 sm:p-6">
+              <CardTitle className="text-xl sm:text-2xl flex items-center gap-2 sm:gap-3">
+                <FileText className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+                <span className="break-words">Terms of Use</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <p className="text-sm text-gray-500 mb-4">
                 <strong>Effective Date:</strong> December 27, 2025 | <strong>Last Updated:</strong> December 27, 2025
               </p>
@@ -512,13 +514,13 @@ export default function About() {
 
           {/* Business Associate Agreement */}
           <Card className="border-2 border-gray-200">
-            <CardHeader className="bg-purple-600 text-white">
-              <CardTitle className="text-2xl flex items-center gap-3">
-                <Shield className="w-8 h-8" />
-                Business Associate Agreement (BAA)
+            <CardHeader className="bg-purple-600 text-white p-4 sm:p-6">
+              <CardTitle className="text-xl sm:text-2xl flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                <Shield className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+                <span className="break-words">Business Associate Agreement (BAA)</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <p className="text-sm text-gray-500 mb-4">
                 <strong>Effective Date:</strong> December 27, 2025
               </p>
@@ -564,13 +566,13 @@ export default function About() {
 
           {/* Privacy Policy */}
           <Card className="border-2 border-gray-200">
-            <CardHeader className="bg-green-600 text-white">
-              <CardTitle className="text-2xl flex items-center gap-3">
-                <Users className="w-8 h-8" />
-                Privacy Policy
+            <CardHeader className="bg-green-600 text-white p-4 sm:p-6">
+              <CardTitle className="text-xl sm:text-2xl flex items-center gap-2 sm:gap-3">
+                <Users className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+                <span className="break-words">Privacy Policy</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <p className="text-sm text-gray-500 mb-4">
                 <strong>Effective Date:</strong> December 27, 2025 | <strong>Last Updated:</strong> December 27, 2025
               </p>
@@ -624,21 +626,21 @@ export default function About() {
         </div>
 
         {/* Footer CTA */}
-        <div className="text-center py-12 space-y-4">
-          <h2 className="text-4xl font-bold text-gray-900">
+        <div className="text-center py-8 sm:py-12 space-y-3 sm:space-y-4 px-4">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">
             Ready to Transform Your Practice?
           </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-2xl mx-auto">
             Join thousands of home health nurses who have reclaimed their time and improved patient care with CareMetric AI.
           </p>
-          <div className="flex justify-center gap-4 pt-4">
-            <Badge className="bg-blue-600 text-white text-lg px-6 py-2">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 pt-3 sm:pt-4">
+            <Badge className="bg-blue-600 text-white text-sm sm:text-base md:text-lg px-4 sm:px-6 py-2">
               2-3 Hours Saved Daily
             </Badge>
-            <Badge className="bg-green-600 text-white text-lg px-6 py-2">
+            <Badge className="bg-green-600 text-white text-sm sm:text-base md:text-lg px-4 sm:px-6 py-2">
               99% Compliance Rate
             </Badge>
-            <Badge className="bg-purple-600 text-white text-lg px-6 py-2">
+            <Badge className="bg-purple-600 text-white text-sm sm:text-base md:text-lg px-4 sm:px-6 py-2">
               30% Fewer Hospitalizations
             </Badge>
           </div>

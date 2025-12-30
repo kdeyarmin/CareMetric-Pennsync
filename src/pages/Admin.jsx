@@ -234,40 +234,40 @@ If you have any questions, please contact your administrator.`,
         </Card>
 
         <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-sm font-medium mb-1">Active Patients</p>
-                <p className="text-4xl font-bold">{activePatients}</p>
+                <p className="text-green-100 text-xs sm:text-sm font-medium mb-1">Active Patients</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{activePatients}</p>
                 <p className="text-green-100 text-xs mt-1">of {patients.length} total</p>
               </div>
-              <Activity className="w-12 h-12 text-green-200" />
+              <Activity className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-green-200" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-sm font-medium mb-1">Visits This Week</p>
-                <p className="text-4xl font-bold">{visitsThisWeek}</p>
+                <p className="text-purple-100 text-xs sm:text-sm font-medium mb-1">Visits This Week</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{visitsThisWeek}</p>
                 <p className="text-purple-100 text-xs mt-1">{completedVisits} total completed</p>
               </div>
-              <CheckCircle2 className="w-12 h-12 text-purple-200" />
+              <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-purple-200" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none shadow-lg">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-100 text-sm font-medium mb-1">Avg Doc Time</p>
-                <p className="text-4xl font-bold">{Math.round(avgDocTime)}</p>
+                <p className="text-orange-100 text-xs sm:text-sm font-medium mb-1">Avg Doc Time</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{Math.round(avgDocTime)}</p>
                 <p className="text-orange-100 text-xs mt-1">minutes</p>
               </div>
-              <Database className="w-12 h-12 text-orange-200" />
+              <Database className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-orange-200" />
             </div>
           </CardContent>
         </Card>
@@ -275,14 +275,23 @@ If you have any questions, please contact your administrator.`,
 
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
-          <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
-          <TabsTrigger value="users" className="text-xs sm:text-sm">User Management</TabsTrigger>
-          <TabsTrigger value="compliance" className="text-xs sm:text-sm">Compliance Rules</TabsTrigger>
-          <TabsTrigger value="audit" className="text-xs sm:text-sm">Audit Trail</TabsTrigger>
-          <TabsTrigger value="security" className="text-xs sm:text-sm">Security Logs</TabsTrigger>
-          <TabsTrigger value="encryption" className="text-xs sm:text-sm">Encryption</TabsTrigger>
-          <TabsTrigger value="data" className="text-xs sm:text-sm">Data Browser</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-1 sm:gap-2 h-auto">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 sm:py-3">Overview</TabsTrigger>
+          <TabsTrigger value="users" className="text-xs sm:text-sm py-2 sm:py-3">Users</TabsTrigger>
+          <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 sm:py-3">
+            <span className="hidden md:inline">Compliance Rules</span>
+            <span className="md:hidden">Rules</span>
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="text-xs sm:text-sm py-2 sm:py-3">Audit</TabsTrigger>
+          <TabsTrigger value="security" className="text-xs sm:text-sm py-2 sm:py-3">
+            <span className="hidden md:inline">Security Logs</span>
+            <span className="md:hidden">Security</span>
+          </TabsTrigger>
+          <TabsTrigger value="encryption" className="text-xs sm:text-sm py-2 sm:py-3">
+            <span className="hidden lg:inline">Encryption</span>
+            <span className="lg:hidden">Encrypt</span>
+          </TabsTrigger>
+          <TabsTrigger value="data" className="text-xs sm:text-sm py-2 sm:py-3">Data</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -297,23 +306,23 @@ If you have any questions, please contact your administrator.`,
           />
 
           <Card>
-            <CardHeader>
-              <CardTitle>System Health</CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">System Health</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+            <CardContent className="p-4 sm:p-6">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 sm:p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" />
                     <div>
-                      <p className="font-semibold text-gray-900">System Online</p>
-                      <p className="text-sm text-gray-600">All services operational</p>
+                      <p className="font-semibold text-sm sm:text-base text-gray-900">System Online</p>
+                      <p className="text-xs sm:text-sm text-gray-600">All services operational</p>
                     </div>
                   </div>
-                  <Badge className="bg-green-100 text-green-800">Healthy</Badge>
+                  <Badge className="bg-green-100 text-green-800 text-xs sm:text-sm">Healthy</Badge>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                   <div className="p-4 bg-gray-50 rounded-lg border">
                     <p className="text-sm text-gray-600 mb-1">Database Records</p>
                     <p className="text-2xl font-bold text-gray-900">
@@ -330,28 +339,28 @@ If you have any questions, please contact your administrator.`,
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Recent Activity</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
+            <CardContent className="p-4 sm:p-6">
+              <div className="space-y-2 sm:space-y-3">
                 {visits.slice(0, 5).map((visit) => {
                   const patient = patients.find(p => p.id === visit.patient_id);
                   return (
-                    <div key={visit.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-gray-900">
+                    <div key={visit.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm sm:text-base text-gray-900 break-words">
                           Visit: {patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown Patient'}
                         </p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs sm:text-sm text-gray-600">
                           {visit.visit_date} • {visit.visit_type.replace(/_/g, ' ')}
                         </p>
                       </div>
-                      <Badge className={
+                      <Badge className={`flex-shrink-0 text-xs ${
                         visit.status === 'completed' ? 'bg-green-100 text-green-800' :
                         visit.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-blue-100 text-blue-800'
-                      }>
+                      }`}>
                         {visit.status}
                       </Badge>
                     </div>
@@ -395,14 +404,14 @@ If you have any questions, please contact your administrator.`,
           <AIAnomalyDetector securityLogs={securityLogs} />
 
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5" />
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
                 Security Event Summary
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-3 gap-4">
+            <CardContent className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                 {Object.entries(securityEventCounts)
                   .sort(([,a], [,b]) => b - a)
                   .slice(0, 6)
@@ -417,42 +426,46 @@ If you have any questions, please contact your administrator.`,
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Security Events</CardTitle>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Recent Security Events</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Details</TableHead>
-                  </TableRow>
-                </TableHeader>
+            <CardContent className="p-0 sm:p-6">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs sm:text-sm">Timestamp</TableHead>
+                      <TableHead className="text-xs sm:text-sm">User</TableHead>
+                      <TableHead className="text-xs sm:text-sm">Action</TableHead>
+                      <TableHead className="hidden md:table-cell text-xs sm:text-sm">Details</TableHead>
+                    </TableRow>
+                  </TableHeader>
                 <TableBody>
                   {securityLogs.slice(0, 20).map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="text-sm">
-                        {format(new Date(log.timestamp), 'MMM d, yyyy HH:mm:ss')}
+                      <TableCell className="text-xs sm:text-sm whitespace-nowrap">
+                        <span className="hidden sm:inline">{format(new Date(log.timestamp), 'MMM d, yyyy HH:mm:ss')}</span>
+                        <span className="sm:hidden">{format(new Date(log.timestamp), 'MMM d HH:mm')}</span>
                       </TableCell>
-                      <TableCell className="text-sm">{log.user_email}</TableCell>
+                      <TableCell className="text-xs sm:text-sm max-w-[100px] sm:max-w-none truncate">{log.user_email}</TableCell>
                       <TableCell>
                         <Badge variant={
                           log.action.includes('UNAUTHORIZED') || log.action.includes('ERROR') 
                             ? 'destructive' 
                             : 'outline'
-                        }>
-                          {log.action}
+                        } className="text-xs">
+                          <span className="hidden sm:inline">{log.action}</span>
+                          <span className="sm:hidden">{log.action.substring(0, 10)}</span>
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600">
+                      <TableCell className="hidden md:table-cell text-xs sm:text-sm text-gray-600 max-w-[200px] truncate">
                         {log.details ? JSON.stringify(log.details).substring(0, 50) + '...' : 'N/A'}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

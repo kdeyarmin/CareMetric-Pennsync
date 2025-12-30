@@ -416,21 +416,21 @@ export default function Features() {
     : null;
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Features Guide</h1>
-        <p className="text-gray-600">Learn how to use CareMetric AI to streamline your nursing practice</p>
+    <div className="p-3 sm:p-4 md:p-8 max-w-7xl mx-auto">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Features Guide</h1>
+        <p className="text-sm sm:text-base text-gray-600">Learn how to use CareMetric AI to streamline your nursing practice</p>
       </div>
 
       {/* Search */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
           <Input
             placeholder="Search features..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 h-12 text-base"
+            className="pl-9 sm:pl-10 h-11 sm:h-12 text-sm sm:text-base"
           />
         </div>
       </div>
@@ -447,12 +447,13 @@ export default function Features() {
 
       {/* Feature Categories */}
       {!filteredFeatures && (
-        <Tabs defaultValue={features[0].category} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
+        <Tabs defaultValue={features[0].category} className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 h-auto gap-1 sm:gap-2">
             {features.map((cat) => (
-              <TabsTrigger key={cat.category} value={cat.category} className="gap-2 py-3">
-                <cat.icon className="w-4 h-4" />
+              <TabsTrigger key={cat.category} value={cat.category} className="gap-1 sm:gap-2 py-2 sm:py-3 text-xs sm:text-sm">
+                <cat.icon className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden md:inline">{cat.category}</span>
+                <span className="md:hidden truncate">{cat.category.split(' ')[0]}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -470,15 +471,15 @@ export default function Features() {
       )}
 
       {/* Quick Tips Card */}
-      <Card className="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lightbulb className="w-5 h-5 text-indigo-600" />
+      <Card className="mt-6 sm:mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
             Quick Tips for Success
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid md:grid-cols-2 gap-4">
+        <CardContent className="p-4 sm:p-6 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
               <h4 className="font-semibold text-sm text-indigo-900">🎯 For Best AI Results:</h4>
               <ul className="text-sm text-gray-700 space-y-1">
@@ -529,15 +530,15 @@ function FeatureCard({ feature }) {
 
   return (
     <Card className={`border-2 bg-gradient-to-r ${colorMap[feature.categoryColor] || colorMap.blue}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 flex-1">
-            <div className={`p-2 bg-white rounded-lg shadow`}>
-              <feature.icon className={`w-6 h-6 ${iconColorMap[feature.categoryColor] || iconColorMap.blue}`} />
+      <CardHeader className="pb-3 p-3 sm:p-6">
+        <div className="flex flex-col sm:flex-row items-start gap-3">
+          <div className="flex items-start gap-2 sm:gap-3 flex-1 w-full min-w-0">
+            <div className={`p-1.5 sm:p-2 bg-white rounded-lg shadow flex-shrink-0`}>
+              <feature.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${iconColorMap[feature.categoryColor] || iconColorMap.blue}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <CardTitle className="text-lg mb-1">{feature.name}</CardTitle>
-              <p className="text-sm text-gray-700">{feature.description}</p>
+              <CardTitle className="text-base sm:text-lg mb-1 break-words">{feature.name}</CardTitle>
+              <p className="text-xs sm:text-sm text-gray-700">{feature.description}</p>
               {feature.category && (
                 <Badge variant="outline" className="mt-2 text-xs">
                   {feature.category}
@@ -545,17 +546,18 @@ function FeatureCard({ feature }) {
               )}
             </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2 w-full sm:w-auto sm:flex-shrink-0">
             <Button
               size="sm"
               variant="outline"
               onClick={() => setExpanded(!expanded)}
+              className="flex-1 sm:flex-none min-h-[36px] text-xs sm:text-sm"
             >
               {expanded ? 'Hide' : 'Learn More'}
             </Button>
             {feature.page && (
-              <Link to={createPageUrl(feature.page)}>
-                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+              <Link to={createPageUrl(feature.page)} className="flex-1 sm:flex-none">
+                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 w-full min-h-[36px] text-xs sm:text-sm">
                   Try It
                 </Button>
               </Link>
@@ -565,28 +567,28 @@ function FeatureCard({ feature }) {
       </CardHeader>
       
       {expanded && (
-        <CardContent className="pt-0 space-y-4 border-t bg-white/50">
+        <CardContent className="pt-0 p-3 sm:p-6 space-y-3 sm:space-y-4 border-t bg-white/50">
           <div>
-            <h4 className="font-semibold text-sm flex items-center gap-2 mb-2 text-gray-900">
-              <CheckCircle2 className="w-4 h-4 text-green-600" />
+            <h4 className="font-semibold text-xs sm:text-sm flex items-center gap-2 mb-2 text-gray-900">
+              <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
               How to Use
             </h4>
             <ol className="space-y-1">
               {feature.howTo.map((step, idx) => (
-                <li key={idx} className="text-sm text-gray-700 pl-2">{step}</li>
+                <li key={idx} className="text-xs sm:text-sm text-gray-700 pl-2">{step}</li>
               ))}
             </ol>
           </div>
           
           <div>
-            <h4 className="font-semibold text-sm flex items-center gap-2 mb-2 text-gray-900">
-              <Sparkles className="w-4 h-4 text-purple-600" />
+            <h4 className="font-semibold text-xs sm:text-sm flex items-center gap-2 mb-2 text-gray-900">
+              <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600 flex-shrink-0" />
               Best Practices
             </h4>
             <ul className="space-y-1">
               {feature.bestPractices.map((practice, idx) => (
-                <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
-                  <span className="text-purple-600 font-bold">•</span>
+                <li key={idx} className="text-xs sm:text-sm text-gray-700 flex items-start gap-2">
+                  <span className="text-purple-600 font-bold flex-shrink-0">•</span>
                   <span>{practice}</span>
                 </li>
               ))}

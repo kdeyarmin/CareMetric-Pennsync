@@ -578,15 +578,15 @@ export default function PatientDetails() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
         <Card>
           <CardHeader className="p-3 sm:p-6">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <User className="w-5 h-5 text-blue-600" />
+              <User className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
               Patient Information
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="p-3 sm:p-6 space-y-2 sm:space-y-3">
             <div>
               <p className="text-sm font-medium text-gray-500 flex items-center gap-1">
                 <MapPin className="w-3 h-3" />
@@ -615,13 +615,13 @@ export default function PatientDetails() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Heart className="w-5 h-5 text-red-600" />
+          <CardHeader className="p-3 sm:p-6">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
               Emergency Contact
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="p-3 sm:p-6 space-y-2 sm:space-y-3">
             {patient.emergency_contact_name ? (
               <>
                 <div>
@@ -651,15 +651,15 @@ export default function PatientDetails() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Stethoscope className="w-5 h-5 text-green-600" />
+          <CardHeader className="p-3 sm:p-6">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <Stethoscope className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
               Physician & Payor
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-3 sm:p-6 space-y-3 sm:space-y-4">
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Primary Care Physician</p>
               {patient.physician_name ? (
@@ -717,24 +717,25 @@ export default function PatientDetails() {
       </div>
 
       {/* Detailed Medical Information Tabs */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-blue-600" />
+      <Card className="mb-4 sm:mb-6">
+        <CardHeader className="p-3 sm:p-6">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
             Medical Information
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 sm:p-6">
           <Tabs defaultValue="allergies" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="allergies">Allergies</TabsTrigger>
-              <TabsTrigger value="medications">Medications</TabsTrigger>
-              <TabsTrigger value="history">Medical History</TabsTrigger>
-              <TabsTrigger value="careplans">Care Plans</TabsTrigger>
-              <TabsTrigger value="visits">Visit Notes</TabsTrigger>
-              <TabsTrigger value="documents" className="flex items-center gap-1">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 gap-1">
+              <TabsTrigger value="allergies" className="text-xs sm:text-sm">Allergies</TabsTrigger>
+              <TabsTrigger value="medications" className="text-xs sm:text-sm">Meds</TabsTrigger>
+              <TabsTrigger value="history" className="text-xs sm:text-sm">History</TabsTrigger>
+              <TabsTrigger value="careplans" className="text-xs sm:text-sm">Plans</TabsTrigger>
+              <TabsTrigger value="visits" className="text-xs sm:text-sm">Visits</TabsTrigger>
+              <TabsTrigger value="documents" className="flex items-center gap-1 text-xs sm:text-sm">
                 <Sparkles className="w-3 h-3" />
-                Documents
+                <span className="hidden sm:inline">Documents</span>
+                <span className="sm:hidden">Docs</span>
               </TabsTrigger>
             </TabsList>
 
@@ -750,19 +751,19 @@ export default function PatientDetails() {
             </TabsContent>
 
             {/* Medications Tab */}
-            <TabsContent value="medications" className="space-y-4">
+            <TabsContent value="medications" className="space-y-3 sm:space-y-4">
               {patient.current_medications && patient.current_medications.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {patient.current_medications.map((med, index) => (
                     <Card key={index} className="border-l-4 border-l-blue-500">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Pill className="w-4 h-4 text-blue-600" />
-                              <h4 className="font-semibold text-gray-900">{sanitizeInput(med.name)}</h4>
-                            </div>
-                            <div className="space-y-1 text-sm">
+                      <CardContent className="p-3 sm:p-4">
+                        <div className="flex flex-col gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Pill className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                            <h4 className="font-semibold text-gray-900 break-words">{sanitizeInput(med.name)}</h4>
+                          </div>
+                          <div className="space-y-1 text-xs sm:text-sm">
                               <p className="text-gray-700">
                                 <span className="font-medium">Dosage:</span> {sanitizeInput(med.dosage) || 'Not specified'}
                               </p>
@@ -1019,22 +1020,26 @@ export default function PatientDetails() {
             {/* Documents Tab */}
             <TabsContent value="documents" className="space-y-4">
               <Tabs defaultValue="discharge" className="space-y-4">
-                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2">
-                  <TabsTrigger value="discharge" className="gap-2">
-                    <FileOutput className="w-4 h-4" />
-                    Discharge
+                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-1 sm:gap-2">
+                  <TabsTrigger value="discharge" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+                    <FileOutput className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Discharge</span>
+                    <span className="sm:hidden">DC</span>
                   </TabsTrigger>
-                  <TabsTrigger value="referral" className="gap-2">
-                    <FileText className="w-4 h-4" />
-                    Referral
+                  <TabsTrigger value="referral" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+                    <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Referral</span>
+                    <span className="sm:hidden">Ref</span>
                   </TabsTrigger>
-                  <TabsTrigger value="education" className="gap-2">
-                    <GraduationCap className="w-4 h-4" />
-                    Education
+                  <TabsTrigger value="education" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+                    <GraduationCap className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Education</span>
+                    <span className="sm:hidden">Edu</span>
                   </TabsTrigger>
-                  <TabsTrigger value="progress" className="gap-2">
-                    <TrendingUp className="w-4 h-4" />
-                    Progress
+                  <TabsTrigger value="progress" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+                    <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Progress</span>
+                    <span className="sm:hidden">Prog</span>
                   </TabsTrigger>
                 </TabsList>
 
@@ -1060,50 +1065,52 @@ export default function PatientDetails() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
+        <CardHeader className="p-3 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
               Quick Actions
             </CardTitle>
             <Button
               onClick={() => setShowVisitForm(!showVisitForm)}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto min-h-[44px]"
             >
               <Plus className="w-4 h-4 mr-2" />
               Schedule Visit
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 sm:p-6">
           {showVisitForm && (
-            <Card className="mb-6 bg-blue-50 border-blue-200">
-              <CardContent className="p-4 space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
+            <Card className="mb-4 sm:mb-6 bg-blue-50 border-blue-200">
+              <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                   <div>
-                    <Label>Visit Date</Label>
+                    <Label className="text-sm">Visit Date</Label>
                     <Input
                       type="date"
                       value={newVisit.visit_date}
                       onChange={(e) => setNewVisit({...newVisit, visit_date: e.target.value})}
+                      className="h-11 sm:h-10"
                     />
                   </div>
                   <div>
-                    <Label>Visit Time</Label>
+                    <Label className="text-sm">Visit Time</Label>
                     <Input
                       type="time"
                       value={newVisit.visit_time}
                       onChange={(e) => setNewVisit({...newVisit, visit_time: e.target.value})}
+                      className="h-11 sm:h-10"
                     />
                   </div>
                 </div>
                 <div>
-                  <Label>Visit Type</Label>
+                  <Label className="text-sm">Visit Type</Label>
                   <Select
                     value={newVisit.visit_type}
                     onValueChange={(value) => setNewVisit({...newVisit, visit_type: value})}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11 sm:h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1116,11 +1123,11 @@ export default function PatientDetails() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setShowVisitForm(false)}>
+                <div className="flex flex-col sm:flex-row justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowVisitForm(false)} className="w-full sm:w-auto min-h-[44px]">
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateVisit} className="bg-blue-600 hover:bg-blue-700">
+                  <Button onClick={handleCreateVisit} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto min-h-[44px]">
                     Create Visit
                   </Button>
                 </div>
