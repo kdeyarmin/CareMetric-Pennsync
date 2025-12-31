@@ -66,35 +66,40 @@ export const useAppleIAP = () => {
 
     setIsProcessing(true);
     
-    try {
-      // Send purchase request to native iOS/macOS app
-      return new Promise((resolve, reject) => {
-        const messageId = `purchase_${Date.now()}`;
-        
-        // Listen for response from native app
-        window.addEventListener('iapResponse', function handler(event) {
-          if (event.detail.messageId === messageId) {
-            window.removeEventListener('iapResponse', handler);
-            
-            if (event.detail.success) {
-              resolve(event.detail);
-            } else {
-              reject(new Error(event.detail.error || 'Purchase failed'));
-            }
+    // Send purchase request to native iOS/macOS app
+    return new Promise((resolve, reject) => {
+      const messageId = `purchase_${Date.now()}`;
+      let timeoutId;
+      
+      // Listen for response from native app
+      window.addEventListener('iapResponse', function handler(event) {
+        if (event.detail.messageId === messageId) {
+          window.removeEventListener('iapResponse', handler);
+          clearTimeout(timeoutId);
+          setIsProcessing(false);
+          
+          if (event.detail.success) {
+            resolve(event.detail);
+          } else {
+            reject(new Error(event.detail.error || 'Purchase failed'));
           }
-        });
-
-        // Send purchase request to native app
-        window.webkit.messageHandlers.iap.postMessage({
-          action: 'purchase',
-          productId: productId,
-          userEmail: userEmail,
-          messageId: messageId
-        });
+        }
       });
-    } finally {
-      setIsProcessing(false);
-    }
+
+      // Timeout after 60 seconds
+      timeoutId = setTimeout(() => {
+        setIsProcessing(false);
+        reject(new Error('Purchase request timed out. Please try again.'));
+      }, 60000);
+
+      // Send purchase request to native app
+      window.webkit.messageHandlers.iap.postMessage({
+        action: 'purchase',
+        productId: productId,
+        userEmail: userEmail,
+        messageId: messageId
+      });
+    });
   };
 
   const restorePurchases = async () => {
