@@ -248,8 +248,8 @@ export default function Layout({ children, currentPageName }) {
         <header
           className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 z-[200] overflow-x-hidden"
           style={{
-            height: mobileHeaderTotalHeight,
-            paddingTop: "env(safe-area-inset-top)"
+            paddingTop: "env(safe-area-inset-top)",
+            paddingBottom: 0
           }}
         >
           <div
