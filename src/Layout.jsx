@@ -100,9 +100,9 @@ export default function Layout({ children, currentPageName }) {
         ]
       : [];
 
-  // iOS-safe computed paddings
-  const mobileHeaderTotalHeight = `calc(${HEADER_BAR_HEIGHT_REM}rem + env(safe-area-inset-top))`;
-  const mobileBottomNavTotalHeight = `calc(${BOTTOM_NAV_HEIGHT_REM}rem + env(safe-area-inset-bottom))`;
+  // iOS-safe computed paddings - use max() to ensure minimum height even without safe area
+  const mobileHeaderTotalHeight = `calc(${HEADER_BAR_HEIGHT_REM}rem + max(env(safe-area-inset-top), 0px))`;
+  const mobileBottomNavTotalHeight = `calc(${BOTTOM_NAV_HEIGHT_REM}rem + max(env(safe-area-inset-bottom), 0px))`;
 
   return (
     <div className="min-h-screen bg-blue-100 flex overflow-x-hidden">
