@@ -90,25 +90,26 @@ export default function SubscriptionPlans() {
         const result = await purchaseSubscription(productId, currentUser?.email);
         
         // Verify with backend
-        const verifyResponse = await base44.functions.invoke('verifyAppleReceipt', {
-          receiptData: result.receiptData,
-          productId: productId,
-          transactionId: result.transactionId,
-          purchaseDate: result.purchaseDate,
-          expiryDate: result.expiryDate
-        });
-        
-        console.log('Verification response:', verifyResponse);
-        
-        setIsLoading(false);
-        
-        if (verifyResponse.data?.success) {
+        try {
+          const verifyResponse = await base44.functions.invoke('verifyAppleReceipt', {
+            receiptData: result.receiptData,
+            productId: productId,
+            transactionId: result.transactionId,
+            purchaseDate: result.purchaseDate,
+            expiryDate: result.expiryDate
+          });
+          
+          console.log('Verification response:', verifyResponse);
+          
+          setIsLoading(false);
           alert('Subscription activated successfully!');
           // Force refresh subscription data
           await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
           navigate(createPageUrl('Dashboard'));
-        } else {
-          alert('Subscription verification failed. Please contact support.');
+        } catch (verifyError) {
+          console.error('Verification error:', verifyError);
+          setIsLoading(false);
+          alert('Subscription verification failed: ' + (verifyError.message || 'Unknown error'));
         }
       } catch (error) {
         console.error('Apple IAP error:', error);
