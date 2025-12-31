@@ -98,13 +98,13 @@ export default function SubscriptionPlans() {
           expiryDate: result.expiryDate
         });
         
+        setIsLoading(false);
         alert('Subscription activated successfully!');
         navigate(createPageUrl('Dashboard'));
       } catch (error) {
         console.error('Apple IAP error:', error);
-        alert('Purchase failed: ' + error.message);
-      } finally {
         setIsLoading(false);
+        alert('Purchase failed: ' + error.message);
       }
     } else {
       // Use Stripe for web/Android
