@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Calendar, AlertCircle, ExternalLink, Crown, Apple, Sparkles, Clock, ArrowRight, CheckCircle2 } from "lucide-react";
+import { CreditCard, Calendar, AlertCircle, ExternalLink, Crown, Sparkles, Clock, ArrowRight, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -15,8 +15,6 @@ import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 export const publicPage = true;
 
 export default function Billing() {
-  const isApple = isApplePlatform();
-  const { restorePurchases } = useAppleIAP();
   
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -44,22 +42,7 @@ export default function Billing() {
   });
 
   const handleManageBilling = () => {
-    if (isApple) {
-      // Open iOS Settings for subscription management
-      alert('To manage your Apple subscription, please go to:\n\nSettings → [Your Name] → Subscriptions → CareMetric AI');
-    } else {
-      portalMutation.mutate();
-    }
-  };
-
-  const handleRestorePurchases = async () => {
-    try {
-      await restorePurchases();
-      alert('Purchases restored successfully!');
-      window.location.reload();
-    } catch (error) {
-      alert('Failed to restore purchases: ' + error.message);
-    }
+    portalMutation.mutate();
   };
 
   const getStatusColor = (status) => {
@@ -157,16 +140,6 @@ export default function Billing() {
       {/* Trial Status Banner */}
       {subscription && <TrialStatusBanner subscription={subscription} />}
 
-      {/* Apple IAP Notice */}
-      {isApple && (
-        <Alert className="mb-6 bg-gray-900 border-gray-700">
-          <Apple className="w-4 h-4 text-white" />
-          <AlertDescription className="text-white">
-            Your subscription is managed through Apple. Changes must be made in iOS/macOS Settings.
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Current Plan */}
       <Card className="mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-2">
         <CardHeader>
@@ -224,28 +197,18 @@ export default function Billing() {
               {!hasSubscription ? (
                 <Link to={createPageUrl("SubscriptionPlans")} className="flex-1">
                   <Button className="w-full bg-indigo-600 hover:bg-indigo-700" size="lg">
-                    {isApple && <Apple className="w-4 h-4 mr-2" />}
                     Upgrade to Premium
                   </Button>
                 </Link>
               ) : (
                 <Button
                   onClick={handleManageBilling}
-                  disabled={!isApple && portalMutation.isPending}
+                  disabled={portalMutation.isPending}
                   className="flex-1"
                   size="lg"
                 >
-                  {isApple ? <Apple className="w-4 h-4 mr-2" /> : <CreditCard className="w-4 h-4 mr-2" />}
-                  {!isApple && portalMutation.isPending ? 'Loading...' : 'Manage Subscription'}
-                </Button>
-              )}
-              {isApple && (
-                <Button
-                  onClick={handleRestorePurchases}
-                  variant="outline"
-                  size="lg"
-                >
-                  Restore Purchases
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  {portalMutation.isPending ? 'Loading...' : 'Manage Subscription'}
                 </Button>
               )}
             </div>
@@ -257,78 +220,44 @@ export default function Billing() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {isApple ? <Apple className="w-5 h-5 text-gray-700" /> : <CreditCard className="w-5 h-5 text-gray-700" />}
+            <CreditCard className="w-5 h-5 text-gray-700" />
             Payment & Billing
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {isApple ? (
-              <>
-                <p className="text-gray-600">
-                  Manage your Apple subscription:
-                </p>
-                <ul className="space-y-2 ml-4">
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">View and manage subscriptions in iOS/macOS Settings</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">Change or cancel subscription plans</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">View purchase history</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">Restore purchases on new devices</span>
-                  </li>
-                </ul>
-                <Alert className="bg-blue-50 border-blue-200 mt-4">
-                  <AlertCircle className="w-4 h-4 text-blue-600" />
-                  <AlertDescription className="text-blue-800">
-                    To manage your subscription: Settings → [Your Name] → Subscriptions → CareMetric AI
-                  </AlertDescription>
-                </Alert>
-              </>
-            ) : (
-              <>
-                <p className="text-gray-600">
-                  Use the Stripe Customer Portal to:
-                </p>
-                <ul className="space-y-2 ml-4">
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">Update payment methods</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">View billing history and invoices</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">Update billing information</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
-                    <span className="text-gray-700">Cancel your subscription</span>
-                  </li>
-                </ul>
+            <p className="text-gray-600">
+              Use the Stripe Customer Portal to:
+            </p>
+            <ul className="space-y-2 ml-4">
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">•</span>
+                <span className="text-gray-700">Update payment methods</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">•</span>
+                <span className="text-gray-700">View billing history and invoices</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">•</span>
+                <span className="text-gray-700">Update billing information</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">•</span>
+                <span className="text-gray-700">Cancel your subscription</span>
+              </li>
+            </ul>
 
-                {hasSubscription && (
-                  <Button
-                    onClick={handleManageBilling}
-                    disabled={portalMutation.isPending}
-                    variant="outline"
-                    className="w-full mt-4"
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Open Billing Portal
-                  </Button>
-                )}
-              </>
+            {hasSubscription && (
+              <Button
+                onClick={handleManageBilling}
+                disabled={portalMutation.isPending}
+                variant="outline"
+                className="w-full mt-4"
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Open Billing Portal
+              </Button>
             )}
           </div>
         </CardContent>
