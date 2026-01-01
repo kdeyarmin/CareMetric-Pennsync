@@ -1,18 +1,23 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { Check, Loader2, Sparkles, Apple } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { isApplePlatform } from "@/components/utils/platformDetection";
+import { useAppleIAP, APPLE_PRODUCTS } from "@/components/subscription/AppleIAPManager";
 
 
 export default function SubscriptionPlans() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('monthly');
+  const isApple = isApplePlatform();
+  const { purchaseSubscription, isProcessing } = useAppleIAP();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -67,13 +72,58 @@ export default function SubscriptionPlans() {
     setIsLoading(true);
     setSelectedPlan(plan);
     
-    const planObj = plans.find(p => p.id === plan);
-    if (!planObj || !planObj.priceId) {
-      alert('Invalid plan selected');
-      setIsLoading(false);
-      return;
+    // Handle Apple IAP for iOS
+    if (isApple) {
+      try {
+        const productMap = {
+          'monthly': APPLE_PRODUCTS.monthly,
+          'quarterly': APPLE_PRODUCTS.quarterly,
+          'biannual': APPLE_PRODUCTS.semiannual,
+          'yearly': APPLE_PRODUCTS.annual
+        };
+
+        const productId = productMap[plan];
+        if (!productId) {
+          alert('Invalid subscription plan');
+          setIsLoading(false);
+          return;
+        }
+
+        const result = await purchaseSubscription(productId, currentUser?.email);
+
+        // Verify with backend
+        const verifyResponse = await base44.functions.invoke('verifyAppleReceipt', {
+          receiptData: result.receiptData,
+          productId: productId,
+          transactionId: result.transactionId,
+          purchaseDate: result.purchaseDate,
+          expiryDate: result.expiryDate
+        });
+
+        setIsLoading(false);
+
+        if (verifyResponse?.data?.success) {
+          alert('Subscription activated successfully!');
+          await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
+          navigate(createPageUrl('Dashboard'));
+        } else {
+          alert('Purchase completed but verification failed. Please contact support.');
+        }
+      } catch (error) {
+        console.error('Apple IAP error:', error);
+        setIsLoading(false);
+        alert('Purchase failed: ' + error.message);
+      }
+    } else {
+      // Use Stripe for web/Android
+      const planObj = plans.find(p => p.id === plan);
+      if (!planObj || !planObj.priceId) {
+        alert('Invalid plan selected');
+        setIsLoading(false);
+        return;
+      }
+      checkoutMutation.mutate(planObj.priceId);
     }
-    checkoutMutation.mutate(planObj.priceId);
   };
 
   const hasActiveSubscription = subscription && subscription.status === 'active';
@@ -136,6 +186,12 @@ export default function SubscriptionPlans() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold text-gray-900 mb-4">Choose Your Plan</h1>
         <p className="text-xl text-gray-600">Flexible pricing for every practice</p>
+        {isApple && (
+          <Badge className="mt-2 bg-gray-900 text-white text-sm px-3 py-1 flex items-center gap-1 justify-center w-fit mx-auto">
+            <Apple className="w-4 h-4" />
+            Apple In-App Purchase
+          </Badge>
+        )}
         {hasActiveSubscription && (
           <Badge className="mt-4 bg-green-600 text-lg px-4 py-2">
             ✓ Currently Subscribed
@@ -169,7 +225,7 @@ export default function SubscriptionPlans() {
             <CardContent className="p-6">
               <Button
                 onClick={() => handleSubscribe(plan.id)}
-                disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id)}
+                disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id) || (isApple && isProcessing)}
                 className={`w-full ${
                   plan.popular 
                     ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700' 
@@ -179,10 +235,15 @@ export default function SubscriptionPlans() {
                 {isLoading && selectedPlan === plan.id ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Loading...
+                    {isApple ? 'Processing...' : 'Loading...'}
                   </>
                 ) : hasActiveSubscription ? (
                   'Current Plan'
+                ) : isApple ? (
+                  <>
+                    <Apple className="w-4 h-4 mr-2" />
+                    Subscribe
+                  </>
                 ) : (
                   'Select Plan'
                 )}
