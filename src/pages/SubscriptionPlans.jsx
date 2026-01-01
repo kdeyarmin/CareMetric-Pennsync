@@ -87,10 +87,13 @@ export default function SubscriptionPlans() {
           return;
         }
 
+        console.log('IAP Purchase initiated for product:', productId);
         const result = await purchaseSubscription(productId, currentUser?.email);
-        
-        // Verify with backend
+        console.log('IAP Purchase result received:', result);
+
+        // Verify with backend - add longer timeout for verification
         try {
+          console.log('Starting verification with backend...');
           const verifyResponse = await base44.functions.invoke('verifyAppleReceipt', {
             receiptData: result.receiptData,
             productId: productId,
@@ -98,18 +101,26 @@ export default function SubscriptionPlans() {
             purchaseDate: result.purchaseDate,
             expiryDate: result.expiryDate
           });
-          
+
           console.log('Verification response:', verifyResponse);
-          
           setIsLoading(false);
-          alert('Subscription activated successfully!');
-          // Force refresh subscription data
-          await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
-          navigate(createPageUrl('Dashboard'));
+
+          // Check if verification was successful
+          if (verifyResponse?.data?.success !== false) {
+            alert('Subscription activated successfully!');
+            // Force refresh subscription data
+            await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
+            navigate(createPageUrl('Dashboard'));
+          } else {
+            alert('Purchase completed but verification pending. Your subscription will be activated shortly.');
+            navigate(createPageUrl('Dashboard'));
+          }
         } catch (verifyError) {
           console.error('Verification error:', verifyError);
           setIsLoading(false);
-          alert('Subscription verification failed: ' + (verifyError.message || 'Unknown error'));
+          // Even if verification fails, the purchase may have succeeded
+          alert('Purchase completed! If your subscription is not active, please contact support with transaction ID: ' + result.transactionId);
+          navigate(createPageUrl('Dashboard'));
         }
       } catch (error) {
         console.error('Apple IAP error:', error);

@@ -86,11 +86,11 @@ export const useAppleIAP = () => {
         }
       });
 
-      // Timeout after 60 seconds
+      // Timeout after 3 minutes (Apple IAP can take time with user confirmation)
       timeoutId = setTimeout(() => {
         setIsProcessing(false);
         reject(new Error('Purchase request timed out. Please try again.'));
-      }, 60000);
+      }, 180000);
 
       // Send purchase request to native app
       window.webkit.messageHandlers.iap.postMessage({
