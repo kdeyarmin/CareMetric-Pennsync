@@ -149,12 +149,21 @@ export default function Layout({ children, currentPageName }) {
         >
           <div className="h-16 flex items-center justify-between px-3 border-b">
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0">
-              <img
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
-                className="w-8 h-8 object-contain"
-                alt="CareMetric AI Logo"
-              />
-              {!sidebarCollapsed && <span className="font-bold truncate">CareMetric AI</span>}
+              <div className="relative flex-shrink-0">
+                <img
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
+                  className="w-8 h-8 object-contain"
+                  alt="CareMetric AI Logo"
+                />
+                {isPremium && (
+                  <span className="absolute -top-0.5 -right-0.5">👑</span>
+                )}
+              </div>
+              {!sidebarCollapsed && (
+                <span className="font-bold truncate flex items-center gap-1">
+                  CareMetric AI
+                </span>
+              )}
             </Link>
             <div className="flex items-center gap-1">
               <Button
