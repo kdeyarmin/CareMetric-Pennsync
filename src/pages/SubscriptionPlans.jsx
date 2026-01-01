@@ -103,19 +103,18 @@ export default function SubscriptionPlans() {
         console.log('Verification response:', verifyResponse);
 
         if (verifyResponse?.data?.success) {
-          // Set activation flag BEFORE clearing cache
-          localStorage.setItem('subscription_just_activated', 'true');
+          // Invalidate subscription query to refetch fresh data
+          await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
 
-          // Clear only React Query cache
-          queryClient.clear();
+          // Wait for refetch to complete
+          await new Promise(resolve => setTimeout(resolve, 500));
 
-          alert('Subscription activated! Reloading app...');
+          alert('Subscription activated! Welcome to Premium! 🎉');
 
           setIsLoading(false);
 
-          // Wait a moment then reload
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          window.location.replace(window.location.origin + createPageUrl('Dashboard'));
+          // Navigate without full reload
+          navigate(createPageUrl('Dashboard'));
         } else {
           setIsLoading(false);
           alert('Purchase completed but verification failed. Please contact support with transaction ID: ' + result.transactionId);
