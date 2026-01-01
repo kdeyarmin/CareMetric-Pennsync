@@ -103,20 +103,18 @@ export default function SubscriptionPlans() {
         console.log('Verification response:', verifyResponse);
 
         if (verifyResponse?.data?.success) {
-          // Wait longer for backend to fully process
-          await new Promise(resolve => setTimeout(resolve, 3000));
-
-          // Clear ALL cache and set activation flag
-          queryClient.clear();
-          localStorage.clear();
-          sessionStorage.clear();
+          // Set activation flag BEFORE clearing cache
           localStorage.setItem('subscription_just_activated', 'true');
+
+          // Clear only React Query cache
+          queryClient.clear();
 
           alert('Subscription activated! Reloading app...');
 
           setIsLoading(false);
 
-          // Force complete reload
+          // Wait a moment then reload
+          await new Promise(resolve => setTimeout(resolve, 1000));
           window.location.replace(window.location.origin + createPageUrl('Dashboard'));
         } else {
           setIsLoading(false);
