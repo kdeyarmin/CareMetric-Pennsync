@@ -41,11 +41,15 @@ export default function PremiumFeatureGate({
     queryFn: async () => {
       console.log('PremiumFeatureGate: Querying subscription for email:', currentUser?.email);
       try {
-        const subs = await base44.entities.Subscription.filter({ user_email: currentUser.email });
-        console.log('PremiumFeatureGate: Raw response:', subs);
-        console.log('PremiumFeatureGate: First subscription:', subs[0]);
-        console.log('PremiumFeatureGate: Subscription status:', subs[0]?.status);
-        return subs[0];
+        // Try listing all subscriptions first (might work better with RLS)
+        const allSubs = await base44.entities.Subscription.list();
+        console.log('PremiumFeatureGate: All subscriptions (list):', allSubs);
+        
+        // Filter on client side
+        const userSub = allSubs.find(s => s.user_email === currentUser.email);
+        console.log('PremiumFeatureGate: User subscription:', userSub);
+        console.log('PremiumFeatureGate: Subscription status:', userSub?.status);
+        return userSub;
       } catch (error) {
         console.error('PremiumFeatureGate: Error fetching subscription:', error);
         throw error;
