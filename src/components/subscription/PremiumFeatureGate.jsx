@@ -1,5 +1,5 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Loader2 } from "lucide-react";
 import PaywallScreen from "./PaywallScreen";
@@ -20,6 +20,17 @@ export default function PremiumFeatureGate({
   compact = false,
   allowTrial = true
 }) {
+  const queryClient = useQueryClient();
+
+  // Clear cache if subscription was just activated
+  React.useEffect(() => {
+    const justActivated = localStorage.getItem('subscription_just_activated');
+    if (justActivated === 'true') {
+      localStorage.removeItem('subscription_just_activated');
+      queryClient.clear();
+    }
+  }, [queryClient]);
+
   const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
@@ -31,7 +42,9 @@ export default function PremiumFeatureGate({
       const subs = await base44.entities.Subscription.filter({ user_email: currentUser.email });
       return subs[0];
     },
-    enabled: !!currentUser?.email
+    enabled: !!currentUser?.email,
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0  // Don't cache
   });
 
   // Show loading state
