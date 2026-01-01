@@ -41,14 +41,24 @@ export default function PaywallScreen({
     
     setIsRestoring(true);
     try {
-      const result = await restorePurchases(currentUser.email);
-      if (result.success) {
-        // Clear React Query cache and force reload
-        localStorage.setItem('subscription_restored', 'true');
+      const result = await restorePurchases();
+      
+      if (result.restored && result.latestReceipt) {
+        await base44.functions.invoke('verifyAppleReceipt', {
+          receiptData: result.latestReceipt,
+          productId: result.productId,
+          transactionId: result.transactionId,
+          purchaseDate: result.purchaseDate,
+          expiryDate: result.expiryDate
+        });
+        
+        localStorage.removeItem('cached_subscription');
         window.location.href = createPageUrl('Dashboard');
+      } else {
+        alert('No purchases found to restore.');
       }
     } catch (error) {
-      alert('No purchases found to restore. If you believe this is an error, please contact support.');
+      alert('Failed to restore purchases. Please try again or contact support.');
     } finally {
       setIsRestoring(false);
     }
