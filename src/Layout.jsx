@@ -55,6 +55,17 @@ export default function Layout({ children, currentPageName }) {
     }
   });
 
+  // Pre-fetch subscription to cache it for all pages
+  useQuery({
+    queryKey: ['userSubscription', currentUser?.email],
+    queryFn: async () => {
+      const response = await base44.functions.invoke('getMySubscription', {});
+      return response?.data?.subscription || response?.subscription;
+    },
+    enabled: !!currentUser?.email,
+    staleTime: 300000 // Cache for 5 minutes
+  });
+
   // Check subscription status for premium badge
   const { data: subscription } = useQuery({
     queryKey: ['userSubscription', currentUser?.email],

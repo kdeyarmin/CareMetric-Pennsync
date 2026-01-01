@@ -39,26 +39,11 @@ export default function PremiumFeatureGate({
   const { data: subscription, isLoading: subLoading } = useQuery({
     queryKey: ['userSubscription', currentUser?.email],
     queryFn: async () => {
-      console.log('PremiumFeatureGate: Querying subscription for email:', currentUser?.email);
-      try {
-        // Use backend function to bypass RLS and fetch subscription
-        const response = await base44.functions.invoke('getMySubscription', {});
-        console.log('PremiumFeatureGate: Backend response:', response);
-        
-        const subscriptionData = response?.data?.subscription || response?.subscription;
-        console.log('PremiumFeatureGate: Subscription data:', subscriptionData);
-        console.log('PremiumFeatureGate: Subscription status:', subscriptionData?.status);
-        
-        return subscriptionData;
-      } catch (error) {
-        console.error('PremiumFeatureGate: Error fetching subscription:', error);
-        return null;
-      }
+      const response = await base44.functions.invoke('getMySubscription', {});
+      return response?.data?.subscription || response?.subscription;
     },
     enabled: !!currentUser?.email,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true
+    staleTime: 300000 // Cache for 5 minutes - data already prefetched in Layout
   });
 
   // Show loading state
