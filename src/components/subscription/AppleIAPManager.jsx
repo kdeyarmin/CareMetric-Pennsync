@@ -21,16 +21,31 @@ export const useAppleIAP = () => {
   useEffect(() => {
     // Check if Capacitor IAP plugin is available
     const checkIAP = async () => {
-      const hasCapacitor = window.Capacitor;
-      const hasIAPPlugin = window.Capacitor?.Plugins?.IAPPlugin;
-      
-      console.log('=== Capacitor IAP Check ===');
-      console.log('Capacitor exists:', !!hasCapacitor);
-      console.log('IAPPlugin exists:', !!hasIAPPlugin);
-      console.log('Available plugins:', window.Capacitor?.Plugins ? Object.keys(window.Capacitor.Plugins) : 'none');
-      console.log('=========================');
-      
-      setIsReady(!!hasIAPPlugin);
+      // Import Capacitor and check for plugin
+      try {
+        const { Capacitor } = await import('@capacitor/core');
+        const hasCapacitor = !!Capacitor;
+        const isNative = Capacitor?.isNativePlatform?.();
+        
+        console.log('=== Capacitor IAP Check ===');
+        console.log('Capacitor exists:', hasCapacitor);
+        console.log('Is native platform:', isNative);
+        console.log('Platform:', Capacitor?.getPlatform?.());
+        
+        // Check if plugin is registered
+        if (isNative && Capacitor.Plugins) {
+          console.log('Available plugins:', Object.keys(Capacitor.Plugins));
+          console.log('IAPPlugin exists:', !!Capacitor.Plugins.IAPPlugin);
+          setIsReady(!!Capacitor.Plugins.IAPPlugin);
+        } else {
+          console.log('Not on native platform or no plugins available');
+          setIsReady(false);
+        }
+        console.log('=========================');
+      } catch (error) {
+        console.error('Capacitor import error:', error);
+        setIsReady(false);
+      }
     };
     
     checkIAP();
@@ -52,13 +67,15 @@ export const useAppleIAP = () => {
     console.log('Product ID:', productId);
     console.log('User Email:', userEmail);
     
-    if (!window.Capacitor?.Plugins?.IAPPlugin) {
-      setIsProcessing(false);
-      throw new Error('IAP Plugin not available. Please use the native iOS app.');
-    }
-    
     try {
-      const result = await window.Capacitor.Plugins.IAPPlugin.purchase({ productId });
+      const { Capacitor } = await import('@capacitor/core');
+      
+      if (!Capacitor.isNativePlatform() || !Capacitor.Plugins.IAPPlugin) {
+        setIsProcessing(false);
+        throw new Error('IAP Plugin not available. Please use the native iOS app.');
+      }
+      
+      const result = await Capacitor.Plugins.IAPPlugin.purchase({ productId });
       setIsProcessing(false);
       console.log('Purchase result:', result);
       return result;
@@ -70,12 +87,14 @@ export const useAppleIAP = () => {
   };
 
   const restorePurchases = async () => {
-    if (!window.Capacitor?.Plugins?.IAPPlugin) {
-      throw new Error('IAP Plugin not available');
-    }
-
     try {
-      const result = await window.Capacitor.Plugins.IAPPlugin.restore();
+      const { Capacitor } = await import('@capacitor/core');
+      
+      if (!Capacitor.isNativePlatform() || !Capacitor.Plugins.IAPPlugin) {
+        throw new Error('IAP Plugin not available');
+      }
+
+      const result = await Capacitor.Plugins.IAPPlugin.restore();
       return result;
     } catch (error) {
       throw error;
@@ -83,12 +102,14 @@ export const useAppleIAP = () => {
   };
 
   const getProductInfo = async (productId) => {
-    if (!window.Capacitor?.Plugins?.IAPPlugin) {
-      return null;
-    }
-
     try {
-      const result = await window.Capacitor.Plugins.IAPPlugin.getProductInfo({ productId });
+      const { Capacitor } = await import('@capacitor/core');
+      
+      if (!Capacitor.isNativePlatform() || !Capacitor.Plugins.IAPPlugin) {
+        return null;
+      }
+
+      const result = await Capacitor.Plugins.IAPPlugin.getProductInfo({ productId });
       return result;
     } catch (error) {
       return null;
