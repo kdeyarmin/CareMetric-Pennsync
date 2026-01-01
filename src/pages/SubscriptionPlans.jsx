@@ -104,7 +104,10 @@ export default function SubscriptionPlans() {
 
         if (verifyResponse?.data?.success) {
           alert('Subscription activated successfully!');
+          // Invalidate all subscription-related queries to refresh the app
           await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
+          await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+          await queryClient.refetchQueries();
           navigate(createPageUrl('Dashboard'));
         } else {
           alert('Purchase completed but verification failed. Please contact support.');
