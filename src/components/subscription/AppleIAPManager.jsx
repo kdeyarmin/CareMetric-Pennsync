@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Capacitor } from '@capacitor/core';
 
 export const APPLE_PRODUCTS = {
   monthly: 'com.caremetric.monthly',
@@ -12,8 +11,8 @@ export const useAppleIAP = () => {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const callNativePlugin = async (method, args = {}) => {
-    if (!Capacitor.isNativePlatform()) {
-      throw new Error('Not running on native platform');
+    if (typeof window === 'undefined' || !window.webkit?.messageHandlers?.storeKit) {
+      throw new Error('StoreKit not available - not running on iOS native app');
     }
 
     // Direct StoreKit integration via webkit message handlers
