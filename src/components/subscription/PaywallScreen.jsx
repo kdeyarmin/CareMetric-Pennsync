@@ -13,57 +13,15 @@ import {
   Shield,
   TrendingUp,
   Brain,
-  ArrowRight,
-  RefreshCw
+  ArrowRight
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { isApplePlatform } from "@/components/utils/platformDetection";
-import { useAppleIAP } from "@/components/subscription/AppleIAPManager";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
 
 export default function PaywallScreen({ 
   featureName = "Premium Feature",
   featureDescription = "This feature requires an active subscription to CareMetric AI.",
   compact = false 
 }) {
-  const isApple = isApplePlatform();
-  const { restorePurchases, isProcessing } = useAppleIAP();
-  const [isRestoring, setIsRestoring] = React.useState(false);
-
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  const handleRestorePurchases = async () => {
-    if (!currentUser?.email) return;
-    
-    setIsRestoring(true);
-    try {
-      const result = await restorePurchases();
-      
-      if (result.restored && result.latestReceipt) {
-        await base44.functions.invoke('verifyAppleReceipt', {
-          receiptData: result.latestReceipt,
-          productId: result.productId,
-          transactionId: result.transactionId,
-          purchaseDate: result.purchaseDate,
-          expiryDate: result.expiryDate
-        });
-        
-        localStorage.removeItem('cached_subscription');
-        window.location.href = createPageUrl('Dashboard');
-      } else {
-        alert('No purchases found to restore.');
-      }
-    } catch (error) {
-      alert('Failed to restore purchases. Please try again or contact support.');
-    } finally {
-      setIsRestoring(false);
-    }
-  };
-
   const benefits = [
     { icon: Brain, text: "AI-powered documentation", color: "text-blue-600" },
     { icon: Shield, text: "Real-time compliance monitoring", color: "text-green-600" },
@@ -94,26 +52,6 @@ export default function PaywallScreen({
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </Link>
-          {isApple && (
-            <Button 
-              variant="outline"
-              className="w-full mt-2"
-              onClick={handleRestorePurchases}
-              disabled={isRestoring || isProcessing}
-            >
-              {isRestoring ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Restoring...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Restore Purchases
-                </>
-              )}
-            </Button>
-          )}
         </CardContent>
       </Card>
     );
@@ -240,27 +178,6 @@ export default function PaywallScreen({
               <ArrowRight className="w-5 h-5 ml-2" />
             </Button>
           </Link>
-          {isApple && (
-            <Button 
-              size="lg"
-              variant="outline"
-              className="w-full sm:w-auto text-lg px-8 py-6"
-              onClick={handleRestorePurchases}
-              disabled={isRestoring || isProcessing}
-            >
-              {isRestoring ? (
-                <>
-                  <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-                  Restoring...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-5 w-5" />
-                  Restore Purchases
-                </>
-              )}
-            </Button>
-          )}
           <Link to={createPageUrl("Dashboard")}>
             <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg px-8 py-6">
               Back to Dashboard

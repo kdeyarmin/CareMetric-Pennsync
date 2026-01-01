@@ -36,34 +36,18 @@ export default function PremiumFeatureGate({
     queryFn: () => base44.auth.me()
   });
 
-  const { data: subscription, isLoading: subLoading, isFetching } = useQuery({
+  const { data: subscription, isLoading: subLoading } = useQuery({
     queryKey: ['userSubscription', currentUser?.email],
     queryFn: async () => {
       const response = await base44.functions.invoke('getMySubscription', {});
-      const sub = response?.data?.subscription || response?.subscription;
-      
-      // Cache in localStorage as backup
-      if (sub && sub.status === 'active') {
-        localStorage.setItem('cached_subscription', JSON.stringify(sub));
-      }
-      
-      return sub;
+      return response?.data?.subscription || response?.subscription;
     },
     enabled: !!currentUser?.email,
-    staleTime: 300000,
-    initialData: () => {
-      // Try to get from localStorage first
-      try {
-        const cached = localStorage.getItem('cached_subscription');
-        return cached ? JSON.parse(cached) : undefined;
-      } catch {
-        return undefined;
-      }
-    }
+    staleTime: 300000 // Cache for 5 minutes - data already prefetched in Layout
   });
 
-  // Show loading state (including isFetching to prevent paywall flash)
-  if (userLoading || subLoading || isFetching) {
+  // Show loading state
+  if (userLoading || subLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
