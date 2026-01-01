@@ -4,18 +4,15 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Sparkles, Apple } from "lucide-react";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { isApplePlatform } from "@/components/utils/platformDetection";
-import { useAppleIAP, APPLE_PRODUCTS } from "@/components/subscription/AppleIAPManager";
+
 
 export default function SubscriptionPlans() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('monthly');
-  const isApple = isApplePlatform();
-  const { purchaseSubscription, isProcessing } = useAppleIAP();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -70,81 +67,13 @@ export default function SubscriptionPlans() {
     setIsLoading(true);
     setSelectedPlan(plan);
     
-    // Handle Apple IAP for iOS/macOS
-    if (isApple) {
-      try {
-        console.log('=== Subscription Purchase Started ===');
-        console.log('Platform detected as Apple');
-        console.log('Plan selected:', plan);
-        console.log('User email:', currentUser?.email);
-
-        const productMap = {
-          'monthly': APPLE_PRODUCTS.monthly,
-          'quarterly': APPLE_PRODUCTS.quarterly,
-          'biannual': APPLE_PRODUCTS.semiannual,
-          'yearly': APPLE_PRODUCTS.annual
-        };
-
-        const productId = productMap[plan];
-        console.log('Mapped product ID:', productId);
-
-        if (!productId) {
-          alert('Invalid subscription plan');
-          setIsLoading(false);
-          return;
-        }
-
-        console.log('Calling purchaseSubscription...');
-        const result = await purchaseSubscription(productId, currentUser?.email);
-        console.log('IAP Purchase result received:', result);
-
-        // Verify with backend - add longer timeout for verification
-        try {
-          console.log('Starting verification with backend...');
-          const verifyResponse = await base44.functions.invoke('verifyAppleReceipt', {
-            receiptData: result.receiptData,
-            productId: productId,
-            transactionId: result.transactionId,
-            purchaseDate: result.purchaseDate,
-            expiryDate: result.expiryDate
-          });
-
-          console.log('Verification response:', verifyResponse);
-          setIsLoading(false);
-
-          // Check if verification was successful
-          if (verifyResponse?.data?.success !== false) {
-            alert('Subscription activated successfully!');
-            // Force refresh subscription data
-            await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
-            navigate(createPageUrl('Dashboard'));
-          } else {
-            alert('Purchase completed but verification pending. Your subscription will be activated shortly.');
-            navigate(createPageUrl('Dashboard'));
-          }
-        } catch (verifyError) {
-          console.error('Verification error:', verifyError);
-          setIsLoading(false);
-          // Even if verification fails, the purchase may have succeeded
-          alert('Purchase completed! If your subscription is not active, please contact support with transaction ID: ' + result.transactionId);
-          navigate(createPageUrl('Dashboard'));
-        }
-      } catch (error) {
-        console.error('Apple IAP error:', error);
-        setIsLoading(false);
-        alert('Purchase failed: ' + error.message);
-      }
-    } else {
-      // Use Stripe for web/Android
-      // Find the plan object to get the priceId
-      const planObj = plans.find(p => p.id === plan);
-      if (!planObj || !planObj.priceId) {
-        alert('Invalid plan selected');
-        setIsLoading(false);
-        return;
-      }
-      checkoutMutation.mutate(planObj.priceId);
+    const planObj = plans.find(p => p.id === plan);
+    if (!planObj || !planObj.priceId) {
+      alert('Invalid plan selected');
+      setIsLoading(false);
+      return;
     }
+    checkoutMutation.mutate(planObj.priceId);
   };
 
   const hasActiveSubscription = subscription && subscription.status === 'active';
@@ -207,12 +136,6 @@ export default function SubscriptionPlans() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold text-gray-900 mb-4">Choose Your Plan</h1>
         <p className="text-xl text-gray-600">Flexible pricing for every practice</p>
-        {isApple && (
-          <Badge className="mt-2 bg-gray-900 text-white text-sm px-3 py-1 flex items-center gap-1 justify-center w-fit mx-auto">
-            <Apple className="w-4 h-4" />
-            Apple In-App Purchase
-          </Badge>
-        )}
         {hasActiveSubscription && (
           <Badge className="mt-4 bg-green-600 text-lg px-4 py-2">
             ✓ Currently Subscribed
@@ -246,7 +169,7 @@ export default function SubscriptionPlans() {
             <CardContent className="p-6">
               <Button
                 onClick={() => handleSubscribe(plan.id)}
-                disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id) || (isApple && isProcessing)}
+                disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id)}
                 className={`w-full ${
                   plan.popular 
                     ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700' 
@@ -256,15 +179,10 @@ export default function SubscriptionPlans() {
                 {isLoading && selectedPlan === plan.id ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {isApple ? 'Processing...' : 'Loading...'}
+                    Loading...
                   </>
                 ) : hasActiveSubscription ? (
                   'Current Plan'
-                ) : isApple ? (
-                  <>
-                    <Apple className="w-4 h-4 mr-2" />
-                    Subscribe
-                  </>
                 ) : (
                   'Select Plan'
                 )}

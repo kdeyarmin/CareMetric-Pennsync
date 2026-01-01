@@ -10,8 +10,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
-import { isApplePlatform } from "@/components/utils/platformDetection";
-import { useAppleIAP } from "@/components/subscription/AppleIAPManager";
+
 
 export const publicPage = true;
 
