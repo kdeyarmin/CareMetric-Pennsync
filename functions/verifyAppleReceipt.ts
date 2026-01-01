@@ -58,9 +58,10 @@ Deno.serve(async (req) => {
       user_email: user.email
     });
 
+    let subscription;
     if (existingSubs.length > 0) {
       // Update existing subscription
-      await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, {
+      subscription = await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, {
         status: 'active',
         plan: plan.name,
         monthly_amount: plan.amount,
@@ -69,9 +70,10 @@ Deno.serve(async (req) => {
         stripe_subscription_id: transactionId,
         cancel_at_period_end: false
       });
+      console.log('Updated subscription:', subscription);
     } else {
       // Create new subscription
-      await base44.asServiceRole.entities.Subscription.create({
+      subscription = await base44.asServiceRole.entities.Subscription.create({
         user_email: user.email,
         status: 'active',
         plan: plan.name,
@@ -82,13 +84,21 @@ Deno.serve(async (req) => {
         stripe_customer_id: user.email,
         cancel_at_period_end: false
       });
+      console.log('Created subscription:', subscription);
     }
+
+    // Verify subscription was saved
+    const verifySubscription = await base44.asServiceRole.entities.Subscription.filter({
+      user_email: user.email
+    });
+    console.log('Verified subscription in DB:', verifySubscription);
 
     return Response.json({
       success: true,
       message: 'Subscription activated',
       plan: plan.name,
-      expiresAt: endDate.toISOString()
+      expiresAt: endDate.toISOString(),
+      subscription: verifySubscription[0]
     });
   } catch (error) {
     console.error('Apple receipt verification error:', error);
