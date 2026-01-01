@@ -313,7 +313,12 @@ export default function Layout({ children, currentPageName }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b sticky top-0 bg-white z-10">
-              <span className="font-bold text-sm sm:text-base">Menu</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm sm:text-base">Menu</span>
+                {isPremium && (
+                  <span className="text-yellow-500 text-lg">👑</span>
+                )}
+              </div>
               <Button
                 size="icon"
                 variant="ghost"
