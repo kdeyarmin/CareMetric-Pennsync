@@ -1,10 +1,10 @@
 import { useState } from 'react';
 
 export const APPLE_PRODUCTS = {
-  monthly: 'com.caremetric.monthly',
-  quarterly: 'com.caremetric.quarterly',
-  semiannual: 'com.caremetric.semiannual',
-  annual: 'com.caremetric.annual'
+  monthly: 'com.monthly.premium',
+  quarterly: 'com.quarterly.premium',
+  semiannual: 'com.semiannual.premium',
+  annual: 'com.annual.premium'
 };
 
 export const useAppleIAP = () => {
