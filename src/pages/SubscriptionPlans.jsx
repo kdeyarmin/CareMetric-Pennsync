@@ -104,10 +104,16 @@ export default function SubscriptionPlans() {
 
         if (verifyResponse?.data?.success) {
           alert('Subscription activated successfully!');
-          // Invalidate all subscription-related queries to refresh the app
+          // Force refetch all subscription and user queries
           await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
           await queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-          await queryClient.refetchQueries();
+          await queryClient.resetQueries({ queryKey: ['userSubscription'] });
+          await queryClient.refetchQueries({ queryKey: ['userSubscription'], type: 'active' });
+          await queryClient.refetchQueries({ queryKey: ['currentUser'], type: 'active' });
+          
+          // Small delay to ensure backend is updated
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           navigate(createPageUrl('Dashboard'));
         } else {
           alert('Purchase completed but verification failed. Please contact support.');
