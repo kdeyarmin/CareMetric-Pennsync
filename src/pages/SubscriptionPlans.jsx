@@ -100,17 +100,21 @@ export default function SubscriptionPlans() {
           expiryDate: result.expiryDate
         });
 
-        setIsLoading(false);
-
         if (verifyResponse?.data?.success) {
+          // Wait for backend to fully process the subscription
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
           alert('Subscription activated successfully!');
-          
+
           // Clear ALL cache and force full page reload to ensure fresh data
           queryClient.clear();
-          
-          // Navigate and force reload
-          window.location.href = createPageUrl('Dashboard');
+
+          setIsLoading(false);
+
+          // Force complete page reload from server
+          window.location.reload();
         } else {
+          setIsLoading(false);
           alert('Purchase completed but verification failed. Please contact support.');
         }
       } catch (error) {
