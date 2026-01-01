@@ -42,35 +42,23 @@ export default function PaywallScreen({
     setIsRestoring(true);
     try {
       const result = await restorePurchases();
-      console.log('Restore result:', result);
       
-      // Native plugin returns the result directly
-      if (result && (result.success || result.restored)) {
-        // Verify with backend if we have receipt data
-        if (result.latestReceipt || result.receiptData) {
-          await base44.functions.invoke('verifyAppleReceipt', {
-            receiptData: result.latestReceipt || result.receiptData,
-            productId: result.productId,
-            transactionId: result.transactionId,
-            purchaseDate: result.purchaseDate,
-            expiryDate: result.expiryDate
-          });
-        }
+      if (result.restored && result.latestReceipt) {
+        await base44.functions.invoke('verifyAppleReceipt', {
+          receiptData: result.latestReceipt,
+          productId: result.productId,
+          transactionId: result.transactionId,
+          purchaseDate: result.purchaseDate,
+          expiryDate: result.expiryDate
+        });
         
-        // Mark subscription as active in localStorage
-        localStorage.setItem('cached_subscription', JSON.stringify({
-          status: 'active',
-          user_email: currentUser.email
-        }));
-        
-        alert('Subscription restored successfully! 🎉');
+        localStorage.removeItem('cached_subscription');
         window.location.href = createPageUrl('Dashboard');
       } else {
         alert('No purchases found to restore.');
       }
     } catch (error) {
-      console.error('Restore error:', error);
-      alert('Failed to restore purchases: ' + error.message);
+      alert('Failed to restore purchases. Please try again or contact support.');
     } finally {
       setIsRestoring(false);
     }
