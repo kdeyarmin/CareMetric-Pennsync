@@ -104,15 +104,15 @@ export default function SubscriptionPlans() {
           // Wait for backend to fully process the subscription
           await new Promise(resolve => setTimeout(resolve, 2000));
 
-          alert('Subscription activated successfully!');
+          // Clear cache before reload
+          localStorage.setItem('subscription_just_activated', 'true');
 
-          // Clear ALL cache and force full page reload to ensure fresh data
-          queryClient.clear();
+          alert('Subscription activated successfully!');
 
           setIsLoading(false);
 
-          // Force complete page reload from server
-          window.location.reload();
+          // Force full page reload to dashboard (not React Router navigation)
+          window.location.href = window.location.origin + createPageUrl('Dashboard');
         } else {
           setIsLoading(false);
           alert('Purchase completed but verification failed. Please contact support.');
