@@ -36,14 +36,30 @@ export default function PremiumFeatureGate({
     queryFn: () => base44.auth.me()
   });
 
-  const { data: subscription, isLoading: subLoading } = useQuery({
+  const { data: subscription, isLoading: subLoading, isFetching } = useQuery({
     queryKey: ['userSubscription', currentUser?.email],
     queryFn: async () => {
       const response = await base44.functions.invoke('getMySubscription', {});
-      return response?.data?.subscription || response?.subscription;
+      const sub = response?.data?.subscription || response?.subscription;
+      
+      // Cache in localStorage as backup
+      if (sub && sub.status === 'active') {
+        localStorage.setItem('cached_subscription', JSON.stringify(sub));
+      }
+      
+      return sub;
     },
     enabled: !!currentUser?.email,
-    staleTime: 300000 // Cache for 5 minutes - data already prefetched in Layout
+    staleTime: 300000,
+    initialData: () => {
+      // Try to get from localStorage first
+      try {
+        const cached = localStorage.getItem('cached_subscription');
+        return cached ? JSON.parse(cached) : undefined;
+      } catch {
+        return undefined;
+      }
+    }
   });
 
   // Show loading state

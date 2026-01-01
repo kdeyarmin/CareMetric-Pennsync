@@ -41,9 +41,12 @@ export default function PaywallScreen({
     
     setIsRestoring(true);
     try {
-      await restorePurchases(currentUser.email);
-      alert('Purchases restored successfully! Refreshing... 🎉');
-      window.location.reload();
+      const result = await restorePurchases(currentUser.email);
+      if (result.success) {
+        // Clear React Query cache and force reload
+        localStorage.setItem('subscription_restored', 'true');
+        window.location.href = createPageUrl('Dashboard');
+      }
     } catch (error) {
       alert('No purchases found to restore. If you believe this is an error, please contact support.');
     } finally {
