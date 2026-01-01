@@ -50,21 +50,25 @@ export const useAppleIAP = () => {
   }, []);
 
   const purchaseSubscription = async (productId, userEmail) => {
-    // Check for IAP handler availability
+    setIsProcessing(true);
+    
+    // Check for IAP handler availability with detailed logging
     const hasIAPHandler = window.webkit?.messageHandlers?.iap;
     
-    console.log('Apple IAP check:', {
-      hasWebkit: !!window.webkit,
-      hasMessageHandlers: !!window.webkit?.messageHandlers,
-      hasIAP: !!hasIAPHandler,
-      webkit: window.webkit
-    });
+    console.log('=== Apple IAP Purchase Attempt ===');
+    console.log('hasWebkit:', !!window.webkit);
+    console.log('hasMessageHandlers:', !!window.webkit?.messageHandlers);
+    console.log('hasIAP:', !!hasIAPHandler);
+    console.log('messageHandlers keys:', window.webkit?.messageHandlers ? Object.keys(window.webkit.messageHandlers) : 'none');
+    console.log('Full webkit:', window.webkit);
+    console.log('Product ID:', productId);
+    console.log('User Email:', userEmail);
+    console.log('================================');
     
     if (!hasIAPHandler) {
-      throw new Error('Apple IAP not available');
+      setIsProcessing(false);
+      throw new Error('Apple IAP bridge not found. Please make sure you are using the native iOS app.');
     }
-
-    setIsProcessing(true);
     
     // Send purchase request to native iOS/macOS app
     return new Promise((resolve, reject) => {

@@ -73,21 +73,28 @@ export default function SubscriptionPlans() {
     // Handle Apple IAP for iOS/macOS
     if (isApple) {
       try {
+        console.log('=== Subscription Purchase Started ===');
+        console.log('Platform detected as Apple');
+        console.log('Plan selected:', plan);
+        console.log('User email:', currentUser?.email);
+
         const productMap = {
           'monthly': APPLE_PRODUCTS.monthly,
           'quarterly': APPLE_PRODUCTS.quarterly,
           'biannual': APPLE_PRODUCTS.semiannual,
           'yearly': APPLE_PRODUCTS.annual
         };
-        
+
         const productId = productMap[plan];
+        console.log('Mapped product ID:', productId);
+
         if (!productId) {
           alert('Invalid subscription plan');
           setIsLoading(false);
           return;
         }
 
-        console.log('IAP Purchase initiated for product:', productId);
+        console.log('Calling purchaseSubscription...');
         const result = await purchaseSubscription(productId, currentUser?.email);
         console.log('IAP Purchase result received:', result);
 
