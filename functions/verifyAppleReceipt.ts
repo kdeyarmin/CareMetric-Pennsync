@@ -40,7 +40,12 @@ Deno.serve(async (req) => {
 
     const plan = planMap[productId];
     if (!plan) {
-      return Response.json({ error: 'Invalid product ID' }, { status: 400 });
+      console.error('Invalid product ID:', productId, 'Available:', Object.keys(planMap));
+      return Response.json({ 
+        error: 'Invalid product ID', 
+        productId,
+        availableProducts: Object.keys(planMap)
+      }, { status: 400 });
     }
 
     // Calculate period dates
