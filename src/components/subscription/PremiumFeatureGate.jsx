@@ -39,13 +39,22 @@ export default function PremiumFeatureGate({
   const { data: subscription, isLoading: subLoading } = useQuery({
     queryKey: ['userSubscription', currentUser?.email],
     queryFn: async () => {
-      const subs = await base44.entities.Subscription.filter({ user_email: currentUser.email });
-      console.log('PremiumFeatureGate: Fetched subscription for', currentUser.email, ':', subs[0]);
-      return subs[0];
+      console.log('PremiumFeatureGate: Querying subscription for email:', currentUser?.email);
+      try {
+        const subs = await base44.entities.Subscription.filter({ user_email: currentUser.email });
+        console.log('PremiumFeatureGate: Raw response:', subs);
+        console.log('PremiumFeatureGate: First subscription:', subs[0]);
+        console.log('PremiumFeatureGate: Subscription status:', subs[0]?.status);
+        return subs[0];
+      } catch (error) {
+        console.error('PremiumFeatureGate: Error fetching subscription:', error);
+        throw error;
+      }
     },
     enabled: !!currentUser?.email,
-    staleTime: 300000, // Cache for 5 minutes
-    refetchOnMount: 'always' // Refetch when component mounts
+    staleTime: 0, // Don't cache at all
+    refetchOnMount: 'always', // Always refetch when component mounts
+    refetchOnWindowFocus: true // Refetch when window regains focus
   });
 
   // Show loading state
@@ -63,6 +72,15 @@ export default function PremiumFeatureGate({
   const hasTrialAccess = allowTrial && subscription && subscription.status === 'trialing';
   const hasLifetimeFree = subscription && subscription.status === 'lifetime_free';
   const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess || hasLifetimeFree;
+  
+  console.log('PremiumFeatureGate: Access check for', featureName);
+  console.log('  - isAdmin:', isAdmin);
+  console.log('  - subscription:', subscription);
+  console.log('  - subscription.status:', subscription?.status);
+  console.log('  - hasActiveSubscription:', hasActiveSubscription);
+  console.log('  - hasTrialAccess:', hasTrialAccess);
+  console.log('  - hasLifetimeFree:', hasLifetimeFree);
+  console.log('  - hasAccess:', hasAccess);
 
   // Show paywall if no access
   if (!hasAccess) {
