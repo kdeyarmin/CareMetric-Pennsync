@@ -103,15 +103,10 @@ export default function SubscriptionPlans() {
         console.log('Verification response:', verifyResponse);
 
         if (verifyResponse?.data?.success) {
-          // Manually set the subscription in cache
-          queryClient.setQueryData(['userSubscription', currentUser.email], [verifyResponse.data.subscription]);
-
           alert('Subscription activated! Welcome to Premium! 🎉');
 
-          setIsLoading(false);
-
-          // Navigate without full reload
-          navigate(createPageUrl('Dashboard'));
+          // Full reload to ensure all components recognize premium status
+          window.location.href = createPageUrl('Dashboard');
         } else {
           setIsLoading(false);
           alert('Purchase completed but verification failed. Please contact support with transaction ID: ' + result.transactionId);
