@@ -87,32 +87,14 @@ Deno.serve(async (req) => {
       console.log('Created subscription:', subscription);
     }
 
-    // Wait a moment for DB replication
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Verify subscription was saved - retry up to 3 times
-    let verifySubscription = [];
-    for (let i = 0; i < 3; i++) {
-      verifySubscription = await base44.asServiceRole.entities.Subscription.filter({
-        user_email: user.email,
-        status: 'active'
-      });
-      console.log(`Verification attempt ${i + 1}:`, verifySubscription);
-      if (verifySubscription.length > 0) break;
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    if (verifySubscription.length === 0) {
-      console.error('WARNING: Could not verify subscription was saved, but creation succeeded');
-    }
-
+    // If creation succeeded, return success immediately
+    // The subscription object confirms it was created
     return Response.json({
       success: true,
       message: 'Subscription activated',
       plan: plan.name,
       expiresAt: endDate.toISOString(),
-      subscription: subscription,
-      verified: verifySubscription.length > 0
+      subscription: subscription
     });
   } catch (error) {
     console.error('Apple receipt verification error:', error);
