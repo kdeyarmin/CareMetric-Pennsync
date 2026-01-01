@@ -100,22 +100,27 @@ export default function SubscriptionPlans() {
           expiryDate: result.expiryDate
         });
 
-        if (verifyResponse?.data?.success) {
-          // Wait for backend to fully process the subscription
-          await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log('Verification response:', verifyResponse);
 
-          // Clear cache before reload
+        if (verifyResponse?.data?.success) {
+          // Wait longer for backend to fully process
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          // Clear ALL cache and set activation flag
+          queryClient.clear();
+          localStorage.clear();
+          sessionStorage.clear();
           localStorage.setItem('subscription_just_activated', 'true');
 
-          alert('Subscription activated successfully!');
+          alert('Subscription activated! Reloading app...');
 
           setIsLoading(false);
 
-          // Force full page reload to dashboard (not React Router navigation)
-          window.location.href = window.location.origin + createPageUrl('Dashboard');
+          // Force complete reload
+          window.location.replace(window.location.origin + createPageUrl('Dashboard'));
         } else {
           setIsLoading(false);
-          alert('Purchase completed but verification failed. Please contact support.');
+          alert('Purchase completed but verification failed. Please contact support with transaction ID: ' + result.transactionId);
         }
       } catch (error) {
         console.error('Apple IAP error:', error);
