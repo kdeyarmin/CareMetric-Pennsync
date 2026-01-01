@@ -40,11 +40,12 @@ export default function PremiumFeatureGate({
     queryKey: ['userSubscription', currentUser?.email],
     queryFn: async () => {
       const subs = await base44.entities.Subscription.filter({ user_email: currentUser.email });
+      console.log('PremiumFeatureGate: Fetched subscription for', currentUser.email, ':', subs[0]);
       return subs[0];
     },
     enabled: !!currentUser?.email,
-    staleTime: 0, // Always fetch fresh data
-    cacheTime: 0  // Don't cache
+    staleTime: 300000, // Cache for 5 minutes
+    refetchOnMount: 'always' // Refetch when component mounts
   });
 
   // Show loading state
