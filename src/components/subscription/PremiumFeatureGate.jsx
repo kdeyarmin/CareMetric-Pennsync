@@ -41,24 +41,24 @@ export default function PremiumFeatureGate({
     queryFn: async () => {
       console.log('PremiumFeatureGate: Querying subscription for email:', currentUser?.email);
       try {
-        // Try listing all subscriptions first (might work better with RLS)
-        const allSubs = await base44.entities.Subscription.list();
-        console.log('PremiumFeatureGate: All subscriptions (list):', allSubs);
+        // Use backend function to bypass RLS and fetch subscription
+        const response = await base44.functions.invoke('getMySubscription', {});
+        console.log('PremiumFeatureGate: Backend response:', response);
         
-        // Filter on client side
-        const userSub = allSubs.find(s => s.user_email === currentUser.email);
-        console.log('PremiumFeatureGate: User subscription:', userSub);
-        console.log('PremiumFeatureGate: Subscription status:', userSub?.status);
-        return userSub;
+        const subscriptionData = response?.data?.subscription || response?.subscription;
+        console.log('PremiumFeatureGate: Subscription data:', subscriptionData);
+        console.log('PremiumFeatureGate: Subscription status:', subscriptionData?.status);
+        
+        return subscriptionData;
       } catch (error) {
         console.error('PremiumFeatureGate: Error fetching subscription:', error);
-        throw error;
+        return null;
       }
     },
     enabled: !!currentUser?.email,
-    staleTime: 0, // Don't cache at all
-    refetchOnMount: 'always', // Always refetch when component mounts
-    refetchOnWindowFocus: true // Refetch when window regains focus
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true
   });
 
   // Show loading state
