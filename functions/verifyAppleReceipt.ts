@@ -29,10 +29,10 @@ Deno.serve(async (req) => {
 
     // Map product ID to plan
     const planMap = {
-      'com.caremetric.monthly': { name: 'monthly', amount: 39.99, interval: 1 },
-      'com.caremetric.quarterly': { name: 'quarterly', amount: 114.99, interval: 3 },
-      'com.caremetric.semiannual': { name: 'semiannual', amount: 209.99, interval: 6 },
-      'com.caremetric.annual': { name: 'annual', amount: 349.99, interval: 12 }
+      'com.monthly.premium': { name: 'monthly', amount: 39.99, interval: 1 },
+      'com.quarterly.premium': { name: 'quarterly', amount: 114.99, interval: 3 },
+      'com.semiannual.premium': { name: 'semiannual', amount: 209.99, interval: 6 },
+      'com.annual.premium': { name: 'annual', amount: 349.99, interval: 12 }
     };
 
     const plan = planMap[productId];
