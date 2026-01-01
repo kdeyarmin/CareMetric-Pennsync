@@ -57,7 +57,7 @@ export const useAppleIAP = () => {
   const purchaseSubscription = async (productId, userEmail) => {
     setIsProcessing(true);
     
-    console.log('=== Capacitor IAP Purchase ===');
+    console.log('=== StoreKit Purchase ===');
     console.log('Product ID:', productId);
     console.log('User Email:', userEmail);
     
@@ -72,7 +72,17 @@ export const useAppleIAP = () => {
       const result = await Capacitor.Plugins.IAPPlugin.purchase({ productId });
       setIsProcessing(false);
       console.log('Purchase result:', result);
-      return result;
+      
+      if (result.success) {
+        return {
+          transactionId: result.transactionId,
+          productId: result.productId,
+          purchaseDate: result.purchaseDate,
+          receiptData: result.receiptData
+        };
+      } else {
+        throw new Error('Purchase failed');
+      }
     } catch (error) {
       setIsProcessing(false);
       console.error('Purchase error:', error);
@@ -89,7 +99,13 @@ export const useAppleIAP = () => {
 
     try {
       const result = await Capacitor.Plugins.IAPPlugin.restore();
-      return result;
+      if (result.success) {
+        return {
+          transactions: result.transactions || [],
+          receiptData: result.receiptData
+        };
+      }
+      throw new Error('Restore failed');
     } catch (error) {
       throw error;
     }
