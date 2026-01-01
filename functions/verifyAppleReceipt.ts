@@ -18,12 +18,15 @@ Deno.serve(async (req) => {
     }
 
     // Verify receipt with Apple
+    console.log('Verifying receipt with Apple...');
     const appleResponse = await verifyWithApple(receiptData);
+    console.log('Apple verification result:', appleResponse);
 
     if (!appleResponse.valid) {
       return Response.json({ 
         success: false,
-        error: 'Invalid receipt' 
+        error: 'Invalid receipt from Apple',
+        details: appleResponse.error || 'Unknown error'
       }, { status: 400 });
     }
 
