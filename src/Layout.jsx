@@ -34,7 +34,7 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
 /* =========================
    iOS / Layout Constants
 ========================= */
-const HEADER_BAR_HEIGHT_REM = 3.75; // visible blue bar height (rem)
+const HEADER_BAR_HEIGHT_REM = 3.5; // visible blue bar height (rem)
 const BOTTOM_NAV_HEIGHT_REM = 4.25; // visible bottom nav height (rem)
 
 // For FAB row placement: above bottom nav + safe area
@@ -248,7 +248,7 @@ export default function Layout({ children, currentPageName }) {
         <header
           className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 z-[200] overflow-x-hidden"
           style={{
-            paddingTop: "env(safe-area-inset-top)",
+            paddingTop: "max(env(safe-area-inset-top), 20px)",
             paddingBottom: 0
           }}
         >
