@@ -20,32 +20,26 @@ export const useAppleIAP = () => {
 
   useEffect(() => {
     // Check if Capacitor IAP plugin is available
-    const checkIAP = async () => {
-      // Import Capacitor and check for plugin
-      try {
-        const { Capacitor } = await import('@capacitor/core');
-        const hasCapacitor = !!Capacitor;
-        const isNative = Capacitor?.isNativePlatform?.();
-        
-        console.log('=== Capacitor IAP Check ===');
-        console.log('Capacitor exists:', hasCapacitor);
-        console.log('Is native platform:', isNative);
-        console.log('Platform:', Capacitor?.getPlatform?.());
-        
-        // Check if plugin is registered
-        if (isNative && Capacitor.Plugins) {
-          console.log('Available plugins:', Object.keys(Capacitor.Plugins));
-          console.log('IAPPlugin exists:', !!Capacitor.Plugins.IAPPlugin);
-          setIsReady(!!Capacitor.Plugins.IAPPlugin);
-        } else {
-          console.log('Not on native platform or no plugins available');
-          setIsReady(false);
-        }
-        console.log('=========================');
-      } catch (error) {
-        console.error('Capacitor import error:', error);
+    const checkIAP = () => {
+      const Capacitor = window.Capacitor;
+      const hasCapacitor = !!Capacitor;
+      const isNative = Capacitor?.isNativePlatform?.();
+      
+      console.log('=== Capacitor IAP Check ===');
+      console.log('Capacitor exists:', hasCapacitor);
+      console.log('Is native platform:', isNative);
+      console.log('Platform:', Capacitor?.getPlatform?.());
+      
+      // Check if plugin is registered
+      if (isNative && Capacitor?.Plugins) {
+        console.log('Available plugins:', Object.keys(Capacitor.Plugins));
+        console.log('IAPPlugin exists:', !!Capacitor.Plugins.IAPPlugin);
+        setIsReady(!!Capacitor.Plugins.IAPPlugin);
+      } else {
+        console.log('Not on native platform or no plugins available');
         setIsReady(false);
       }
+      console.log('=========================');
     };
     
     checkIAP();
@@ -67,14 +61,14 @@ export const useAppleIAP = () => {
     console.log('Product ID:', productId);
     console.log('User Email:', userEmail);
     
+    const Capacitor = window.Capacitor;
+    
+    if (!Capacitor?.isNativePlatform?.() || !Capacitor?.Plugins?.IAPPlugin) {
+      setIsProcessing(false);
+      throw new Error('IAP Plugin not available. Please use the native iOS app.');
+    }
+    
     try {
-      const { Capacitor } = await import('@capacitor/core');
-      
-      if (!Capacitor.isNativePlatform() || !Capacitor.Plugins.IAPPlugin) {
-        setIsProcessing(false);
-        throw new Error('IAP Plugin not available. Please use the native iOS app.');
-      }
-      
       const result = await Capacitor.Plugins.IAPPlugin.purchase({ productId });
       setIsProcessing(false);
       console.log('Purchase result:', result);
@@ -87,13 +81,13 @@ export const useAppleIAP = () => {
   };
 
   const restorePurchases = async () => {
-    try {
-      const { Capacitor } = await import('@capacitor/core');
-      
-      if (!Capacitor.isNativePlatform() || !Capacitor.Plugins.IAPPlugin) {
-        throw new Error('IAP Plugin not available');
-      }
+    const Capacitor = window.Capacitor;
+    
+    if (!Capacitor?.isNativePlatform?.() || !Capacitor?.Plugins?.IAPPlugin) {
+      throw new Error('IAP Plugin not available');
+    }
 
+    try {
       const result = await Capacitor.Plugins.IAPPlugin.restore();
       return result;
     } catch (error) {
@@ -102,13 +96,13 @@ export const useAppleIAP = () => {
   };
 
   const getProductInfo = async (productId) => {
-    try {
-      const { Capacitor } = await import('@capacitor/core');
-      
-      if (!Capacitor.isNativePlatform() || !Capacitor.Plugins.IAPPlugin) {
-        return null;
-      }
+    const Capacitor = window.Capacitor;
+    
+    if (!Capacitor?.isNativePlatform?.() || !Capacitor?.Plugins?.IAPPlugin) {
+      return null;
+    }
 
+    try {
       const result = await Capacitor.Plugins.IAPPlugin.getProductInfo({ productId });
       return result;
     } catch (error) {
