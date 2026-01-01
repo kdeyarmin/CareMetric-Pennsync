@@ -55,6 +55,22 @@ export default function Layout({ children, currentPageName }) {
     }
   });
 
+  // Check subscription status for premium badge
+  const { data: subscription } = useQuery({
+    queryKey: ['userSubscription', currentUser?.email],
+    queryFn: async () => {
+      const subs = await base44.entities.Subscription.filter({ user_email: currentUser.email });
+      return subs[0];
+    },
+    enabled: !!currentUser?.email
+  });
+
+  const isPremium = subscription && 
+    (subscription.status === 'active' || 
+     subscription.status === 'trialing' || 
+     subscription.status === 'lifetime_free' ||
+     currentUser?.role === 'admin');
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentPageName]);
