@@ -103,11 +103,8 @@ export default function SubscriptionPlans() {
         console.log('Verification response:', verifyResponse);
 
         if (verifyResponse?.data?.success) {
-          // Invalidate subscription query to refetch fresh data
-          await queryClient.invalidateQueries({ queryKey: ['userSubscription'] });
-
-          // Wait for refetch to complete
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Manually set the subscription in cache
+          queryClient.setQueryData(['userSubscription', currentUser.email], [verifyResponse.data.subscription]);
 
           alert('Subscription activated! Welcome to Premium! 🎉');
 
