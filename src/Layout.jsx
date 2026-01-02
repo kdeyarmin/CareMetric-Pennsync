@@ -282,14 +282,14 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       {showNavigationUI && (
         <header
-          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 z-[200] overflow-x-hidden"
+          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 z-[200] overflow-x-hidden flex items-end"
           style={{
             paddingTop: "max(env(safe-area-inset-top), 30px)",
             paddingBottom: 0
           }}
         >
           <div
-            className="flex items-center justify-between px-2 sm:px-3"
+            className="flex items-center justify-between px-2 sm:px-3 w-full"
             style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}
           >
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
