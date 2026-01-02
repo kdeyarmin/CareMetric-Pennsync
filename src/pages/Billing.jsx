@@ -1,6 +1,6 @@
 import React from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,6 @@ export const publicPage = true;
 export default function Billing() {
   const isApple = isApplePlatform();
   const { restorePurchases } = useAppleIAP();
-  const queryClient = useQueryClient();
   
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -60,19 +59,18 @@ export default function Billing() {
       const existingSub = response?.data?.subscription || response?.subscription;
       
       if (existingSub && (existingSub.status === 'active' || existingSub.status === 'trialing')) {
-        // Clear cache and reload
-        queryClient.clear();
         alert('Your subscription has been restored!');
-        setTimeout(() => window.location.reload(), 500);
+        window.location.reload();
         return;
       }
       
       // If no subscription found, try iOS restore
       const result = await restorePurchases(currentUser?.email);
       if (result.transactions?.length > 0) {
-        queryClient.clear();
         alert(`Restored ${result.transactions.length} purchase(s)! Reloading...`);
-        setTimeout(() => window.location.reload(), 2000);
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
       } else {
         alert('No purchases found to restore. If you subscribed with a different account, please sign in with that account.');
       }
