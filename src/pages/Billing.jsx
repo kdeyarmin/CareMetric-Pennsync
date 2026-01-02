@@ -54,15 +54,25 @@ export default function Billing() {
 
   const handleRestorePurchases = async () => {
     try {
+      // First check if user already has a subscription in backend
+      const response = await base44.functions.invoke('getMySubscription', {});
+      const existingSub = response?.data?.subscription || response?.subscription;
+      
+      if (existingSub && (existingSub.status === 'active' || existingSub.status === 'trialing')) {
+        alert('Your subscription has been restored!');
+        window.location.reload();
+        return;
+      }
+      
+      // If no subscription found, try iOS restore
       const result = await restorePurchases(currentUser?.email);
       if (result.transactions?.length > 0) {
         alert(`Restored ${result.transactions.length} purchase(s)! Reloading...`);
-        // Give backend time to process
         setTimeout(() => {
           window.location.reload();
         }, 2000);
       } else {
-        alert('No purchases found to restore.');
+        alert('No purchases found to restore. If you subscribed with a different account, please sign in with that account.');
       }
     } catch (error) {
       alert('Failed to restore purchases: ' + error.message);
