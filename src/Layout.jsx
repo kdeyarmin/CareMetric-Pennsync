@@ -289,11 +289,11 @@ export default function Layout({ children, currentPageName }) {
           }}
         >
           <div
-            className="flex items-center justify-between px-2 sm:px-3 h-full"
+            className="flex items-center justify-between px-2 sm:px-3"
             style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}
           >
-            <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink h-full">
-              <div className="relative flex-shrink-0 flex items-center">
+            <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
+              <div className="relative flex-shrink-0">
                 <img
                   src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                   className="w-6 h-6 sm:w-7 sm:h-7 object-contain"
@@ -303,10 +303,10 @@ export default function Layout({ children, currentPageName }) {
                   <span className="absolute -top-1 -right-1 text-xs">👑</span>
                 )}
               </div>
-              <span className="font-bold text-white text-xs sm:text-sm truncate flex items-center h-full">CareMetric AI</span>
+              <span className="font-bold text-white text-xs sm:text-sm truncate">CareMetric AI</span>
             </Link>
 
-            <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0 h-full">
+            <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
               <NotificationCenter />
               <Button
                 size="icon"
