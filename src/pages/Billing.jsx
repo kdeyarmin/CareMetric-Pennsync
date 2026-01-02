@@ -26,9 +26,13 @@ export default function Billing() {
 
   const { data: subscription, isLoading } = useQuery({
     queryKey: ['userSubscription', currentUser?.email],
-    queryFn: () => base44.entities.Subscription.filter({ user_email: currentUser.email }),
+    queryFn: async () => {
+      const response = await base44.functions.invoke('getMySubscription', {});
+      return response?.data?.subscription || response?.subscription;
+    },
     enabled: !!currentUser?.email,
-    select: (data) => data[0]
+    staleTime: 0, // Always fetch fresh data
+    refetchOnMount: 'always'
   });
 
   const portalMutation = useMutation({
