@@ -64,10 +64,29 @@ export const useAppleIAP = () => {
     }
   };
 
-  const restorePurchases = async () => {
+  const restorePurchases = async (userEmail) => {
     setIsProcessing(true);
     try {
+      // Get restored transactions from iOS
       const result = await callNativePlugin('restore', {});
+      
+      // Verify each restored transaction with backend
+      if (result.transactions && result.transactions.length > 0 && userEmail) {
+        const { base44 } = await import('@/api/base44Client');
+        
+        for (const transaction of result.transactions) {
+          try {
+            await base44.functions.invoke('verifyAppleReceipt', {
+              receipt: transaction.receipt,
+              userEmail: userEmail,
+              isRestore: true
+            });
+          } catch (error) {
+            console.error('Failed to verify restored transaction:', error);
+          }
+        }
+      }
+      
       setIsProcessing(false);
       return result;
     } catch (error) {

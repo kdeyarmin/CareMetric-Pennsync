@@ -54,10 +54,13 @@ export default function Billing() {
 
   const handleRestorePurchases = async () => {
     try {
-      const result = await restorePurchases();
+      const result = await restorePurchases(currentUser?.email);
       if (result.transactions?.length > 0) {
-        alert(`Restored ${result.transactions.length} purchase(s)!`);
-        window.location.reload();
+        alert(`Restored ${result.transactions.length} purchase(s)! Reloading...`);
+        // Give backend time to process
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
       } else {
         alert('No purchases found to restore.');
       }
