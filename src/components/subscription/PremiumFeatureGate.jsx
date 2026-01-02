@@ -43,7 +43,8 @@ export default function PremiumFeatureGate({
       return response?.data?.subscription || response?.subscription;
     },
     enabled: !!currentUser?.email,
-    staleTime: 300000 // Cache for 5 minutes - data already prefetched in Layout
+    staleTime: 0, // Always fetch fresh - user might have just restored
+    refetchOnMount: 'always' // Always refetch when component mounts
   });
 
   // Show loading state
