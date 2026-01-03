@@ -225,6 +225,35 @@ export default function SubscriptionPlans() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
+              <div className="mb-4 space-y-2 text-sm text-gray-700">
+                <p className="font-semibold text-gray-900">Includes:</p>
+                <ul className="space-y-1">
+                  <li className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span>AI-powered clinical documentation</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span>Unlimited patient records</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span>Real-time compliance monitoring</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span>Voice dictation & transcription</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span>Care plan automation</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span>Priority support</span>
+                  </li>
+                </ul>
+              </div>
               <Button
                 onClick={() => handleSubscribe(plan.id)}
                 disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id) || (isApple && isProcessing)}
