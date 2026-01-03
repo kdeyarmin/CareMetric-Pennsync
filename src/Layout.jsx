@@ -34,7 +34,7 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
 /* =========================
    iOS / Layout Constants
 ========================= */
-const HEADER_BAR_HEIGHT_REM = 2.25; // visible blue bar height (rem) - decreased by 20px total
+const HEADER_BAR_HEIGHT_REM = 2.875; // visible blue bar height (rem) - decreased by 10px total
 const BOTTOM_NAV_HEIGHT_REM = 4.25; // visible bottom nav height (rem)
 
 // For FAB row placement: above bottom nav + safe area
