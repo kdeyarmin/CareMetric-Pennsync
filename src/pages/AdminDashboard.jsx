@@ -23,6 +23,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import AdvancedRevenueAnalytics from "../components/admin/AdvancedRevenueAnalytics";
 import UserInsightsDashboard from "../components/admin/UserInsightsDashboard";
 import ComprehensiveDataExport from "../components/admin/ComprehensiveDataExport";
+import AdvancedReportingDashboard from "../components/admin/AdvancedReportingDashboard";
+import RealTimeSystemHealth from "../components/admin/RealTimeSystemHealth";
+import AIModelManagement from "../components/admin/AIModelManagement";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
@@ -600,8 +603,11 @@ export default function AdminDashboard() {
       )}
 
       <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-1 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1 h-auto p-1">
           <TabsTrigger value="overview" className="text-xs sm:text-sm py-2">Overview</TabsTrigger>
+          <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2">System Health</TabsTrigger>
+          <TabsTrigger value="advanced-reports" className="text-xs sm:text-sm py-2">Reports</TabsTrigger>
+          <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2">AI Models</TabsTrigger>
           <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2">Revenue</TabsTrigger>
           <TabsTrigger value="user-insights" className="text-xs sm:text-sm py-2">User Insights</TabsTrigger>
           <TabsTrigger value="performance" className="text-xs sm:text-sm py-2">Performance</TabsTrigger>
@@ -887,6 +893,34 @@ export default function AdminDashboard() {
             activity={allActivity}
             noteConversions={allNoteConversions}
             complianceAudits={allComplianceAudits}
+          />
+        </TabsContent>
+
+        {/* System Health Tab */}
+        <TabsContent value="system-health" className="space-y-6">
+          <RealTimeSystemHealth 
+            userActivity={allActivity}
+            visits={allVisits}
+            noteConversions={allNoteConversions}
+            complianceAudits={allComplianceAudits}
+          />
+        </TabsContent>
+
+        {/* Advanced Reports Tab */}
+        <TabsContent value="advanced-reports" className="space-y-6">
+          <AdvancedReportingDashboard 
+            userActivity={allActivity}
+            users={allUsers}
+            noteConversions={allNoteConversions}
+            visits={allVisits}
+            complianceAudits={allComplianceAudits}
+          />
+        </TabsContent>
+
+        {/* AI Models Tab */}
+        <TabsContent value="ai-models" className="space-y-6">
+          <AIModelManagement 
+            noteConversions={allNoteConversions}
           />
         </TabsContent>
 
