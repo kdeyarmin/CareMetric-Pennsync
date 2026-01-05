@@ -297,7 +297,7 @@ export default function SubscriptionPlans() {
               </div>
               <Button
                 onClick={() => handleSubscribe(plan.id)}
-                disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id) || (isApple && isProcessing)}
+                disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id) || (isApple && isProcessing) || isRestoring}
                 className={`w-full ${
                   plan.popular 
                     ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700' 
@@ -318,6 +318,27 @@ export default function SubscriptionPlans() {
                   </>
                 ) : (
                   'Select Plan'
+                )}
+              </Button>
+              
+              {/* Restore Purchase Button */}
+              <Button
+                onClick={handleRestorePurchases}
+                disabled={isRestoring || isLoading || (isApple && isProcessing)}
+                variant="ghost"
+                className="w-full mt-2 text-gray-600 hover:text-gray-900"
+                size="sm"
+              >
+                {isRestoring ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Restoring...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Restore Purchase
+                  </>
                 )}
               </Button>
             </CardContent>
