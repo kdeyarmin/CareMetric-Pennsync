@@ -238,51 +238,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Nurse Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm text-blue-600 font-medium">Note Enhancements</p>
-                  {stats.noteConversions === 0 && (
-                    <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-300">Sample</Badge>
-                  )}
-                </div>
-                <p className="text-3xl font-bold text-blue-900">
-                  {stats.noteConversions === 0 ? '47' : stats.noteConversions}
-                </p>
-                {stats.noteConversions === 0 && (
-                  <p className="text-xs text-blue-600 mt-1">Start documenting to see your progress</p>
-                )}
-              </div>
-              <FileText className="w-12 h-12 text-blue-400" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm text-green-600 font-medium">Time Saved</p>
-                  {stats.timeSavedMinutes === 0 && (
-                    <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300">Sample</Badge>
-                  )}
-                </div>
-                <p className="text-3xl font-bold text-green-900">
-                  {stats.timeSavedMinutes === 0 ? '19h 35m' : stats.timeSavedDisplay}
-                </p>
-                {stats.timeSavedMinutes === 0 && (
-                  <p className="text-xs text-green-600 mt-1">Based on 47 notes × 25 min each</p>
-                )}
-              </div>
-              <Clock className="w-12 h-12 text-green-400" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+
 
       {/* Quick Action Buttons */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
