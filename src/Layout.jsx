@@ -166,9 +166,6 @@ export default function Layout({ children, currentPageName }) {
                   className="w-8 h-8 object-contain"
                   alt="CareMetric AI Logo"
                 />
-                {isPremium && (
-                  <span className="absolute -top-0.5 -right-0.5">👑</span>
-                )}
               </div>
               {!sidebarCollapsed && (
                 <span className="font-bold truncate flex items-center gap-1">
@@ -299,9 +296,6 @@ export default function Layout({ children, currentPageName }) {
                   className="w-6 h-6 sm:w-7 sm:h-7 object-contain"
                   alt="CareMetric AI Logo"
                 />
-                {isPremium && (
-                  <span className="absolute -top-1 -right-1 text-xs">👑</span>
-                )}
               </div>
               <span className="font-bold text-white text-xs sm:text-sm truncate">CareMetric AI</span>
             </Link>
@@ -340,9 +334,6 @@ export default function Layout({ children, currentPageName }) {
             <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b sticky top-0 bg-white z-10">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm sm:text-base">Menu</span>
-                {isPremium && (
-                  <span className="text-yellow-500 text-lg">👑</span>
-                )}
               </div>
               <Button
                 size="icon"
