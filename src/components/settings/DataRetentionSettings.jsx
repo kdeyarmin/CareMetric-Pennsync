@@ -42,9 +42,16 @@ export default function DataRetentionSettings() {
   const savePreference = async (preference) => {
     setIsSaving(true);
     try {
-      await base44.auth.updateMe({
+      const updates = {
         data_retention_preference: preference
-      });
+      };
+      
+      // If switching to delete_on_logout, disable 2FA
+      if (preference === 'delete_on_logout') {
+        updates.two_factor_enabled = false;
+      }
+      
+      await base44.auth.updateMe(updates);
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
     } catch (error) {
       console.error('Error saving preference:', error);
@@ -59,7 +66,8 @@ export default function DataRetentionSettings() {
       await base44.auth.updateMe({
         data_retention_preference: tempPreference,
         hipaa_consent_accepted: true,
-        hipaa_consent_date: new Date().toISOString()
+        hipaa_consent_date: new Date().toISOString(),
+        two_factor_enabled: true // Automatically enable 2FA when saving patient data
       });
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setShowHIPAADialog(false);
@@ -111,9 +119,10 @@ export default function DataRetentionSettings() {
                   <div className="flex items-center gap-2 mb-1">
                     <Database className="w-4 h-4 text-green-600" />
                     <span className="font-semibold">Save Patient Data</span>
+                    <Shield className="w-4 h-4 text-blue-600" />
                   </div>
                   <p className="text-sm text-gray-600 font-normal">
-                    Patient information will be retained for better AI recommendations. Requires HIPAA compliance acknowledgment.
+                    Patient information will be retained for better AI recommendations. Requires HIPAA compliance acknowledgment and automatically enables Two-Factor Authentication.
                   </p>
                 </Label>
               </div>
@@ -124,7 +133,11 @@ export default function DataRetentionSettings() {
             <Alert className="bg-green-50 border-green-300">
               <CheckCircle2 className="w-4 h-4 text-green-600" />
               <AlertDescription className="text-sm text-green-900">
-                HIPAA consent accepted on {currentUser?.hipaa_consent_date ? new Date(currentUser.hipaa_consent_date).toLocaleDateString() : 'unknown date'}
+                <div>
+                  <p className="font-semibold mb-1">✓ Data Retention Active</p>
+                  <p>HIPAA consent accepted on {currentUser?.hipaa_consent_date ? new Date(currentUser.hipaa_consent_date).toLocaleDateString() : 'unknown date'}</p>
+                  <p className="mt-1">Two-Factor Authentication: <span className="font-semibold">Enabled</span></p>
+                </div>
               </AlertDescription>
             </Alert>
           )}
@@ -133,7 +146,10 @@ export default function DataRetentionSettings() {
             <Alert className="bg-orange-50 border-orange-300">
               <AlertTriangle className="w-4 h-4 text-orange-600" />
               <AlertDescription className="text-sm text-orange-900">
-                <strong>Active:</strong> All patient data will be deleted when you logout.
+                <div>
+                  <p><strong>Active:</strong> All patient data will be deleted when you logout.</p>
+                  <p className="mt-1">Two-Factor Authentication: <span className="font-semibold">Disabled</span></p>
+                </div>
               </AlertDescription>
             </Alert>
           )}

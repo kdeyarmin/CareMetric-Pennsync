@@ -238,12 +238,16 @@ export default function Settings() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Two-Factor Authentication</Label>
-                    <p className="text-xs text-gray-500 mt-1">Require SMS code on login</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {currentUser?.data_retention_preference === 'save' 
+                        ? 'Automatically enabled when saving patient data' 
+                        : 'Require SMS code on login'}
+                    </p>
                   </div>
                   <Switch
                     checked={formData.two_factor_enabled}
                     onCheckedChange={(checked) => setFormData({ ...formData, two_factor_enabled: checked })}
-                    disabled={!formData.phone_number}
+                    disabled={!formData.phone_number || currentUser?.data_retention_preference === 'save'}
                   />
                 </div>
               </>
