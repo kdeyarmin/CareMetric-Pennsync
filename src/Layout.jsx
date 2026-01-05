@@ -281,7 +281,7 @@ export default function Layout({ children, currentPageName }) {
         <header
           className="lg:hidden fixed top-0 left-0 right-0 bg-blue-400 z-[200] overflow-x-hidden flex items-end"
           style={{
-            paddingTop: "max(env(safe-area-inset-top), 30px)",
+            paddingTop: "max(env(safe-area-inset-top), 10px)",
             paddingBottom: 0
           }}
         >
