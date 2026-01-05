@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Sparkles, Apple } from "lucide-react";
+import { Check, Loader2, Sparkles, Apple, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { isApplePlatform } from "@/components/utils/platformDetection";
@@ -15,9 +15,10 @@ export default function SubscriptionPlans() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('monthly');
   const isApple = isApplePlatform();
-  const { purchaseSubscription, isProcessing } = useAppleIAP();
+  const { purchaseSubscription, restorePurchases, isProcessing } = useAppleIAP();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
