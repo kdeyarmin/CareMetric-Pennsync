@@ -276,6 +276,34 @@ export default function Dashboard() {
         </Link>
       </div>
 
+      {/* Nurse Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-blue-600 font-medium mb-1">Note Enhancements</p>
+                <p className="text-3xl font-bold text-blue-900">0</p>
+                <p className="text-xs text-blue-600 mt-1">Start documenting to see your progress</p>
+              </div>
+              <FileText className="w-12 h-12 text-blue-400" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-green-600 font-medium mb-1">Time Saved</p>
+                <p className="text-3xl font-bold text-green-900">0h 0m</p>
+                <p className="text-xs text-green-600 mt-1">Time saved through AI enhancements</p>
+              </div>
+              <Clock className="w-12 h-12 text-green-400" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Task Notifications */}
       <div className="mb-6">
         <TaskNotifications userEmail={currentUser?.email} />
