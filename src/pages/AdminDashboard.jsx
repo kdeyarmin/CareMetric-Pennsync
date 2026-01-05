@@ -20,6 +20,9 @@ import { calculateStats, formatNumber, formatCurrency } from "@/components/utils
 import AIFeedbackAnalytics from "../components/admin/AIFeedbackAnalytics";
 import { Input } from "@/components/ui/input";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import AdvancedRevenueAnalytics from "../components/admin/AdvancedRevenueAnalytics";
+import UserInsightsDashboard from "../components/admin/UserInsightsDashboard";
+import ComprehensiveDataExport from "../components/admin/ComprehensiveDataExport";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
@@ -597,18 +600,24 @@ export default function AdminDashboard() {
       )}
 
       <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-1 h-auto p-1">
           <TabsTrigger value="overview" className="text-xs sm:text-sm py-2">Overview</TabsTrigger>
           <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2">Revenue</TabsTrigger>
+          <TabsTrigger value="user-insights" className="text-xs sm:text-sm py-2">User Insights</TabsTrigger>
           <TabsTrigger value="performance" className="text-xs sm:text-sm py-2">Performance</TabsTrigger>
           <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2">Compliance</TabsTrigger>
           <TabsTrigger value="training" className="text-xs sm:text-sm py-2">Training</TabsTrigger>
           <TabsTrigger value="ai-feedback" className="text-xs sm:text-sm py-2">AI Feedback</TabsTrigger>
           <TabsTrigger value="activity" className="text-xs sm:text-sm py-2">Activity</TabsTrigger>
+          <TabsTrigger value="export" className="text-xs sm:text-sm py-2">Export</TabsTrigger>
         </TabsList>
 
         {/* Revenue Tab */}
         <TabsContent value="revenue" className="space-y-6">
+          <AdvancedRevenueAnalytics 
+            subscriptions={allSubscriptions}
+            payments={allPayments}
+          />
           {/* Revenue Overview Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
@@ -869,6 +878,34 @@ export default function AdminDashboard() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* User Insights Tab */}
+        <TabsContent value="user-insights" className="space-y-6">
+          <UserInsightsDashboard 
+            users={allUsers}
+            activity={allActivity}
+            noteConversions={allNoteConversions}
+            complianceAudits={allComplianceAudits}
+          />
+        </TabsContent>
+
+        {/* Export Tab */}
+        <TabsContent value="export" className="space-y-6">
+          <ComprehensiveDataExport 
+            data={{
+              users: allUsers,
+              subscriptions: allSubscriptions,
+              payments: allPayments,
+              patients: allPatients,
+              visits: allVisits,
+              noteConversions: allNoteConversions,
+              complianceAudits: allComplianceAudits,
+              incidents: allIncidents,
+              tasks: allTasks,
+              activity: allActivity
+            }}
+          />
         </TabsContent>
 
         {/* Overview Tab */}
