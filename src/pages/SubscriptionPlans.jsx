@@ -129,8 +129,48 @@ export default function SubscriptionPlans() {
     }
   };
 
-  const hasActiveSubscription = subscription && subscription.status === 'active';
+  const hasActiveSubscription = subscription && (subscription.status === 'active' || subscription.status === 'trialing' || subscription.status === 'lifetime_free');
   const trialDays = settings?.trial_days || 14;
+
+  const handleRestorePurchases = async () => {
+    setIsRestoring(true);
+    try {
+      // First check if user already has a subscription in backend
+      const response = await base44.functions.invoke('getMySubscription', {});
+      const existingSub = response?.data?.subscription || response?.subscription;
+      
+      if (existingSub && (existingSub.status === 'active' || existingSub.status === 'trialing' || existingSub.status === 'lifetime_free')) {
+        alert('Your subscription has been restored! Refreshing app...');
+        // Clear cache and reload to unlock pages
+        queryClient.clear();
+        window.location.href = createPageUrl('Dashboard');
+        return;
+      }
+      
+      // If on Apple platform, try iOS restore
+      if (isApple) {
+        const result = await restorePurchases(currentUser?.email);
+        if (result.transactions?.length > 0) {
+          alert(`Restored ${result.transactions.length} purchase(s)! Refreshing app...`);
+          // Clear cache and reload to unlock pages
+          queryClient.clear();
+          setTimeout(() => {
+            window.location.href = createPageUrl('Dashboard');
+          }, 1000);
+        } else {
+          alert('No purchases found to restore. If you subscribed with a different account, please sign in with that account.');
+        }
+      } else {
+        // For non-Apple platforms, just check the backend
+        alert('No active subscription found. Please contact support if you believe this is an error.');
+      }
+    } catch (error) {
+      console.error('Restore purchases error:', error);
+      alert('Failed to restore purchases: ' + error.message);
+    } finally {
+      setIsRestoring(false);
+    }
+  };
   const features = settings?.features || [
     'Unlimited patients',
     'AI-powered documentation',
