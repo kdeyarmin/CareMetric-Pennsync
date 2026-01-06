@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText } from "lucide-react";
+import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, ChevronDown } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
@@ -38,6 +38,7 @@ import PullToRefresh from "../components/mobile/PullToRefresh";
 export default function Dashboard() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const [showAdditionalTools, setShowAdditionalTools] = useState(false);
 
     const { data: currentUser } = useQuery({
       queryKey: ['currentUser'],
@@ -345,106 +346,79 @@ export default function Dashboard() {
         </motion.div>
       </motion.div>
 
-      {/* Task Notifications */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <TaskNotifications userEmail={currentUser?.email} />
+      {/* My Daily Overview - Consolidated Insights & Tasks */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+        <div className="space-y-4">
+          <TaskNotifications userEmail={currentUser?.email} />
+          <IntelligentTaskPrioritization
+            nurseEmail={currentUser?.email}
+            patients={patients}
+            onTaskCompleted={() => queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })}
+          />
+        </div>
+        <div className="space-y-4">
+          <NursePersonalizedInsights
+            nurseEmail={currentUser?.email}
+            recentActivity={nurseActivity}
+            noteConversions={noteConversions}
+            trainingRecommendations={nurseTrainingRecommendations}
+            complianceAudits={nurseComplianceAudits}
+            pendingTasks={nurseTasks}
+          />
+          <PersonalizedCoachingDashboard nurseEmail={currentUser?.email} />
+        </div>
       </div>
 
-      {/* Personalized Nurse Insights */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <NursePersonalizedInsights
-          nurseEmail={currentUser?.email}
-          recentActivity={nurseActivity}
-          noteConversions={noteConversions}
-          trainingRecommendations={nurseTrainingRecommendations}
-          complianceAudits={nurseComplianceAudits}
-          pendingTasks={nurseTasks}
-        />
-      </div>
-
-      {/* AI Coaching System */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <PersonalizedCoachingDashboard nurseEmail={currentUser?.email} />
-      </div>
-
-      {/* Proactive Care Gap Identification */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+      {/* Patient Care Insights - Consolidated Alerts & Gaps */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <ProactiveCareGapIdentifier
           patients={patients}
           visits={visits}
           carePlans={carePlans}
           alerts={[]}
           autoAnalyze={false}
-          maxGaps={8}
-          compact={false}
+          maxGaps={6}
+          compact={true}
         />
+        <RiskAlertWidget showAllPatients={true} compact={true} />
       </div>
 
-      {/* High-Risk Patient Alerts */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <RiskAlertWidget showAllPatients={true} compact={false} />
-      </div>
-
-      {/* Offline Data Manager */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <OfflineDataManager />
-      </div>
-
-      {/* My Daily Tools */}
-      <div className="grid grid-cols-1 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <IntelligentTaskPrioritization
-          nurseEmail={currentUser?.email}
-          patients={patients}
-          onTaskCompleted={() => queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })}
-        />
-        <SmartRouteOptimizer
-          visits={visits.filter(v => v.status === 'scheduled')}
-          patients={patients}
-          onOptimizedSchedule={(order) => console.log('Optimized:', order)}
-        />
-      </div>
-      
-      {/* My Compliance Alerts */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+      {/* Compliance & Clinical Support */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <ComplianceAlertNotifications 
           nurseEmail={currentUser?.email}
           showAll={false}
           maxAlerts={5}
-          compact={false}
+          compact={true}
         />
-      </div>
-
-      {/* Proactive Clinical Support - Show for first scheduled patient */}
-      {visits.length > 0 && visits[0]?.patient_id && (
-        <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+        {visits.length > 0 && visits[0]?.patient_id && (
           <ProactiveClinicalSupport 
             patientId={visits[0].patient_id}
             compact={true}
           />
-        </div>
-      )}
-
-
-
-      {/* Real-time Patient Alerts */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <RealTimePatientAlerts
-          patients={patients}
-          visits={visits}
-          carePlans={carePlans}
-          incidents={incidents}
-        />
+        )}
       </div>
 
-      {/* Regulatory Alerts for Nurses */}
-      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <NurseRegulatoryAlerts nurseEmail={currentUser?.email} compact={true} />
-      </div>
-
-
-
-      {/* Add Compliance Widget */}
-      <ComplianceDashboardWidget />
+      {/* Additional Tools - Collapsible Section */}
+      <Card className="mb-4 sm:mb-6">
+        <CardHeader className="cursor-pointer" onClick={() => setShowAdditionalTools(!showAdditionalTools)}>
+          <CardTitle className="text-lg flex items-center justify-between">
+            <span>Additional Tools & Resources</span>
+            <ChevronDown className={`w-5 h-5 transition-transform ${showAdditionalTools ? 'rotate-180' : ''}`} />
+          </CardTitle>
+        </CardHeader>
+        {showAdditionalTools && (
+          <CardContent className="space-y-4">
+            <OfflineDataManager />
+            <SmartRouteOptimizer
+              visits={visits.filter(v => v.status === 'scheduled')}
+              patients={patients}
+              onOptimizedSchedule={(order) => console.log('Optimized:', order)}
+            />
+            <NurseRegulatoryAlerts nurseEmail={currentUser?.email} compact={true} />
+          </CardContent>
+        )}
+      </Card>
     </div>
     </PullToRefresh>
   );
