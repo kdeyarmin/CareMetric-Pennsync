@@ -550,7 +550,8 @@ export default function SmartNoteAssistant() {
     };
   }, [patientOASIS]);
 
-  const selectedPatient = patients.find(p => p.id === selectedPatientId);
+  const selectedPatient = selectedPatientId === 'anonymous' ? null : patients.find(p => p.id === selectedPatientId);
+  const isAnonymous = selectedPatientId === 'anonymous';
   
   // Auto-fill diagnosis when patient is selected
   React.useEffect(() => {
@@ -591,7 +592,7 @@ export default function SmartNoteAssistant() {
   } : null;
 
   const currentStep = useMemo(() => {
-    if (!selectedPatientId) return 'patient';
+    if (!selectedPatientId || selectedPatientId === '') return 'patient';
     if (!vitalSigns.bp && !vitalSigns.hr && !roughNote) return 'vitals';
     if (!roughNote || roughNote.length < 20) return 'notes';
     if (!enhancedNote) return 'enhance';
@@ -1607,7 +1608,12 @@ Return JSON with:
   };
 
   const handleSaveNote = async () => {
-    if (!selectedPatientId || !enhancedNote) return;
+    if (!selectedPatientId || !enhancedNote || isAnonymous) {
+      if (isAnonymous) {
+        alert('Anonymous notes cannot be saved. Copy the note to use it.');
+      }
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -1744,12 +1750,22 @@ Return JSON with:
       />
 
       {/* Enhanced Patient Context */}
-      {selectedPatient && (
+      {selectedPatient && !isAnonymous && (
         <EnhancedPatientContext
           patient={selectedPatient}
           visits={recentVisits}
           carePlans={carePlans}
         />
+      )}
+      
+      {/* Anonymous Mode Notice */}
+      {isAnonymous && (
+        <Alert className="bg-purple-50 border-purple-200">
+          <AlertCircle className="w-4 h-4 text-purple-600" />
+          <AlertDescription className="text-sm text-purple-800">
+            🔒 Anonymous Mode: Note will be enhanced but no patient data will be saved or stored
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-3 sm:gap-4 w-full">
@@ -1770,27 +1786,36 @@ Return JSON with:
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
                 <div className="w-full overflow-hidden">
                   <Label className="text-xs sm:text-sm mb-1.5 block">Patient</Label>
-                  <SearchablePatientSelect
-                    patients={patients}
-                    value={selectedPatientId}
-                    onValueChange={(id) => {
-                      setSelectedPatientId(id);
-                      const patient = patients.find(p => p.id === id);
-                      if (patient?.primary_diagnosis) {
-                        const matchingDiagnosis = commonDiagnoses.find(dx => 
-                          patient.primary_diagnosis.toLowerCase().includes(dx.toLowerCase().split(' ')[0].toLowerCase()) ||
-                          dx.toLowerCase().includes(patient.primary_diagnosis.toLowerCase().split(' ')[0].toLowerCase())
-                        );
-                        if (matchingDiagnosis) {
-                          setDiagnosis(matchingDiagnosis);
-                        } else {
-                          setDiagnosis("Custom (type below)");
-                          setCustomDiagnosis(patient.primary_diagnosis);
-                        }
+                  <Select value={selectedPatientId} onValueChange={(id) => {
+                    setSelectedPatientId(id);
+                    const patient = patients.find(p => p.id === id);
+                    if (patient?.primary_diagnosis) {
+                      const matchingDiagnosis = commonDiagnoses.find(dx => 
+                        patient.primary_diagnosis.toLowerCase().includes(dx.toLowerCase().split(' ')[0].toLowerCase()) ||
+                        dx.toLowerCase().includes(patient.primary_diagnosis.toLowerCase().split(' ')[0].toLowerCase())
+                      );
+                      if (matchingDiagnosis) {
+                        setDiagnosis(matchingDiagnosis);
+                      } else {
+                        setDiagnosis("Custom (type below)");
+                        setCustomDiagnosis(patient.primary_diagnosis);
                       }
-                    }}
-                    placeholder="Search patients..."
-                  />
+                    }
+                  }}>
+                    <SelectTrigger className="h-11 w-full">
+                      <SelectValue placeholder="Select patient or anonymous..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="anonymous" className="text-sm font-medium text-purple-600">
+                        🔒 Anonymous (No patient data saved)
+                      </SelectItem>
+                      {patients.map(p => (
+                        <SelectItem key={p.id} value={p.id} className="text-sm">
+                          {p.first_name} {p.last_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="w-full overflow-hidden">
                   <Label className="text-xs sm:text-sm mb-1.5 block">Visit Date</Label>
@@ -2370,9 +2395,9 @@ Return JSON with:
                 isSaving={isSaving}
                 savedSuccessfully={savedSuccessfully}
                 onCopy={handleCopy}
-                onSave={handleSaveNote}
-                onGenerateTasks={() => setActiveAccordion('tasks')}
-                onGenerateCarePlans={() => setActiveAccordion('careplans')}
+                onSave={isAnonymous ? undefined : handleSaveNote}
+                onGenerateTasks={isAnonymous ? undefined : () => setActiveAccordion('tasks')}
+                onGenerateCarePlans={isAnonymous ? undefined : () => setActiveAccordion('careplans')}
                 onStartNew={handleClearNote}
                 complianceScore={unifiedInsights?.overall_compliance_score || enhancedNoteCompliance?.overall_score}
               />
