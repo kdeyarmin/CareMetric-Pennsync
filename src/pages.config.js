@@ -25,6 +25,7 @@ import EULA from './pages/EULA';
 import FAQ from './pages/FAQ';
 import Features from './pages/Features';
 import Home from './pages/Home';
+import HowToGuide from './pages/HowToGuide';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
@@ -62,6 +63,7 @@ import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
 import SecurityAudit from './pages/SecurityAudit';
+import SecurityCompliance from './pages/SecurityCompliance';
 import SecurityPolicy from './pages/SecurityPolicy';
 import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
@@ -80,8 +82,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import SecurityCompliance from './pages/SecurityCompliance';
-import HowToGuide from './pages/HowToGuide';
 import __Layout from './Layout.jsx';
 
 
@@ -113,6 +113,7 @@ export const PAGES = {
     "FAQ": FAQ,
     "Features": Features,
     "Home": Home,
+    "HowToGuide": HowToGuide,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
@@ -150,6 +151,7 @@ export const PAGES = {
     "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
     "SecurityAudit": SecurityAudit,
+    "SecurityCompliance": SecurityCompliance,
     "SecurityPolicy": SecurityPolicy,
     "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
@@ -168,8 +170,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "SecurityCompliance": SecurityCompliance,
-    "HowToGuide": HowToGuide,
 }
 
 export const pagesConfig = {

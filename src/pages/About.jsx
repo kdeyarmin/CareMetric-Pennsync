@@ -78,7 +78,7 @@ export default function About() {
         { name: "Real-Time Compliance Checking", time: "Prevents denials", description: "Live feedback on documentation quality and completeness" },
         { name: "Auto-Generated Visit Notes", time: "Saves 20-30 min", description: "AI drafts comprehensive notes from vital signs and observations" },
         { name: "Smart Templates", time: "Saves 10-15 min", description: "Visit type-specific templates that adapt to patient needs" },
-        { name: "Referral Processing", time: "Saves 15-20 min", description: "Extract patient data from PDFs automatically" }
+
       ]
     },
     {
@@ -91,7 +91,7 @@ export default function About() {
         { name: "Care Gap Analysis", time: "Improves outcomes", description: "Proactively identifies missing interventions" },
         { name: "Clinical Decision Support", time: "Real-time guidance", description: "Evidence-based recommendations during patient care" },
         { name: "Deterioration Prediction", time: "Prevents hospitalizations", description: "AI predicts patient decline 24-48 hours in advance" },
-        { name: "Wound Care Tracking", time: "Better healing", description: "Track progress and suggest evidence-based interventions" }
+
       ]
     },
     {
@@ -112,7 +112,6 @@ export default function About() {
       items: [
         { name: "Incident Reporting", time: "Saves 10-15 min", description: "Guided incident reporting with AI analysis" },
         { name: "Patient Alerts", time: "Proactive monitoring", description: "Real-time alerts for critical changes" },
-        { name: "Medication Reconciliation", time: "Prevents errors", description: "Automated med rec with interaction checking" },
         { name: "Fall Risk Assessment", time: "Reduces falls", description: "Dynamic fall risk scoring with interventions" }
       ]
     },
