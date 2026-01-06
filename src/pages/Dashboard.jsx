@@ -446,5 +446,6 @@ export default function Dashboard() {
       {/* Add Compliance Widget */}
       <ComplianceDashboardWidget />
     </div>
+    </PullToRefresh>
   );
 }
