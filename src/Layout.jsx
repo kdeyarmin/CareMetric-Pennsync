@@ -134,7 +134,7 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <ThemeProvider>
-    <div className="min-h-screen bg-blue-100 dark:bg-gray-900 flex overflow-x-hidden transition-colors duration-300">
+    <div className="min-h-screen bg-blue-100 dark:bg-gray-900 flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
           Scoped overrides:
           Force any internal Tailwind "fixed" inside FAB components to behave like normal content
@@ -150,6 +150,13 @@ export default function Layout({ children, currentPageName }) {
           bottom: auto !important;
           left: auto !important;
           transform: none !important;
+        }
+
+        /* Ensure mobile header is always visible */
+        @media (max-width: 1023px) {
+          body {
+            overflow-x: hidden;
+          }
         }
       `}</style>
 
@@ -285,9 +292,11 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       {showNavigationUI && (
         <header
-          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 dark:bg-gray-800 z-[300] overflow-x-hidden flex flex-col transition-colors duration-300"
+          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 dark:bg-gray-800 z-[9999] shadow-lg flex flex-col transition-colors duration-300"
           style={{
-            paddingTop: "env(safe-area-inset-top, 0px)"
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            width: "100vw",
+            maxWidth: "100vw"
           }}
         >
           <div
@@ -453,7 +462,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Floating Buttons (HORIZONTAL) ================= */}
       {showNavigationUI && (
-        <div className="fixed right-3 z-50 lg:hidden" style={{ bottom: FAB_BOTTOM_OFFSET }}>
+        <div className="fixed right-3 z-[9997] lg:hidden" style={{ bottom: FAB_BOTTOM_OFFSET }}>
           <div className="flex flex-row items-center gap-3">
             {/* IMPORTANT: scope override so internal fixed FABs become normal-flow */}
             <div className="cm-fab-scope flex items-center justify-center">
@@ -469,8 +478,13 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       {showNavigationUI && (
         <nav
-          className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t dark:border-gray-700 shadow lg:hidden z-40 transition-colors duration-300"
-          style={{ height: mobileBottomNavTotalHeight, paddingBottom: "env(safe-area-inset-bottom)" }}
+          className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t dark:border-gray-700 shadow lg:hidden z-[9998] transition-colors duration-300"
+          style={{ 
+            height: mobileBottomNavTotalHeight, 
+            paddingBottom: "env(safe-area-inset-bottom)",
+            width: "100vw",
+            maxWidth: "100vw"
+          }}
         >
           <div className="flex items-center justify-around px-1" style={{ height: `${BOTTOM_NAV_HEIGHT_REM}rem` }}>
             <Link
