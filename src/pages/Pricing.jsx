@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Sparkles, Clock, ArrowRight } from "lucide-react";
+import { motion } from "framer-motion";
 
 export const publicPage = true;
 
@@ -88,31 +89,41 @@ export default function Pricing() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4 md:p-8 w-full max-w-full overflow-x-hidden">
+      <div className="max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+        <motion.div 
+          className="text-center mb-8 sm:mb-12 px-4"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
             Simple, Transparent Pricing
           </h1>
-          <p className="text-xl text-gray-600 mb-6">
+          <p className="text-lg sm:text-xl text-gray-600 dark:text-gray-400 mb-6">
             Choose the plan that works best for you
           </p>
           
           {/* Free Trial Banner */}
-          <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-6 py-3 rounded-full border-2 border-green-300">
-            <Clock className="w-5 h-5" />
+          <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 sm:px-6 py-2 sm:py-3 rounded-full border-2 border-green-300 text-sm sm:text-base">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
             <span className="font-bold">14-Day Free Trial • No Credit Card Required</span>
           </div>
-        </div>
+        </motion.div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          {plans.map((plan) => (
-            <Card 
-              key={plan.name} 
-              className={`relative ${plan.popular ? 'border-4 border-indigo-500 shadow-2xl scale-105' : 'border-2'}`}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8 sm:mb-12">
+          {plans.map((plan, idx) => (
+            <motion.div
+              key={plan.name}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              whileHover={{ y: -8, scale: 1.02 }}
             >
+              <Card 
+                className={`relative h-full ${plan.popular ? 'border-4 border-indigo-500 shadow-2xl lg:scale-105' : 'border-2'} hover-lift`}
+              >
               {plan.popular && (
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
                   <Badge className="bg-indigo-600 text-white px-4 py-1 text-sm">
@@ -167,6 +178,7 @@ export default function Pricing() {
                 </Link>
               </CardContent>
             </Card>
+            </motion.div>
           ))}
         </div>
 

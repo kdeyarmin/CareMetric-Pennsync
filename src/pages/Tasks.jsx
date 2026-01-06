@@ -17,6 +17,9 @@ import { format, parseISO, isPast, isToday, isFuture } from "date-fns";
 import { todayEastern } from "../components/utils/timezone";
 import TaskNotifications from "../components/tasks/TaskNotifications";
 import RecurringTaskManager from "../components/tasks/RecurringTaskManager";
+import EmptyState from "../components/ui/EmptyState";
+import PullToRefresh from "../components/mobile/PullToRefresh";
+import { motion } from "framer-motion";
 
 export default function Tasks() {
   const [showForm, setShowForm] = useState(false);
@@ -167,8 +170,13 @@ export default function Tasks() {
   };
 
   const TaskCard = ({ task, category }) => (
-    <Card className={`${category === 'overdue' ? 'border-red-300 bg-red-50' : ''}`}>
-      <CardContent className="p-4">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -2 }}
+    >
+      <Card className={`${category === 'overdue' ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'dark:bg-gray-800'} hover-lift w-full max-w-full overflow-hidden`}>
+        <CardContent className="p-3 sm:p-4 overflow-hidden">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -236,12 +244,16 @@ export default function Tasks() {
         </div>
       </CardContent>
     </Card>
+    </motion.div>
   );
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">My Tasks</h1>
+    <PullToRefresh onRefresh={async () => {
+      await queryClient.invalidateQueries({ queryKey: ['allTasks'] });
+    }}>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">My Tasks</h1>
         <Button
           onClick={() => {
             setShowForm(true);
@@ -261,7 +273,7 @@ export default function Tasks() {
               }
             });
           }}
-          className="bg-indigo-600 hover:bg-indigo-700"
+          className="bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto touch-target"
         >
           <Plus className="w-4 h-4 mr-2" />
           New Task
@@ -437,37 +449,40 @@ export default function Tasks() {
         </div>
       </div>
 
-      <Tabs defaultValue="overdue" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overdue" className="relative">
+      <Tabs defaultValue="overdue" className="space-y-4 w-full max-w-full overflow-x-hidden">
+        <div className="w-full overflow-x-auto">
+          <TabsList className="flex w-max min-w-full gap-1 p-1">
+            <TabsTrigger value="overdue" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
             Overdue
             {categorizedTasks.overdue.length > 0 && (
               <Badge className="ml-2 bg-red-600 text-white">{categorizedTasks.overdue.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="today" className="relative">
+          <TabsTrigger value="today" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
             Today
             {categorizedTasks.today.length > 0 && (
               <Badge className="ml-2">{categorizedTasks.today.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="upcoming">
+          <TabsTrigger value="upcoming" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
             Upcoming
             {categorizedTasks.upcoming.length > 0 && (
               <Badge className="ml-2">{categorizedTasks.upcoming.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="noDueDate">No Due Date</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
+          <TabsTrigger value="noDueDate" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">No Due Date</TabsTrigger>
+          <TabsTrigger value="completed" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">Completed</TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="overdue" className="space-y-3">
           {categorizedTasks.overdue.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center text-gray-500">
-                No overdue tasks
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={CheckCircle2}
+              iconColor="text-green-300"
+              title="No Overdue Tasks"
+              description="Great work! All your tasks are on schedule or completed."
+            />
           ) : (
             categorizedTasks.overdue.map(task => (
               <TaskCard key={task.id} task={task} category="overdue" />
@@ -477,11 +492,12 @@ export default function Tasks() {
 
         <TabsContent value="today" className="space-y-3">
           {categorizedTasks.today.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center text-gray-500">
-                No tasks due today
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={Calendar}
+              iconColor="text-blue-300"
+              title="No Tasks Due Today"
+              description="You're all caught up for today! Enjoy a lighter workload."
+            />
           ) : (
             categorizedTasks.today.map(task => (
               <TaskCard key={task.id} task={task} category="today" />
@@ -532,5 +548,6 @@ export default function Tasks() {
         </TabsContent>
       </Tabs>
     </div>
+    </PullToRefresh>
   );
 }

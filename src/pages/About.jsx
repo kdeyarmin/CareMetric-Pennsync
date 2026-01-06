@@ -24,6 +24,7 @@ import {
   MessageSquare,
   WifiOff
 } from "lucide-react";
+import { motion } from "framer-motion";
 
 export const publicPage = true;
 
@@ -178,8 +179,8 @@ export default function About() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4 md:p-8 w-full max-w-full overflow-x-hidden">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Hero Section */}
         <div className="text-center space-y-3 sm:space-y-4 py-6 sm:py-8">
           <div className="flex justify-center mb-3 sm:mb-4">
@@ -204,15 +205,23 @@ export default function About() {
         {/* Key Benefits */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           {keyBenefits.map((benefit, idx) => (
-            <Card key={idx} className="border-2 border-gray-200 hover:shadow-2xl transition-all duration-300">
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.2 }}
+              whileHover={{ y: -8 }}
+            >
+              <Card className="border-2 border-gray-200 dark:border-gray-700 hover:shadow-2xl transition-all duration-300 hover-lift h-full">
               <CardContent className="p-4 sm:p-6">
                 <div className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br ${benefit.color} flex items-center justify-center mb-3 sm:mb-4 shadow-lg`}>
                   <benefit.icon className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-white" />
                 </div>
                 <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">{benefit.title}</h3>
-                <p className="text-sm sm:text-base text-gray-600">{benefit.description}</p>
+                <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">{benefit.description}</p>
               </CardContent>
             </Card>
+            </motion.div>
           ))}
         </div>
 

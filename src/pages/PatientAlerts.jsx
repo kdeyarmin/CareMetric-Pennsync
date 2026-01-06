@@ -23,8 +23,12 @@ import {
 
 import PatientAlertsDashboard from "../components/alerts/PatientAlertsDashboard";
 import PatientAlertAnalyzer from "../components/alerts/PatientAlertAnalyzer";
+import PullToRefresh from "../components/mobile/PullToRefresh";
+import { useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 
 export default function PatientAlerts() {
+  const queryClient = useQueryClient();
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [analysisResults, setAnalysisResults] = useState(null);
 
@@ -43,26 +47,36 @@ export default function PatientAlerts() {
   };
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <PullToRefresh onRefresh={async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patients'] }),
+        queryClient.invalidateQueries({ queryKey: ['patientAlerts'] })
+      ]);
+    }}>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header */}
-      <div className="mb-4 sm:mb-6 lg:mb-8">
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2 flex items-center gap-2 sm:gap-3">
+      <motion.div 
+        className="mb-4 sm:mb-6 lg:mb-8"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2 sm:gap-3">
           <Bell className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-600" />
           Patient Alerts
         </h1>
-        <p className="text-sm sm:text-base text-gray-600">
+        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
           AI-powered proactive identification of critical events and potential deteriorations
         </p>
-      </div>
+      </motion.div>
 
-      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Main Alerts Dashboard */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 min-w-0 max-w-full overflow-hidden">
           <PatientAlertsDashboard showAllPatients={true} />
         </div>
 
         {/* Sidebar - Analyzer & Quick Actions */}
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0 max-w-full overflow-hidden">
           {/* Patient Selector for Analysis */}
           <Card className="border-blue-200">
             <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-blue-50 to-indigo-50">
@@ -178,5 +192,6 @@ export default function PatientAlerts() {
         </div>
       </div>
     </div>
+    </PullToRefresh>
   );
 }

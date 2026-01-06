@@ -26,6 +26,8 @@ import ComprehensiveDataExport from "../components/admin/ComprehensiveDataExport
 import AdvancedReportingDashboard from "../components/admin/AdvancedReportingDashboard";
 import RealTimeSystemHealth from "../components/admin/RealTimeSystemHealth";
 import AIModelManagement from "../components/admin/AIModelManagement";
+import PullToRefresh from "../components/mobile/PullToRefresh";
+import { motion } from "framer-motion";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
@@ -407,11 +409,22 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <PullToRefresh onRefresh={async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['allUsers'] }),
+        queryClient.invalidateQueries({ queryKey: ['allPatients'] }),
+        queryClient.invalidateQueries({ queryKey: ['allVisits'] }),
+        queryClient.invalidateQueries({ queryKey: ['allNoteConversions'] }),
+        queryClient.invalidateQueries({ queryKey: ['allComplianceAudits'] }),
+        queryClient.invalidateQueries({ queryKey: ['allSubscriptions'] }),
+        queryClient.invalidateQueries({ queryKey: ['allPayments'] })
+      ]);
+    }}>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Admin Dashboard</h1>
-          <p className="text-xs sm:text-sm md:text-base text-gray-600 truncate">Comprehensive analytics and system overview</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white truncate">Admin Dashboard</h1>
+          <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 truncate">Comprehensive analytics and system overview</p>
         </div>
         <div className="flex gap-2 flex-wrap w-full sm:w-auto">
           <Button
@@ -439,57 +452,67 @@ export default function AdminDashboard() {
 
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-800 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
               <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
               <Badge className="bg-blue-600 text-[10px] sm:text-xs">{stats.activeUsers}/{stats.totalUsers}</Badge>
             </div>
             <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600">Active Nurses</p>
+            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Active Nurses</p>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-800 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
               <UserCheck className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
             </div>
             <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalPatients}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600">Total Patients</p>
+            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Total Patients</p>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-purple-200 dark:border-purple-800 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
               <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
             </div>
             <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.completedVisits}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600">Visits ({dateRange}d)</p>
+            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Visits ({dateRange}d)</p>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 border-indigo-200 dark:border-indigo-800 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
               <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" />
               <Badge className="bg-indigo-600 text-[10px] sm:text-xs">{stats.aiAdoptionRate}%</Badge>
             </div>
             <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalEnhancements}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600">AI Enhancements</p>
+            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">AI Enhancements</p>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border-orange-200 dark:border-orange-800 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
               <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600" />
             </div>
             <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalTimeSaved}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600">Minutes Saved</p>
+            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Minutes Saved</p>
           </CardContent>
         </Card>
+        </motion.div>
       </div>
 
       {/* Secondary Metrics */}
@@ -1579,5 +1602,6 @@ export default function AdminDashboard() {
         </TabsContent>
       </Tabs>
     </div>
+    </PullToRefresh>
   );
 }
