@@ -352,26 +352,7 @@ export default function Features() {
           ],
           page: "StaffTrainingHub"
         },
-        {
-          name: "Guidelines Library",
-          icon: BookOpen,
-          description: "Searchable Medicare and clinical guidelines with AI-powered contextual retrieval",
-          howTo: [
-            "1. Search by diagnosis or topic",
-            "2. AI suggests relevant guidelines automatically",
-            "3. Read summary or full guideline",
-            "4. Insert guideline text into notes",
-            "5. Bookmark frequently used guidelines"
-          ],
-          bestPractices: [
-            "Review guidelines before complex visits",
-            "Use to support clinical decisions",
-            "Stay updated on regulatory changes",
-            "Reference in documentation when applicable",
-            "Share key guidelines with team"
-          ],
-          page: "MedicareGuidelinesLibrary"
-        }
+
       ]
     },
     {
@@ -399,26 +380,7 @@ export default function Features() {
           ],
           page: "Dashboard"
         },
-        {
-          name: "Smart Route Optimizer",
-          icon: TrendingUp,
-          description: "AI optimizes your daily visit schedule based on location, priority, and patient needs",
-          howTo: [
-            "1. View today's scheduled visits",
-            "2. Click 'Optimize Route'",
-            "3. AI suggests optimal visit order",
-            "4. Review drive times and priorities",
-            "5. Follow optimized schedule"
-          ],
-          bestPractices: [
-            "Run optimizer each morning",
-            "Consider traffic patterns",
-            "Group nearby patients together",
-            "Build buffer time for complex visits",
-            "Provide feedback to improve AI"
-          ],
-          page: "Dashboard"
-        },
+
         {
           name: "Offline Mode",
           icon: Activity,
