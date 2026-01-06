@@ -303,7 +303,10 @@ export default function Patients() {
       featureDescription="Manage your patient roster with comprehensive profiles, medical histories, and AI-powered insights. This premium feature enables better clinical decision-making and personalized care planning."
       allowTrial={true}
     >
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <PullToRefresh onRefresh={async () => {
+      await queryClient.invalidateQueries({ queryKey: ['patients'] });
+    }}>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
       <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
         <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
           <div className="flex items-start gap-2 flex-1">
@@ -389,29 +392,22 @@ export default function Patients() {
             </CardContent>
           </Card>
         ) : filteredPatients.length === 0 ? (
-          <Card className="md:col-span-2 border-2 border-dashed">
-            <CardContent className="p-12 text-center">
-              <User className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No patients found</h3>
-              <p className="text-gray-500 mb-2">
-                {searchTerm ? 'No patients match your search.' : 'Start building your patient roster.'}
-              </p>
-              {!searchTerm && (
-                <>
-                  <p className="text-sm text-gray-400 mb-6">
-                    Save detailed patient information to get personalized AI recommendations for care plans, documentation, and clinical decisions.
-                  </p>
-                  <Button
-                    onClick={() => setShowForm(true)}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Your First Patient
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          <div className="md:col-span-2">
+            <EmptyState
+              icon={User}
+              iconColor="text-blue-300"
+              title="No Patients Found"
+              description={
+                searchTerm || Object.keys(filters).length > 0
+                  ? "Try adjusting your search or filters to find patients"
+                  : "Add your first patient to begin managing their care and documentation"
+              }
+              actionLabel={!searchTerm && Object.keys(filters).length === 0 ? "Add Your First Patient" : null}
+              onAction={!searchTerm && Object.keys(filters).length === 0 ? () => setShowForm(true) : null}
+              secondaryActionLabel={searchTerm || Object.keys(filters).length > 0 ? "Clear Filters" : null}
+              onSecondaryAction={searchTerm || Object.keys(filters).length > 0 ? () => { setSearchTerm(""); setFilters({}); } : null}
+            />
+          </div>
         ) : (
           <div className="md:col-span-2">
             <PaginatedPatientList
@@ -648,6 +644,7 @@ export default function Patients() {
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
+    </PullToRefresh>
     </PremiumFeatureGate>
               );
             }

@@ -40,6 +40,8 @@ import TrainingProgressDashboard from "../components/training/TrainingProgressDa
 import StaffEducationComplianceReport from "../components/training/StaffEducationComplianceReport";
 import ModuleViewer from "../components/training/ModuleViewer";
 import AIQuizGenerator from "../components/training/AIQuizGenerator";
+import EmptyState from "../components/ui/EmptyState";
+import { motion } from "framer-motion";
 
 export default function StaffTrainingHub() {
   const navigate = useNavigate();
@@ -146,7 +148,7 @@ export default function StaffTrainingHub() {
       featureDescription="Access personalized AI-powered training with interactive quizzes, patient simulations, and skill development plans. This premium feature accelerates your professional growth."
       allowTrial={true}
     >
-    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2">
@@ -158,8 +160,9 @@ export default function StaffTrainingHub() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none">
-          <CardContent className="p-3 sm:p-4">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none hover-lift">
+            <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 text-[10px] sm:text-xs">Quizzes Passed</p>
@@ -169,9 +172,11 @@ export default function StaffTrainingHub() {
             </div>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none">
-          <CardContent className="p-4">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none hover-lift">
+            <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-purple-100 text-[10px] sm:text-xs">Simulations</p>
@@ -181,9 +186,11 @@ export default function StaffTrainingHub() {
             </div>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none">
-          <CardContent className="p-4">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none hover-lift">
+            <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-green-100 text-[10px] sm:text-xs">Avg Score</p>
@@ -193,9 +200,11 @@ export default function StaffTrainingHub() {
             </div>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none">
-          <CardContent className="p-4">
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none hover-lift">
+            <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-orange-100 text-[10px] sm:text-xs">Time Invested</p>
@@ -205,6 +214,7 @@ export default function StaffTrainingHub() {
             </div>
           </CardContent>
         </Card>
+        </motion.div>
       </div>
 
       {/* Module Viewer Modal */}
@@ -289,14 +299,21 @@ export default function StaffTrainingHub() {
           {/* Training Modules Tab */}
           <TabsContent value="modules">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {trainingModules.map((module) => {
+              {trainingModules.map((module, idx) => {
                 const userCompletion = completions.find(c => c.training_module_id === module.id);
                 const isCompleted = userCompletion?.status === 'completed';
                 
                 return (
-                  <Card key={module.id} className={`cursor-pointer hover:shadow-lg transition-all ${
-                    isCompleted ? 'border-green-300 bg-green-50' : 'border-gray-200'
-                  }`} onClick={() => setSelectedModule(module)}>
+                  <motion.div
+                    key={module.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                    whileHover={{ y: -4 }}
+                  >
+                    <Card className={`cursor-pointer hover:shadow-xl transition-all hover-lift ${
+                      isCompleted ? 'border-green-300 bg-green-50 dark:bg-green-900/10 dark:border-green-700' : 'border-gray-200 dark:border-gray-700'
+                    }`} onClick={() => setSelectedModule(module)}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
@@ -334,15 +351,20 @@ export default function StaffTrainingHub() {
 
                       {module.is_required && (
                         <Badge className="mt-2 bg-red-600 text-xs">Required</Badge>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                        )}
+                        </CardContent>
+                        </Card>
+                        </motion.div>
+                        );
+                        })}
               {trainingModules.length === 0 && (
-                <div className="col-span-3 text-center py-12 text-gray-500">
-                  <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-3" />
-                  <p>No training modules available yet</p>
+                <div className="col-span-3">
+                  <EmptyState
+                    icon={GraduationCap}
+                    iconColor="text-indigo-300"
+                    title="No Training Modules Available"
+                    description="Training content will appear here once added by administrators. Check back soon or contact your admin to add training materials."
+                  />
                 </div>
               )}
             </div>

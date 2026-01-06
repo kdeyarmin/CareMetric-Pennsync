@@ -1673,8 +1673,8 @@ Return JSON with:
       featureDescription="Transform your rough notes into Medicare-compliant documentation with AI. This premium feature includes voice dictation, real-time compliance checking, and intelligent clinical suggestions."
       allowTrial={true}
     >
-    <div className="w-full overflow-x-hidden">
-      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+    <div className="w-full max-w-full overflow-x-hidden min-w-0">
+      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
       <div className="mb-3 sm:mb-4 flex flex-col gap-3 w-full overflow-hidden">
         <div className="flex items-center gap-2 w-full overflow-hidden">
           {currentStep !== 'patient' && (
