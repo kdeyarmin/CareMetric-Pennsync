@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import DataRetentionSettings from "../components/settings/DataRetentionSettings";
 import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
+import ThemeSettings from "../components/theme/ThemeSettings";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -327,6 +328,9 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Theme Settings */}
+        <ThemeSettings />
 
         {/* Data Retention Settings */}
         <DataRetentionSettings />

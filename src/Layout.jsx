@@ -30,6 +30,7 @@ import AIChatAssistant from "../components/chat/AIChatAssistant";
 import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
 import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
+import { ThemeProvider } from "../components/theme/ThemeProvider";
 
 /* =========================
    iOS / Layout Constants
@@ -132,7 +133,8 @@ export default function Layout({ children, currentPageName }) {
   const mobileBottomNavTotalHeight = `calc(${BOTTOM_NAV_HEIGHT_REM}rem + max(env(safe-area-inset-bottom), 0px))`;
 
   return (
-    <div className="min-h-screen bg-blue-100 flex overflow-x-hidden">
+    <ThemeProvider>
+    <div className="min-h-screen bg-blue-100 dark:bg-gray-900 flex overflow-x-hidden transition-colors duration-300">
       {/* =========================
           Scoped overrides:
           Force any internal Tailwind "fixed" inside FAB components to behave like normal content
@@ -154,13 +156,13 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
         <aside
-          className={`hidden lg:flex flex-col bg-blue-50 border-r shadow transition-all ${
+          className={`hidden lg:flex flex-col bg-blue-50 dark:bg-gray-800 border-r dark:border-gray-700 shadow transition-all duration-300 ${
             sidebarCollapsed ? "w-16" : "w-56"
           }`}
         >
-          <div className="h-16 flex items-center justify-between px-3 border-b">
-            <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0">
-              <div className="relative flex-shrink-0">
+          <div className="h-16 flex items-center justify-between px-3 border-b dark:border-gray-700">
+            <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0 group">
+              <div className="relative flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
                 <img
                   src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                   className="w-8 h-8 object-contain"
@@ -168,7 +170,7 @@ export default function Layout({ children, currentPageName }) {
                 />
               </div>
               {!sidebarCollapsed && (
-                <span className="font-bold truncate flex items-center gap-1">
+                <span className="font-bold truncate flex items-center gap-1 dark:text-white">
                   CareMetric AI
                 </span>
               )}
@@ -194,8 +196,10 @@ export default function Layout({ children, currentPageName }) {
               <Link
                 key={item.page}
                 to={createPageUrl(item.page)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                  isActive(item.page) ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200 hover:scale-105 ${
+                  isActive(item.page) 
+                    ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100 shadow-md" 
+                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                 }`}
               >
                 <item.icon className="w-4 h-4" />
@@ -249,8 +253,10 @@ export default function Layout({ children, currentPageName }) {
                   <Link
                     key={item.page}
                     to={createPageUrl(item.page)}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                      isActive(item.page) ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200 hover:scale-105 ${
+                      isActive(item.page) 
+                        ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100 shadow-md" 
+                        : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                     }`}
                   >
                     <item.icon className="w-4 h-4" />
@@ -279,7 +285,7 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       {showNavigationUI && (
         <header
-          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 z-[200] overflow-x-hidden flex items-end"
+          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 dark:bg-gray-800 z-[200] overflow-x-hidden flex items-end transition-colors duration-300"
           style={{
             paddingTop: "env(safe-area-inset-top)",
             paddingBottom: 0
@@ -464,14 +470,14 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       {showNavigationUI && (
         <nav
-          className="fixed bottom-0 left-0 right-0 bg-white border-t shadow lg:hidden z-40"
+          className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t dark:border-gray-700 shadow lg:hidden z-40 transition-colors duration-300"
           style={{ height: mobileBottomNavTotalHeight, paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           <div className="flex items-center justify-around px-1" style={{ height: `${BOTTOM_NAV_HEIGHT_REM}rem` }}>
             <Link
               to={createPageUrl("Dashboard")}
-              className={`flex flex-col items-center justify-center gap-0.5 ${
-                isActive("Dashboard") ? "text-blue-600" : "text-gray-500"
+              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
+                isActive("Dashboard") ? "text-blue-600 dark:text-blue-400 scale-110" : "text-gray-500 dark:text-gray-400 hover:scale-105"
               }`}
             >
               <Home className="w-5 h-5" />
@@ -480,8 +486,8 @@ export default function Layout({ children, currentPageName }) {
 
             <Link
               to={createPageUrl("SmartNoteAssistant")}
-              className={`flex flex-col items-center justify-center gap-0.5 ${
-                isActive("SmartNoteAssistant") ? "text-blue-600" : "text-gray-500"
+              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
+                isActive("SmartNoteAssistant") ? "text-blue-600 dark:text-blue-400 scale-110" : "text-gray-500 dark:text-gray-400 hover:scale-105"
               }`}
             >
               <Brain className="w-5 h-5" />
@@ -490,8 +496,8 @@ export default function Layout({ children, currentPageName }) {
 
             <Link
               to={createPageUrl("CarePlanManagement")}
-              className={`flex flex-col items-center justify-center gap-0.5 ${
-                isActive("CarePlanManagement") ? "text-blue-600" : "text-gray-500"
+              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
+                isActive("CarePlanManagement") ? "text-blue-600 dark:text-blue-400 scale-110" : "text-gray-500 dark:text-gray-400 hover:scale-105"
               }`}
             >
               <Target className="w-5 h-5" />
@@ -500,8 +506,8 @@ export default function Layout({ children, currentPageName }) {
 
             <Link
               to={createPageUrl("PatientAlerts")}
-              className={`flex flex-col items-center justify-center gap-0.5 ${
-                isActive("PatientAlerts") ? "text-blue-600" : "text-gray-500"
+              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
+                isActive("PatientAlerts") ? "text-blue-600 dark:text-blue-400 scale-110" : "text-gray-500 dark:text-gray-400 hover:scale-105"
               }`}
             >
               <Bell className="w-5 h-5" />
@@ -510,8 +516,8 @@ export default function Layout({ children, currentPageName }) {
 
             <Link
               to={createPageUrl("Settings")}
-              className={`flex flex-col items-center justify-center gap-0.5 ${
-                isActive("Settings") ? "text-blue-600" : "text-gray-500"
+              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
+                isActive("Settings") ? "text-blue-600 dark:text-blue-400 scale-110" : "text-gray-500 dark:text-gray-400 hover:scale-105"
               }`}
             >
               <User className="w-5 h-5" />
@@ -522,6 +528,7 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {showNavigationUI && <OfflineIndicator />}
-    </div>
-  );
-}
+      </div>
+      </ThemeProvider>
+      );
+      }
