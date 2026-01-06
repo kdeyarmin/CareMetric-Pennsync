@@ -2389,6 +2389,36 @@ Return JSON with:
                 compact={false}
               />
 
+              {/* AI Care Plan Suggestion - Prominent after enhancement */}
+              {!isAnonymous && (
+                <Card className="border-2 border-teal-300 bg-gradient-to-r from-teal-50 to-cyan-50 shadow-lg w-full overflow-hidden">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-teal-500 rounded-full flex-shrink-0">
+                          <Target className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-base sm:text-lg font-bold text-teal-900 mb-1">
+                            Generate Care Plans from This Note
+                          </h3>
+                          <p className="text-xs sm:text-sm text-teal-700">
+                            AI will analyze this note to suggest evidence-based care plans with SMART goals
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => setActiveAccordion('careplans')}
+                        className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 w-full touch-target"
+                      >
+                        <Target className="w-4 h-4 mr-2" />
+                        Suggest Care Plans
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Next Steps Panel - Clear action-oriented summary */}
               <NextStepsPanel
                 copied={copied}
@@ -2557,32 +2587,38 @@ Return JSON with:
               <AccordionItem value="careplans">
                 <AccordionTrigger className="text-sm">
                   <div className="flex items-center gap-2">
-                    <Stethoscope className="w-4 h-4" /> AI Care Plan Optimizer
+                    <Target className="w-4 h-4" /> AI Care Plan Generator
+                    <Badge className="bg-teal-100 text-teal-800 text-xs">From Note</Badge>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <AICarePlanOptimizer
-                    enhancedNote={enhancedNote}
-                    patientData={selectedPatient}
-                    existingCarePlans={carePlans}
-                    recentVisits={recentVisits}
+                  <Alert className="bg-teal-50 border-teal-200 mb-3">
+                    <Sparkles className="w-4 h-4 text-teal-600" />
+                    <AlertDescription className="text-xs text-teal-800">
+                      AI analyzes your enhanced note to generate evidence-based care plans with SMART goals, skilled interventions, and measurable outcomes.
+                    </AlertDescription>
+                  </Alert>
+                  <AICarePlanGenerator
+                    patientId={selectedPatientId}
+                    patientName={selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : null}
                     diagnosis={finalDiagnosis}
-                    onCreateCarePlan={async (carePlanData) => {
-                      try {
-                        await base44.entities.CarePlan.create({
-                          patient_id: selectedPatientId,
-                          ...carePlanData
-                        });
-                        queryClient.invalidateQueries({ queryKey: ['patientCarePlans', selectedPatientId] });
-                      } catch (error) {
-                        console.error('Error creating care plan:', error);
-                      }
+                    careType={selectedPatient?.care_type || "home_health"}
+                    extractedData={{
+                      enhanced_note: enhancedNote,
+                      rough_note: roughNote,
+                      vital_signs: vitalSigns,
+                      visit_type: visitType
                     }}
-                    onModifyCarePlan={async (modification) => {
-                      console.log('Care plan modification suggested:', modification);
-                      // Could implement update logic here
+                    existingCarePlans={carePlans}
+                    onCarePlansCreated={(plans) => {
+                      queryClient.invalidateQueries({ queryKey: ['patientCarePlans', selectedPatientId] });
+                      logActivity(ActivityActions.CARE_PLAN_CREATE, {
+                        patient_id: selectedPatientId,
+                        count: plans.length,
+                        source: 'ai_note_analysis',
+                        page: 'SmartNoteAssistant'
+                      });
                     }}
-                    autoAnalyze={false}
                   />
                 </AccordionContent>
               </AccordionItem>

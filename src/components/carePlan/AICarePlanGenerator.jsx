@@ -58,16 +58,23 @@ export default function AICarePlanGenerator({
       // Build context from extracted data
       let additionalContext = "";
       if (extractedData) {
+        // Enhanced note takes priority for context
+        if (extractedData.enhanced_note) {
+          additionalContext += `\n\nCOMPLETE CLINICAL DOCUMENTATION:\n${extractedData.enhanced_note}`;
+        }
+        
+        if (extractedData.vital_signs) {
+          const vitals = Object.entries(extractedData.vital_signs)
+            .filter(([_, v]) => v && k !== 'o2Source' && k !== 'o2Flow')
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ');
+          if (vitals) additionalContext += `\n\nVITAL SIGNS: ${vitals}`;
+        }
+        
         if (extractedData.symptoms?.length > 0) {
           additionalContext += `\nIDENTIFIED SYMPTOMS:\n${extractedData.symptoms.map(s => `- ${s.symptom} (${s.severity})`).join('\n')}`;
         }
-        if (extractedData.vital_signs) {
-          const vitals = Object.entries(extractedData.vital_signs)
-            .filter(([_, v]) => v)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(', ');
-          if (vitals) additionalContext += `\nVITAL SIGNS: ${vitals}`;
-        }
+        
         if (extractedData.medications?.length > 0) {
           additionalContext += `\nMEDICATIONS:\n${extractedData.medications.map(m => `- ${m.name}`).join('\n')}`;
         }
@@ -77,7 +84,7 @@ export default function AICarePlanGenerator({
       const existingProblems = existingCarePlans.map(cp => cp.problem?.toLowerCase()).filter(Boolean);
 
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are an expert home health/hospice clinical documentation specialist. Generate comprehensive, Medicare-compliant care plans for this patient.
+        prompt: `You are an expert home health/hospice clinical documentation specialist. Generate comprehensive, Medicare-compliant care plans based on actual clinical documentation.
 
 PATIENT: ${patientName || 'Patient'}
 PRIMARY DIAGNOSIS: ${diagnosis}
@@ -87,7 +94,7 @@ ${additionalContext}
 EXISTING CARE PLANS (avoid duplicating these):
 ${existingProblems.length > 0 ? existingProblems.join('\n') : 'None'}
 
-Generate 3-5 appropriate care plans based on the diagnosis and any extracted clinical data. Each care plan MUST be:
+Analyze the clinical documentation above and generate 3-5 appropriate care plans that directly address the patient's documented needs, problems, and clinical findings. Each care plan MUST be:
 
 1. MEDICARE COMPLIANT:
    - Problem statement must be a nursing diagnosis, not a medical diagnosis
