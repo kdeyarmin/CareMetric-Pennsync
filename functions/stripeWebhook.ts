@@ -11,16 +11,17 @@ Deno.serve(async (req) => {
     const signature = req.headers.get('stripe-signature');
     const body = await req.text();
     
-    // Verify webhook signature
+    // Initialize base44 client BEFORE signature verification
+    const base44 = createClientFromRequest(req);
+    
+    // Verify webhook signature using async method
     let event;
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
     } catch (err) {
       console.error('Webhook signature verification failed:', err.message);
       return Response.json({ error: 'Invalid signature' }, { status: 400 });
     }
-
-    const base44 = createClientFromRequest(req);
 
     // Handle different event types
     switch (event.type) {
