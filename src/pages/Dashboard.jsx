@@ -33,6 +33,7 @@ import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 import PersonalizedCoachingDashboard from "../components/coaching/PersonalizedCoachingDashboard";
 import EmptyState from "../components/ui/EmptyState";
 import { motion } from "framer-motion";
+import PullToRefresh from "../components/mobile/PullToRefresh";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -210,6 +211,16 @@ export default function Dashboard() {
   const fullName = currentUser?.full_name || 'there';
 
   return (
+    <PullToRefresh onRefresh={async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
+        queryClient.invalidateQueries({ queryKey: ['myPatients'] }),
+        queryClient.invalidateQueries({ queryKey: ['myVisits'] }),
+        queryClient.invalidateQueries({ queryKey: ['nurseNoteConversions'] }),
+        queryClient.invalidateQueries({ queryKey: ['myAlerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['myTasks'] })
+      ]);
+    }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen">
       {/* Welcome Banner */}
       <motion.div
