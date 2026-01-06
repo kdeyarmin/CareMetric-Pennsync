@@ -105,7 +105,8 @@ export default function Layout({ children, currentPageName }) {
   const isActive = (page) => currentPageName === page;
 
   // Show navigation on all pages except Home, and only when user is logged in
-  const showNavigationUI = currentPageName !== "Home" && currentUser && !userLoading;
+  // CRITICAL: Always show navigation if user exists (even during loading) unless on Home page
+  const showNavigationUI = currentPageName !== "Home" && currentUser;
 
   const userNavItems = [
     { name: "Dashboard", icon: Home, page: "Dashboard" },
@@ -290,15 +291,18 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
-      {showNavigationUI && (
-        <header
-          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 dark:bg-gray-800 z-[9999] shadow-lg flex flex-col transition-colors duration-300"
-          style={{
-            paddingTop: "env(safe-area-inset-top, 0px)",
-            width: "100vw",
-            maxWidth: "100vw"
-          }}
-        >
+      <header
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-blue-600 dark:bg-gray-800 shadow-lg flex flex-col transition-colors duration-300 ${
+          showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
+        }`}
+        style={{
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          width: "100vw",
+          maxWidth: "100vw",
+          position: "fixed"
+        }}
+      >
+        {showNavigationUI && (
           <div
             className="flex items-center justify-between px-2 sm:px-3 w-full bg-blue-600 dark:bg-gray-800"
             style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}
@@ -335,8 +339,8 @@ export default function Layout({ children, currentPageName }) {
               </Button>
             </div>
           </div>
-        </header>
-      )}
+        )}
+      </header>
 
       {/* ================= Mobile Menu Overlay ================= */}
       {showNavigationUI && mobileMenuOpen && (
@@ -443,17 +447,13 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Main Content ================= */}
       <main
-        className="flex-1 overflow-x-hidden w-full"
-        style={
-          showNavigationUI
-            ? {
-                // Push content below the full header (including safe-area top)
-                paddingTop: mobileHeaderTotalHeight,
-                // Reserve space for bottom nav (including safe-area bottom)
-                paddingBottom: mobileBottomNavTotalHeight
-              }
-            : {}
-        }
+        className="flex-1 overflow-x-hidden w-full relative"
+        style={{
+          // Always add padding on mobile to account for header/nav
+          paddingTop: showNavigationUI ? mobileHeaderTotalHeight : 0,
+          paddingBottom: showNavigationUI ? mobileBottomNavTotalHeight : 0,
+          minHeight: "100vh"
+        }}
       >
         <div className={showNavigationUI ? "w-full max-w-full min-w-0" : "w-full"}>
           {children}
@@ -476,16 +476,19 @@ export default function Layout({ children, currentPageName }) {
       )}
 
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
-      {showNavigationUI && (
-        <nav
-          className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t dark:border-gray-700 shadow lg:hidden z-[9998] transition-colors duration-300"
-          style={{ 
-            height: mobileBottomNavTotalHeight, 
-            paddingBottom: "env(safe-area-inset-bottom)",
-            width: "100vw",
-            maxWidth: "100vw"
-          }}
-        >
+      <nav
+        className={`fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t dark:border-gray-700 shadow lg:hidden transition-colors duration-300 ${
+          showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
+        }`}
+        style={{ 
+          height: mobileBottomNavTotalHeight, 
+          paddingBottom: "env(safe-area-inset-bottom)",
+          width: "100vw",
+          maxWidth: "100vw",
+          position: "fixed"
+        }}
+      >
+        {showNavigationUI && (
           <div className="flex items-center justify-around px-1" style={{ height: `${BOTTOM_NAV_HEIGHT_REM}rem` }}>
             <Link
               to={createPageUrl("Dashboard")}
@@ -537,8 +540,8 @@ export default function Layout({ children, currentPageName }) {
               <span className="text-[11px]">Settings</span>
             </Link>
           </div>
-        </nav>
-      )}
+        )}
+      </nav>
 
       {showNavigationUI && <OfflineIndicator />}
       </div>
