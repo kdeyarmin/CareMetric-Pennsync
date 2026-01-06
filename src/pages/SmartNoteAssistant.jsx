@@ -1857,20 +1857,10 @@ Return JSON with:
             </CardContent>
           </Card>
 
-          {/* Proactive Compliance Warnings - Before Enhancement */}
-          {roughNote.length >= 50 && !enhancedNote && selectedPatientId && (
-            <ProactiveComplianceWarnings
-              roughNote={roughNote}
-              visitType={visitType}
-              diagnosis={finalDiagnosis}
-              patientData={selectedPatient}
-              onAddCompliance={(text) => setRoughNote(prev => prev + '\n\n' + text)}
-              threshold={50}
-            />
-          )}
+          {/* REMOVED: Proactive warnings now handled in single enhancement call */}
 
-          {/* Consolidated AI Suggestions - All Categories */}
-          {(roughNote.length >= 150 || enhancedNote) && selectedPatientId && (
+          {/* Consolidated AI Suggestions - Only after rough note is substantial */}
+          {roughNote.length >= 200 && !enhancedNote && selectedPatientId && (
             <ConsolidatedAISuggestions
               roughNote={roughNote}
               enhancedNote={enhancedNote}
@@ -1999,8 +1989,8 @@ Return JSON with:
             />
           )}
 
-          {/* Real-Time Clinical Decision Support */}
-          {selectedPatientId && (diagnosis || vitalSigns.bp || vitalSigns.hr || roughNote.length > 30) && (
+          {/* Clinical Decision Support - Only when enough data and not yet enhanced */}
+          {selectedPatientId && !enhancedNote && (vitalSigns.bp || roughNote.length > 100) && (
             <ClinicalDecisionSupport
               enhancedNote={enhancedNote}
               extractedData={null}
@@ -2018,8 +2008,8 @@ Return JSON with:
             />
           )}
 
-          {/* Real-Time Deterioration Predictor */}
-          {selectedPatientId && (roughNote.length >= 100 || enhancedNote) && (
+          {/* Deterioration Predictor - Only after enhancement complete */}
+          {selectedPatientId && enhancedNote && (
             <RealTimeDeteriorationPredictor
               noteContent={enhancedNote || roughNote}
               patientData={selectedPatient}
@@ -2041,8 +2031,8 @@ Return JSON with:
             />
           )}
 
-          {/* Real-Time Note Feedback - Prominent position */}
-          {selectedPatientId && roughNote.length >= 50 && (
+          {/* Note Feedback - Only before enhancement to avoid duplicate analysis */}
+          {selectedPatientId && roughNote.length >= 100 && !enhancedNote && (
             <RealTimeNoteFeedback
               noteContent={enhancedNote || roughNote}
               diagnosis={finalDiagnosis}
@@ -2060,8 +2050,8 @@ Return JSON with:
             />
           )}
 
-          {/* Patient Education Panel - Enhanced and Prominent */}
-          {selectedPatientId && finalDiagnosis && (
+          {/* Patient Education - Only after note complete */}
+          {selectedPatientId && finalDiagnosis && enhancedNote && (
             <PatientEducationPanel
               patient={selectedPatient}
               diagnosis={finalDiagnosis}
@@ -2079,8 +2069,8 @@ Return JSON with:
             />
           )}
 
-          {/* Real-Time Clinical Alert Monitor */}
-          {selectedPatientId && (vitalSigns.bp || vitalSigns.hr || vitalSigns.temp || vitalSigns.o2 || roughNote.length > 50) && (
+          {/* Clinical Alerts - Only when vitals entered */}
+          {selectedPatientId && !enhancedNote && (vitalSigns.bp || vitalSigns.temp || vitalSigns.o2) && (
             <RealTimeClinicalAlertMonitor
               patientData={selectedPatient}
               vitalSigns={vitalSigns}

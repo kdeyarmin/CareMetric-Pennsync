@@ -267,9 +267,6 @@ Return JSON:
 
       setCreatedCount(createdPlans.length);
       setSelectedPlans({});
-
-      // Auto-generate follow-up tasks for created care plans
-      await generateTasksFromCarePlans(createdPlans);
       
       if (onCarePlansCreated) {
         onCarePlansCreated(createdPlans);
@@ -282,28 +279,8 @@ Return JSON:
     setIsCreating(false);
   };
 
-  // Auto-generate tasks from care plans
-  const generateTasksFromCarePlans = async (createdPlans) => {
-    try {
-      for (const plan of createdPlans) {
-        // Create assessment task based on frequency
-        await base44.entities.Task.create({
-          patient_id: patientId,
-          title: `Assess: ${plan.problem?.substring(0, 50)}`,
-          description: `Follow-up assessment for care plan goal. Interventions: ${plan.interventions?.join('; ')}`,
-          type: 'followup',
-          priority: plan.priority || 'medium',
-          status: 'pending',
-          due_date: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
-          due_timeframe: 'this_week',
-          source: 'care_plan',
-          ai_reason: `Auto-generated from care plan: ${plan.goal?.substring(0, 100)}`
-        });
-      }
-    } catch (error) {
-      console.error("Error creating tasks from care plans:", error);
-    }
-  };
+  // REMOVED: Auto-task generation was creating too many tasks without user control
+  // Tasks now generated only when user explicitly requests via TaskGenerator
 
   const getPriorityColor = (priority) => {
     const colors = {
