@@ -86,7 +86,7 @@ export default function About() {
       icon: Brain,
       color: "bg-purple-600",
       items: [
-        { name: "Medication Management", time: "Prevents errors", description: "AI analyzes interactions, contraindications, and dosing errors" },
+
         { name: "Risk Stratification", time: "Early detection", description: "Identify high-risk patients before emergencies occur" },
         { name: "Care Gap Analysis", time: "Improves outcomes", description: "Proactively identifies missing interventions" },
         { name: "Clinical Decision Support", time: "Real-time guidance", description: "Evidence-based recommendations during patient care" },
@@ -351,10 +351,7 @@ export default function About() {
                       <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                       <span>Evidence-based recommendations at point of care</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>Comprehensive medication management with interaction checking</span>
-                    </li>
+
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                       <span>Risk prediction for proactive intervention</span>
@@ -380,10 +377,7 @@ export default function About() {
                       <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                       <span>Automatic compliance checking against 42 CFR 484</span>
                     </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                      <span>Smart templates that adapt to patient conditions</span>
-                    </li>
+
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                       <span>One-click note enhancement to meet all requirements</span>
