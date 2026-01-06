@@ -285,14 +285,13 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       {showNavigationUI && (
         <header
-          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 dark:bg-gray-800 z-[200] overflow-x-hidden flex items-end transition-colors duration-300"
+          className="lg:hidden fixed top-0 left-0 right-0 bg-blue-600 dark:bg-gray-800 z-[300] overflow-x-hidden flex flex-col transition-colors duration-300"
           style={{
-            paddingTop: "env(safe-area-inset-top)",
-            paddingBottom: 0
+            paddingTop: "env(safe-area-inset-top, 0px)"
           }}
         >
           <div
-            className="flex items-center justify-between px-2 sm:px-3 w-full"
+            className="flex items-center justify-between px-2 sm:px-3 w-full bg-blue-600 dark:bg-gray-800"
             style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}
           >
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
@@ -311,7 +310,7 @@ export default function Layout({ children, currentPageName }) {
               <Button
                 size="icon"
                 variant="ghost"
-                className="text-white hover:bg-red-600 h-8 w-8 sm:h-9 sm:w-9"
+                className="text-white hover:bg-red-600 dark:hover:bg-red-700 h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0"
                 onClick={handleLogout}
                 title="Logout"
               >
@@ -320,7 +319,7 @@ export default function Layout({ children, currentPageName }) {
               <Button
                 size="icon"
                 variant="ghost"
-                className="text-white h-8 w-8 sm:h-9 sm:w-9"
+                className="text-white hover:bg-blue-700 dark:hover:bg-gray-700 h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0"
                 onClick={() => setMobileMenuOpen(true)}
               >
                 <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -332,20 +331,20 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Menu Overlay ================= */}
       {showNavigationUI && mobileMenuOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[190]" onClick={() => setMobileMenuOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 z-[290]" onClick={() => setMobileMenuOpen(false)}>
           <div
-            className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white shadow-xl overflow-y-auto"
+            className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white dark:bg-gray-800 shadow-xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b sticky top-0 bg-white z-10">
+            <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-sm sm:text-base">Menu</span>
+                <span className="font-bold text-sm sm:text-base dark:text-white">Menu</span>
               </div>
               <Button
                 size="icon"
                 variant="ghost"
                 onClick={() => setMobileMenuOpen(false)}
-                className="h-8 w-8 sm:h-9 sm:w-9"
+                className="h-8 w-8 sm:h-9 sm:w-9 dark:text-white"
               >
                 <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
@@ -357,7 +356,7 @@ export default function Layout({ children, currentPageName }) {
                   key={item.page}
                   to={createPageUrl(item.page)}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm dark:text-white"
                 >
                   <item.icon className="w-4 h-4" />
                   {item.name}
@@ -372,7 +371,7 @@ export default function Layout({ children, currentPageName }) {
                       key={item.page}
                       to={createPageUrl(item.page)}
                       onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                      className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm dark:text-white"
                     >
                       <item.icon className="w-4 h-4" />
                       {item.name}
@@ -381,24 +380,24 @@ export default function Layout({ children, currentPageName }) {
                 </>
               )}
 
-              <div className="border-t pt-2 mt-2">
+              <div className="border-t dark:border-gray-700 pt-2 mt-2">
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
                     handleLogout();
                   }}
-                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-red-50 text-sm text-red-600 w-full"
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-sm text-red-600 dark:text-red-400 w-full"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
                 </button>
               </div>
 
-              <div className="border-t pt-2 mt-2">
+              <div className="border-t dark:border-gray-700 pt-2 mt-2">
                 <Link
                   to={createPageUrl("About")}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm dark:text-white"
                 >
                   <Sparkles className="w-4 h-4" />
                   About
@@ -406,7 +405,7 @@ export default function Layout({ children, currentPageName }) {
                 <Link
                   to={createPageUrl("Features")}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm dark:text-white"
                 >
                   <Sparkles className="w-4 h-4" />
                   Features
@@ -414,7 +413,7 @@ export default function Layout({ children, currentPageName }) {
                 <Link
                   to={createPageUrl("Pricing")}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm dark:text-white"
                 >
                   <CreditCard className="w-4 h-4" />
                   Pricing
@@ -422,7 +421,7 @@ export default function Layout({ children, currentPageName }) {
                 <Link
                   to={createPageUrl("Billing")}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 text-sm"
+                  className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm dark:text-white"
                 >
                   <CreditCard className="w-4 h-4" />
                   Billing
@@ -435,7 +434,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Main Content ================= */}
       <main
-        className="flex-1 overflow-x-hidden"
+        className="flex-1 overflow-x-hidden w-full"
         style={
           showNavigationUI
             ? {
@@ -447,7 +446,7 @@ export default function Layout({ children, currentPageName }) {
             : {}
         }
       >
-        <div className={showNavigationUI ? "p-3 sm:p-4 lg:p-6 w-full max-w-full min-w-0" : "w-full"}>
+        <div className={showNavigationUI ? "w-full max-w-full min-w-0" : "w-full"}>
           {children}
         </div>
       </main>
