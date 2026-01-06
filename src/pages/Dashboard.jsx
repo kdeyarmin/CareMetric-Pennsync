@@ -33,7 +33,6 @@ import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 import PersonalizedCoachingDashboard from "../components/coaching/PersonalizedCoachingDashboard";
 import EmptyState from "../components/ui/EmptyState";
 import { motion } from "framer-motion";
-import PullToRefresh from "../components/mobile/PullToRefresh";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -210,18 +209,7 @@ export default function Dashboard() {
 
   const fullName = currentUser?.full_name || 'there';
 
-  const handleRefresh = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['todayVisits'] }),
-      queryClient.invalidateQueries({ queryKey: ['patients'] }),
-      queryClient.invalidateQueries({ queryKey: ['allCarePlans'] }),
-      queryClient.invalidateQueries({ queryKey: ['recentIncidents'] }),
-      queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })
-    ]);
-  };
-
   return (
-    <PullToRefresh onRefresh={handleRefresh}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen">
       {/* Welcome Banner */}
       <motion.div
@@ -446,7 +434,6 @@ export default function Dashboard() {
 
       {/* Add Compliance Widget */}
       <ComplianceDashboardWidget />
-      </div>
-      </PullToRefresh>
-      );
-      }
+    </div>
+  );
+}
