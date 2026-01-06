@@ -705,6 +705,11 @@ export default function Home() {
                   </Link>
                 </li>
                 <li>
+                  <Link to={createPageUrl("Features")} className="hover:text-white transition-colors">
+                    Features
+                  </Link>
+                </li>
+                <li>
                   <Link to={createPageUrl("About")} className="hover:text-white transition-colors">
                     About
                   </Link>
