@@ -221,7 +221,7 @@ export default function Dashboard() {
         queryClient.invalidateQueries({ queryKey: ['myTasks'] })
       ]);
     }}>
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen">
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Welcome Banner */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -261,7 +261,7 @@ export default function Dashboard() {
 
       {/* Quick Action Buttons */}
       <motion.div 
-        className="grid grid-cols-2 gap-3 sm:gap-4 mb-6"
+        className="grid grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2 }}
@@ -310,14 +310,14 @@ export default function Dashboard() {
 
       {/* Nurse Stats Cards */}
       <motion.div 
-        className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6"
+        className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift">
-            <CardContent className="p-6">
+          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift w-full max-w-full overflow-hidden">
+            <CardContent className="p-4 sm:p-6 overflow-hidden">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-blue-600 dark:text-blue-400 font-medium mb-1">Note Enhancements</p>
@@ -330,8 +330,8 @@ export default function Dashboard() {
           </Card>
         </motion.div>
         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift">
-            <CardContent className="p-6">
+          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift w-full max-w-full overflow-hidden">
+            <CardContent className="p-4 sm:p-6 overflow-hidden">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-green-600 dark:text-green-400 font-medium mb-1">Time Saved</p>
@@ -346,12 +346,12 @@ export default function Dashboard() {
       </motion.div>
 
       {/* Task Notifications */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <TaskNotifications userEmail={currentUser?.email} />
       </div>
 
       {/* Personalized Nurse Insights */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <NursePersonalizedInsights
           nurseEmail={currentUser?.email}
           recentActivity={nurseActivity}
@@ -363,12 +363,12 @@ export default function Dashboard() {
       </div>
 
       {/* AI Coaching System */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <PersonalizedCoachingDashboard nurseEmail={currentUser?.email} />
       </div>
 
       {/* Proactive Care Gap Identification */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <ProactiveCareGapIdentifier
           patients={patients}
           visits={visits}
@@ -381,17 +381,17 @@ export default function Dashboard() {
       </div>
 
       {/* High-Risk Patient Alerts */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <RiskAlertWidget showAllPatients={true} compact={false} />
       </div>
 
       {/* Offline Data Manager */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <OfflineDataManager />
       </div>
 
       {/* My Daily Tools */}
-      <div className="grid grid-cols-1 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <IntelligentTaskPrioritization
           nurseEmail={currentUser?.email}
           patients={patients}
@@ -405,7 +405,7 @@ export default function Dashboard() {
       </div>
       
       {/* My Compliance Alerts */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <ComplianceAlertNotifications 
           nurseEmail={currentUser?.email}
           showAll={false}
@@ -416,7 +416,7 @@ export default function Dashboard() {
 
       {/* Proactive Clinical Support - Show for first scheduled patient */}
       {visits.length > 0 && visits[0]?.patient_id && (
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
           <ProactiveClinicalSupport 
             patientId={visits[0].patient_id}
             compact={true}
@@ -427,7 +427,7 @@ export default function Dashboard() {
 
 
       {/* Real-time Patient Alerts */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <RealTimePatientAlerts
           patients={patients}
           visits={visits}
@@ -437,7 +437,7 @@ export default function Dashboard() {
       </div>
 
       {/* Regulatory Alerts for Nurses */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
         <NurseRegulatoryAlerts nurseEmail={currentUser?.email} compact={true} />
       </div>
 
