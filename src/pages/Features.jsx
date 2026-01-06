@@ -123,6 +123,26 @@ export default function Features() {
             "Build compliance habits over time"
           ],
           page: "SmartNoteAssistant"
+        },
+        {
+          name: "Anonymous Mode",
+          icon: Shield,
+          description: "Enhance notes without saving patient data - perfect for practice or confidential scenarios",
+          howTo: [
+            "1. Select 'Anonymous' as patient option",
+            "2. Enter visit details and notes normally",
+            "3. Click 'Enhance with AI' for transformation",
+            "4. Copy enhanced note to use elsewhere",
+            "5. No patient data is saved or stored"
+          ],
+          bestPractices: [
+            "Use for practice and training",
+            "Perfect for sensitive scenarios",
+            "Great for testing new features",
+            "Review capabilities before real use",
+            "Safe environment for learning"
+          ],
+          page: "SmartNoteAssistant"
         }
       ]
     },
@@ -237,6 +257,26 @@ export default function Features() {
             "Create comprehensive care coverage"
           ],
           page: "PatientDetails"
+        },
+        {
+          name: "AI Care Plans from Notes",
+          icon: Sparkles,
+          description: "Generate accurate care plans directly from your enhanced clinical notes",
+          howTo: [
+            "1. Enhance your visit note normally",
+            "2. Click 'Suggest Care Plans' button",
+            "3. AI analyzes complete note for needs",
+            "4. Review generated care plans",
+            "5. Select and create plans with one click"
+          ],
+          bestPractices: [
+            "Use after documenting complete assessments",
+            "Review AI suggestions against clinical judgment",
+            "Customize goals to be patient-specific",
+            "Generate after significant status changes",
+            "Creates plans based on actual documented needs"
+          ],
+          page: "SmartNoteAssistant"
         }
       ]
     },

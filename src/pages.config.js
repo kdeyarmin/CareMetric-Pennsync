@@ -81,6 +81,7 @@ import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import SecurityCompliance from './pages/SecurityCompliance';
+import HowToGuide from './pages/HowToGuide';
 import __Layout from './Layout.jsx';
 
 
@@ -168,6 +169,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
     "SecurityCompliance": SecurityCompliance,
+    "HowToGuide": HowToGuide,
 }
 
 export const pagesConfig = {
