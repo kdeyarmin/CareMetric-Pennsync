@@ -76,8 +76,8 @@ export default function About() {
         { name: "AI Note Enhancement", time: "Saves 30-45 min per visit", description: "Transform rough notes into Medicare-compliant documentation instantly" },
         { name: "Voice Dictation", time: "Saves 15-20 min per visit", description: "Hands-free documentation with medical terminology recognition" },
         { name: "Real-Time Compliance Checking", time: "Prevents denials", description: "Live feedback on documentation quality and completeness" },
-        { name: "Auto-Generated Visit Notes", time: "Saves 20-30 min", description: "AI drafts comprehensive notes from vital signs and observations" },
-        { name: "Smart Templates", time: "Saves 10-15 min", description: "Visit type-specific templates that adapt to patient needs" },
+
+
 
       ]
     },
@@ -102,7 +102,7 @@ export default function About() {
         { name: "AI Care Plan Generation", time: "Saves 20-30 min", description: "Automatically create evidence-based care plans" },
         { name: "Goal Tracking", time: "Improves outcomes", description: "Monitor patient progress toward measurable goals" },
         { name: "Automatic Care Plans", time: "Saves 15-20 min", description: "Trigger care plans based on diagnosis or medications" },
-        { name: "Care Plan Evolution", time: "Adapts to needs", description: "AI suggests updates based on patient progress" }
+
       ]
     },
     {
@@ -153,8 +153,7 @@ export default function About() {
       icon: MessageSquare,
       color: "bg-cyan-600",
       items: [
-        { name: "Family Updates", time: "Saves 10-15 min", description: "AI generates warm, clear family communications" },
-        { name: "Care Coordination", time: "Better teamwork", description: "Share updates with physicians and team members" },
+
         { name: "AI Chat Assistant", time: "Instant answers", description: "24/7 clinical and documentation support" }
       ]
     },
