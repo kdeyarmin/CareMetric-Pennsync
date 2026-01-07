@@ -46,11 +46,18 @@ export default function Dashboard() {
         try {
           return await base44.auth.me();
         } catch (error) {
-          navigate(createPageUrl("Home"));
+          base44.auth.redirectToLogin();
           return null;
         }
       },
     });
+
+    // Redirect to onboarding if not completed
+    React.useEffect(() => {
+      if (currentUser && !currentUser.onboarding_completed) {
+        navigate(createPageUrl("Onboarding"));
+      }
+    }, [currentUser, navigate]);
 
     // Log page visit with user context
     React.useEffect(() => {

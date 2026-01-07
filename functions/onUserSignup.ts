@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.User.update(user.id, {
           is_approved: true,
           role: 'user',
-          service_type: 'home_health'
+          onboarding_completed: false
         });
       }
       console.log('User auto-approved:', user.email);
