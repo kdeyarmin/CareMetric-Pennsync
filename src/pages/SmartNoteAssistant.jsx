@@ -796,9 +796,8 @@ export default function SmartNoteAssistant() {
               }
             }
           }
-        }),
-        currentUser?.email || 'anonymous'
-      );
+        }
+      });
       roughCompliance = roughComplianceCheck.compliance_score || 0;
       identifiedGaps = roughComplianceCheck.specific_gaps || [];
       setRoughNoteCompliance(roughComplianceCheck);
@@ -910,9 +909,8 @@ export default function SmartNoteAssistant() {
 
       ` : '';
 
-      const result = await secureAICall(
-        () => base44.integrations.Core.InvokeLLM({
-          prompt: `You are an expert clinical documentation specialist for home health nursing. Transform these rough notes into Medicare-compliant clinical narrative.
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are an expert clinical documentation specialist for home health nursing. Transform these rough notes into Medicare-compliant clinical narrative.
 
       CRITICAL: This visit is documented by a ${nurseTitle} (${nurseFullTitle}).
       ${gapInstructions}
@@ -1094,19 +1092,16 @@ ${guidelinesContext}
       {
       "enhanced_note": "The complete clinical narrative",
       "quality_score": 0-100
-      }`;
-
-`,
-          response_json_schema: {
-            type: "object",
-            properties: {
-              enhanced_note: { type: "string" },
-              quality_score: { type: "number" }
-            }
+      }
+${guidelinesContext}`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            enhanced_note: { type: "string" },
+            quality_score: { type: "number" }
           }
-        }),
-        currentUser?.email || 'anonymous'
-      );
+        }
+      });
       setEnhancedNote(result.enhanced_note);
       setAuditResults(result);
       setComplianceReviewComplete(false); // Reset to show compliance review first
@@ -1114,8 +1109,7 @@ ${guidelinesContext}
       // Calculate compliance of enhanced note AFTER enhancement
       let enhancedCompliance = null;
       try {
-        const enhancedComplianceCheck = await secureAICall(
-          () => base44.integrations.Core.InvokeLLM({
+        const enhancedComplianceCheck = await base44.integrations.Core.InvokeLLM({
           prompt: `Analyze this enhanced clinical note for Medicare compliance. Return a compliance score (0-100) based on presence of required elements.
 
 ENHANCED NOTE:
@@ -1135,9 +1129,8 @@ Return JSON with:
               compliance_score: { type: "number" },
               compliant_elements: { type: "array", items: { type: "string" } }
             }
-          }),
-          currentUser?.email || 'anonymous'
-        );
+          }
+        });
         enhancedCompliance = enhancedComplianceCheck.compliance_score || 0;
         setEnhancedNoteCompliance(enhancedComplianceCheck);
       } catch (error) {
@@ -1372,8 +1365,7 @@ Return JSON with:
     setIsRunningOASISAutomation(true);
     try {
       // Enhanced OASIS mapping with detailed justifications
-      const enhancedMapping = await secureAICall(
-        () => base44.integrations.Core.InvokeLLM({
+      const enhancedMapping = await base44.integrations.Core.InvokeLLM({
         prompt: `You are an OASIS-E expert. Analyze this clinical note and map it to specific OASIS items with detailed justifications.
 
   ENHANCED CLINICAL NOTE:
@@ -1420,9 +1412,8 @@ Return JSON with:
             medium_confidence_items: { type: "number" },
             low_confidence_items: { type: "number" }
           }
-        }),
-        currentUser?.email || 'anonymous'
-      );
+        }
+      });
 
       setOasisAutomationResults(enhancedMapping);
       setActiveAccordion('oasis');
@@ -1543,8 +1534,7 @@ Return JSON with:
 
     setIsAnalyzingPDGM(true);
     try {
-      const pdgmAnalysis = await secureAICall(
-        () => base44.integrations.Core.InvokeLLM({
+      const pdgmAnalysis = await base44.integrations.Core.InvokeLLM({
         prompt: `You are a PDGM optimization expert. Analyze this clinical note and patient profile for revenue optimization opportunities.
 
   ENHANCED NOTE:
@@ -1602,9 +1592,8 @@ Return JSON with:
             },
             summary: { type: "string" }
           }
-        }),
-        currentUser?.email || 'anonymous'
-      );
+        }
+      });
 
       setPdgmOpportunities(pdgmAnalysis);
 
