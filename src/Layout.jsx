@@ -92,7 +92,7 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     if (currentUser) {
       const sessionManager = new SessionManager(15); // 15 minute timeout
-      
+
       sessionManager.startMonitoring(
         // On timeout - logout user
         () => {
@@ -103,12 +103,11 @@ export default function Layout({ children, currentPageName }) {
         () => {
           const continueSession = confirm('Your session will expire in 2 minutes due to inactivity. Click OK to continue.');
           if (continueSession) {
-            // User activity will reset the timeout
-            window.dispatchEvent(new Event('mousemove'));
+            sessionManager.resetSession();
           }
         }
       );
-      
+
       return () => sessionManager.stopMonitoring();
     }
   }, [currentUser, currentPageName]);
