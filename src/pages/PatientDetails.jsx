@@ -1043,7 +1043,7 @@ export default function PatientDetails() {
                     diagnosis={patient?.primary_diagnosis}
                     patientData={patient}
                     autoReview={false}
-                    onApplySuggestion={(text) => console.log("Suggestion:", text)}
+                    onApplySuggestion={(text) => {}}
                   />
                 )}
 

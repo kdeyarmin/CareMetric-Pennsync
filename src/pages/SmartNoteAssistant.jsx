@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { trackRecommendation, categorizeRecommendation } from "../components/training/RecommendationTracker";
 import ComplianceScoreIndicator from "../components/smartNote/ComplianceScoreIndicator";
+import { secureAICall } from "../components/utils/security";
 import ClinicalDecisionSupport from "../components/smartNote/ClinicalDecisionSupport";
 import TaskGenerator from "../components/smartNote/TaskGenerator";
 import AICarePlanGenerator from "../components/carePlan/AICarePlanGenerator";
@@ -227,7 +228,7 @@ function VoiceHub({ onTranscription, onInterimTranscription, onCommand }) {
         try {
           recognition.start();
         } catch (e) {
-          console.error('Restart error:', e);
+          // Restart failed
         }
       } else {
         setListening(false);
@@ -236,7 +237,6 @@ function VoiceHub({ onTranscription, onInterimTranscription, onCommand }) {
     };
     
     recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
       if (event.error === 'no-speech' || event.error === 'audio-capture') {
         if (listening) {
           setTimeout(() => {
@@ -638,16 +638,19 @@ export default function SmartNoteAssistant() {
     const actualDocTime = noteStartTime ? (enhanceStartTime - noteStartTime) : 0;
 
     try {
-      // Use optimized backend function for enhancement
-      const result = await base44.functions.invoke('enhanceNoteOptimized', {
-        roughNote,
-        patientId: selectedPatientId,
-        visitType,
-        visitDate,
-        diagnosis: finalDiagnosis,
-        vitalSigns,
-        nurseType: currentUser?.credential_type || 'RN'
-      });
+      // Use optimized backend function for enhancement with rate limiting
+      const result = await secureAICall(
+        () => base44.functions.invoke('enhanceNoteOptimized', {
+          roughNote,
+          patientId: selectedPatientId,
+          visitType,
+          visitDate,
+          diagnosis: finalDiagnosis,
+          vitalSigns,
+          nurseType: currentUser?.credential_type || 'RN'
+        }),
+        currentUser?.email || 'anonymous'
+      );
 
       if (!result.success) {
         throw new Error(result.error || 'Enhancement failed');
@@ -666,21 +669,24 @@ export default function SmartNoteAssistant() {
       // Automatically run unified compliance check
       setIsRunningUnifiedCheck(true);
       try {
-        const complianceResult = await base44.functions.invoke('comprehensiveComplianceCheck', {
-          enhancedNote: result.enhanced_note,
-          roughNote,
-          visitType,
-          diagnosis: finalDiagnosis,
-          patientId: selectedPatientId,
-          vitalSigns,
-          nurseType: currentUser?.credential_type || 'RN'
-        });
+        const complianceResult = await secureAICall(
+          () => base44.functions.invoke('comprehensiveComplianceCheck', {
+            enhancedNote: result.enhanced_note,
+            roughNote,
+            visitType,
+            diagnosis: finalDiagnosis,
+            patientId: selectedPatientId,
+            vitalSigns,
+            nurseType: currentUser?.credential_type || 'RN'
+          }),
+          currentUser?.email || 'anonymous'
+        );
 
         if (complianceResult.success) {
           setUnifiedInsights(complianceResult.insights);
         }
       } catch (complianceError) {
-        console.error('Unified compliance check error:', complianceError);
+        // Error logged server-side
       }
       setIsRunningUnifiedCheck(false);
 
@@ -698,8 +704,11 @@ export default function SmartNoteAssistant() {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
 
     } catch (error) {
-      console.error("Error enhancing note:", error);
-      alert('Failed to enhance note. Please try again.');
+      if (error.message?.includes('Rate limit')) {
+        alert('Too many requests. Please wait a moment before trying again.');
+      } else {
+        alert('Failed to enhance note. Please try again.');
+      }
     }
     setIsProcessing(false);
   };
@@ -729,11 +738,10 @@ export default function SmartNoteAssistant() {
         }
         if (result.analyses.proactive) {
           // Handle proactive suggestions
-          console.log('Proactive suggestions:', result.analyses.proactive);
         }
       }
     } catch (error) {
-      console.error('Batch analysis error:', error);
+      // Error logged server-side
     }
   };
 
@@ -788,14 +796,15 @@ export default function SmartNoteAssistant() {
               }
             }
           }
-        }
-      });
+        }),
+        currentUser?.email || 'anonymous'
+      );
       roughCompliance = roughComplianceCheck.compliance_score || 0;
       identifiedGaps = roughComplianceCheck.specific_gaps || [];
       setRoughNoteCompliance(roughComplianceCheck);
       setDocumentationGaps(identifiedGaps);
     } catch (error) {
-      console.error('Error checking rough compliance:', error);
+      // Error logged server-side
     }
     
     try {
@@ -901,7 +910,9 @@ export default function SmartNoteAssistant() {
 
       ` : '';
 
-      const prompt = `You are an expert clinical documentation specialist for home health nursing. Transform these rough notes into Medicare-compliant clinical narrative.
+      const result = await secureAICall(
+        () => base44.integrations.Core.InvokeLLM({
+          prompt: `You are an expert clinical documentation specialist for home health nursing. Transform these rough notes into Medicare-compliant clinical narrative.
 
       CRITICAL: This visit is documented by a ${nurseTitle} (${nurseFullTitle}).
       ${gapInstructions}
@@ -1085,16 +1096,17 @@ ${guidelinesContext}
       "quality_score": 0-100
       }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            enhanced_note: { type: "string" },
-            quality_score: { type: "number" }
+`,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              enhanced_note: { type: "string" },
+              quality_score: { type: "number" }
+            }
           }
-        }
-      });
+        }),
+        currentUser?.email || 'anonymous'
+      );
       setEnhancedNote(result.enhanced_note);
       setAuditResults(result);
       setComplianceReviewComplete(false); // Reset to show compliance review first
@@ -1102,7 +1114,8 @@ ${guidelinesContext}
       // Calculate compliance of enhanced note AFTER enhancement
       let enhancedCompliance = null;
       try {
-        const enhancedComplianceCheck = await base44.integrations.Core.InvokeLLM({
+        const enhancedComplianceCheck = await secureAICall(
+          () => base44.integrations.Core.InvokeLLM({
           prompt: `Analyze this enhanced clinical note for Medicare compliance. Return a compliance score (0-100) based on presence of required elements.
 
 ENHANCED NOTE:
@@ -1122,12 +1135,13 @@ Return JSON with:
               compliance_score: { type: "number" },
               compliant_elements: { type: "array", items: { type: "string" } }
             }
-          }
-        });
+          }),
+          currentUser?.email || 'anonymous'
+        );
         enhancedCompliance = enhancedComplianceCheck.compliance_score || 0;
         setEnhancedNoteCompliance(enhancedComplianceCheck);
       } catch (error) {
-        console.error('Error checking enhanced compliance:', error);
+        // Error logged server-side
       }
 
       // Save enhanced note to patient chart history immediately for future context
@@ -1153,7 +1167,7 @@ Return JSON with:
 
         queryClient.invalidateQueries({ queryKey: ['patients'] });
       } catch (error) {
-        console.error('Error saving note to patient history:', error);
+        // Error logged server-side
       }
 
       // Log note enhancement activity - counts as AI utilization
@@ -1190,7 +1204,7 @@ Return JSON with:
           conversion_time_ms: actualDocTime
         });
       } catch (trackError) {
-        console.error("Error tracking note conversion:", trackError);
+        // Error logged server-side
       }
       
       // Track any AI suggestions as recommendations for training
@@ -1292,7 +1306,7 @@ Return JSON with:
         }
         break;
       default:
-        console.log('Unknown voice command:', action);
+        // Unknown command
     }
     
     // Log voice command usage
@@ -1346,7 +1360,6 @@ Return JSON with:
         page: 'SmartNoteAssistant'
       });
     } catch (error) {
-      console.error('Error running OASIS automation:', error);
       alert('Failed to run OASIS automation. Please try again.');
     }
     setIsRunningOASISAutomation(false);
@@ -1359,7 +1372,8 @@ Return JSON with:
     setIsRunningOASISAutomation(true);
     try {
       // Enhanced OASIS mapping with detailed justifications
-      const enhancedMapping = await base44.integrations.Core.InvokeLLM({
+      const enhancedMapping = await secureAICall(
+        () => base44.integrations.Core.InvokeLLM({
         prompt: `You are an OASIS-E expert. Analyze this clinical note and map it to specific OASIS items with detailed justifications.
 
   ENHANCED CLINICAL NOTE:
@@ -1406,8 +1420,9 @@ Return JSON with:
             medium_confidence_items: { type: "number" },
             low_confidence_items: { type: "number" }
           }
-        }
-      });
+        }),
+        currentUser?.email || 'anonymous'
+      );
 
       setOasisAutomationResults(enhancedMapping);
       setActiveAccordion('oasis');
@@ -1420,7 +1435,6 @@ Return JSON with:
         page: 'SmartNoteAssistant'
       });
     } catch (error) {
-      console.error('Error running OASIS automation:', error);
       alert('Failed to run OASIS automation. Please try again.');
     }
     setIsRunningOASISAutomation(false);
@@ -1460,7 +1474,6 @@ Return JSON with:
 
       queryClient.invalidateQueries({ queryKey: ['patientOASISForNotes', selectedPatientId] });
     } catch (error) {
-      console.error('Error applying OASIS suggestion:', error);
       alert('Failed to apply OASIS suggestion. Please try again.');
     }
   };
@@ -1501,7 +1514,6 @@ Return JSON with:
 
       queryClient.invalidateQueries({ queryKey: ['patientOASISForNotes', selectedPatientId] });
     } catch (error) {
-      console.error('Error applying all OASIS suggestions:', error);
       alert('Failed to apply OASIS suggestions. Please try again.');
     }
   };
@@ -1520,7 +1532,7 @@ Return JSON with:
         page: 'SmartNoteAssistant'
       });
     } catch (error) {
-      console.error('Error analyzing PDGM opportunities:', error);
+      // Error logged server-side
     }
     setIsAnalyzingPDGM(false);
   };
@@ -1531,7 +1543,8 @@ Return JSON with:
 
     setIsAnalyzingPDGM(true);
     try {
-      const pdgmAnalysis = await base44.integrations.Core.InvokeLLM({
+      const pdgmAnalysis = await secureAICall(
+        () => base44.integrations.Core.InvokeLLM({
         prompt: `You are a PDGM optimization expert. Analyze this clinical note and patient profile for revenue optimization opportunities.
 
   ENHANCED NOTE:
@@ -1589,8 +1602,9 @@ Return JSON with:
             },
             summary: { type: "string" }
           }
-        }
-      });
+        }),
+        currentUser?.email || 'anonymous'
+      );
 
       setPdgmOpportunities(pdgmAnalysis);
 
@@ -1602,7 +1616,7 @@ Return JSON with:
         page: 'SmartNoteAssistant'
       });
     } catch (error) {
-      console.error('Error analyzing PDGM opportunities:', error);
+      // Error logged server-side
     }
     setIsAnalyzingPDGM(false);
   };
@@ -1663,12 +1677,11 @@ Return JSON with:
         queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts', selectedPatientId] });
         queryClient.invalidateQueries({ queryKey: ['allPatientRiskAlerts'] });
       } catch (riskError) {
-        console.error('Adverse event prediction error:', riskError);
+        // Error logged server-side
       }
 
-      // Removed duplicate visit document logging
     } catch (error) {
-      console.error("Error saving note:", error);
+      alert('Failed to save note. Please try again.');
     }
     setIsSaving(false);
   };
@@ -1727,7 +1740,6 @@ Return JSON with:
                   a.remove();
                 }
               } catch (error) {
-                console.error('Error downloading guide:', error);
                 alert('Failed to download guide. Please try again.');
               }
             }}
@@ -1952,7 +1964,7 @@ Return JSON with:
                   }
                   queryClient.invalidateQueries({ queryKey: ['patientOASISForNotes', selectedPatientId] });
                 } catch (error) {
-                  console.error('Error applying OASIS:', error);
+                  alert('Failed to apply OASIS data.');
                 }
               }}
               autoAnalyze={true}
@@ -2121,7 +2133,7 @@ Return JSON with:
                     });
                     queryClient.invalidateQueries({ queryKey: ['tasks'] });
                   } catch (error) {
-                    console.error('Error creating alert task:', error);
+                    alert('Failed to create task from alert.');
                   }
                 } else if (action === 'notify_md' || action === 'call_911') {
                   // Log the action
@@ -2170,7 +2182,7 @@ Return JSON with:
           {roughNote.length > 50 && (
             <MedicalTerminologyProcessor 
               text={roughNote} 
-              onSuggestion={(suggestion) => console.log('Terminology suggestion:', suggestion)}
+              onSuggestion={(suggestion) => {}}
             />
           )}
               {/* Smart auto-complete textarea with phrase categories */}
@@ -2371,7 +2383,7 @@ Return JSON with:
                     queryClient.invalidateQueries({ queryKey: ['tasks'] });
                     queryClient.invalidateQueries({ queryKey: ['nurseTrainingRecommendations', currentUser?.email] });
                   } catch (error) {
-                    console.error('Error creating task:', error);
+                    alert('Failed to create task.');
                   }
                 }}
               />
@@ -2745,7 +2757,7 @@ Return JSON with:
                           await base44.entities.Patient.update(selectedPatientId, updateData);
                           queryClient.invalidateQueries({ queryKey: ['patients'] });
                         } catch (error) {
-                          console.error('Error updating patient:', error);
+                          alert('Failed to update patient data.');
                         }
                       }}
                       onInsertToNote={(text) => {

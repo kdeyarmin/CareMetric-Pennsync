@@ -63,6 +63,7 @@ import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
 import SecurityAudit from './pages/SecurityAudit';
+import SecurityAuditReport from './pages/SecurityAuditReport';
 import SecurityCompliance from './pages/SecurityCompliance';
 import SecurityPolicy from './pages/SecurityPolicy';
 import Settings from './pages/Settings';
@@ -82,7 +83,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import SecurityAuditReport from './pages/SecurityAuditReport';
 import __Layout from './Layout.jsx';
 
 
@@ -152,6 +152,7 @@ export const PAGES = {
     "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
     "SecurityAudit": SecurityAudit,
+    "SecurityAuditReport": SecurityAuditReport,
     "SecurityCompliance": SecurityCompliance,
     "SecurityPolicy": SecurityPolicy,
     "Settings": Settings,
@@ -171,7 +172,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "SecurityAuditReport": SecurityAuditReport,
 }
 
 export const pagesConfig = {

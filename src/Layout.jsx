@@ -31,6 +31,7 @@ import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
 import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
 import { ThemeProvider } from "../components/theme/ThemeProvider";
+import { SessionManager } from "../components/utils/security";
 
 /* =========================
    iOS / Layout Constants
@@ -86,6 +87,31 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentPageName]);
+
+  // Session timeout implementation
+  useEffect(() => {
+    if (currentUser && currentPageName !== "Home") {
+      const sessionManager = new SessionManager(15); // 15 minute timeout
+      
+      sessionManager.startMonitoring(
+        // On timeout - logout user
+        () => {
+          alert('Your session has expired for security. Please log in again.');
+          base44.auth.logout(createPageUrl("Home"));
+        },
+        // Warning 2 minutes before timeout
+        () => {
+          const continueSession = confirm('Your session will expire in 2 minutes due to inactivity. Click OK to continue.');
+          if (continueSession) {
+            // User activity will reset the timeout
+            window.dispatchEvent(new Event('mousemove'));
+          }
+        }
+      );
+      
+      return () => sessionManager.stopMonitoring();
+    }
+  }, [currentUser, currentPageName]);
 
   const handleLogout = async () => {
     try {

@@ -1,8 +1,9 @@
 import { base44 } from '@/api/base44Client';
 import { logError } from './activityLogger';
+import DOMPurify from 'dompurify';
 
 /**
- * Security utility functions for Penn Sync
+ * Security utility functions for CareMetric AI
  * HIPAA-compliant security controls for PHI protection
  */
 
@@ -16,10 +17,18 @@ export async function canAccessPatient(patientId) {
     const user = await base44.auth.me();
     if (!user) return false;
     
-    // All authenticated users can access all patients in the system
-    return true;
+    // Admins can access all patients
+    if (user.role === 'admin') return true;
+    
+    // Regular users can only access patients they've documented visits for
+    const userVisits = await base44.entities.Visit.filter({
+      patient_id: patientId,
+      created_by: user.email
+    });
+    
+    return userVisits.length > 0;
   } catch (error) {
-    console.error('Access check failed:', error);
+    console.error('Access check failed');
     return false;
   }
 }
@@ -32,11 +41,18 @@ export async function canAccessPatient(patientId) {
 export async function canAccessVisit(visitId) {
   try {
     const user = await base44.auth.me();
+    if (!user) return false;
     
-    // All authenticated users can access all visits
-    return true;
+    // Admins can access all visits
+    if (user.role === 'admin') return true;
+    
+    // Regular users can only access visits they created
+    const visit = await base44.entities.Visit.filter({ id: visitId });
+    if (visit.length === 0) return false;
+    
+    return visit[0].created_by === user.email;
   } catch (error) {
-    console.error('Access check failed:', error);
+    console.error('Access check failed');
     return false;
   }
 }
@@ -92,11 +108,12 @@ export function sanitizeInput(input) {
     return input;
   }
   
-  return input
-    .replace(/[<>]/g, '') // Remove < and >
-    .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/on\w+=/gi, '') // Remove event handlers
-    .trim();
+  // Use DOMPurify for comprehensive XSS protection
+  return DOMPurify.sanitize(input, {
+    ALLOWED_TAGS: [], // Strip all HTML tags
+    ALLOWED_ATTR: [], // Strip all attributes
+    KEEP_CONTENT: true // Keep text content
+  });
 }
 
 /**
@@ -172,10 +189,10 @@ export async function logSecurityEvent(action, details = {}) {
     
     // Store in SecurityLog entity - don't await to avoid blocking
     base44.entities.SecurityLog.create(logEntry).catch(err => {
-      console.error('Failed to store security log:', err);
+      // Failed to store log
     });
   } catch (error) {
-    console.error('Failed to log security event:', error);
+    // Failed to log event
   }
 }
 
@@ -328,9 +345,6 @@ export async function secureAICall(aiFunction, userKey) {
  * @param {Function} userCallback - Callback to show user-friendly message
  */
 export async function handleSecureError(error, context, userCallback) {
-  // Log detailed error for debugging
-  console.error(`[${context}] Error:`, error);
-  
   // Log security event
   await logSecurityEvent('ERROR_OCCURRED', {
     context,

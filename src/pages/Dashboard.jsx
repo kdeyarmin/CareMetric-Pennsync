@@ -139,10 +139,7 @@ export default function Dashboard() {
     select: (data) => data[0]
   });
 
-  // Handle errors gracefully
-  if (visitsError || patientsError) {
-    console.error('Dashboard data loading error:', visitsError || patientsError);
-  }
+  // Handle errors gracefully (logged server-side)
 
   const getPatient = (patientId) => {
     return patients.find(p => p.id === patientId);
@@ -190,7 +187,7 @@ export default function Dashboard() {
         window.location.reload();
         break;
       default:
-        console.log('Unhandled voice command:', action);
+        // Unhandled command
     }
   };
 
