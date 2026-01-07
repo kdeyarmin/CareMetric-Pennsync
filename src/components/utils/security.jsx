@@ -459,37 +459,51 @@ export class SessionManager {
    * @param {Function} onWarning - Callback for warning before timeout
    */
   startMonitoring(onTimeout, onWarning) {
-    this.resetTimeout(onTimeout, onWarning);
+    this.onTimeout = onTimeout;
+    this.onWarning = onWarning;
+    this.resetTimeout();
     
     // Reset on user activity
+    const activityHandler = () => this.resetTimeout();
     ['mousemove', 'keypress', 'click', 'scroll', 'touchstart'].forEach(event => {
-      window.addEventListener(event, () => this.resetTimeout(onTimeout, onWarning));
+      window.addEventListener(event, activityHandler);
     });
+    
+    // Store handler for cleanup
+    this.activityHandler = activityHandler;
   }
   
   /**
    * Reset session timeout
    */
-  resetTimeout(onTimeout, onWarning) {
+  resetTimeout() {
     clearTimeout(this.timeoutId);
+    clearTimeout(this.warningTimeoutId);
     this.warningShown = false;
     
     // Set warning at 2 minutes before timeout
     const warningTime = this.timeoutDuration - (2 * 60 * 1000);
-    setTimeout(() => {
-      if (!this.warningShown && onWarning) {
+    this.warningTimeoutId = setTimeout(() => {
+      if (!this.warningShown && this.onWarning) {
         this.warningShown = true;
-        onWarning();
+        this.onWarning();
       }
     }, warningTime);
     
     // Set actual timeout
     this.timeoutId = setTimeout(async () => {
       await logSecurityEvent('SESSION_TIMEOUT', {});
-      if (onTimeout) {
-        onTimeout();
+      if (this.onTimeout) {
+        this.onTimeout();
       }
     }, this.timeoutDuration);
+  }
+  
+  /**
+   * Public method to manually reset the session
+   */
+  resetSession() {
+    this.resetTimeout();
   }
   
   /**
@@ -497,9 +511,12 @@ export class SessionManager {
    */
   stopMonitoring() {
     clearTimeout(this.timeoutId);
-    ['mousemove', 'keypress', 'click', 'scroll', 'touchstart'].forEach(event => {
-      window.removeEventListener(event, this.resetTimeout);
-    });
+    clearTimeout(this.warningTimeoutId);
+    if (this.activityHandler) {
+      ['mousemove', 'keypress', 'click', 'scroll', 'touchstart'].forEach(event => {
+        window.removeEventListener(event, this.activityHandler);
+      });
+    }
   }
 }
 
