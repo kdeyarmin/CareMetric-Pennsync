@@ -90,14 +90,14 @@ export default function Layout({ children, currentPageName }) {
 
   // Session timeout implementation
   useEffect(() => {
-    if (currentUser && currentPageName !== "Home") {
+    if (currentUser) {
       const sessionManager = new SessionManager(15); // 15 minute timeout
       
       sessionManager.startMonitoring(
         // On timeout - logout user
         () => {
           alert('Your session has expired for security. Please log in again.');
-          base44.auth.logout(createPageUrl("Home"));
+          base44.auth.logout();
         },
         // Warning 2 minutes before timeout
         () => {
@@ -125,14 +125,13 @@ export default function Layout({ children, currentPageName }) {
     } catch (e) {
       console.error(e);
     }
-    base44.auth.logout(createPageUrl("Home"));
+    base44.auth.logout();
   };
 
   const isActive = (page) => currentPageName === page;
 
-  // Show navigation on all pages except Home, and only when user is logged in
-  // CRITICAL: Always show navigation if user exists (even during loading) unless on Home page
-  const showNavigationUI = currentPageName !== "Home" && currentUser;
+  // Show navigation when user is logged in
+  const showNavigationUI = currentUser;
 
   const userNavItems = [
     { name: "Dashboard", icon: Home, page: "Dashboard" },

@@ -24,7 +24,6 @@ import DuplicatePatients from './pages/DuplicatePatients';
 import EULA from './pages/EULA';
 import FAQ from './pages/FAQ';
 import Features from './pages/Features';
-import Home from './pages/Home';
 import HowToGuide from './pages/HowToGuide';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
@@ -113,7 +112,6 @@ export const PAGES = {
     "EULA": EULA,
     "FAQ": FAQ,
     "Features": Features,
-    "Home": Home,
     "HowToGuide": HowToGuide,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,

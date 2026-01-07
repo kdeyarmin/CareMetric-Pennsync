@@ -479,7 +479,7 @@ export default function SmartNoteAssistant() {
       try {
         return await base44.auth.me();
       } catch (error) {
-        navigate(createPageUrl("Home"));
+        base44.auth.redirectToLogin();
         return null;
       }
     },
