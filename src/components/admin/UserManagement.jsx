@@ -320,23 +320,12 @@ export default function UserManagement({ users, currentUser }) {
           <Alert className="mb-4 bg-blue-50 border-blue-200">
             <Shield className="w-4 h-4 text-blue-600" />
             <AlertDescription className="text-blue-900">
-              <p className="font-semibold mb-1">Penn Sync User Management</p>
-              <p className="text-sm">Manage user roles, permissions, and care scope assignments. Care scope determines which Medicare compliance templates users see.</p>
+              <p className="font-semibold mb-1">User Management</p>
+              <p className="text-sm">Manage user roles, permissions, and care scope assignments. New users gain immediate access upon signup.</p>
             </AlertDescription>
           </Alert>
 
-          {/* Pending Approvals Alert */}
-          {pendingUsers.length > 0 && (
-            <Alert className="mb-4 bg-yellow-50 border-yellow-300">
-              <Clock className="w-4 h-4 text-yellow-600" />
-              <AlertDescription className="text-yellow-900">
-                <p className="font-semibold">
-                  {pendingUsers.length} user{pendingUsers.length > 1 ? 's' : ''} awaiting approval
-                </p>
-                <p className="text-sm mt-1">New users cannot access the system until approved by an administrator.</p>
-              </AlertDescription>
-            </Alert>
-          )}
+
 
           {/* Users Table */}
           <div className="overflow-x-auto">
@@ -349,7 +338,6 @@ export default function UserManagement({ users, currentUser }) {
                   <TableHead>Credentials</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Care Scope</TableHead>
-                  <TableHead>Approval</TableHead>
                   <TableHead>Profile</TableHead>
                   <TableHead>Subscription</TableHead>
                   <TableHead>Joined</TableHead>
@@ -409,19 +397,6 @@ export default function UserManagement({ users, currentUser }) {
                       )}
                     </TableCell>
                     <TableCell>
-                      {user.is_approved || user.role === 'admin' ? (
-                        <Badge className="bg-green-500">
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Approved
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-yellow-500">
-                          <Clock className="w-3 h-3 mr-1" />
-                          Pending
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
                       {user.phone && user.credentials && user.care_scope ? (
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
                       ) : (
@@ -462,27 +437,6 @@ export default function UserManagement({ users, currentUser }) {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        {!user.is_approved && user.role !== 'admin' && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleApproveUser(user.id)}
-                            className="bg-green-600 hover:bg-green-700"
-                            title="Approve user"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {user.is_approved && user.role !== 'admin' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRevokeAccess(user.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            title="Revoke access"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -637,7 +591,7 @@ export default function UserManagement({ users, currentUser }) {
                 <ul className="text-sm space-y-1">
                   <li>✓ Invitation email sent to the user</li>
                   <li>✓ User creates their own account and password</li>
-                  <li>✓ Account automatically approved upon signup</li>
+                  <li>✓ User gains immediate access upon signup</li>
                   <li>✓ Invitation expires in 7 days</li>
                 </ul>
               </AlertDescription>
@@ -743,37 +697,7 @@ export default function UserManagement({ users, currentUser }) {
                 </Select>
               </div>
 
-              {editingUser.role !== 'admin' && (
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <Label className="text-base font-medium">Account Approval</Label>
-                    <p className="text-sm text-gray-600">Allow this user to access the system</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={editingUser.is_approved ? 'bg-green-500' : 'bg-yellow-500'}>
-                      {editingUser.is_approved ? (
-                        <>
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Approved
-                        </>
-                      ) : (
-                        <>
-                          <Clock className="w-3 h-3 mr-1" />
-                          Pending
-                        </>
-                      )}
-                    </Badge>
-                    <Button
-                      size="sm"
-                      variant={editingUser.is_approved ? "outline" : "default"}
-                      onClick={() => setEditingUser({...editingUser, is_approved: !editingUser.is_approved})}
-                      className={editingUser.is_approved ? '' : 'bg-green-600 hover:bg-green-700'}
-                    >
-                      {editingUser.is_approved ? 'Revoke Access' : 'Approve User'}
-                    </Button>
-                  </div>
-                </div>
-              )}
+
             </div>
           )}
 
