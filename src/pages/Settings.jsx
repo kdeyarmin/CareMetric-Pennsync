@@ -38,7 +38,7 @@ export default function Settings() {
       try {
         return await base44.auth.me();
       } catch (error) {
-        navigate(createPageUrl("Home"));
+        base44.auth.redirectToLogin();
         return null;
       }
     },
@@ -71,7 +71,6 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setIsEditing(false);
     } catch (error) {
-      console.error('Error updating profile:', error);
       alert('Failed to update profile. Please try again.');
     }
     setIsSaving(false);
@@ -88,9 +87,8 @@ export default function Settings() {
       const { deleteAccount } = await import('@/functions/deleteAccount');
       await deleteAccount();
       // Logout and redirect
-      base44.auth.logout('/');
+      base44.auth.logout();
     } catch (error) {
-      console.error('Error deleting account:', error);
       alert('Failed to delete account. Please try again or contact support.');
       setIsDeleting(false);
     }

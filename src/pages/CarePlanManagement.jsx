@@ -208,7 +208,6 @@ export default function CarePlanManagement() {
       
       alert('Care plan created successfully with education materials!');
     } catch (error) {
-      console.error('Error creating care plan:', error);
       alert('Failed to create care plan. Please try again.');
     }
   };
@@ -405,7 +404,6 @@ export default function CarePlanManagement() {
                   page: 'CarePlanManagement'
                 });
               } catch (error) {
-                console.error('Error creating care plan:', error);
                 alert('Failed to create care plan. Please try again.');
               }
             }}

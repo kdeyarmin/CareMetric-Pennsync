@@ -120,6 +120,9 @@ export default function Admin() {
       queryClient.invalidateQueries({ queryKey: ['allUsers'] });
       alert('User role updated successfully');
     },
+    onError: (error) => {
+      alert('Failed to update user role. Please try again.');
+    }
   });
 
   // Calculate metrics
@@ -179,7 +182,6 @@ If you have any questions, please contact your administrator.`,
       alert('Invitation sent successfully!');
       setInviteEmail('');
     } catch (error) {
-      console.error('Failed to send invite:', error);
       alert('Failed to send invitation. Please try again.');
     }
   };

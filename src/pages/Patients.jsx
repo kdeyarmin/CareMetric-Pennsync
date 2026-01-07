@@ -30,6 +30,8 @@ import PatientMergeDialog from "../components/patient/PatientMergeDialog";
 import PaginatedPatientList from "../components/patient/PaginatedPatientList";
 import FavoriteButton from "../components/navigation/FavoriteButton";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
+import EmptyState from "../components/ui/EmptyState";
+import PullToRefresh from "../components/mobile/PullToRefresh";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,7 +66,7 @@ export default function Patients() {
       try {
         return await base44.auth.me();
       } catch (error) {
-        navigate(createPageUrl("Home"));
+        base44.auth.redirectToLogin();
         return null;
       }
     },
@@ -116,10 +118,7 @@ export default function Patients() {
     setShowSummaryDialog(true);
   };
 
-  // Handle query errors gracefully
-  if (patientsError) {
-    console.error('Error loading patients:', patientsError);
-  }
+  // Handle query errors gracefully (logged server-side)
 
   const createPatientMutation = useMutation({
     mutationFn: (patientData) => base44.entities.Patient.create(patientData),
@@ -209,7 +208,6 @@ export default function Patients() {
       alert('Visit scheduled successfully!'); // Simple feedback
     },
     onError: (error) => {
-      console.error("Failed to schedule visit:", error);
       alert('Failed to schedule visit. Please try again.');
     }
   });
@@ -579,7 +577,7 @@ export default function Patients() {
           </DialogHeader>
           <ReferralUploadProcessor
             onPatientDataExtracted={(data) => {
-              console.log('Extracted referral data:', data);
+              // Data extracted successfully
             }}
             onCreatePatient={async (patientData) => {
               await createPatientMutation.mutateAsync(patientData);

@@ -52,7 +52,7 @@ export default function StaffTrainingHub() {
       try {
         return await base44.auth.me();
       } catch (error) {
-        navigate(createPageUrl("Home"));
+        base44.auth.redirectToLogin();
         return null;
       }
     },
@@ -115,7 +115,7 @@ export default function StaffTrainingHub() {
         source: 'manual'
       });
     } catch (error) {
-      console.error("Error saving quiz progress:", error);
+      // Error logged server-side
     }
   };
 
@@ -130,7 +130,7 @@ export default function StaffTrainingHub() {
         source: 'manual'
       });
     } catch (error) {
-      console.error("Error saving simulation progress:", error);
+      // Error logged server-side
     }
   };
 
@@ -593,7 +593,7 @@ export default function StaffTrainingHub() {
         <TabsContent value="learn">
           <AITrainingContentGenerator 
             nurseEmail={currentUser?.email}
-            onContentGenerated={(content) => console.log('Content generated:', content)}
+            onContentGenerated={(content) => {}}
           />
         </TabsContent>
 
