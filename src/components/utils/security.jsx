@@ -450,7 +450,9 @@ export class SessionManager {
   constructor(timeoutMinutes = 15) {
     this.timeoutDuration = timeoutMinutes * 60 * 1000;
     this.timeoutId = null;
+    this.warningTimeoutId = null;
     this.warningShown = false;
+    this.lastWarningTime = 0;
   }
   
   /**
@@ -484,8 +486,11 @@ export class SessionManager {
     // Set warning at 2 minutes before timeout
     const warningTime = this.timeoutDuration - (2 * 60 * 1000);
     this.warningTimeoutId = setTimeout(() => {
-      if (!this.warningShown && this.onWarning) {
+      const now = Date.now();
+      // Prevent showing warning if already shown in last 2 minutes
+      if (!this.warningShown && this.onWarning && (now - this.lastWarningTime > 120000)) {
         this.warningShown = true;
+        this.lastWarningTime = now;
         this.onWarning();
       }
     }, warningTime);
