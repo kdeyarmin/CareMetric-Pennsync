@@ -1725,6 +1725,9 @@ Return JSON with:
         vitalStats={vitalSigns.bp || vitalSigns.hr ? `BP: ${vitalSigns.bp || '-'}, HR: ${vitalSigns.hr || '-'}` : null}
         noteLength={roughNote.length}
         complianceScore={enhancedNoteCompliance?.overall_score}
+        criticalGaps={documentationGaps.filter(g => g.priority === 'critical')}
+        vitalAlerts={[]}
+        roughNote={roughNote}
       />
 
       {/* Enhanced Patient Context */}
@@ -2148,22 +2151,24 @@ Return JSON with:
 
               {/* Simplified Sidebar */}
               <div className="space-y-3 sm:space-y-4 w-full overflow-hidden xl:sticky xl:top-4">
-              <DynamicAISidebar
-              currentStep={currentStep}
-              hasPatient={!!selectedPatientId}
-              hasNotes={roughNote.length >= 20}
-              hasEnhancedNote={!!enhancedNote}
-              diagnosis={finalDiagnosis}
-              complianceScore={enhancedNoteCompliance?.overall_score}
-              patientData={selectedPatient}
-              vitalSigns={vitalSigns}
-              hasOASIS={patientOASIS?.length > 0}
-              oasisLinkedItems={oasisLinkedItems}
-              onAction={handleContextualAction}
-              onInsertGuideline={(text) => setRoughNote(prev => prev + '\n\n' + text)}
-              onAddOASISLink={(link) => setOasisLinkedItems(prev => [...prev, link])}
-              onRemoveOASISLink={(idx) => setOasisLinkedItems(prev => prev.filter((_, i) => i !== idx))}
-              />
+                <DynamicAISidebar
+                  currentStep={currentStep}
+                  hasPatient={!!selectedPatientId}
+                  hasNotes={roughNote.length >= 20}
+                  hasEnhancedNote={!!enhancedNote}
+                  diagnosis={finalDiagnosis}
+                  complianceScore={enhancedNoteCompliance?.overall_score}
+                  patientData={selectedPatient}
+                  vitalSigns={vitalSigns}
+                  hasOASIS={patientOASIS?.length > 0}
+                  oasisLinkedItems={oasisLinkedItems}
+                  onAction={handleContextualAction}
+                  onInsertGuideline={(text) => setRoughNote(prev => prev + '\n\n' + text)}
+                  onAddOASISLink={(link) => setOasisLinkedItems(prev => [...prev, link])}
+                  onRemoveOASISLink={(idx) => setOasisLinkedItems(prev => prev.filter((_, i) => i !== idx))}
+                  roughNote={roughNote}
+                  criticalGaps={documentationGaps.filter(g => g.priority === 'critical')}
+                />
               {selectedPatientId && roughNote.length < 50 && (
               <CustomPhrasesManager
                 onInsertPhrase={(text) => setRoughNote(prev => prev ? prev + '\n\n' + text : text)}

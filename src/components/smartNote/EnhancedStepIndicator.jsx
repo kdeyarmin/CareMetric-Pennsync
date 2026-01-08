@@ -11,7 +11,8 @@ import {
   Circle,
   ArrowRight,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  Lightbulb
 } from "lucide-react";
 
 export default function EnhancedStepIndicator({ 
@@ -21,36 +22,88 @@ export default function EnhancedStepIndicator({
   patientName,
   vitalStats,
   noteLength,
-  complianceScore 
+  complianceScore,
+  criticalGaps = [],
+  vitalAlerts = [],
+  roughNote = ""
 }) {
+  // Analyze current context to provide intelligent guidance
+  const getContextualGuidance = () => {
+    // Analyze vital signs for alerts
+    if (currentStep === 'vitals' && vitalStats) {
+      const alerts = [];
+      if (vitalStats.includes('BP:') && vitalStats.includes('/')) {
+        const bpMatch = vitalStats.match(/BP:\s*(\d+)\/(\d+)/);
+        if (bpMatch) {
+          const systolic = parseInt(bpMatch[1]);
+          const diastolic = parseInt(bpMatch[2]);
+          if (systolic > 140 || systolic < 90) {
+            alerts.push(`⚠️ BP ${systolic}/${diastolic} - Document in note`);
+          }
+        }
+      }
+      return alerts.length > 0 ? alerts[0] : null;
+    }
+
+    // Analyze rough note for critical gaps
+    if (currentStep === 'notes' && roughNote.length >= 50) {
+      const content = roughNote.toLowerCase();
+      if (!content.includes('homebound') && !content.includes('taxing')) {
+        return "⚠️ Missing homebound status - required for Medicare";
+      }
+      if (!content.includes('skilled') && roughNote.length > 100) {
+        return "⚠️ Add skilled need justification";
+      }
+    }
+
+    // Enhancement step guidance
+    if (currentStep === 'enhance' && criticalGaps.length > 0) {
+      return `🚨 ${criticalGaps.length} critical gap${criticalGaps.length > 1 ? 's' : ''} to address`;
+    }
+
+    return null;
+  };
+
+  const contextGuidance = getContextualGuidance();
+
   const steps = [
     {
       id: 'patient',
       label: 'Patient',
       icon: User,
       description: patientName || 'Select patient',
-      color: 'blue'
+      color: 'blue',
+      guidance: currentStep === 'patient' ? 'Choose patient or use anonymous mode' : null
     },
     {
       id: 'vitals',
       label: 'Vitals',
       icon: Activity,
       description: vitalStats || 'Enter vital signs',
-      color: 'green'
+      color: 'green',
+      guidance: currentStep === 'vitals' && !vitalStats ? 'Quick entry for BP, HR, Temp, O2' : contextGuidance
     },
     {
       id: 'notes',
       label: 'Documentation',
       icon: Edit3,
       description: noteLength ? `${noteLength} characters` : 'Type or dictate notes',
-      color: 'purple'
+      color: 'purple',
+      guidance: currentStep === 'notes' ? (
+        noteLength < 20 ? 'Min 20 characters - use voice or type' :
+        noteLength < 100 ? 'Add skilled interventions and patient response' :
+        contextGuidance || 'Looking good! Ready to enhance when complete'
+      ) : null
     },
     {
       id: 'enhance',
       label: 'AI Enhancement',
       icon: Sparkles,
       description: complianceScore ? `${complianceScore}% compliant` : 'Transform to Medicare-compliant',
-      color: 'indigo'
+      color: 'indigo',
+      guidance: currentStep === 'enhance' && !complianceScore ? 
+        (criticalGaps.length > 0 ? `Address ${criticalGaps[0]?.element || 'critical gaps'} first` : 'Click Enhance to transform your note') :
+        null
     }
   ];
 
@@ -118,6 +171,12 @@ export default function EnhancedStepIndicator({
                       <p className="text-xs text-gray-600 truncate">
                         {step.description}
                       </p>
+                      {status === 'active' && step.guidance && (
+                        <p className="text-xs text-indigo-600 font-medium mt-1 flex items-start gap-1">
+                          <Lightbulb className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                          <span>{step.guidance}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -181,6 +240,12 @@ export default function EnhancedStepIndicator({
                     )}
                   </div>
                   <p className="text-xs text-gray-600">{step.description}</p>
+                  {status === 'active' && step.guidance && (
+                    <p className="text-xs text-indigo-600 font-medium mt-1 flex items-start gap-1">
+                      <Lightbulb className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                      <span>{step.guidance}</span>
+                    </p>
+                  )}
                 </div>
               </div>
             );
