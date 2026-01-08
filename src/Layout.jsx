@@ -316,7 +316,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-black shadow-lg flex flex-col transition-colors duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-gray-800 shadow-lg flex flex-col transition-colors duration-300 ${
           showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
         }`}
         style={{
@@ -328,7 +328,7 @@ export default function Layout({ children, currentPageName }) {
       >
         {showNavigationUI && (
           <div
-            className="flex items-center justify-between px-2 sm:px-3 w-full bg-black"
+            className="flex items-center justify-between px-2 sm:px-3 w-full bg-gray-800"
             style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}
           >
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
