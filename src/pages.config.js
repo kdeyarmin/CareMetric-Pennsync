@@ -44,6 +44,7 @@ import OASISDocumentationReview from './pages/OASISDocumentationReview';
 import OASISRevenueAnalysis from './pages/OASISRevenueAnalysis';
 import OASISReview from './pages/OASISReview';
 import OfflineMode from './pages/OfflineMode';
+import Onboarding from './pages/Onboarding';
 import PatientAlerts from './pages/PatientAlerts';
 import PatientDashboard from './pages/PatientDashboard';
 import PatientDataManagement from './pages/PatientDataManagement';
@@ -82,7 +83,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import Onboarding from './pages/Onboarding';
 import __Layout from './Layout.jsx';
 
 
@@ -133,6 +133,7 @@ export const PAGES = {
     "OASISRevenueAnalysis": OASISRevenueAnalysis,
     "OASISReview": OASISReview,
     "OfflineMode": OfflineMode,
+    "Onboarding": Onboarding,
     "PatientAlerts": PatientAlerts,
     "PatientDashboard": PatientDashboard,
     "PatientDataManagement": PatientDataManagement,
@@ -171,7 +172,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "Onboarding": Onboarding,
 }
 
 export const pagesConfig = {

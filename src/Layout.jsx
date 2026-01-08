@@ -36,7 +36,7 @@ import { SessionManager } from "../components/utils/security";
 /* =========================
    iOS / Layout Constants
 ========================= */
-const HEADER_BAR_HEIGHT_REM = 2.25; // visible blue bar height (rem)
+const HEADER_BAR_HEIGHT_REM = 3.5; // visible blue bar height (rem)
 const BOTTOM_NAV_HEIGHT_REM = 4.25; // visible bottom nav height (rem)
 
 // For FAB row placement: above bottom nav + safe area
