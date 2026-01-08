@@ -2162,74 +2162,35 @@ Return JSON with:
               </AccordionItem>
               </Accordion>
               )}
-        </div>
 
-              <AccordionItem value="careplans">
-                <AccordionTrigger className="text-sm">
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4" /> Care Plans
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <AICarePlanGenerator
-                    patientId={selectedPatientId}
-                    patientName={selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : null}
-                    diagnosis={finalDiagnosis}
-                    careType={selectedPatient?.care_type || "home_health"}
-                    extractedData={{
-                      enhanced_note: enhancedNote,
-                      rough_note: roughNote,
-                      vital_signs: vitalSigns,
-                      visit_type: visitType
-                    }}
-                    existingCarePlans={carePlans}
-                    onCarePlansCreated={(plans) => {
-                      queryClient.invalidateQueries({ queryKey: ['patientCarePlans', selectedPatientId] });
-                      logActivity(ActivityActions.CARE_PLAN_CREATE, {
-                        patient_id: selectedPatientId,
-                        count: plans.length,
-                        source: 'ai_note_analysis',
-                        page: 'SmartNoteAssistant'
-                      });
-                    }}
-                  />
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="education">
-                <AccordionTrigger className="text-sm">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" /> Education
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <PersonalizedEducationGenerator
-                    patient={selectedPatient}
-                    carePlans={carePlans}
-                    recentVisits={recentVisits}
-                  />
-                </AccordionContent>
-              </AccordionItem>
-
-
-
-      {/* Quick Actions Bar */}
-      <QuickActionsBar
-        currentStep={currentStep}
-        isProcessing={isProcessing}
-        isSaving={isSaving}
-        saved={savedSuccessfully}
-        copied={copied}
-        isListening={isVoiceListening}
-        complianceScore={enhancedNoteCompliance?.overall_score}
-        onEnhance={handleEnhanceNote}
-        onCopy={handleCopy}
-        onSave={handleSaveNote}
-        onClear={handleClearNote}
-        onGenerateTasks={() => setActiveAccordion('tasks')}
-        onToggleVoice={() => setIsVoiceListening(!isVoiceListening)}
-      />
-      </div>
-    </div>
-    </PremiumFeatureGate>
-  );
-}
+              {/* Simplified Sidebar */}
+              <div className="space-y-3 sm:space-y-4 w-full overflow-hidden xl:sticky xl:top-4">
+              <DynamicAISidebar
+                currentStep={currentStep}
+                hasPatient={!!selectedPatientId}
+                hasNotes={roughNote.length >= 20}
+                hasEnhancedNote={!!enhancedNote}
+                diagnosis={finalDiagnosis}
+                complianceScore={enhancedNoteCompliance?.overall_score}
+                patientData={selectedPatient}
+                vitalSigns={vitalSigns}
+                hasOASIS={patientOASIS?.length > 0}
+                oasisLinkedItems={oasisLinkedItems}
+                onAction={handleContextualAction}
+                onInsertGuideline={(text) => setRoughNote(prev => prev + '\n\n' + text)}
+                onAddOASISLink={(link) => setOasisLinkedItems(prev => [...prev, link])}
+                onRemoveOASISLink={(idx) => setOasisLinkedItems(prev => prev.filter((_, i) => i !== idx))}
+              />
+              {selectedPatientId && roughNote.length < 50 && (
+                <CustomPhrasesManager
+                  onInsertPhrase={(text) => setRoughNote(prev => prev ? prev + '\n\n' + text : text)}
+                  compact={true}
+                />
+              )}
+              </div>
+              </div>
+              </div>
+              </div>
+              </PremiumFeatureGate>
+              );
+              }
