@@ -87,6 +87,7 @@ import AdverseEventPredictor from "../components/predictive/AdverseEventPredicto
 import PersonalizedEducationGenerator from "../components/education/PersonalizedEducationGenerator";
 import ClinicalNoteReviewer from "../components/review/ClinicalNoteReviewer";
 import DynamicContextAnalyzer from "../components/smartNote/DynamicContextAnalyzer";
+import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -436,6 +437,7 @@ export default function SmartNoteAssistant() {
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [unifiedInsights, setUnifiedInsights] = useState(null);
   const [isRunningUnifiedCheck, setIsRunningUnifiedCheck] = useState(false);
+  const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -464,6 +466,11 @@ export default function SmartNoteAssistant() {
     queryFn: () => base44.entities.Patient.list(),
     initialData: [],
   });
+
+  const handlePatientCreated = (newPatient) => {
+    queryClient.invalidateQueries({ queryKey: ['patients'] });
+    setSelectedPatientId(newPatient.id);
+  };
 
   const { data: carePlans = [] } = useQuery({
     queryKey: ['patientCarePlans', selectedPatientId],
@@ -1645,6 +1652,12 @@ Return JSON with:
       featureDescription="Transform your rough notes into Medicare-compliant documentation with AI. This premium feature includes voice dictation, real-time compliance checking, and intelligent clinical suggestions."
       allowTrial={true}
     >
+    <>
+    <QuickPatientAddDialog
+      open={showAddPatientDialog}
+      onOpenChange={setShowAddPatientDialog}
+      onPatientCreated={handlePatientCreated}
+    />
     <div className="w-full max-w-full overflow-x-hidden min-w-0">
       <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
       <div className="mb-3 sm:mb-4 flex flex-col gap-3 w-full overflow-hidden">
@@ -1752,6 +1765,10 @@ Return JSON with:
                 <div className="w-full overflow-hidden">
                   <Label className="text-xs sm:text-sm mb-1.5 block">Patient</Label>
                   <Select value={selectedPatientId} onValueChange={(id) => {
+                    if (id === '__add_new__') {
+                      setShowAddPatientDialog(true);
+                      return;
+                    }
                     setSelectedPatientId(id);
                     const patient = patients.find(p => p.id === id);
                     if (patient?.primary_diagnosis) {
@@ -1771,6 +1788,9 @@ Return JSON with:
                       <SelectValue placeholder="Select patient or anonymous..." />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__add_new__" className="text-sm font-bold text-blue-600 border-b mb-1">
+                        ➕ Add New Patient
+                      </SelectItem>
                       <SelectItem value="anonymous" className="text-sm font-medium text-purple-600">
                         🔒 Anonymous (No patient data saved)
                       </SelectItem>
@@ -2154,6 +2174,7 @@ Return JSON with:
               </div>
               </div>
               </div>
+              </>
               </PremiumFeatureGate>
               );
               }
