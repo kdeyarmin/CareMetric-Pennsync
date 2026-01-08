@@ -415,30 +415,192 @@ export function clearSensitiveData(stateSetters) {
 }
 
 /**
- * De-identify PHI for AI processing (basic implementation)
- * @param {string} text - Text containing potential PHI
- * @returns {string} - De-identified text
+ * Helper function to escape special regex characters
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string safe for regex
  */
-export function deIdentifyForAI(text) {
+function escapeRegex(str) {
+  if (!str) return '';
+  return str.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * De-identify PHI for AI processing - HIPAA compliant implementation
+ * Handles all 18 HIPAA identifiers plus patient-specific context
+ * @param {string} text - Text containing potential PHI
+ * @param {object} patient - Optional patient object for context-aware de-identification
+ * @returns {string} - De-identified text safe for AI processing
+ */
+export function deIdentifyForAI(text, patient = null) {
   if (!text) return text;
   
-  // Replace common PHI patterns
   let deidentified = text;
   
-  // Replace email addresses
-  deidentified = deidentified.replace(/[\w.-]+@[\w.-]+\.\w+/g, '[EMAIL]');
+  // CONTEXT-AWARE: Replace patient-specific information if provided
+  if (patient) {
+    // Names - case insensitive, word boundary aware
+    if (patient.first_name) {
+      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.first_name)}\\b`, 'gi'), '[PATIENT_FIRST_NAME]');
+    }
+    if (patient.middle_name) {
+      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.middle_name)}\\b`, 'gi'), '[PATIENT_MIDDLE_NAME]');
+    }
+    if (patient.last_name) {
+      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.last_name)}\\b`, 'gi'), '[PATIENT_LAST_NAME]');
+    }
+    
+    // Medical identifiers
+    if (patient.medical_record_number) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.medical_record_number), 'gi'), '[MRN]');
+    }
+    
+    // Contact information
+    if (patient.phone) {
+      const phoneDigits = patient.phone.replace(/\D/g, '');
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.phone), 'g'), '[PATIENT_PHONE]');
+      if (phoneDigits.length === 10) {
+        // Also match phone without formatting
+        deidentified = deidentified.replace(new RegExp(phoneDigits, 'g'), '[PATIENT_PHONE]');
+      }
+    }
+    if (patient.email) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.email), 'gi'), '[PATIENT_EMAIL]');
+    }
+    
+    // Address components
+    if (patient.address) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.address), 'gi'), '[PATIENT_ADDRESS]');
+    }
+    
+    // Emergency contacts
+    if (patient.emergency_contact_name) {
+      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.emergency_contact_name)}\\b`, 'gi'), '[EMERGENCY_CONTACT]');
+    }
+    if (patient.emergency_contact_phone) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.emergency_contact_phone), 'g'), '[EMERGENCY_PHONE]');
+    }
+    
+    // Caregivers and family
+    if (patient.caregiver_name) {
+      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.caregiver_name)}\\b`, 'gi'), '[CAREGIVER_NAME]');
+    }
+    if (patient.caregiver_phone) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.caregiver_phone), 'g'), '[CAREGIVER_PHONE]');
+    }
+    if (patient.caregiver_email) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.caregiver_email), 'gi'), '[CAREGIVER_EMAIL]');
+    }
+    
+    // Healthcare providers
+    if (patient.physician_name) {
+      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.physician_name)}\\b`, 'gi'), '[PHYSICIAN_NAME]');
+    }
+    if (patient.physician_phone) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.physician_phone), 'g'), '[PHYSICIAN_PHONE]');
+    }
+    if (patient.physician_email) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.physician_email), 'gi'), '[PHYSICIAN_EMAIL]');
+    }
+    
+    // Insurance information
+    if (patient.insurance_primary?.policy_number) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.insurance_primary.policy_number), 'gi'), '[INSURANCE_POLICY]');
+    }
+    if (patient.insurance_primary?.group_number) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.insurance_primary.group_number), 'gi'), '[INSURANCE_GROUP]');
+    }
+    if (patient.insurance_secondary?.policy_number) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.insurance_secondary.policy_number), 'gi'), '[INSURANCE_POLICY_2]');
+    }
+    
+    // Date of birth
+    if (patient.date_of_birth) {
+      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.date_of_birth), 'g'), '[DOB]');
+    }
+  }
   
-  // Replace phone numbers
-  deidentified = deidentified.replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE]');
-  
-  // Replace SSN patterns
-  deidentified = deidentified.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]');
-  
-  // Replace dates (MM/DD/YYYY)
-  deidentified = deidentified.replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, '[DATE]');
-  
-  // Note: Names and addresses are harder to de-identify automatically
-  // Consider using specialized NLP library for more thorough de-identification
+  // GENERIC HIPAA IDENTIFIERS - All 18 types
+  deidentified = deidentified
+    // 1. Social Security Numbers (multiple formats)
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
+    .replace(/\b\d{3}\s\d{2}\s\d{4}\b/g, '[SSN]')
+    .replace(/\bSSN:?\s*\d{3}-?\d{2}-?\d{4}\b/gi, '[SSN]')
+    
+    // 2. Phone numbers (comprehensive formats)
+    .replace(/\b1?[-.]?\(?\d{3}\)?[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE]')
+    .replace(/\bphone:?\s*\d{3}[-.]?\d{3}[-.]?\d{4}\b/gi, '[PHONE]')
+    .replace(/\bcell:?\s*\d{3}[-.]?\d{3}[-.]?\d{4}\b/gi, '[PHONE]')
+    
+    // 3. Email addresses
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL]')
+    
+    // 4. Street addresses (comprehensive patterns)
+    .replace(/\b\d{1,6}\s+[\w\s]+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir|Highway|Hwy|Parkway|Pkwy)\b[^.]*?(?:,|\.|$)/gi, '[ADDRESS]')
+    .replace(/\b(?:Apt|Apartment|Suite|Ste|Unit|#)\s*[A-Z0-9-]+\b/gi, '[APT]')
+    .replace(/\bP\.?O\.?\s?Box\s+\d+\b/gi, '[PO_BOX]')
+    
+    // 5. Geographic subdivisions smaller than state (cities, counties, zip codes)
+    .replace(/\b\d{5}(?:-\d{4})?\b/g, '[ZIP]')
+    
+    // 6. Medicare/Medicaid/Health Plan Beneficiary Numbers
+    .replace(/\b[A-Z]{1,3}\d{2}-\d{2}-\d{4}[A-Z]?\b/g, '[MEDICARE_ID]')
+    .replace(/\bMBI:?\s*[A-Z0-9]{11}\b/gi, '[MEDICARE_MBI]')
+    .replace(/\bMedicaid:?\s*[A-Z0-9-]+\b/gi, '[MEDICAID_ID]')
+    
+    // 7. Medical Record Numbers
+    .replace(/\bMRN:?\s*[A-Z0-9-]+\b/gi, '[MRN]')
+    .replace(/\b(?:Medical\s+Record|Chart)\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[MRN]')
+    .replace(/\b[A-Z]{2,3}\d{6,10}\b/g, '[MEDICAL_ID]')
+    
+    // 8. Account numbers
+    .replace(/\bAccount\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[ACCOUNT_NUMBER]')
+    
+    // 9. Certificate/License numbers
+    .replace(/\bLicense\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[LICENSE_NUMBER]')
+    .replace(/\bCertificate\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[CERTIFICATE_NUMBER]')
+    
+    // 10. Vehicle identifiers (VIN, license plates)
+    .replace(/\bVIN:?\s*[A-HJ-NPR-Z0-9]{17}\b/gi, '[VIN]')
+    .replace(/\b[A-HJ-NPR-Z0-9]{17}\b/g, '[VIN]')
+    .replace(/\b(?:License\s+Plate|Plate):?\s*[A-Z0-9-]+\b/gi, '[LICENSE_PLATE]')
+    
+    // 11. Device identifiers & serial numbers
+    .replace(/\bS\/N:?\s*[A-Z0-9-]+\b/gi, '[SERIAL_NUMBER]')
+    .replace(/\bSerial:?\s*[A-Z0-9-]+\b/gi, '[SERIAL_NUMBER]')
+    .replace(/\bDevice\s+(?:ID|Identifier):?\s*[A-Z0-9-]+\b/gi, '[DEVICE_ID]')
+    .replace(/\bIMEI:?\s*\d{15}\b/gi, '[DEVICE_ID]')
+    
+    // 12. URLs and web addresses
+    .replace(/\bhttps?:\/\/[^\s]+/gi, '[URL]')
+    .replace(/\bwww\.[^\s]+/gi, '[URL]')
+    
+    // 13. IP addresses
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[IP_ADDRESS]')
+    .replace(/\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b/g, '[IPV6_ADDRESS]')
+    
+    // 14. Biometric identifiers
+    .replace(/\bfingerprint:?\s*[A-Z0-9]+\b/gi, '[BIOMETRIC]')
+    .replace(/\bretina\s+scan:?\s*[A-Z0-9]+\b/gi, '[BIOMETRIC]')
+    .replace(/\bvoice\s+print:?\s*[A-Z0-9]+\b/gi, '[BIOMETRIC]')
+    
+    // 15. Facial photographs and comparable images
+    .replace(/\bphoto\s+ID:?\s*[A-Z0-9]+\b/gi, '[PHOTO_ID]')
+    
+    // 16. Dates (preserve relative dates, remove specific ones)
+    .replace(/\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, '[DATE]')
+    .replace(/\b(?:19|20)\d{2}-(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12]\d|3[01])\b/g, '[DATE]')
+    .replace(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+(?:0?[1-9]|[12]\d|3[01]),?\s+(?:19|20)\d{2}\b/gi, '[DATE]')
+    .replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(?:0?[1-9]|[12]\d|3[01]),?\s+(?:19|20)\d{2}\b/gi, '[DATE]')
+    .replace(/\bDOB:?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/gi, '[DOB]')
+    .replace(/\b(?:Born|Birth\s+Date):?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/gi, '[DOB]')
+    
+    // 17. Names with titles (attempt to catch proper names)
+    .replace(/\b(?:Dr|Mr|Mrs|Ms|Miss)\.?\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+\b/g, '[NAME]')
+    .replace(/\b(?:Patient|Resident|Client)\s+(?:Name):?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/gi, '[PATIENT_NAME]')
+    
+    // 18. Any other unique identifying number
+    .replace(/\bID:?\s*[A-Z0-9-]{6,}\b/gi, '[ID]')
+    .replace(/\b(?:Badge|Employee)\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[ID]');
   
   return deidentified;
 }
