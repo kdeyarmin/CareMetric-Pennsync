@@ -84,9 +84,6 @@ import OneClickComplianceFixer from "../components/smartNote/OneClickComplianceF
 import AdvancedVoiceCommands from "../components/voice/AdvancedVoiceCommands";
 import UnifiedComplianceInsights from "../components/compliance/UnifiedComplianceInsights";
 import AdverseEventPredictor from "../components/predictive/AdverseEventPredictor";
-import ClinicalDecisionSupport from "../components/smartNote/ClinicalDecisionSupport";
-import TaskGenerator from "../components/smartNote/TaskGenerator";
-import AICarePlanGenerator from "../components/carePlan/AICarePlanGenerator";
 import PersonalizedEducationGenerator from "../components/education/PersonalizedEducationGenerator";
 import ClinicalNoteReviewer from "../components/review/ClinicalNoteReviewer";
 
@@ -2115,27 +2112,11 @@ Return JSON with:
               <AccordionItem value="tasks">
                 <AccordionTrigger className="text-sm">
                   <div className="flex items-center gap-2">
-                    <ClipboardList className="w-4 h-4" /> AI Task Generator
-                    <Badge className="bg-orange-100 text-orange-800 text-xs">Smart</Badge>
+                    <ClipboardList className="w-4 h-4" /> Tasks
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <Alert className="bg-blue-50 border-blue-200 mb-3">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
-                    <AlertDescription className="text-xs text-blue-800">
-                      AI analyzes your note to generate specific, actionable follow-up tasks based on interventions documented, patient status, and care plan goals.
-                    </AlertDescription>
-                  </Alert>
-                  <TaskGenerator
-                    enhancedNote={enhancedNote}
-                    narrativeText={roughNote}
-                    patientId={selectedPatientId}
-                    patientName={selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : null}
-                    diagnosis={finalDiagnosis}
-                    complianceGaps={enhancedNoteCompliance?.flagged_issues || roughNoteCompliance?.elements?.filter(e => e.status !== 'present') || []}
-                    nurseEmail={currentUser?.email}
-                    autoGenerate={true}
-                  />
+                  <p className="text-sm text-gray-600">Task generation available after enhancement</p>
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="careplans">
@@ -2145,28 +2126,7 @@ Return JSON with:
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <AICarePlanGenerator
-                    patientId={selectedPatientId}
-                    patientName={selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : null}
-                    diagnosis={finalDiagnosis}
-                    careType={selectedPatient?.care_type || "home_health"}
-                    extractedData={{
-                      enhanced_note: enhancedNote,
-                      rough_note: roughNote,
-                      vital_signs: vitalSigns,
-                      visit_type: visitType
-                    }}
-                    existingCarePlans={carePlans}
-                    onCarePlansCreated={(plans) => {
-                      queryClient.invalidateQueries({ queryKey: ['patientCarePlans', selectedPatientId] });
-                      logActivity(ActivityActions.CARE_PLAN_CREATE, {
-                        patient_id: selectedPatientId,
-                        count: plans.length,
-                        source: 'ai_note_analysis',
-                        page: 'SmartNoteAssistant'
-                      });
-                    }}
-                  />
+                  <p className="text-sm text-gray-600">Care plan generation available after enhancement</p>
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="education">
