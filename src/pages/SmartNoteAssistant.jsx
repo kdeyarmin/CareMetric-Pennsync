@@ -86,6 +86,7 @@ import UnifiedComplianceInsights from "../components/compliance/UnifiedComplianc
 import AdverseEventPredictor from "../components/predictive/AdverseEventPredictor";
 import PersonalizedEducationGenerator from "../components/education/PersonalizedEducationGenerator";
 import ClinicalNoteReviewer from "../components/review/ClinicalNoteReviewer";
+import DynamicContextAnalyzer from "../components/smartNote/DynamicContextAnalyzer";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1846,71 +1847,32 @@ Return JSON with:
             </CardContent>
           </Card>
 
-          {/* Consolidated AI Suggestions - Only show before enhancement */}
-          {roughNote.length >= 150 && !enhancedNote && selectedPatientId && (
-            <ConsolidatedAISuggestions
+          {/* Dynamic Context Analyzer - Real-time intelligent suggestions */}
+          {selectedPatientId && roughNote.length >= 30 && !enhancedNote && (
+            <DynamicContextAnalyzer
               roughNote={roughNote}
-              enhancedNote={enhancedNote}
               visitType={visitType}
               diagnosis={finalDiagnosis}
               patientData={selectedPatient}
               vitalSigns={vitalSigns}
               carePlans={carePlans}
-              patientId={selectedPatientId}
-              currentUserEmail={currentUser?.email}
-              onApplyCompliance={(text) => setRoughNote(prev => prev + '\n\n' + text)}
-              onApplyPDGM={(text) => setRoughNote(prev => prev + '\n\n' + text)}
-              onCreateTask={async (taskData) => {
-                await base44.entities.Task.create({
-                  patient_id: selectedPatientId,
-                  ...taskData,
-                  assigned_to: currentUser?.email
-                });
-                queryClient.invalidateQueries({ queryKey: ['tasks'] });
-              }}
-              onCreateCarePlan={async (carePlanData) => {
-                await base44.entities.CarePlan.create({
-                  patient_id: selectedPatientId,
-                  ...carePlanData
-                });
-                queryClient.invalidateQueries({ queryKey: ['patientCarePlans', selectedPatientId] });
-              }}
-              onApplyOASIS={async (oasisItems) => {
-                try {
-                  const extractedData = {};
-                  oasisItems.forEach(item => {
-                    extractedData[item.item_number] = {
-                      value: item.suggested_value,
-                      confidence: item.confidence,
-                      evidence: item.evidence,
-                      source: 'ai_note_analysis',
-                      applied_by: currentUser?.email,
-                      applied_at: new Date().toISOString()
-                    };
-                  });
-
-                  if (patientOASIS?.length > 0) {
-                    const existing = patientOASIS[0];
-                    await base44.entities.OASISUpload.update(existing.id, {
-                      extracted_data: { ...existing.extracted_data, ...extractedData }
-                    });
-                  } else {
-                    await base44.entities.OASISUpload.create({
-                      patient_id: selectedPatientId,
-                      extracted_data: extractedData
-                    });
-                  }
-                  queryClient.invalidateQueries({ queryKey: ['patientOASISForNotes', selectedPatientId] });
-                } catch (error) {
-                  alert('Failed to apply OASIS data.');
+              onApplySuggestion={(textOrUpdatedNote, isReplacement) => {
+                if (isReplacement) {
+                  setRoughNote(textOrUpdatedNote);
+                } else {
+                  setRoughNote(prev => prev + '\n\n' + textOrUpdatedNote);
                 }
               }}
-              autoAnalyze={true}
+              userEmail={currentUser?.email}
             />
           )}
 
-          {/* Clinical Decision Support - Only show critical alerts */}
-          {selectedPatientId && !enhancedNote && (vitalSigns.bp || vitalSigns.temp || vitalSigns.o2) && (
+          {/* Clinical Decision Support - Only show for abnormal vitals */}
+          {selectedPatientId && !enhancedNote && (
+            (vitalSigns.bp && (parseInt(vitalSigns.bp.split('/')[0]) > 140 || parseInt(vitalSigns.bp.split('/')[0]) < 90)) ||
+            (vitalSigns.o2 && parseInt(vitalSigns.o2) < 92) ||
+            (vitalSigns.temp && (parseFloat(vitalSigns.temp) > 99.5 || parseFloat(vitalSigns.temp) < 96))
+          ) && (
             <ClinicalDecisionSupport
               enhancedNote={enhancedNote}
               extractedData={null}
