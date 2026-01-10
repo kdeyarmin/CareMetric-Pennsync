@@ -697,7 +697,511 @@ export default function SmartNoteAssistant() {
     setIsProcessing(false);
   };
 
+  // Batch AI analysis for multiple operations
+  const runBatchAnalysis = async (analysisTypes) => {
+    try {
+      const result = await base44.functions.invoke('batchAIAnalysis', {
+        roughNote,
+        enhancedNote,
+        visitType,
+        diagnosis: finalDiagnosis,
+        vitalSigns,
+        patientId: selectedPatientId,
+        analysisTypes
+      });
 
+      if (result.success) {
+        if (result.analyses.compliance) {
+          setEnhancedNoteCompliance(result.analyses.compliance);
+        }
+        if (result.analyses.oasis) {
+          setOasisAutomationResults(result.analyses.oasis);
+        }
+        if (result.analyses.pdgm) {
+          setPdgmOpportunities(result.analyses.pdgm);
+        }
+        if (result.analyses.proactive) {
+          // Handle proactive suggestions
+        }
+      }
+    } catch (error) {
+      // Error logged server-side
+    }
+  };
+
+  // Old implementation kept as fallback
+  const handleEnhanceNoteFallback = async () => {
+    if (!roughNote.trim()) return;
+    setIsProcessing(true);
+    const enhanceStartTime = Date.now();
+    const actualDocTime = noteStartTime ? (enhanceStartTime - noteStartTime) : 0;
+
+    // Calculate compliance of rough note BEFORE enhancement
+    let roughCompliance = null;
+    let identifiedGaps = [];
+    try {
+      const roughComplianceCheck = await base44.integrations.Core.InvokeLLM({
+        prompt: `Analyze this rough clinical note for Medicare compliance. Return a compliance score (0-100) based on presence of required elements.
+
+  ROUGH NOTE:
+  ${roughNote}
+
+  VISIT TYPE: ${visitType}
+  DIAGNOSIS: ${finalDiagnosis}
+
+  Identify specific documentation gaps that must be addressed in enhancement.
+
+  Return JSON with:
+  {
+    "compliance_score": 0-100,
+    "missing_elements": ["element1", "element2"],
+    "specific_gaps": [
+      {
+        "element": "Homebound Status",
+        "reason": "No mention of mobility limitations or why leaving home is taxing",
+        "priority": "critical"
+      }
+    ]
+  }`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            compliance_score: { type: "number" },
+            missing_elements: { type: "array", items: { type: "string" } },
+            specific_gaps: { 
+              type: "array", 
+              items: { 
+                type: "object",
+                properties: {
+                  element: { type: "string" },
+                  reason: { type: "string" },
+                  priority: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      });
+      roughCompliance = roughComplianceCheck.compliance_score || 0;
+      identifiedGaps = roughComplianceCheck.specific_gaps || [];
+      setRoughNoteCompliance(roughComplianceCheck);
+      setDocumentationGaps(identifiedGaps);
+    } catch (error) {
+      // Error logged server-side
+    }
+    
+    try {
+      // Build comprehensive patient context
+      const patientVisits = recentVisits || [];
+      const patientCarePlans = carePlans || [];
+      const patientIncidents = [];
+      const patientAlerts = [];
+      
+      const fullContext = buildComprehensiveContext(
+        selectedPatient, 
+        patientVisits, 
+        patientCarePlans, 
+        patientIncidents,
+        selectedPatient?.current_medications,
+        patientAlerts
+      );
+      
+      const contextualizedNote = formatContextForAI(fullContext);
+
+      // Standardize medical terminology in rough note
+      const standardizedNote = standardizeTerminology(roughNote);
+
+      // Retrieve relevant Medicare guidelines for context
+      const relevantGuidelines = await retrieveRelevantGuidelines({
+        diagnosis: finalDiagnosis,
+        visitType: visitType,
+        noteContent: roughNote,
+        maxGuidelines: 3
+      });
+
+      const guidelinesContext = formatGuidelinesForPrompt(relevantGuidelines);
+
+      // Determine nurse type and adjust requirements accordingly
+      const isLPN = currentUser?.credential_type === 'LPN';
+      const nurseTitle = isLPN ? 'LPN' : 'RN';
+      const nurseFullTitle = isLPN ? 'Licensed Practical Nurse' : 'Registered Nurse';
+
+      const skilledNeedGuidance = isLPN ? 
+        `Explicitly state why LPN skills are required - LPNs provide skilled services under RN supervision including:
+         - Specific skilled tasks (wound care, medication administration, catheter care, tube feeding)
+         - Implementation of established care plan interventions
+         - Monitoring and reporting patient status changes
+         - Patient/caregiver teaching on specific procedures (not comprehensive assessment/teaching)
+         - DO NOT document comprehensive assessments, initial care planning, or complex clinical judgments (RN scope)
+         ${oasisContext?.admissionSource === '2' || oasisContext?.admissionSource?.toLowerCase().includes('institutional') ? '- Document specific skilled interventions and monitoring per RN-established plan' : ''}
+         ${oasisContext?.cognitiveStatus && oasisContext.cognitiveStatus !== 'intact' ? `- Document implementation of teaching strategies per RN plan, considering cognitive status (${oasisContext.cognitiveStatus})` : ''}` 
+        : 
+        `Explicitly state why RN skills are required (complex assessment, clinical judgment, patient education beyond basic instruction)
+         ${oasisContext?.admissionSource === '2' || oasisContext?.admissionSource?.toLowerCase().includes('institutional') ? '- Document post-institutional monitoring and skilled assessment needs' : ''}
+         ${oasisContext?.cognitiveStatus && oasisContext.cognitiveStatus !== 'intact' ? `- Address cognitive impairment (${oasisContext.cognitiveStatus}) requiring skilled nursing oversight` : ''}`;
+
+      const patientResponseGuidance = isLPN ?
+        `Document patient's response to specific interventions and teaching:
+         - Patient's ability to demonstrate procedure/skill taught
+         - Verbal feedback on specific interventions provided
+         - Observed physical response to treatments
+         ${oasisContext?.cognitiveStatus ? `- Note cognitive status (${oasisContext.cognitiveStatus}) affecting understanding of specific procedures` : ''}
+         - Report any concerns/changes to RN supervisor`
+        :
+        `Include patient's verbal understanding, teach-back results, or demonstrated competency
+         ${oasisContext?.cognitiveStatus ? `- Consider cognitive status (${oasisContext.cognitiveStatus}) when documenting teaching effectiveness` : ''}`;
+
+      const functionalAssessmentGuidance = isLPN ?
+        `LPNs observe and document functional status but do NOT perform comprehensive assessments:
+         ${oasisContext?.adlStatus || oasisContext?.iadlStatus ? '- Note observed functional abilities compared to RN-documented baseline' : '- Document observed functional status during interventions'}
+         ${oasisContext?.adlStatus && Object.keys(oasisContext.adlStatus).length > 0 ? `- Observed ADL performance: ${Object.entries(oasisContext.adlStatus).filter(([k,v]) => v).map(([k]) => k).join(', ')}` : ''}
+         - Report any significant changes to RN`
+        :
+        `${oasisContext?.adlStatus || oasisContext?.iadlStatus ? 'Document changes in functional abilities compared to OASIS baseline:' : 'Document functional abilities:'}
+         ${oasisContext?.adlStatus && Object.keys(oasisContext.adlStatus).length > 0 ? `- ADL assistance needs per OASIS: ${Object.entries(oasisContext.adlStatus).filter(([k,v]) => v).map(([k]) => k).join(', ')}` : ''}
+         ${oasisContext?.iadlStatus && Object.keys(oasisContext.iadlStatus).length > 0 ? `- IADL assistance needs per OASIS: ${Object.entries(oasisContext.iadlStatus).filter(([k,v]) => v).map(([k]) => k).join(', ')}` : ''}`;
+
+      const additionalRequirements = isLPN ? 
+        `
+      LPN-SPECIFIC DOCUMENTATION REQUIREMENTS:
+      7. SUPERVISION ACKNOWLEDGMENT: LPN visits are under RN supervision per agency policy and state regulations
+      8. CARE PLAN IMPLEMENTATION: Document specific interventions performed per RN-established care plan
+      9. SCOPE LIMITATIONS: 
+         - DO NOT document comprehensive patient assessments
+         - DO NOT establish new care plan goals
+         - DO NOT make independent clinical judgments requiring RN assessment
+         - Focus on: skilled tasks performed, patient responses, observations, and reporting to RN
+      10. REPORTING: Note what was reported to supervising RN (if applicable)
+      11. PLAN OF CARE: Continue per RN-established plan, next LPN visit scheduled, when to contact RN/MD` 
+      : 
+      `
+      RN-SPECIFIC DOCUMENTATION REQUIREMENTS:
+      7. INTEGRATE CARE PLAN PROGRESS: Reference active care plan goals and document progress toward them
+      8. COMPARE TO BASELINE: If previous visit data available, note changes from last visit
+      9. FUNCTIONAL STATUS: Describe ADL limitations, mobility level, assistance needed
+      10. PLAN OF CARE: State continuing plan, next visit schedule, when to contact nurse/MD`;
+
+      // Build gap-specific enhancement instructions
+      const gapInstructions = identifiedGaps.length > 0 ? `
+
+      CRITICAL DOCUMENTATION GAPS IDENTIFIED - MUST ADDRESS:
+      ${identifiedGaps.map((gap, idx) => `
+      ${idx + 1}. ${gap.element} [${gap.priority.toUpperCase()}]
+      Problem: ${gap.reason}
+      Required Action: Add specific, measurable documentation for this element
+      `).join('\n')}
+
+      ` : '';
+
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are an expert clinical documentation specialist for home health nursing. Transform these rough notes into Medicare-compliant clinical narrative.
+
+      CRITICAL: This visit is documented by a ${nurseTitle} (${nurseFullTitle}).
+      ${gapInstructions}
+
+      ${contextualizedNote}
+
+      VISIT DETAILS:
+      - Visit Type: ${visitType.replace(/_/g, ' ')}
+      - Visit Date: ${visitDate}
+      - Documenting Nurse Type: ${nurseTitle}
+      - Vitals: ${Object.entries(vitalSigns).filter(([k,v]) => v && k !== 'o2Source' && k !== 'o2Flow').map(([k,v]) => {
+        if (k === 'o2') {
+          const o2Text = `O2 Sat: ${v}`;
+          if (vitalSigns.o2Source === 'on_oxygen' && vitalSigns.o2Flow) {
+            return `${o2Text} on ${vitalSigns.o2Flow}L O2`;
+          } else if (vitalSigns.o2Source === 'on_oxygen') {
+            return `${o2Text} on supplemental O2`;
+          }
+          return `${o2Text} on room air`;
+        }
+        return `${k}: ${v}`;
+      }).join(', ') || 'None provided'}
+
+      PATIENT HISTORY:
+      ${recentVisits.length > 0 ? `- Last Visit (${recentVisits[0].visit_date}): ${recentVisits[0].visit_type} - ${recentVisits[0].nurse_notes?.substring(0, 200)}...` : '- No previous visits on record'}
+
+      ACTIVE CARE PLAN GOALS:
+      ${carePlans.filter(cp => cp.status === 'active').map(cp => `- ${cp.problem}: ${cp.goal}`).join('\n') || '- No active care plans'}
+
+      ${visitType === 'recertification' ? `
+      ⚠️ RECERTIFICATION VISIT - SPECIAL REQUIREMENTS:
+      This is a recertification visit requiring detailed justification for continued skilled care.
+
+      MANDATORY RECERTIFICATION ELEMENTS:
+      1. COMPREHENSIVE PROGRESS REVIEW:
+         - Compare patient's current status to admission baseline
+         - Document ALL improvements (functional, clinical, safety, knowledge)
+         - Document ongoing deficits requiring continued skilled intervention
+         - Reference specific care plan goals: progress made vs. goals remaining
+      
+      2. CHANGES SINCE ADMISSION:
+         ${selectedPatient?.admission_date ? `Admission Date: ${selectedPatient.admission_date}` : ''}
+         ${selectedPatient?.baseline_vitals ? `Baseline Vitals: BP ${selectedPatient.baseline_vitals.blood_pressure_systolic}/${selectedPatient.baseline_vitals.blood_pressure_diastolic}, HR ${selectedPatient.baseline_vitals.heart_rate}, O2 Sat ${selectedPatient.baseline_vitals.oxygen_saturation}%` : ''}
+         ${selectedPatient?.functional_status?.ambulation ? `Admission Ambulation: ${selectedPatient.functional_status.ambulation}` : ''}
+         ${selectedPatient?.functional_status?.adl_independence ? `Admission ADL Level: ${selectedPatient.functional_status.adl_independence}` : ''}
+         - Document vital sign trends and clinical stability improvements
+         - Document functional ability changes (mobility, ADLs, IADLs)
+         - Document medication management improvements
+         - Document safety awareness and fall risk changes
+         - Document patient/caregiver learning progress
+      
+      3. JUSTIFICATION FOR CONTINUED CARE:
+         - Identify remaining skilled needs despite improvements
+         - Explain why RN/LPN skilled services remain medically necessary
+         - Document complexity requiring ongoing skilled intervention
+         - Reference specific interventions preventing hospitalization/complications
+         - Project timeline to discharge and remaining goals to achieve
+      
+      4. COMPREHENSIVE COMPARISON:
+         Create a clear narrative showing:
+         "On admission [date], patient presented with [baseline status]. Since then, patient has achieved [improvements]. However, patient continues to require skilled nursing for [ongoing needs] due to [clinical justification]. Goals for next certification period include [specific, measurable objectives]."
+      
+      Use ALL available patient history data, visit notes, vital trends, and care plan progress to build a compelling case for recertification.
+      ` : ''}
+
+      ${visitType === 'discharge' ? `
+      🎉 DISCHARGE VISIT - SPECIAL REQUIREMENTS:
+      This is a discharge visit requiring comprehensive summary of patient journey and outcomes.
+
+      MANDATORY DISCHARGE ELEMENTS:
+      1. ADMISSION TO DISCHARGE COMPARISON:
+         ${selectedPatient?.admission_date ? `Admission Date: ${selectedPatient.admission_date}` : 'Document admission date'}
+         Discharge Date: ${visitDate}
+         
+         ON ADMISSION STATUS:
+         ${selectedPatient?.baseline_vitals ? `- Vitals: BP ${selectedPatient.baseline_vitals.blood_pressure_systolic}/${selectedPatient.baseline_vitals.blood_pressure_diastolic}, HR ${selectedPatient.baseline_vitals.heart_rate}, O2 Sat ${selectedPatient.baseline_vitals.oxygen_saturation}%` : '- Document admission vitals'}
+         ${selectedPatient?.functional_status?.ambulation ? `- Ambulation: ${selectedPatient.functional_status.ambulation}` : '- Document admission mobility'}
+         ${selectedPatient?.functional_status?.adl_independence ? `- ADL Independence: ${selectedPatient.functional_status.adl_independence}` : '- Document admission ADL status'}
+         ${selectedPatient?.functional_status?.cognitive_status ? `- Cognitive Status: ${selectedPatient.functional_status.cognitive_status}` : ''}
+         ${selectedPatient?.functional_status?.fall_risk ? `- Fall Risk: ${selectedPatient.functional_status.fall_risk}` : ''}
+         - Chief Complaint on Admission: ${selectedPatient?.admission_source ? `Admitted from ${selectedPatient.admission_source}` : 'Document admission reason'}
+         ${selectedPatient?.functional_status?.notes ? `- Admission Notes: ${selectedPatient.functional_status.notes}` : ''}
+      
+      2. CURRENT DISCHARGE STATUS:
+         - Current Vitals: ${Object.entries(vitalSigns).filter(([k,v]) => v && k !== 'o2Source' && k !== 'o2Flow').map(([k,v]) => `${k}: ${v}`).join(', ')}
+         - Current Ambulation/Mobility: [Document current status]
+         - Current ADL Independence: [Document improvements]
+         - Current Cognitive/Safety Awareness: [Document improvements]
+         - Current Medication Management: [Document competency level]
+      
+      3. IMPROVEMENTS ACHIEVED:
+         Document specific, measurable improvements in:
+         - Clinical stability (vital sign trends, symptom management)
+         - Functional abilities (mobility, transfers, ADLs, IADLs)
+         - Safety (fall prevention knowledge, home safety modifications)
+         - Disease self-management (medication compliance, symptom recognition)
+         - Patient/caregiver education competency
+         
+         Reference care plan goals achieved:
+         ${carePlans.filter(cp => cp.status === 'met').map(cp => `✓ ${cp.problem}: ${cp.goal} - ACHIEVED`).join('\n') || 'Document goals met during episode'}
+      
+      4. DISCHARGE PLAN & SUSTAINABILITY:
+         - Reason for discharge (goals met, plateau, patient choice, etc.)
+         - Patient/caregiver ability to sustain improvements independently
+         - Home environment safety and support systems in place
+         - Follow-up appointments scheduled (MD, therapies, etc.)
+         - Emergency plan and red flag symptoms reviewed with patient/caregiver
+         - DME/supplies provided and education completed
+         - Community resources referred (if applicable)
+      
+      Create a comprehensive narrative that clearly demonstrates the VALUE of home health intervention by contrasting admission status with discharge status. Show measurable outcomes and patient transformation during the episode of care.
+      ` : ''}
+
+      ${oasisContext ? `OASIS ASSESSMENT DATA (Synced):
+      - Assessment Date: ${oasisContext.assessmentDate}
+      - Admission Source: ${oasisContext.admissionSource === '1' || oasisContext.admissionSource?.toLowerCase().includes('community') ? 'Community (home)' : oasisContext.admissionSource === '2' || oasisContext.admissionSource?.toLowerCase().includes('institutional') ? 'Institutional (hospital/SNF discharge)' : oasisContext.admissionSource || 'Unknown'}
+      - Clinical Group: ${oasisContext.clinicalGroup || 'Not specified'}
+      - Functional Impairment Level: ${oasisContext.functionalLevel || 'Not specified'}
+      - Documented Comorbidities: ${oasisContext.comorbidities.length > 0 ? oasisContext.comorbidities.join(', ') : 'None listed'}
+      - OASIS Primary Diagnosis: ${oasisContext.primaryDiagnosis || 'Not specified'}
+      - Secondary Diagnoses: ${oasisContext.secondaryDiagnoses.length > 0 ? oasisContext.secondaryDiagnoses.join(', ') : 'None'}
+      - Current Medications: ${oasisContext.medications.length > 0 ? oasisContext.medications.slice(0, 5).join(', ') + (oasisContext.medications.length > 5 ? ` and ${oasisContext.medications.length - 5} more` : '') : 'Not documented'}
+      - Admission Reason: ${oasisContext.admissionReason || 'Not specified'}
+      - Living Arrangement: ${oasisContext.livingArrangement || 'Not specified'}
+      - Cognitive Status: ${oasisContext.cognitiveStatus || 'Not assessed'}
+      - Fall Risk: ${oasisContext.fallRisk || 'Not assessed'}
+      - Pain Frequency: ${oasisContext.painLevel || 'Not assessed'}
+      - Vision Status: ${oasisContext.visionStatus || 'Not assessed'}
+      - Hearing Status: ${oasisContext.hearingStatus || 'Not assessed'}
+      - ADL Limitations: ${Object.keys(oasisContext.adlStatus || {}).length > 0 ? Object.entries(oasisContext.adlStatus).filter(([k,v]) => v).map(([k]) => k).join(', ') : 'None documented'}
+      - IADL Limitations: ${Object.keys(oasisContext.iadlStatus || {}).length > 0 ? Object.entries(oasisContext.iadlStatus).filter(([k,v]) => v).map(([k]) => k).join(', ') : 'None documented'}
+      ` : ''}
+
+      ROUGH NOTES (Standardized Medical Terminology):
+      ${standardizedNote}
+
+      CRITICAL ENHANCEMENT REQUIREMENTS:
+      1. HOMEBOUND STATUS: ${oasisContext?.functionalLevel ? `Based on OASIS functional level (${oasisContext.functionalLevel}), document specific mobility limitations and why leaving home is taxing.` : 'If patient has mobility/activity limitations, clearly state why leaving home is taxing (specific symptoms, distances, assistance needed)'}
+         ${oasisContext?.adlStatus && Object.keys(oasisContext.adlStatus).filter(k => oasisContext.adlStatus[k]).length > 0 ? `- OASIS shows ADL limitations in: ${Object.keys(oasisContext.adlStatus).filter(k => oasisContext.adlStatus[k]).join(', ')}` : ''}
+
+      2. SKILLED NEED: ${skilledNeedGuidance}
+
+      3. PATIENT RESPONSE: ${patientResponseGuidance}
+
+      4. FUNCTIONAL ASSESSMENT: ${functionalAssessmentGuidance}
+
+      5. SAFETY/RISK FACTORS: 
+         ${oasisContext?.fallRisk ? `- Fall Risk: ${oasisContext.fallRisk} - document fall prevention measures` : ''}
+         ${oasisContext?.visionStatus && oasisContext.visionStatus !== 'adequate' ? `- Vision impairment: ${oasisContext.visionStatus} - address safety implications` : ''}
+         ${oasisContext?.hearingStatus && oasisContext.hearingStatus !== 'adequate' ? `- Hearing impairment: ${oasisContext.hearingStatus} - document communication adaptations` : ''}
+
+      6. CONDITION-SPECIFIC DETAILS:
+      ${finalDiagnosis?.toUpperCase().includes('CHF') || finalDiagnosis?.toUpperCase().includes('HEART FAILURE') || finalDiagnosis?.toUpperCase().includes('CONGESTIVE') ? '- CHF: Document daily weight, edema grading (0-4+), JVD assessment, bilateral lung sounds for crackles, S3 gallop, fluid status evaluation' : ''}
+      ${finalDiagnosis?.toUpperCase().includes('COPD') || finalDiagnosis?.toUpperCase().includes('CHRONIC OBSTRUCTIVE') ? '- COPD: Document O2 sat on room air vs supplemental O2, respiratory rate, work of breathing, accessory muscle use, cyanosis, lung sounds (wheezes/rhonchi)' : ''}
+      ${finalDiagnosis?.toUpperCase().includes('DIABETES') || finalDiagnosis?.toUpperCase().includes('DIABETIC') ? '- Diabetes: Document blood glucose reading, diabetic foot exam (pedal pulses, sensation, skin integrity between toes), peripheral neuropathy assessment' : ''}
+      ${finalDiagnosis?.toUpperCase().includes('WOUND') || finalDiagnosis?.toUpperCase().includes('PRESSURE') || finalDiagnosis?.toUpperCase().includes('ULCER') ? '- Wound: Document dimensions (L x W x D in cm), wound bed appearance (% granulation/slough/eschar), exudate (type, amount, odor), periwound condition, undermining/tunneling' : ''}
+      ${finalDiagnosis?.toUpperCase().includes('STROKE') || finalDiagnosis?.toUpperCase().includes('CVA') ? (isLPN ? '- Stroke: Document observed LOC, response to interventions, feeding/swallowing assistance provided per care plan' : '- Stroke: Document LOC, orientation, speech/aphasia, facial symmetry, motor strength bilateral (0-5 grading), sensation, swallowing safety') : ''}
+      ${additionalRequirements}
+
+      FORMATTING GUIDELINES:
+      - Use complete sentences with proper medical terminology
+      - Write in narrative paragraph format, not bullet points
+      - Include measurable, objective data
+      - Avoid vague terms like "doing well" or "stable" - be specific
+      - Natural language flow suitable for EHR copy/paste
+
+      CRITICAL - NO META-COMMENTARY:
+      NEVER include sentences about documentation itself, such as:
+      - "Thorough documentation of diagnoses could enhance reimbursement..."
+      - "Recording vital signs will contribute to comprehensive assessments..."
+      - "This documentation aligns with CMS compliance..."
+      - "Further documentation would improve..."
+      - ANY statement about the act of documenting or compliance standards
+      
+      Only write the actual clinical narrative as if it were going directly into the patient's chart. Write ONLY what a nurse would document about the patient visit - observations, assessments, interventions, patient responses. Do NOT write advice to the nurse about how to document.
+${guidelinesContext}
+
+      Return JSON:
+      {
+      "enhanced_note": "The complete clinical narrative",
+      "quality_score": 0-100
+      }
+${guidelinesContext}`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            enhanced_note: { type: "string" },
+            quality_score: { type: "number" }
+          }
+        }
+      });
+      setEnhancedNote(result.enhanced_note);
+      setAuditResults(result);
+      setComplianceReviewComplete(false); // Reset to show compliance review first
+
+      // Calculate compliance of enhanced note AFTER enhancement
+      let enhancedCompliance = null;
+      try {
+        const enhancedComplianceCheck = await base44.integrations.Core.InvokeLLM({
+          prompt: `Analyze this enhanced clinical note for Medicare compliance. Return a compliance score (0-100) based on presence of required elements.
+
+ENHANCED NOTE:
+${result.enhanced_note}
+
+VISIT TYPE: ${visitType}
+DIAGNOSIS: ${finalDiagnosis}
+
+Return JSON with:
+{
+  "compliance_score": 0-100,
+  "compliant_elements": ["element1", "element2"]
+}`,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              compliance_score: { type: "number" },
+              compliant_elements: { type: "array", items: { type: "string" } }
+            }
+          }
+        });
+        enhancedCompliance = enhancedComplianceCheck.compliance_score || 0;
+        setEnhancedNoteCompliance(enhancedComplianceCheck);
+      } catch (error) {
+        // Error logged server-side
+      }
+
+      // Save enhanced note to patient chart history immediately for future context
+      try {
+        const currentHistory = selectedPatient.enhanced_notes_history || [];
+        const updatedHistory = [
+          ...currentHistory,
+          {
+            date: new Date().toISOString(),
+            visit_type: visitType,
+            diagnosis: finalDiagnosis,
+            enhanced_note: result.enhanced_note,
+            rough_note: roughNote,
+            quality_score: result.quality_score,
+            nurse_email: currentUser?.email,
+            vital_signs: vitalSigns
+          }
+        ];
+
+        await base44.entities.Patient.update(selectedPatientId, {
+          enhanced_notes_history: updatedHistory.slice(-10) // Keep last 10 notes for context
+        });
+
+        queryClient.invalidateQueries({ queryKey: ['patients'] });
+      } catch (error) {
+        // Error logged server-side
+      }
+
+      // Log note enhancement activity - counts as AI utilization
+      logActivity(ActivityActions.NOTE_ENHANCED, {
+        patient_id: selectedPatientId,
+        visit_type: visitType,
+        visit_date: visitDate,
+        diagnosis: finalDiagnosis,
+        rough_note_length: roughNote.length,
+        enhanced_note_length: result.enhanced_note?.length,
+        quality_score: result.quality_score,
+        page: 'SmartNoteAssistant',
+        ai_utilization: true // Flag for analytics tracking
+      });
+
+      // Track note conversion with compliance improvement metrics
+      try {
+        const complianceImprovement = (roughCompliance !== null && enhancedCompliance !== null)
+          ? enhancedCompliance - roughCompliance
+          : null;
+
+        await base44.entities.NoteConversion.create({
+          nurse_email: currentUser?.email || 'unknown',
+          patient_id: selectedPatientId || null,
+          visit_type: visitType,
+          diagnosis: finalDiagnosis || null,
+          rough_note_length: roughNote.length,
+          enhanced_note_length: result.enhanced_note?.length || 0,
+          quality_score: result.quality_score || null,
+          compliance_score: enhancedCompliance,
+          rough_note_compliance: roughCompliance,
+          enhanced_note_compliance: enhancedCompliance,
+          compliance_improvement: complianceImprovement,
+          conversion_time_ms: actualDocTime
+        });
+      } catch (trackError) {
+        // Error logged server-side
+      }
+      
+      // Track any AI suggestions as recommendations for training
+      if (currentUser?.email && result.missing_critical_elements) {
+        result.missing_critical_elements.forEach(element => {
+          trackRecommendation({
+            nurseEmail: currentUser.email,
+            type: categorizeRecommendation(element),
+            text: element,
+            source: "smart_note",
+            severity: "medium",
+            patientId: selectedPatientId
+          });
+        });
+      }
+    } catch (error) {
+      console.error("Error enhancing note:", error);
+    }
+    setIsProcessing(false);
+  };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(enhancedNote);
