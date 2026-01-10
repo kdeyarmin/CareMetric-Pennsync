@@ -12,12 +12,22 @@ import PatientHistoryContext from "./PatientHistoryContext";
 import SmartNoteGuidelinesPanel from "./SmartNoteGuidelinesPanel";
 
 export default function MedicalScribeWithReview({
-  diagnosis = "",
-  visitType = "",
-  patientId = "",
-  selectedTemplate = null,
-  onNoteGenerated = null
-}) {
+        diagnosis = "",
+        visitType = "",
+        patientId = "",
+        selectedTemplate = null,
+        onNoteGenerated = null
+      }) {
+        const { data: currentUser } = useQuery({
+          queryKey: ["currentUser"],
+          queryFn: async () => {
+            try {
+              return await base44.auth.me();
+            } catch (error) {
+              return null;
+            }
+          }
+        });
   const [stage, setStage] = useState('input'); // input, transcribing, reviewing, generating, complete
   const [transcription, setTranscription] = useState("");
   const [editedTranscription, setEditedTranscription] = useState("");
@@ -141,14 +151,43 @@ export default function MedicalScribeWithReview({
 
       const data = response.data || response;
 
-      if (!data.success) {
-        throw new Error(data.error || 'Note generation failed');
-      }
+          if (!data.success) {
+            throw new Error(data.error || 'Note generation failed');
+          }
 
-      setGeneratedNote(data.enhanced_note);
-      onNoteGenerated?.(data.enhanced_note);
-      setStage('complete');
-      toast.success('Clinical note generated successfully');
+          setGeneratedNote(data.enhanced_note);
+          onNoteGenerated?.(data.enhanced_note);
+          setStage('complete');
+
+          // Auto-save note to patient history if patient is selected
+          if (patientId && patientId !== 'anonymous') {
+            try {
+              const patientData = await base44.entities.Patient.filter({ id: patientId });
+              if (patientData[0]) {
+                const enhancedNotesHistory = patientData[0].enhanced_notes_history || [];
+                const newEntry = {
+                  date: new Date().toISOString(),
+                  visit_type: visitType,
+                  diagnosis: diagnosis,
+                  enhanced_note: data.enhanced_note,
+                  rough_note: editedTranscription,
+                  quality_score: 85, // Default quality score
+                  nurse_email: currentUser?.email,
+                  vital_signs: {}
+                };
+
+                await base44.entities.Patient.update(patientId, {
+                  enhanced_notes_history: [newEntry, ...enhancedNotesHistory]
+                });
+                toast.success('Note saved to patient history');
+              }
+            } catch (error) {
+              console.error('Failed to save note to patient history:', error);
+              toast.warning('Note generated but auto-save failed');
+            }
+          }
+
+          toast.success('Clinical note generated successfully');
     } catch (error) {
       toast.error(error.message || 'Failed to generate note');
       setStage('reviewing');
