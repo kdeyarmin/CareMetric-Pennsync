@@ -287,26 +287,6 @@ export default function Dashboard() {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2 }}
       >
-        <Link to={createPageUrl("SmartNoteAssistant")} className="block">
-          <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }}>
-            <Card className="hover:shadow-xl transition-all cursor-pointer border-2 border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600 active:scale-95 touch-target h-full hover-lift">
-              <CardContent className="p-4 sm:p-6 text-center flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px]">
-                <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 mb-1 sm:mb-2" />
-                <h3 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white">Document Visit</h3>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </Link>
-        <Link to={createPageUrl("Patients")} className="block">
-          <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }}>
-            <Card className="hover:shadow-xl transition-all cursor-pointer border-2 border-green-200 dark:border-green-800 hover:border-green-400 dark:hover:border-green-600 active:scale-95 touch-target h-full hover-lift">
-              <CardContent className="p-4 sm:p-6 text-center flex flex-col items-center justify-center min-h-[100px] sm:min-h-[120px]">
-                <User className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 dark:text-green-400 mb-1 sm:mb-2" />
-                <h3 className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white">My Patients</h3>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </Link>
         <Link to={createPageUrl("CarePlanManagement")} className="block">
           <motion.div whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }}>
             <Card className="hover:shadow-xl transition-all cursor-pointer border-2 border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600 active:scale-95 touch-target h-full hover-lift">
