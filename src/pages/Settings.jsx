@@ -165,20 +165,28 @@ export default function Settings() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="credential_type">Credential Type</Label>
-                  <Select
-                    value={formData.credential_type}
-                    onValueChange={(value) => setFormData({ ...formData, credential_type: value })}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="RN">RN (Registered Nurse)</SelectItem>
-                      <SelectItem value="LPN">LPN (Licensed Practical Nurse)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                   <Label htmlFor="credential_type">Credential Type</Label>
+                   <Select
+                     value={formData.credential_type}
+                     onValueChange={(value) => setFormData({ ...formData, credential_type: value })}
+                   >
+                     <SelectTrigger className="mt-1">
+                       <SelectValue />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="RN">RN (Registered Nurse)</SelectItem>
+                       <SelectItem value="LPN">LPN (Licensed Practical Nurse)</SelectItem>
+                       <SelectItem value="NP">NP (Nurse Practitioner)</SelectItem>
+                       <SelectItem value="MD">MD (Medical Doctor)</SelectItem>
+                       <SelectItem value="DO">DO (Doctor of Osteopathic Medicine)</SelectItem>
+                       <SelectItem value="PT">PT (Physical Therapist)</SelectItem>
+                       <SelectItem value="OT">OT (Occupational Therapist)</SelectItem>
+                       <SelectItem value="ST">ST (Speech Therapist)</SelectItem>
+                       <SelectItem value="MSW">MSW (Medical Social Worker)</SelectItem>
+                       <SelectItem value="Chiropractor">Chiropractor</SelectItem>
+                     </SelectContent>
+                   </Select>
+                 </div>
                 <div>
                   <Label htmlFor="service_type">Service Type</Label>
                   <Select
