@@ -99,6 +99,7 @@ import PersonalizedDocumentationGapSuggestions from "../components/smartNote/Per
 import ContextualPhraseTemplates from "../components/smartNote/ContextualPhraseTemplates";
 import AITemplateGenerator from "../components/smartNote/AITemplateGenerator";
 import ClinicalGuidelinesModal from "../components/guidelines/ClinicalGuidelinesModal";
+import MedicalScribeRecorder from "../components/smartNote/MedicalScribeRecorder";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1613,6 +1614,19 @@ Return JSON with:
               />
             </CardContent>
           </Card>
+
+          {/* Medical Scribe - Record visit and generate note */}
+          {selectedPatientId && !enhancedNote && (
+            <MedicalScribeRecorder
+              diagnosis={finalDiagnosis}
+              visitType={visitType}
+              patientId={selectedPatientId}
+              onNoteGenerated={(note) => {
+                setRoughNote(note);
+                setNoteStartTime(Date.now());
+              }}
+            />
+          )}
 
           {/* Personalized Documentation Gap Suggestions */}
           {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
