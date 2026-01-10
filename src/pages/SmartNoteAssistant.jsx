@@ -1991,7 +1991,7 @@ Return JSON with:
               </div>
 
               {/* Simplified Sidebar */}
-              <div className="space-y-3 sm:space-y-4 w-full overflow-hidden xl:sticky xl:top-4">
+              <div className="space-y-2.5 sm:space-y-3 lg:space-y-4 w-full min-w-0 xl:sticky xl:top-4">
                 <DynamicAISidebar
                   currentStep={currentStep}
                   hasPatient={!!selectedPatientId}
