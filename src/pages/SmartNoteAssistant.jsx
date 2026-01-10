@@ -53,7 +53,8 @@ import {
   BookOpen,
   DollarSign,
   AlertCircle,
-  Target
+  Target,
+  BookMarked
 } from "lucide-react";
 import { trackRecommendation, categorizeRecommendation } from "../components/training/RecommendationTracker";
 import ComplianceScoreIndicator from "../components/smartNote/ComplianceScoreIndicator";
@@ -97,6 +98,7 @@ import NextBestActionsAI from "../components/smartNote/NextBestActionsAI";
 import PersonalizedDocumentationGapSuggestions from "../components/smartNote/PersonalizedDocumentationGapSuggestions";
 import ContextualPhraseTemplates from "../components/smartNote/ContextualPhraseTemplates";
 import AITemplateGenerator from "../components/smartNote/AITemplateGenerator";
+import ClinicalGuidelinesModal from "../components/guidelines/ClinicalGuidelinesModal";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -440,6 +442,7 @@ export default function SmartNoteAssistant() {
   const [unifiedInsights, setUnifiedInsights] = useState(null);
   const [isRunningUnifiedCheck, setIsRunningUnifiedCheck] = useState(false);
   const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -1372,6 +1375,14 @@ Return JSON with:
       onOpenChange={setShowAddPatientDialog}
       onPatientCreated={handlePatientCreated}
     />
+    <ClinicalGuidelinesModal
+      isOpen={showGuidelinesModal}
+      onClose={() => setShowGuidelinesModal(false)}
+      roughNote={roughNote}
+      diagnosis={finalDiagnosis}
+      specialty={currentUser?.provider_type || ""}
+      userEmail={currentUser?.email}
+    />
     <div className="w-full max-w-full overflow-x-hidden min-w-0">
       <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
       <div className="mb-3 sm:mb-4 flex flex-col gap-3 w-full overflow-hidden">
@@ -1394,6 +1405,15 @@ Return JSON with:
         </div>
         <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
           <FavoriteButton type="page" id="SmartNoteAssistant" name="Smart Note Assistant" />
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-gray-500 gap-1 touch-target flex-1 sm:flex-initial"
+            onClick={() => setShowGuidelinesModal(true)}
+          >
+            <BookMarked className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden xl:inline text-sm">Guidelines</span>
+          </Button>
           <Button 
             variant="ghost" 
             size="sm" 
