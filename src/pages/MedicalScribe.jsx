@@ -119,23 +119,32 @@ export default function MedicalScribe() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
-                  <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
-                    <SelectTrigger className="h-10 text-sm">
-                      <SelectValue placeholder="Select patient..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="anonymous" className="text-sm font-medium text-purple-600">
-                        🔒 Anonymous (No data saved)
-                      </SelectItem>
-                      {patients.map(p => (
-                        <SelectItem key={p.id} value={p.id} className="text-sm">
-                          {p.first_name} {p.last_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                   <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
+                   <Select value={selectedPatientId} onValueChange={(id) => {
+                     if (id === '__add_new__') {
+                       setShowAddPatientDialog(true);
+                       return;
+                     }
+                     setSelectedPatientId(id);
+                   }}>
+                     <SelectTrigger className="h-10 text-sm">
+                       <SelectValue placeholder="Select patient..." />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="__add_new__" className="text-sm font-bold text-blue-600 border-b mb-1">
+                         ➕ Add New Patient
+                       </SelectItem>
+                       <SelectItem value="anonymous" className="text-sm font-medium text-purple-600">
+                         🔒 Anonymous (No data saved)
+                       </SelectItem>
+                       {patients.map(p => (
+                         <SelectItem key={p.id} value={p.id} className="text-sm">
+                           {p.first_name} {p.last_name}
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                 </div>
 
                 <div>
                    <Label className="text-xs sm:text-sm mb-2 block">Visit Type</Label>
