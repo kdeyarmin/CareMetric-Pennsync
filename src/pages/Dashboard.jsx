@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, ChevronDown } from "lucide-react";
+import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, ChevronDown, Mic, Brain } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
@@ -282,42 +282,51 @@ export default function Dashboard() {
 
 
 
-      {/* Nurse Stats Cards */}
-      <motion.div 
-        className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift w-full max-w-full overflow-hidden">
-            <CardContent className="p-4 sm:p-6 overflow-hidden">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-blue-600 dark:text-blue-400 font-medium mb-1">Note Enhancements</p>
-                  <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">0</p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Start documenting to see your progress</p>
-                </div>
-                <FileText className="w-12 h-12 text-blue-400 dark:text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-        <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift w-full max-w-full overflow-hidden">
-            <CardContent className="p-4 sm:p-6 overflow-hidden">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-green-600 dark:text-green-400 font-medium mb-1">Time Saved</p>
-                  <p className="text-3xl font-bold text-green-900 dark:text-green-100">0h 0m</p>
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">Time saved through AI enhancements</p>
-                </div>
-                <Clock className="w-12 h-12 text-green-400 dark:text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </motion.div>
+      {/* Quick Action Cards */}
+       <motion.div 
+         className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
+         initial={{ opacity: 0, y: 20 }}
+         animate={{ opacity: 1, y: 0 }}
+         transition={{ delay: 0.3 }}
+       >
+         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+           <Link to={createPageUrl("SmartNoteAssistant")} className="block">
+             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift h-full cursor-pointer">
+               <CardContent className="p-4 sm:p-6">
+                 <div className="flex items-center gap-3 mb-2">
+                   <Brain className="w-6 h-6 text-blue-600" />
+                   <p className="text-sm font-medium text-blue-900">Smart Notes</p>
+                 </div>
+                 <p className="text-xs text-blue-700">AI-powered note enhancement</p>
+               </CardContent>
+             </Card>
+           </Link>
+         </motion.div>
+         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+           <Link to={createPageUrl("MedicalScribe")} className="block">
+             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800 hover-lift h-full cursor-pointer">
+               <CardContent className="p-4 sm:p-6">
+                 <div className="flex items-center gap-3 mb-2">
+                   <Mic className="w-6 h-6 text-purple-600" />
+                   <p className="text-sm font-medium text-purple-900">Medical Scribe</p>
+                 </div>
+                 <p className="text-xs text-purple-700">Record & auto-generate notes</p>
+               </CardContent>
+             </Card>
+           </Link>
+         </motion.div>
+         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+           <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift">
+             <CardContent className="p-4 sm:p-6">
+               <div className="flex items-center gap-3 mb-2">
+                 <Clock className="w-6 h-6 text-green-600" />
+                 <p className="text-sm font-medium text-green-900">Time Saved</p>
+               </div>
+               <p className="text-xs text-green-700">0h 0m through AI</p>
+             </CardContent>
+           </Card>
+         </motion.div>
+       </motion.div>
 
 
 
