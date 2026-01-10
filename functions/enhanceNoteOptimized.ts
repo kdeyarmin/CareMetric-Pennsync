@@ -51,8 +51,6 @@ Vitals: ${Object.entries(vitalSigns).filter(([k,v]) => v).map(([k,v]) => `${k}: 
 ROUGH NOTE:
 ${roughNote}
 
-CRITICAL: Only use info from rough note or patient data above. Do NOT invent age, DOB, or demographics.
-
 INCLUDE:
 1. Homebound status (mobility limits)
 2. Skilled need (why ${nurseTitle} required)
