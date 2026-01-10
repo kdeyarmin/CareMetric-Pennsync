@@ -1600,15 +1600,35 @@ Return JSON with:
 
           {/* Medical Scribe - Record visit and generate note */}
           {selectedPatientId && !enhancedNote && (
-            <MedicalScribeRecorder
-              diagnosis={finalDiagnosis}
-              visitType={visitType}
-              patientId={selectedPatientId}
-              onNoteGenerated={(note) => {
-                setRoughNote(note);
-                setNoteStartTime(Date.now());
-              }}
-            />
+            <div className="space-y-2.5">
+              <Card className="border-blue-200 bg-blue-50">
+                <CardContent className="p-3">
+                  <div className="flex items-start gap-3">
+                    <Mic className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-sm text-blue-900 mb-1">Medical Scribe Assistant</h3>
+                      <p className="text-xs text-blue-800 mb-2">
+                        Record your visit audio or upload a file. Our AI will transcribe it and generate a clinical note automatically.
+                      </p>
+                      <ul className="text-xs text-blue-700 space-y-0.5 list-disc list-inside">
+                        <li>Record directly from your device microphone</li>
+                        <li>Upload pre-recorded audio files</li>
+                        <li>AI auto-generates clinical documentation</li>
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <MedicalScribeRecorder
+                diagnosis={finalDiagnosis}
+                visitType={visitType}
+                patientId={selectedPatientId}
+                onNoteGenerated={(note) => {
+                  setRoughNote(note);
+                  setNoteStartTime(Date.now());
+                }}
+              />
+            </div>
           )}
 
           {/* Advanced AI Tools - Hidden by default for cleaner workflow */}
