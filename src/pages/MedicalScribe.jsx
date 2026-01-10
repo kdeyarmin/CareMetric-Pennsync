@@ -12,6 +12,7 @@ import { todayEastern } from "../components/utils/timezone";
 import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
 import MedicalScribeWithReview from "../components/smartNote/MedicalScribeWithReview";
 import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
+import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
 
 const commonDiagnoses = [
   "CHF (Congestive Heart Failure)",
