@@ -34,6 +34,7 @@ import PersonalizedCoachingDashboard from "../components/coaching/PersonalizedCo
 import EmptyState from "../components/ui/EmptyState";
 import { motion } from "framer-motion";
 import PullToRefresh from "../components/mobile/PullToRefresh";
+import ProviderSpecificDashboard from "../components/dashboard/ProviderSpecificDashboard";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -263,6 +264,13 @@ export default function Dashboard() {
       )}
 
 
+
+      {/* Provider-Specific Dashboard */}
+      {currentUser && (
+        <div className="mb-6">
+          <ProviderSpecificDashboard user={currentUser} />
+        </div>
+      )}
 
       {/* Quick Action Buttons */}
       <motion.div 
