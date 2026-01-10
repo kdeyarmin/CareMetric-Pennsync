@@ -28,60 +28,42 @@ Deno.serve(async (req) => {
     const carePlans = (patientId && patientId !== 'anonymous') ? 
       await base44.entities.CarePlan.filter({ patient_id: patientId }) : [];
 
-    // Build comprehensive patient context
+    // Build concise patient context
     const patientContext = selectedPatient ? `
-PATIENT PROFILE:
-- Name: ${selectedPatient.first_name} ${selectedPatient.last_name}
-- Primary Diagnosis: ${selectedPatient.primary_diagnosis || diagnosis}
-- Allergies: ${selectedPatient.allergies || 'None documented'}
-- Current Medications: ${selectedPatient.current_medications?.map(m => m.name).join(', ') || 'None'}
-- Recent Visit: ${recentVisits[0] ? `${recentVisits[0].visit_date}: ${recentVisits[0].nurse_notes?.substring(0, 200)}...` : 'None'}
-- Active Care Plans: ${carePlans.filter(cp => cp.status === 'active').map(cp => cp.goal).join('; ') || 'None'}` : '';
+    PATIENT: ${selectedPatient.first_name} ${selectedPatient.last_name}
+    Dx: ${selectedPatient.primary_diagnosis || diagnosis}
+    Meds: ${selectedPatient.current_medications?.slice(0, 3).map(m => m.name).join(', ') || 'None'}
+    Allergies: ${selectedPatient.allergies || 'None'}
+    ${recentVisits[0] ? `Last visit: ${recentVisits[0].visit_date}` : ''}` : '';
 
     const isLPN = nurseType === 'LPN';
     const nurseTitle = isLPN ? 'LPN' : 'RN';
 
     // SINGLE AI CALL - Does everything at once
     const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `Transform rough clinical notes to Medicare-compliant documentation. You're a ${nurseTitle} documentation expert.
+      prompt: `Transform to Medicare-compliant ${nurseTitle} documentation.
 
 ${patientContext}
-
-VISIT: ${visitType} on ${visitDate}
-DIAGNOSIS: ${diagnosis}
-VITALS: ${Object.entries(vitalSigns).filter(([k,v]) => v).map(([k,v]) => `${k}: ${v}`).join(', ')}
+Visit: ${visitType}, ${visitDate}
+Dx: ${diagnosis}
+Vitals: ${Object.entries(vitalSigns).filter(([k,v]) => v).map(([k,v]) => `${k}: ${v}`).join(', ') || 'None'}
 
 ROUGH NOTE:
 ${roughNote}
 
-CRITICAL RULES:
-- NEVER fabricate patient details not in the rough note or patient profile above
-- Do NOT add age, date of birth, or demographic details unless explicitly provided
-- Only use information directly stated in the rough note or patient profile
-- If information is missing, do not invent it
+CRITICAL: Only use info from rough note or patient data above. Do NOT invent age, DOB, or demographics.
 
-REQUIREMENTS:
-1. Homebound status (mobility limits making leaving home taxing)
+INCLUDE:
+1. Homebound status (mobility limits)
 2. Skilled need (why ${nurseTitle} required)
-3. Patient response to care
-4. Functional assessment
-5. Safety/risk factors
-6. ${isLPN ? 'RN supervision acknowledgment' : 'Care plan progress'}
+3. Patient response
+4. Functional status
+5. Safety factors
+${isLPN ? '6. RN supervision noted' : '6. Care plan progress'}
+${visitType === 'recertification' ? '\nRECERT: Compare baseline, justify continued care' : ''}
+${visitType === 'discharge' ? '\nDISCHARGE: Admission vs discharge, improvements, plan' : ''}
 
-${visitType === 'recertification' ? 'RECERTIFICATION: Compare admission to current status, justify continued care, document improvements & remaining needs' : ''}
-${visitType === 'discharge' ? 'DISCHARGE: Admission vs discharge comparison, improvements achieved, discharge plan' : ''}
-
-Return COMPLETE ANALYSIS in ONE call:
-{
-  "rough_compliance_score": 0-100,
-  "missing_elements": ["list gaps"],
-  "enhanced_note": "Complete Medicare-compliant narrative",
-  "enhanced_compliance_score": 0-100,
-  "quality_score": 0-100,
-  "compliance_improvement": number,
-  "documentation_gaps": [{"element": "name", "reason": "why", "priority": "high/medium/low"}],
-  "time_saved_minutes": estimate
-}`,
+Return JSON:`,
       response_json_schema: {
         type: "object",
         properties: {
