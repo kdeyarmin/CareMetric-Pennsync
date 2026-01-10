@@ -1,0 +1,225 @@
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Mic, ArrowRight, Info, CheckCircle2 } from "lucide-react";
+import { logActivity, ActivityActions } from "../components/utils/activityLogger";
+import { todayEastern } from "../components/utils/timezone";
+import MedicalScribeRecorder from "../components/smartNote/MedicalScribeRecorder";
+import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
+
+const commonDiagnoses = [
+  "CHF (Congestive Heart Failure)",
+  "COPD (Chronic Obstructive Pulmonary Disease)",
+  "Diabetes Mellitus Type 2",
+  "Hypertension",
+  "Post-operative care",
+  "Wound care",
+  "Stroke/CVA",
+  "Dementia/Alzheimer's",
+  "Custom (type below)"
+];
+
+export default function MedicalScribe() {
+  const queryClient = useQueryClient();
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [visitType, setVisitType] = useState("routine_visit");
+  const [diagnosis, setDiagnosis] = useState("");
+  const [customDiagnosis, setCustomDiagnosis] = useState("");
+  const [generatedNote, setGeneratedNote] = useState("");
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        base44.auth.redirectToLogin();
+        return null;
+      }
+    },
+  });
+
+  const { data: patients = [] } = useQuery({
+    queryKey: ['patients'],
+    queryFn: () => base44.entities.Patient.list(),
+    initialData: [],
+  });
+
+  const finalDiagnosis = diagnosis === "Custom (type below)" ? customDiagnosis : diagnosis;
+  const isReady = selectedPatientId && visitType && finalDiagnosis;
+
+  const handleNoteGenerated = (note) => {
+    setGeneratedNote(note);
+    logActivity(ActivityActions.NOTE_ENHANCED, {
+      patient_id: selectedPatientId,
+      visit_type: visitType,
+      diagnosis: finalDiagnosis,
+      source: 'medical_scribe',
+      page: 'MedicalScribe'
+    });
+  };
+
+  const handleUseNote = () => {
+    // Save the note to patient chart
+    if (generatedNote && selectedPatientId) {
+      const noteText = generatedNote;
+      window.location.href = `/app?redirect=SmartNoteAssistant&patientId=${selectedPatientId}&preFilledNote=${encodeURIComponent(noteText)}`;
+    }
+  };
+
+  return (
+    <div className="w-full max-w-full overflow-hidden min-w-0">
+      <div className="p-2.5 sm:p-4 md:p-6 max-w-5xl mx-auto pb-24 sm:pb-8 w-full overflow-hidden">
+        {/* Header */}
+        <div className="mb-4 sm:mb-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2.5 bg-blue-100 rounded-full">
+              <Mic className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Medical Scribe</h1>
+              <p className="text-sm text-gray-600 mt-1">Record or upload visit audio to auto-generate clinical notes</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Info Card */}
+        <Alert className="mb-4 sm:mb-6 bg-blue-50 border-blue-200">
+          <Info className="w-4 h-4 text-blue-600" />
+          <AlertDescription className="text-sm text-blue-800">
+            Record your patient visit conversation or upload an audio file. Our AI will transcribe it and generate a Medicare-compliant clinical note that you can review and refine.
+          </AlertDescription>
+        </Alert>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          {/* Setup Section */}
+          <div className="lg:col-span-1">
+            <Card className="sticky top-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Setup</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
+                  <SearchablePatientSelect
+                    value={selectedPatientId}
+                    onChange={setSelectedPatientId}
+                    patients={patients}
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-xs sm:text-sm mb-2 block">Visit Type</Label>
+                  <Select value={visitType} onValueChange={setVisitType}>
+                    <SelectTrigger className="h-10 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admission">Admission</SelectItem>
+                      <SelectItem value="routine_visit">Routine Visit</SelectItem>
+                      <SelectItem value="recertification">Recertification</SelectItem>
+                      <SelectItem value="discharge">Discharge</SelectItem>
+                      <SelectItem value="prn">PRN Visit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-xs sm:text-sm mb-2 block">Diagnosis</Label>
+                  <Select value={diagnosis} onValueChange={setDiagnosis}>
+                    <SelectTrigger className="h-10 text-sm">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {commonDiagnoses.map((dx) => (
+                        <SelectItem key={dx} value={dx} className="text-sm">
+                          {dx}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {diagnosis === "Custom (type below)" && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom diagnosis"
+                    value={customDiagnosis}
+                    onChange={(e) => setCustomDiagnosis(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border rounded-md"
+                  />
+                )}
+
+                {!isReady && (
+                  <Alert className="bg-yellow-50 border-yellow-200">
+                    <AlertDescription className="text-xs text-yellow-800">
+                      Select a patient, visit type, and diagnosis to get started.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recording Section */}
+          <div className="lg:col-span-2">
+            {isReady ? (
+              <div className="space-y-4">
+                <MedicalScribeRecorder
+                  diagnosis={finalDiagnosis}
+                  visitType={visitType}
+                  patientId={selectedPatientId}
+                  onNoteGenerated={handleNoteGenerated}
+                />
+
+                {/* Generated Note Review */}
+                {generatedNote && (
+                  <Card className="border-green-200 bg-green-50">
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        Generated Note
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="bg-white p-3 rounded border border-green-200 max-h-80 overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap">
+                        {generatedNote}
+                      </div>
+                      <Button
+                        onClick={handleUseNote}
+                        className="w-full bg-blue-600 hover:bg-blue-700 gap-2"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                        Continue in Smart Note Assistant
+                      </Button>
+                      <p className="text-xs text-gray-600">
+                        You'll be able to refine, enhance, and save this note in the Smart Note Assistant.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            ) : (
+              <Card className="border-gray-200 bg-gray-50 h-96 flex items-center justify-center">
+                <CardContent className="text-center space-y-3">
+                  <div className="p-4 bg-gray-200 rounded-full w-fit mx-auto">
+                    <Mic className="w-8 h-8 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Select patient details to begin</p>
+                    <p className="text-xs text-gray-600 mt-1">Choose a patient, visit type, and diagnosis from the left panel</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
