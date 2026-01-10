@@ -11,9 +11,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   Play,
-  Award
+  Award,
+  MessageSquare
 } from "lucide-react";
 import { format, parseISO, differenceInDays } from "date-fns";
+import TrainingFeedbackDialog from "./TrainingFeedbackDialog";
 
 export default function MyTrainingDashboard({ nurseEmail }) {
   const queryClient = useQueryClient();
@@ -177,12 +179,30 @@ export default function MyTrainingDashboard({ nurseEmail }) {
                           </Button>
                         )}
                         {completion.status === 'in_progress' && (
-                          <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => completeTraining(completion)}>
-                            <CheckCircle2 className="w-4 h-4 mr-1" /> Complete
-                          </Button>
+                          <>
+                            <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => completeTraining(completion)}>
+                              <CheckCircle2 className="w-4 h-4 mr-1" /> Complete
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
+                    
+                    {/* Show feedback option for in-progress or completed */}
+                    {(completion.status === 'in_progress' || completion.status === 'completed') && (
+                      <div className="mt-3 pt-3 border-t">
+                        <TrainingFeedbackDialog 
+                          completion={completion}
+                          moduleTitle={module?.title}
+                          trigger={
+                            <Button variant="outline" size="sm" className="w-full">
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              {completion.relevance_rating ? 'Update Feedback' : 'Rate This Training'}
+                            </Button>
+                          }
+                        />
+                      </div>
+                    )}
                     {module?.description && (
                       <p className="text-sm text-gray-600 mt-2">{module.description}</p>
                     )}
@@ -210,18 +230,39 @@ export default function MyTrainingDashboard({ nurseEmail }) {
               {completedTraining.slice(0, 10).map(completion => {
                 const module = getModule(completion.training_module_id);
                 return (
-                  <div key={completion.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-green-600" />
-                      <div>
-                        <p className="font-medium">{module?.title || 'Unknown Module'}</p>
-                        <p className="text-xs text-gray-500">
-                          Completed: {completion.completion_date ? format(parseISO(completion.completion_date), 'MMM d, yyyy') : 'N/A'}
-                        </p>
+                  <div key={completion.id} className="p-3 bg-green-50 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        <div>
+                          <p className="font-medium">{module?.title || 'Unknown Module'}</p>
+                          <p className="text-xs text-gray-500">
+                            Completed: {completion.completion_date ? format(parseISO(completion.completion_date), 'MMM d, yyyy') : 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {completion.score && (
+                          <Badge className="bg-green-100 text-green-800">Score: {completion.score}%</Badge>
+                        )}
+                        {completion.relevance_rating && (
+                          <Badge variant="outline">{completion.relevance_rating}/5 ⭐</Badge>
+                        )}
                       </div>
                     </div>
-                    {completion.score && (
-                      <Badge className="bg-green-100 text-green-800">Score: {completion.score}%</Badge>
+                    
+                    {/* Feedback prompt */}
+                    {!completion.relevance_rating && (
+                      <TrainingFeedbackDialog 
+                        completion={completion}
+                        moduleTitle={module?.title}
+                        trigger={
+                          <Button variant="ghost" size="sm" className="w-full text-blue-600 hover:text-blue-700">
+                            <MessageSquare className="w-4 h-4 mr-2" />
+                            Rate this training to improve recommendations
+                          </Button>
+                        }
+                      />
                     )}
                   </div>
                 );
