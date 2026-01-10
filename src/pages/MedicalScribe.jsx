@@ -81,6 +81,12 @@ export default function MedicalScribe() {
   };
 
   return (
+    <>
+    <QuickPatientAddDialog
+      open={showAddPatientDialog}
+      onOpenChange={setShowAddPatientDialog}
+      onPatientCreated={handlePatientCreated}
+    />
     <div className="w-full max-w-full overflow-hidden min-w-0">
       <div className="p-2.5 sm:p-4 md:p-6 max-w-5xl mx-auto pb-24 sm:pb-8 w-full overflow-hidden">
         {/* Header */}
