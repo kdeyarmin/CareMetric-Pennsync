@@ -1,7 +1,7 @@
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ export default function ProviderTypeSelector({ currentUser }) {
   const updateUserMutation = useMutation({
     mutationFn: (data) => base44.auth.updateMe(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['currentUser']);
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       toast.success('Provider settings updated');
     }
   });
@@ -63,9 +63,9 @@ export default function ProviderTypeSelector({ currentUser }) {
           <Stethoscope className="w-5 h-5" />
           Provider Profile
         </CardTitle>
-        <CardDescription>
+        <p className="text-sm text-gray-600 mt-1">
           Configure your provider type to customize AI note generation and compliance checks
-        </CardDescription>
+        </p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
