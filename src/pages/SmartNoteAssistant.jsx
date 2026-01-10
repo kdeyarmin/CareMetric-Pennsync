@@ -76,6 +76,7 @@ import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
 import AIPatientHistorySummarizer from "../components/smartNote/AIPatientHistorySummarizer";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import { todayEastern, formatEastern } from "../components/utils/timezone";
+import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
 import NextStepsPanel from "../components/smartNote/NextStepsPanel";
 import EnhancedPatientContext from "../components/patient/EnhancedPatientContext";
 import DynamicAISidebar from "../components/smartNote/DynamicAISidebar";
