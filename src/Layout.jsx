@@ -136,6 +136,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Dashboard", icon: Home, page: "Dashboard" },
     { name: "My Patients", icon: Users, page: "Patients" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
+    { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
     { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
     { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
