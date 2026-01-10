@@ -10,8 +10,7 @@ export const PROVIDER_VISIT_TYPES = {
       { id: 'routine_visit', label: 'Routine Visit', description: 'Regular skilled nursing visit' },
       { id: 'recertification', label: 'Recertification', description: '60-day recertification assessment' },
       { id: 'discharge', label: 'Discharge', description: 'Final visit and discharge summary' },
-      { id: 'prn', label: 'PRN Visit', description: 'Urgent/as-needed visit' },
-      { id: 'skilled_nursing', label: 'Skilled Nursing', description: 'Specific skilled intervention' }
+      { id: 'prn', label: 'PRN Visit', description: 'Urgent/as-needed visit' }
     ],
     requiresAssessment: true,
     requiresCarePlanReview: true,
@@ -23,8 +22,7 @@ export const PROVIDER_VISIT_TYPES = {
     label: "Licensed Practical Nurse",
     visitTypes: [
       { id: 'routine_visit', label: 'Routine Visit', description: 'Skilled nursing intervention visit' },
-      { id: 'prn', label: 'PRN Visit', description: 'Urgent/as-needed visit' },
-      { id: 'skilled_nursing', label: 'Skilled Nursing', description: 'Specific skilled intervention' }
+      { id: 'prn', label: 'PRN Visit', description: 'Urgent/as-needed visit' }
     ],
     requiresAssessment: false,
     requiresCarePlanReview: true,
