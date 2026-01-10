@@ -52,36 +52,35 @@ PATIENT HISTORY CONTEXT:
 - Functional Status: ${patientHistory.functional_status?.adl_independence || 'N/A'}
 - Recent Vitals: BP ${patientHistory.baseline_vitals?.blood_pressure_systolic || 'N/A'}/${patientHistory.baseline_vitals?.blood_pressure_diastolic || 'N/A'}` : '';
 
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a Medicare and home health compliance expert. Analyze this clinical note for completeness and adherence to Medicare Conditions of Participation and documentation standards.
+      const visitTypeGuidelines = {
+        admission: "Must include: homebound verification, skilled need justification, comprehensive assessment, baseline vitals, medications, allergies, prior history, functional assessment, living situation, initial care plan, patient education",
+        routine_visit: "Must include: vital signs, patient response, assessment, interventions, education, care plan adherence, condition changes, safety assessment",
+        recertification: "Must include: physician signature, updated assessment, progress toward goals, OASIS update, care plan modification, homebound re-verification, skilled need validation",
+        discharge: "Must include: discharge reason, final assessment, goals status, disposition, discharge instructions, education summary, follow-up, physician notification",
+        prn: "Must include: reason for visit, assessment, actions taken, patient response, physician notification, follow-up plan"
+      };
 
-DIAGNOSIS: ${diagnosis}
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are a Medicare home health compliance expert. Conduct comprehensive compliance analysis of this clinical note.
+
 VISIT TYPE: ${visitType}
+DIAGNOSIS: ${diagnosis}
 ${historyContext}
+
+REQUIRED ELEMENTS FOR ${visitType.toUpperCase()}:
+${visitTypeGuidelines[visitType] || visitTypeGuidelines.routine_visit}
 
 CLINICAL NOTE:
 ${generatedNote}
 
-Check for:
-1. Homebound status verification (if applicable)
-2. Skilled nursing need justification
-3. Required OASIS elements
-4. Appropriate assessment documentation
-5. Care plan alignment
-6. Documentation of patient/caregiver education
-7. Safety assessment and interventions
-8. Vital signs and clinical indicators
-
-Provide a JSON response with:
+Analyze completeness, Medicare CoP adherence (42 CFR 484), skilled nursing need justification, and OASIS alignment. Return JSON:
 {
   "overall_score": (0-100),
+  "completeness_percentage": (0-100),
   "compliance_status": "compliant/minor_gaps/major_gaps",
-  "findings": [
-    {"element": "...", "status": "present/missing/incomplete", "suggestion": "..."}
-  ],
-  "critical_issues": ["issue1", "issue2"],
-  "high_priority_gaps": ["gap1", "gap2"],
-  "recommendations": ["recommendation1"]
+  "critical_issues": ["specific CMS regulation citation with issue"],
+  "high_priority_gaps": ["missing element with why it matters"],
+  "recommendations": ["specific action with regulatory reference"]
 }`,
         response_json_schema: {
           type: "object",
@@ -99,6 +98,7 @@ Provide a JSON response with:
                 }
               }
             },
+            completeness_percentage: { type: "number" },
             critical_issues: { type: "array", items: { type: "string" } },
             high_priority_gaps: { type: "array", items: { type: "string" } },
             recommendations: { type: "array", items: { type: "string" } }
