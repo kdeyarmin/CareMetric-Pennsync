@@ -90,6 +90,10 @@ import ClinicalNoteReviewer from "../components/review/ClinicalNoteReviewer";
 import DynamicContextAnalyzer from "../components/smartNote/DynamicContextAnalyzer";
 import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
 import InteractiveDocumentationGaps from "../components/smartNote/InteractiveDocumentationGaps";
+import PreVisitAIBrief from "../components/smartNote/PreVisitAIBrief";
+import ProactiveDocCoach from "../components/smartNote/ProactiveDocCoach";
+import MedicationCrossChecker from "../components/smartNote/MedicationCrossChecker";
+import NextBestActionsAI from "../components/smartNote/NextBestActionsAI";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1445,6 +1449,16 @@ Return JSON with:
           carePlans={carePlans}
         />
       )}
+
+      {/* Pre-Visit AI Brief */}
+      {selectedPatient && !isAnonymous && currentStep !== 'patient' && (
+        <PreVisitAIBrief
+          patient={selectedPatient}
+          recentVisits={recentVisits}
+          carePlans={carePlans}
+          userEmail={currentUser?.email}
+        />
+      )}
       
       {/* Anonymous Mode Notice */}
       {isAnonymous && (
@@ -1576,6 +1590,19 @@ Return JSON with:
               />
             </CardContent>
           </Card>
+
+          {/* Proactive Documentation Coach - Real-time during note writing */}
+          {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
+            <ProactiveDocCoach
+              roughNote={roughNote}
+              patientData={selectedPatient}
+              visitType={visitType}
+              diagnosis={finalDiagnosis}
+              vitalSigns={vitalSigns}
+              onInsertSuggestion={(text) => setRoughNote(prev => prev + '\n\n' + text)}
+              userEmail={currentUser?.email}
+            />
+          )}
 
           {/* Dynamic Context Analyzer - Real-time intelligent suggestions */}
           {selectedPatientId && roughNote.length >= 30 && !enhancedNote && (
@@ -1761,6 +1788,40 @@ Return JSON with:
                   />
                 </CardContent>
               </Card>
+
+              {/* Medication Cross-Checker - Verify all meds documented */}
+              <MedicationCrossChecker
+                enhancedNote={enhancedNote}
+                patientData={selectedPatient}
+                onAddDocumentation={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
+                userEmail={currentUser?.email}
+              />
+
+              {/* Next Best Actions AI - Recommended follow-up */}
+              <NextBestActionsAI
+                enhancedNote={enhancedNote}
+                patientData={selectedPatient}
+                vitalSigns={vitalSigns}
+                diagnosis={finalDiagnosis}
+                onCreateTask={async (action, rationale, priority) => {
+                  try {
+                    await base44.entities.Task.create({
+                      patient_id: selectedPatientId,
+                      title: action,
+                      description: rationale,
+                      type: 'followup',
+                      priority: priority === 'critical' ? 'critical' : priority === 'high' ? 'high' : 'medium',
+                      due_timeframe: priority === 'critical' ? 'today' : '24_hours',
+                      source: 'ai_generated',
+                      assigned_to: currentUser?.email
+                    });
+                    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+                  } catch (error) {
+                    alert('Failed to create task.');
+                  }
+                }}
+                userEmail={currentUser?.email}
+              />
 
               {/* Unified Compliance Insights - All AI Feedback in One Place */}
               <UnifiedComplianceInsights
