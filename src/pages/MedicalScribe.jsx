@@ -13,6 +13,7 @@ import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeM
 import MedicalScribeWithReview from "../components/smartNote/MedicalScribeWithReview";
 import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
 import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
+import NoteTemplateSelector from "../components/smartNote/NoteTemplateSelector";
 
 const commonDiagnoses = [
   "CHF (Congestive Heart Failure)",
@@ -34,6 +35,7 @@ export default function MedicalScribe() {
   const [customDiagnosis, setCustomDiagnosis] = useState("");
   const [generatedNote, setGeneratedNote] = useState("");
   const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -203,10 +205,17 @@ export default function MedicalScribe() {
           <div className="lg:col-span-2">
             {isReady ? (
               <div className="space-y-4">
+                <NoteTemplateSelector
+                  visitType={visitType}
+                  providerType={currentUser?.credential_type || 'RN'}
+                  onTemplateSelect={setSelectedTemplate}
+                  onTemplateApply={setSelectedTemplate}
+                />
                 <MedicalScribeWithReview
                   diagnosis={finalDiagnosis}
                   visitType={visitType}
                   patientId={selectedPatientId}
+                  selectedTemplate={selectedTemplate}
                   onNoteGenerated={handleNoteGenerated}
                 />
               </div>
