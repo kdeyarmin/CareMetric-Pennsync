@@ -1549,11 +1549,11 @@ Return JSON with:
                   <Select value={visitType} onValueChange={setVisitType}>
                     <SelectTrigger className="h-11 text-sm w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admission" className="text-sm">Admission</SelectItem>
-                      <SelectItem value="routine_visit" className="text-sm">Routine Visit</SelectItem>
-                      <SelectItem value="recertification" className="text-sm">Recertification</SelectItem>
-                      <SelectItem value="discharge" className="text-sm">Discharge</SelectItem>
-                      <SelectItem value="prn" className="text-sm">PRN Visit</SelectItem>
+                      {getVisitTypesForProvider(currentUser?.credential_type || 'RN').map(vt => (
+                        <SelectItem key={vt.id} value={vt.id} className="text-sm" title={vt.description}>
+                          {vt.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
