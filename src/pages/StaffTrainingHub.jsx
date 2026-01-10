@@ -373,7 +373,6 @@ export default function StaffTrainingHub() {
           {/* AI Personalized Training Path */}
           <TabsContent value="aipath">
             <div className="space-y-6">
-              {currentUser && <TrainingRelevanceInsights nurseEmail={currentUser.email} />}
               {currentUser && <AIPersonalizedTrainingHub nurseEmail={currentUser.email} />}
             </div>
           </TabsContent>
@@ -381,7 +380,6 @@ export default function StaffTrainingHub() {
           {/* Training Progress Dashboard */}
           <TabsContent value="progress">
             <div className="space-y-6">
-              {currentUser && <TrainingRelevanceInsights nurseEmail={currentUser.email} />}
               {currentUser && <TrainingProgressDashboard nurseEmail={currentUser.email} />}
             </div>
           </TabsContent>

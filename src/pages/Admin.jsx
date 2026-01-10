@@ -392,7 +392,7 @@ If you have any questions, please contact your administrator.`,
 
         {/* Training Management Tab */}
         <TabsContent value="training" className="space-y-6">
-          <TrainingProgressDashboard />
+          {currentUser && <TrainingProgressDashboard />}
         </TabsContent>
 
         {/* Provider Settings Tab */}
