@@ -100,6 +100,7 @@ import ContextualPhraseTemplates from "../components/smartNote/ContextualPhraseT
 import AITemplateGenerator from "../components/smartNote/AITemplateGenerator";
 import ClinicalGuidelinesModal from "../components/guidelines/ClinicalGuidelinesModal";
 import MedicalScribeRecorder from "../components/smartNote/MedicalScribeRecorder";
+import DifferentialDiagnosisSuggester from "../components/smartNote/DifferentialDiagnosisSuggester";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1628,6 +1629,17 @@ Return JSON with:
             />
           )}
 
+          {/* Differential Diagnosis Suggester - AI-powered diagnosis analysis */}
+          {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
+            <DifferentialDiagnosisSuggester
+              roughNote={roughNote}
+              vitalSigns={vitalSigns}
+              patientData={selectedPatient}
+              diagnosis={finalDiagnosis}
+              userEmail={currentUser?.email}
+            />
+          )}
+
           {/* Personalized Documentation Gap Suggestions */}
           {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
             <PersonalizedDocumentationGapSuggestions
@@ -1658,6 +1670,18 @@ Return JSON with:
                   setRoughNote(prev => prev + '\n\n' + textOrUpdatedNote);
                 }
               }}
+              userEmail={currentUser?.email}
+            />
+          )}
+
+          {/* Adverse Event Predictor - AI-powered risk analysis */}
+          {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
+            <AdverseEventPredictor
+              patientId={selectedPatientId}
+              patientData={selectedPatient}
+              roughNote={roughNote}
+              vitalSigns={vitalSigns}
+              diagnosis={finalDiagnosis}
               userEmail={currentUser?.email}
             />
           )}
@@ -1930,14 +1954,17 @@ Return JSON with:
               <AccordionItem value="education">
                 <AccordionTrigger className="text-sm">
                   <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" /> Education
+                    <BookOpen className="w-4 h-4" /> Patient Education
                   </div>
                 </AccordionTrigger>
-                <AccordionContent>
+                <AccordionContent className="space-y-4">
                   <PersonalizedEducationGenerator
                     patient={selectedPatient}
                     carePlans={carePlans}
                     recentVisits={recentVisits}
+                    diagnosis={finalDiagnosis}
+                    vitalSigns={vitalSigns}
+                    roughNote={roughNote}
                   />
                 </AccordionContent>
               </AccordionItem>
