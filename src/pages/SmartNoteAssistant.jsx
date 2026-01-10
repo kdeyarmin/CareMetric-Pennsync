@@ -582,7 +582,7 @@ export default function SmartNoteAssistant() {
 
     try {
       // Use optimized backend function for enhancement with rate limiting
-      const result = await secureAICall(
+      const response = await secureAICall(
         () => base44.functions.invoke('enhanceNoteOptimized', {
           roughNote,
           patientId: selectedPatientId,
@@ -594,6 +594,9 @@ export default function SmartNoteAssistant() {
         }),
         currentUser?.email || 'anonymous'
       );
+
+      // Unwrap the data from the function response
+      const result = response.data || response;
 
       if (!result.success) {
         throw new Error(result.error || 'Enhancement failed');
