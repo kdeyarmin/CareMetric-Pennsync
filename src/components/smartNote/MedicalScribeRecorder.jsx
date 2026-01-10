@@ -2,7 +2,6 @@ import React, { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Mic, Square, Upload, Loader, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -68,10 +67,7 @@ export default function MedicalScribeRecorder({
       formData.append('visitType', visitType);
       formData.append('patientId', patientId);
 
-      const response = await base44.functions.invoke('transcribeAndGenerateScribeNote', {}, {
-        body: formData
-      });
-
+      const response = await base44.functions.invoke('transcribeAndGenerateScribeNote', formData);
       const data = response.data || response;
 
       if (!data.success) {
@@ -99,10 +95,7 @@ export default function MedicalScribeRecorder({
       formData.append('visitType', visitType);
       formData.append('patientId', patientId);
 
-      const response = await base44.functions.invoke('transcribeAndGenerateScribeNote', {}, {
-        body: formData
-      });
-
+      const response = await base44.functions.invoke('transcribeAndGenerateScribeNote', formData);
       const data = response.data || response;
 
       if (!data.success) {
@@ -139,7 +132,6 @@ export default function MedicalScribeRecorder({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Transcript */}
           <div className="space-y-2">
             <h3 className="font-semibold text-sm">Transcript</h3>
             <div className="bg-white p-3 rounded border border-green-200 max-h-24 overflow-y-auto text-xs text-gray-700">
@@ -147,7 +139,6 @@ export default function MedicalScribeRecorder({
             </div>
           </div>
 
-          {/* Generated Note */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Generated Note</h3>
@@ -164,7 +155,6 @@ export default function MedicalScribeRecorder({
             </div>
           </div>
 
-          {/* Compliance Score */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white p-3 rounded border border-green-200">
               <p className="text-xs text-gray-600 mb-1">Compliance Score</p>
@@ -176,7 +166,6 @@ export default function MedicalScribeRecorder({
             </div>
           </div>
 
-          {/* Issues */}
           {result.missing_elements?.length > 0 && (
             <Alert className="bg-yellow-50 border-yellow-200">
               <AlertCircle className="w-4 h-4 text-yellow-600" />
@@ -212,7 +201,6 @@ export default function MedicalScribeRecorder({
         <p className="text-sm text-gray-600 mt-2">Record a visit and AI will generate a clinical note</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Recording Timer */}
         {isRecording && (
           <div className="flex items-center justify-center gap-2 p-4 bg-red-50 rounded-lg border border-red-200">
             <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
@@ -222,7 +210,6 @@ export default function MedicalScribeRecorder({
           </div>
         )}
 
-        {/* Recording Button */}
         <div className="flex gap-2">
           <Button
             onClick={isRecording ? stopRecording : startRecording}
@@ -243,7 +230,6 @@ export default function MedicalScribeRecorder({
           </Button>
         </div>
 
-        {/* File Upload */}
         <div className="relative">
           <input
             type="file"
@@ -268,7 +254,6 @@ export default function MedicalScribeRecorder({
           </label>
         </div>
 
-        {/* Processing State */}
         {isProcessing && (
           <Alert className="bg-blue-50 border-blue-200">
             <Loader className="w-4 h-4 text-blue-600 animate-spin" />
@@ -278,7 +263,6 @@ export default function MedicalScribeRecorder({
           </Alert>
         )}
 
-        {/* Info */}
         <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded">
           <p className="font-medium mb-1">Tips:</p>
           <ul className="space-y-1">
