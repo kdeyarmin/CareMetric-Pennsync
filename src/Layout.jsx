@@ -142,6 +142,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
     { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
     { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
+    { name: "Documentation Settings", icon: Settings, page: "ProviderSettings" },
     { name: "Settings", icon: Settings, page: "Settings" }
   ];
 
