@@ -133,6 +133,7 @@ export default function ProviderTypeSelector({ currentUser }) {
               <option value="concise">Concise</option>
               <option value="narrative">Full Narrative</option>
               <option value="bullet_points">Bullet Points</option>
+              <option value="soap">SOAP Note (Subjective/Objective/Assessment/Plan)</option>
             </select>
           </div>
 
