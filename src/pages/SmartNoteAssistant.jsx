@@ -1193,7 +1193,60 @@ Return JSON with:
   }, []);
 
   const handleVoiceCommand = (action, spokenText, extractedValue) => {
-...
+    switch (action) {
+      case 'enhance':
+        handleEnhanceNote();
+        break;
+      case 'copy':
+        handleCopy();
+        break;
+      case 'save':
+        handleSaveNote();
+        break;
+      case 'clear':
+        handleClearNote();
+        break;
+      case 'next':
+        const currentIndex = stepOrder.indexOf(currentStep);
+        if (currentIndex < stepOrder.length - 1) {
+          handleStepClick(stepOrder[currentIndex + 1]);
+        }
+        break;
+      case 'bp':
+        if (extractedValue && extractedValue.length >= 2) {
+          setVitalSigns(prev => ({ ...prev, bp: `${extractedValue[0]}/${extractedValue[1]}` }));
+        }
+        break;
+      case 'hr':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, hr: extractedValue[0] }));
+        }
+        break;
+      case 'temp':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, temp: extractedValue[0] }));
+        }
+        break;
+      case 'o2':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, o2: extractedValue[0] }));
+        }
+        break;
+      case 'pain':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, pain: extractedValue[0] }));
+        }
+        break;
+      default:
+        // Unknown command
+    }
+    
+    // Log voice command usage
+    logActivity(ActivityActions.AI_FEATURE_USED, {
+      feature: 'voice_command',
+      command: action,
+      patient_id: selectedPatientId,
+      page: 'SmartNoteAssistant'
     });
   };
 
