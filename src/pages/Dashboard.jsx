@@ -35,6 +35,7 @@ import EmptyState from "../components/ui/EmptyState";
 import { motion } from "framer-motion";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import ProviderSpecificDashboard from "../components/dashboard/ProviderSpecificDashboard";
+import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -265,8 +266,15 @@ export default function Dashboard() {
 
 
 
-      {/* Provider-Specific Dashboard */}
+      {/* Dashboard Customizer */}
       {currentUser && (
+        <div className="flex justify-end mb-4">
+          <DashboardCustomizer user={currentUser} />
+        </div>
+      )}
+
+      {/* Provider-Specific Dashboard */}
+      {currentUser && (!currentUser.dashboard_config || currentUser.dashboard_config?.providerMetrics) && (
         <div className="mb-6">
           <ProviderSpecificDashboard user={currentUser} />
         </div>
@@ -359,78 +367,102 @@ export default function Dashboard() {
       </motion.div>
 
       {/* My Daily Overview - Consolidated Insights & Tasks */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <div className="space-y-4">
-          <TaskNotifications userEmail={currentUser?.email} />
-          <IntelligentTaskPrioritization
-            nurseEmail={currentUser?.email}
-            patients={patients}
-            onTaskCompleted={() => queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })}
-          />
+      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.taskList || currentUser.dashboard_config?.training || currentUser.dashboard_config?.coaching) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.taskList) && (
+            <div className="space-y-4">
+              <TaskNotifications userEmail={currentUser?.email} />
+              <IntelligentTaskPrioritization
+                nurseEmail={currentUser?.email}
+                patients={patients}
+                onTaskCompleted={() => queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })}
+              />
+            </div>
+          )}
+          <div className="space-y-4">
+            {(!currentUser?.dashboard_config || currentUser.dashboard_config?.training) && (
+              <NursePersonalizedInsights
+                nurseEmail={currentUser?.email}
+                recentActivity={nurseActivity}
+                noteConversions={noteConversions}
+                trainingRecommendations={nurseTrainingRecommendations}
+                complianceAudits={nurseComplianceAudits}
+                pendingTasks={nurseTasks}
+              />
+            )}
+            {(!currentUser?.dashboard_config || currentUser.dashboard_config?.coaching) && (
+              <PersonalizedCoachingDashboard nurseEmail={currentUser?.email} />
+            )}
+          </div>
         </div>
-        <div className="space-y-4">
-          <NursePersonalizedInsights
-            nurseEmail={currentUser?.email}
-            recentActivity={nurseActivity}
-            noteConversions={noteConversions}
-            trainingRecommendations={nurseTrainingRecommendations}
-            complianceAudits={nurseComplianceAudits}
-            pendingTasks={nurseTasks}
-          />
-          <PersonalizedCoachingDashboard nurseEmail={currentUser?.email} />
-        </div>
-      </div>
+      )}
 
       {/* Patient Care Insights - Consolidated Alerts & Gaps */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <ProactiveCareGapIdentifier
-          patients={patients}
-          visits={visits}
-          carePlans={carePlans}
-          alerts={[]}
-          autoAnalyze={false}
-          maxGaps={6}
-          compact={true}
-        />
-        <RiskAlertWidget showAllPatients={true} compact={true} />
-      </div>
+      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.careGaps || currentUser.dashboard_config?.riskAlerts) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.careGaps) && (
+            <ProactiveCareGapIdentifier
+              patients={patients}
+              visits={visits}
+              carePlans={carePlans}
+              alerts={[]}
+              autoAnalyze={false}
+              maxGaps={6}
+              compact={true}
+            />
+          )}
+          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.riskAlerts) && (
+            <RiskAlertWidget showAllPatients={true} compact={true} />
+          )}
+        </div>
+      )}
 
       {/* Compliance & Clinical Support */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <ComplianceAlertNotifications 
-          nurseEmail={currentUser?.email}
-          showAll={false}
-          maxAlerts={5}
-          compact={true}
-        />
-        {visits.length > 0 && visits[0]?.patient_id && (
-          <ProactiveClinicalSupport 
-            patientId={visits[0].patient_id}
-            compact={true}
-          />
-        )}
-      </div>
+      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore || currentUser.dashboard_config?.clinicalSupport) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
+            <ComplianceAlertNotifications 
+              nurseEmail={currentUser?.email}
+              showAll={false}
+              maxAlerts={5}
+              compact={true}
+            />
+          )}
+          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits.length > 0 && visits[0]?.patient_id && (
+            <ProactiveClinicalSupport 
+              patientId={visits[0].patient_id}
+              compact={true}
+            />
+          )}
+        </div>
+      )}
 
       {/* Additional Tools - Collapsible Section */}
-      <Card className="mb-4 sm:mb-6">
-        <CardHeader className="cursor-pointer" onClick={() => setShowAdditionalTools(!showAdditionalTools)}>
-          <CardTitle className="text-lg flex items-center justify-between">
-            <span>Additional Tools & Resources</span>
-            <ChevronDown className={`w-5 h-5 transition-transform ${showAdditionalTools ? 'rotate-180' : ''}`} />
-          </CardTitle>
-        </CardHeader>
-        {showAdditionalTools && (
-          <CardContent className="space-y-4">
-            <OfflineDataManager />
-            <SmartRouteOptimizer
-              visits={visits.filter(v => v.status === 'scheduled')}
-              patients={patients}
-              onOptimizedSchedule={(order) => console.log('Optimized:', order)}
-            />
-            <NurseRegulatoryAlerts nurseEmail={currentUser?.email} compact={true} />
-          </CardContent>
-        )}
-      </Card>
+      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.offlineSync || currentUser.dashboard_config?.routeOptimizer) && (
+        <Card className="mb-4 sm:mb-6">
+          <CardHeader className="cursor-pointer" onClick={() => setShowAdditionalTools(!showAdditionalTools)}>
+            <CardTitle className="text-lg flex items-center justify-between">
+              <span>Additional Tools & Resources</span>
+              <ChevronDown className={`w-5 h-5 transition-transform ${showAdditionalTools ? 'rotate-180' : ''}`} />
+            </CardTitle>
+          </CardHeader>
+          {showAdditionalTools && (
+            <CardContent className="space-y-4">
+              {(!currentUser?.dashboard_config || currentUser.dashboard_config?.offlineSync) && (
+                <OfflineDataManager />
+              )}
+              {(!currentUser?.dashboard_config || currentUser.dashboard_config?.routeOptimizer) && (
+                <SmartRouteOptimizer
+                  visits={visits.filter(v => v.status === 'scheduled')}
+                  patients={patients}
+                  onOptimizedSchedule={(order) => console.log('Optimized:', order)}
+                />
+              )}
+              <NurseRegulatoryAlerts nurseEmail={currentUser?.email} compact={true} />
+            </CardContent>
+          )}
+        </Card>
+      )}
     </div>
     </PullToRefresh>
   );
