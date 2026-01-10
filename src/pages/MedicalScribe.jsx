@@ -227,5 +227,6 @@ export default function MedicalScribe() {
         </div>
       </div>
     </div>
+    </>
   );
 }
