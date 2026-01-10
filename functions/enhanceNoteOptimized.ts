@@ -1,4 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import OpenAI from 'npm:openai@4.28.0';
+
+const openai = new OpenAI({
+  apiKey: Deno.env.get('OPENAI_API_KEY'),
+});
 
 Deno.serve(async (req) => {
   try {
@@ -53,9 +58,8 @@ Deno.serve(async (req) => {
       basePrompt = providerConfig.ai_note_prompt.replace('{nurseTitle}', nurseTitle);
     }
 
-    // SINGLE AI CALL - Does everything at once
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `${basePrompt}
+    // Use OpenAI ChatGPT for better AI service
+    const prompt = `${basePrompt}
 
 ${patientContext}
 Visit: ${visitType}, ${visitDate}
@@ -77,31 +81,25 @@ ${isLPN ? '6. RN supervision noted' : '6. Care plan progress'}
 ${visitType === 'recertification' ? '\nRECERT: Compare baseline, justify continued care' : ''}
 ${visitType === 'discharge' ? '\nDISCHARGE: Admission vs discharge, improvements, plan' : ''}
 
-Return JSON:`,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          rough_compliance_score: { type: "number" },
-          missing_elements: { type: "array", items: { type: "string" } },
-          enhanced_note: { type: "string" },
-          enhanced_compliance_score: { type: "number" },
-          quality_score: { type: "number" },
-          compliance_improvement: { type: "number" },
-          documentation_gaps: { 
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                element: { type: "string" },
-                reason: { type: "string" },
-                priority: { type: "string" }
-              }
-            }
-          },
-          time_saved_minutes: { type: "number" }
+Return valid JSON with: rough_compliance_score (0-100), missing_elements (array), enhanced_note (string), enhanced_compliance_score (0-100), quality_score (0-100), compliance_improvement (number), documentation_gaps (array of {element, reason, priority}), time_saved_minutes (number).`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert clinical documentation assistant specializing in Medicare-compliant home health documentation. Always return valid JSON."
+        },
+        {
+          role: "user",
+          content: prompt
         }
-      }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3
     });
+
+    const result = JSON.parse(completion.choices[0].message.content);
 
     // Save to patient history
     if (selectedPatient && patientId !== 'anonymous') {

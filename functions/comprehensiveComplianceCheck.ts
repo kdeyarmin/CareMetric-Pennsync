@@ -1,4 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import OpenAI from 'npm:openai@4.28.0';
+
+const openai = new OpenAI({
+  apiKey: Deno.env.get('OPENAI_API_KEY'),
+});
 
 Deno.serve(async (req) => {
   try {
@@ -55,9 +60,9 @@ Deno.serve(async (req) => {
         ).join('\n')}`;
       }
 
-      // 1. Medicare CoP Compliance
-      base44.integrations.Core.InvokeLLM({
-        prompt: `${complianceContext}
+      // 1. Medicare CoP Compliance - Using ChatGPT
+      (async () => {
+        const prompt = `${complianceContext}
 
 Analyze this clinical note against Medicare Conditions of Participation for Home Health.${providerChecklist}
         
@@ -76,29 +81,20 @@ Check for ALL required elements:
 
 NOTE: Patient identifiers (name, DOB, MRN) ARE required in home health documentation - do not flag them as violations.
 
-Return compliance analysis with specific violations and fixes.`,
-        add_context_from_internet: true,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            overall_score: { type: "number" },
-            violations: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  element: { type: "string" },
-                  severity: { type: "string" },
-                  issue: { type: "string" },
-                  suggested_fix: { type: "string" },
-                  regulatory_reference: { type: "string" }
-                }
-              }
-            },
-            compliant_elements: { type: "array", items: { type: "string" } }
-          }
-        }
-      }),
+Return valid JSON with: overall_score (0-100), violations (array of {element, severity, issue, suggested_fix, regulatory_reference}), compliant_elements (array of strings).`;
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: "You are a Medicare compliance expert for home health. Always return valid JSON." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2
+        });
+
+        return JSON.parse(completion.choices[0].message.content);
+      })(),
 
       // 2. General Clinical Guidelines
       base44.integrations.Core.InvokeLLM({
