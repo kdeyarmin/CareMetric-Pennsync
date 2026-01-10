@@ -1,293 +1,324 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Sparkles,
-  FileText,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  CheckCircle2,
-  RefreshCw,
-  Lightbulb
-} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { Sparkles, Copy, Check, Save, Edit3, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
-export default function AITemplateGenerator({
-  visitType,
-  diagnosis,
-  patientData,
-  carePlans,
-  recentVisits,
-  onUseTemplate,
-  autoGenerate = true
+const noteTypes = [
+  { id: 'progress', label: 'Progress Note', icon: '📝', description: 'Regular visit documentation' },
+  { id: 'admission', label: 'Admission Note', icon: '🏥', description: 'New patient admission' },
+  { id: 'discharge', label: 'Discharge Summary', icon: '🚪', description: 'Patient discharge documentation' },
+  { id: 'recertification', label: 'Recertification', icon: '✅', description: 'Ongoing care justification' }
+];
+
+export default function AITemplateGenerator({ 
+  visitType, 
+  diagnosis, 
+  patientData, 
+  currentUser,
+  onApplyTemplate 
 }) {
-  const [template, setTemplate] = useState(null);
+  const [selectedType, setSelectedType] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [error, setError] = useState(null);
+  const [generatedTemplate, setGeneratedTemplate] = useState(null);
+  const [savedTemplates, setSavedTemplates] = useState([]);
+  const [isCustomizing, setIsCustomizing] = useState(false);
+  const [customizationPrompt, setCustomizationPrompt] = useState("");
+  const [copiedId, setCopiedId] = useState(null);
 
-  useEffect(() => {
-    if (autoGenerate && visitType && diagnosis && !template) {
-      generateTemplate();
-    }
-  }, [visitType, diagnosis, autoGenerate]);
-
-  const generateTemplate = async () => {
-    if (!visitType || !diagnosis) return;
-
+  const generateTemplate = async (typeId) => {
     setIsGenerating(true);
-    setError(null);
-
     try {
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are an expert home health nursing documentation assistant. Generate a comprehensive, Medicare-compliant documentation template for this visit.
+        prompt: `Generate a professional healthcare note template for a ${typeId} note.
 
-VISIT CONTEXT:
-- Visit Type: ${visitType.replace(/_/g, ' ').toUpperCase()}
-- Primary Diagnosis: ${diagnosis}
-- Patient: ${patientData ? `${patientData.first_name} ${patientData.last_name}, Age: ${patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : 'Unknown'}` : 'Unknown'}
-${patientData?.secondary_diagnoses?.length > 0 ? `- Secondary Diagnoses: ${patientData.secondary_diagnoses.join(', ')}` : ''}
-${patientData?.current_medications?.length > 0 ? `- Current Medications: ${patientData.current_medications.slice(0, 5).map(m => m.name).join(', ')}${patientData.current_medications.length > 5 ? '...' : ''}` : ''}
-${carePlans?.length > 0 ? `\nACTIVE CARE PLAN GOALS:\n${carePlans.filter(cp => cp.status === 'active').map(cp => `- ${cp.problem}: ${cp.goal}`).join('\n')}` : ''}
-${recentVisits?.length > 0 ? `\nLAST VISIT (${recentVisits[0].visit_date}): ${recentVisits[0].visit_type} - ${recentVisits[0].nurse_notes?.substring(0, 150)}...` : ''}
+Context:
+- Visit Type: ${visitType}
+- Diagnosis: ${diagnosis}
+${patientData ? `- Patient Name: ${patientData.first_name} ${patientData.last_name}
+- Primary Diagnosis: ${patientData.primary_diagnosis}
+- Secondary Diagnoses: ${patientData.secondary_diagnoses?.join(', ') || 'None'}` : ''}
 
-GENERATE A STRUCTURED TEMPLATE with these sections:
+Generate a complete, customizable template that includes:
+1. Structured sections appropriate for a ${noteTypes.find(t => t.id === typeId)?.label}
+2. Placeholder text in [brackets] for personalized information
+3. Required compliance elements for Medicare
+4. Clinical assessment areas
+5. Plan and follow-up
 
-1. CHIEF COMPLAINT/REASON FOR VISIT
-   - ${visitType === 'admission' ? 'Admission reason and source' : visitType === 'discharge' ? 'Discharge status and summary' : 'Current status and concerns'}
-
-2. VITAL SIGNS & ASSESSMENT
-   - Placeholders for vital signs
-   - Key assessment areas for this diagnosis
-   - Comparison to baseline/last visit
-
-3. SYSTEMS REVIEW
-   - Diagnosis-specific system assessments
-   - Focus on systems affected by ${diagnosis}
-
-4. FUNCTIONAL STATUS
-   - ADL/IADL assessment
-   - Mobility and safety
-   - Cognitive status if relevant
-
-5. MEDICATION REVIEW
-   - Compliance assessment
-   - Side effects/concerns
-   - Education needs
-
-6. HOMEBOUND STATUS (if applicable)
-   - Specific reasons patient homebound
-   - Taxing effort to leave home
-
-7. SKILLED NURSING INTERVENTIONS
-   - Specific interventions performed today
-   - Clinical judgment/teaching provided
-   - Wound care/treatments if applicable
-
-8. PATIENT/CAREGIVER RESPONSE
-   - Patient understanding
-   - Teach-back results
-   - Engagement level
-
-9. CARE PLAN PROGRESS
-   - Progress toward each active goal
-   - Barriers identified
-   - Plan modifications needed
-
-10. PATIENT/CAREGIVER EDUCATION
-    - Topics covered today
-    - Teaching methods used
-    - Comprehension verified
-
-11. PLAN OF CARE
-    - Continue current plan with modifications if needed
-    - Next visit plan
-    - When to contact nurse/MD
-
-CRITICAL INSTRUCTIONS:
-- Use [BRACKETS] for placeholders that need nurse input
-- Include specific prompts relevant to ${diagnosis}
-- Reference active care plan goals
-- For ${visitType}, focus on relevant assessment areas
-- Use professional clinical language
-- Ensure Medicare compliance elements are addressed
-- Keep template concise but comprehensive (aim for 400-600 words)
-
-Return JSON:
-{
-  "template_title": "Visit type and diagnosis specific title",
-  "template_text": "Full structured template with [PLACEHOLDERS] for nurse input",
-  "key_focus_areas": ["area 1", "area 2", "area 3"],
-  "compliance_elements_included": ["element 1", "element 2"],
-  "estimated_completion_time": "X minutes"
-}`,
+Format the response as a clean, ready-to-use template that can be copied directly into an EHR.
+Include helpful inline comments in [COMMENT: ...] format.`,
         response_json_schema: {
           type: "object",
           properties: {
-            template_title: { type: "string" },
-            template_text: { type: "string" },
-            key_focus_areas: { type: "array", items: { type: "string" } },
-            compliance_elements_included: { type: "array", items: { type: "string" } },
-            estimated_completion_time: { type: "string" }
+            template: { type: "string" },
+            sections: { type: "array", items: { type: "string" } },
+            key_elements: { type: "array", items: { type: "string" } }
           }
         }
       });
 
-      setTemplate(result);
-      setIsExpanded(true);
+      setGeneratedTemplate({
+        ...result,
+        typeId: typeId,
+        createdAt: new Date().toISOString()
+      });
     } catch (error) {
-      console.error('Error generating template:', error);
-      setError('Failed to generate template. Please try again.');
+      toast.error('Failed to generate template');
     }
-
     setIsGenerating(false);
   };
 
-  if (!visitType || !diagnosis) return null;
+  const customizeTemplate = async () => {
+    if (!generatedTemplate || !customizationPrompt.trim()) return;
+    
+    setIsGenerating(true);
+    try {
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Take this healthcare note template and customize it based on the following request:
+
+ORIGINAL TEMPLATE:
+${generatedTemplate.template}
+
+CUSTOMIZATION REQUEST:
+${customizationPrompt}
+
+Please modify the template to incorporate the requested changes while maintaining:
+- Professional clinical language
+- Medicare compliance requirements
+- Clear placeholder structure
+- Logical section organization`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            template: { type: "string" }
+          }
+        }
+      });
+
+      setGeneratedTemplate(prev => ({
+        ...prev,
+        template: result.template
+      }));
+      setCustomizationPrompt("");
+      setIsCustomizing(false);
+      toast.success('Template customized');
+    } catch (error) {
+      toast.error('Failed to customize template');
+    }
+    setIsGenerating(false);
+  };
+
+  const saveTemplate = async () => {
+    if (!generatedTemplate) return;
+
+    try {
+      const newTemplate = {
+        name: `${noteTypes.find(t => t.id === generatedTemplate.typeId)?.label} - ${new Date().toLocaleDateString()}`,
+        type: generatedTemplate.typeId,
+        content: generatedTemplate.template,
+        sections: generatedTemplate.sections,
+        keyElements: generatedTemplate.key_elements,
+        diagnosis: diagnosis,
+        visitType: visitType,
+        savedBy: currentUser?.email,
+        createdAt: new Date().toISOString()
+      };
+
+      setSavedTemplates(prev => [...prev, newTemplate]);
+      toast.success('Template saved to library');
+    } catch (error) {
+      toast.error('Failed to save template');
+    }
+  };
+
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    toast.success('Copied to clipboard');
+  };
+
+  const deleteTemplate = (index) => {
+    setSavedTemplates(prev => prev.filter((_, i) => i !== index));
+    toast.success('Template deleted');
+  };
 
   return (
-    <Card className="border-2 border-indigo-300 bg-gradient-to-r from-indigo-50 to-purple-50 shadow-lg">
-      <CardHeader 
-        className="py-3 bg-gradient-to-r from-indigo-100 to-purple-100 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <CardTitle className="text-sm flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-indigo-600" />
-            <span>AI Documentation Template</span>
-            {template && (
-              <Badge className="bg-green-100 text-green-800">
-                Ready
-              </Badge>
-            )}
-            {isGenerating && (
-              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-            )}
-          </div>
-          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+    <Card className="w-full max-w-full overflow-hidden">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-purple-600" />
+          AI Template Generator
         </CardTitle>
+        <p className="text-sm text-gray-600 mt-2">Generate and customize note templates for different visit types</p>
       </CardHeader>
-
-      {isExpanded && (
-        <CardContent className="p-4 space-y-3">
-          {isGenerating && (
-            <div className="text-center py-6">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-600" />
-              <p className="text-sm text-gray-600">Generating personalized template...</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Based on {visitType.replace(/_/g, ' ')} visit for {diagnosis}
-              </p>
-            </div>
-          )}
-
-          {error && (
-            <Alert className="bg-red-50 border-red-200">
-              <AlertDescription className="text-sm text-red-800">
-                {error}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {!template && !isGenerating && !error && (
-            <div className="text-center py-6">
-              <Sparkles className="w-8 h-8 mx-auto mb-2 text-indigo-400" />
-              <p className="text-sm text-gray-600 mb-3">
-                Get a smart documentation template for this visit
-              </p>
-              <Button
-                onClick={generateTemplate}
-                className="bg-indigo-600 hover:bg-indigo-700"
-              >
-                <Sparkles className="w-4 h-4 mr-2" />
-                Generate Template
-              </Button>
-            </div>
-          )}
-
-          {template && (
-            <div className="space-y-3">
-              <div className="bg-white p-3 rounded-lg border border-indigo-200">
-                <h4 className="text-sm font-bold text-indigo-900 mb-2">
-                  {template.template_title}
-                </h4>
-                
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="bg-blue-50 p-2 rounded">
-                    <p className="text-xs text-blue-600 font-semibold">Est. Time</p>
-                    <p className="text-xs text-gray-700">{template.estimated_completion_time}</p>
-                  </div>
-                  <div className="bg-green-50 p-2 rounded">
-                    <p className="text-xs text-green-600 font-semibold">Compliance</p>
-                    <p className="text-xs text-gray-700">
-                      {template.compliance_elements_included?.length || 0} elements
-                    </p>
-                  </div>
-                </div>
-
-                {template.key_focus_areas?.length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-xs font-semibold text-gray-700 mb-1">Key Focus Areas:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {template.key_focus_areas.map((area, idx) => (
-                        <Badge key={idx} variant="outline" className="text-xs bg-indigo-50 text-indigo-700">
-                          {area}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <Alert className="bg-yellow-50 border-yellow-200 mb-3">
-                  <Lightbulb className="w-4 h-4 text-yellow-600" />
-                  <AlertDescription className="text-xs text-yellow-800">
-                    Template includes [PLACEHOLDERS] - fill these in as you document the visit
-                  </AlertDescription>
-                </Alert>
-
-                <div className="bg-gray-50 p-3 rounded border max-h-64 overflow-y-auto">
-                  <pre className="text-xs whitespace-pre-wrap font-mono text-gray-800">
-                    {template.template_text}
-                  </pre>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => onUseTemplate(template.template_text)}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700"
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Use This Template
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={generateTemplate}
+      <CardContent className="space-y-4">
+        {!generatedTemplate ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {noteTypes.map(type => (
+                <button
+                  key={type.id}
+                  onClick={() => generateTemplate(type.id)}
                   disabled={isGenerating}
+                  className="p-4 border-2 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-all text-left"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <div className="text-2xl mb-2">{type.icon}</div>
+                  <p className="font-semibold text-sm">{type.label}</p>
+                  <p className="text-xs text-gray-600">{type.description}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* Saved Templates */}
+            {savedTemplates.length > 0 && (
+              <div className="border-t pt-4">
+                <h3 className="font-semibold text-sm mb-3">📚 Saved Templates</h3>
+                <div className="space-y-2">
+                  {savedTemplates.map((template, idx) => (
+                    <div key={idx} className="p-3 bg-gray-50 rounded-lg flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{template.name}</p>
+                        <p className="text-xs text-gray-500">{template.diagnosis}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => copyToClipboard(template.content, `saved-${idx}`)}
+                        >
+                          {copiedId === `saved-${idx}` ? 
+                            <Check className="w-4 h-4 text-green-600" /> : 
+                            <Copy className="w-4 h-4" />
+                          }
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setGeneratedTemplate(template)}
+                          className="text-blue-600"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteTemplate(idx)}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Generated Template */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge>{noteTypes.find(t => t.id === generatedTemplate.typeId)?.label}</Badge>
+                  {isGenerating && <Spinner className="w-4 h-4" />}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setGeneratedTemplate(null)}
+                >
+                  Back
                 </Button>
               </div>
 
-              {template.compliance_elements_included?.length > 0 && (
-                <div className="bg-green-50 p-2 rounded border border-green-200">
-                  <p className="text-xs font-semibold text-green-900 mb-1">
-                    ✓ Medicare Compliance Elements Included:
-                  </p>
-                  <ul className="text-xs text-green-800 space-y-0.5">
-                    {template.compliance_elements_included.map((element, idx) => (
-                      <li key={idx}>• {element}</li>
+              <div className="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto text-sm whitespace-pre-wrap font-mono">
+                {generatedTemplate.template}
+              </div>
+
+              {/* Key Elements */}
+              {generatedTemplate.key_elements && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm font-medium text-blue-900 mb-2">✓ Included Elements:</p>
+                  <ul className="text-xs text-blue-800 space-y-1">
+                    {generatedTemplate.key_elements.map((el, idx) => (
+                      <li key={idx}>• {el}</li>
                     ))}
                   </ul>
                 </div>
               )}
+
+              {/* Customization */}
+              {!isCustomizing ? (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setIsCustomizing(true)}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Customize
+                  </Button>
+                  <Button
+                    onClick={() => copyToClipboard(generatedTemplate.template, 'generated')}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {copiedId === 'generated' ? 
+                      <Check className="w-4 h-4 mr-2 text-green-600" /> : 
+                      <Copy className="w-4 h-4 mr-2" />
+                    }
+                    Copy
+                  </Button>
+                  <Button
+                    onClick={saveTemplate}
+                    className="flex-1 bg-purple-600 hover:bg-purple-700"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save
+                  </Button>
+                  <Button
+                    onClick={() => onApplyTemplate?.(generatedTemplate.template)}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    Apply
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <textarea
+                    value={customizationPrompt}
+                    onChange={(e) => setCustomizationPrompt(e.target.value)}
+                    placeholder="Describe how you'd like to customize this template..."
+                    className="w-full p-3 border rounded-lg text-sm resize-none h-24"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={customizeTemplate}
+                      disabled={isGenerating || !customizationPrompt.trim()}
+                      className="flex-1 bg-purple-600 hover:bg-purple-700"
+                    >
+                      {isGenerating ? 'Customizing...' : 'Apply Customization'}
+                    </Button>
+                    <Button
+                      onClick={() => setIsCustomizing(false)}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </CardContent>
-      )}
+          </>
+        )}
+      </CardContent>
     </Card>
   );
 }
