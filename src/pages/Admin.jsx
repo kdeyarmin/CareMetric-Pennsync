@@ -48,6 +48,8 @@ import AIAdminAnomalyDetector from "../components/admin/AIAdminAnomalyDetector";
 import DetailedAuditTrailViewer from "../components/admin/DetailedAuditTrailViewer";
 import UserManagement from "../components/admin/UserManagement";
 import RegulatoryComplianceManager from "../components/admin/RegulatoryComplianceManager";
+import ProviderSettingsManager from "../components/admin/ProviderSettingsManager";
+import TrainingProgressDashboard from "../components/training/TrainingProgressDashboard";
 
 export default function Admin() {
   const queryClient = useQueryClient();
@@ -277,9 +279,11 @@ If you have any questions, please contact your administrator.`,
 
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-1 sm:gap-2 h-auto">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-1 sm:gap-2 h-auto">
           <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 sm:py-3">Overview</TabsTrigger>
           <TabsTrigger value="users" className="text-xs sm:text-sm py-2 sm:py-3">Users</TabsTrigger>
+          <TabsTrigger value="training" className="text-xs sm:text-sm py-2 sm:py-3">Training</TabsTrigger>
+          <TabsTrigger value="providers" className="text-xs sm:text-sm py-2 sm:py-3">Providers</TabsTrigger>
           <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 sm:py-3">
             <span className="hidden md:inline">Compliance Rules</span>
             <span className="md:hidden">Rules</span>
@@ -379,6 +383,16 @@ If you have any questions, please contact your administrator.`,
           <AIRoleSuggestions users={users} userActivity={userActivity} />
 
           <UserManagement users={users} currentUser={currentUser} />
+        </TabsContent>
+
+        {/* Training Management Tab */}
+        <TabsContent value="training" className="space-y-6">
+          <TrainingProgressDashboard />
+        </TabsContent>
+
+        {/* Provider Settings Tab */}
+        <TabsContent value="providers" className="space-y-6">
+          <ProviderSettingsManager />
         </TabsContent>
 
         {/* Compliance Rules Management Tab */}

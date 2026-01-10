@@ -9,6 +9,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Fetch provider-specific settings
+    const providerType = user.provider_type || 'RN';
+    const providerSettings = await base44.entities.ProviderSettings.filter({
+      provider_type: providerType,
+      is_active: true
+    });
+    const providerConfig = providerSettings[0] || null;
+
     const { 
       enhancedNote, 
       roughNote,
@@ -33,9 +41,25 @@ Deno.serve(async (req) => {
       clinicalAlerts,
       documentationGaps
     ] = await Promise.all([
+      // Build compliance prompt with provider customization
+      let complianceContext = `Analyze this ${providerType} clinical note for compliance.`;
+      if (providerConfig?.compliance_prompt) {
+        complianceContext = providerConfig.compliance_prompt.replace('{visitType}', visitType);
+      }
+
+      // Add provider-specific checklist
+      let providerChecklist = '';
+      if (providerConfig?.documentation_checklist?.length > 0) {
+        providerChecklist = `\n\nPROVIDER-SPECIFIC REQUIREMENTS:\n${providerConfig.documentation_checklist.map(item => 
+          `- ${item.element} (${item.priority}): ${item.description}`
+        ).join('\n')}`;
+      }
+
       // 1. Medicare CoP Compliance
       base44.integrations.Core.InvokeLLM({
-        prompt: `Analyze this clinical note against Medicare Conditions of Participation for Home Health.
+        prompt: `${complianceContext}
+
+Analyze this clinical note against Medicare Conditions of Participation for Home Health.${providerChecklist}
         
 NOTE: ${enhancedNote}
 VISIT TYPE: ${visitType}

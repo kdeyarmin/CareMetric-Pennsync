@@ -9,6 +9,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Fetch provider-specific settings
+    const providerType = user.provider_type || 'RN';
+    const providerSettings = await base44.entities.ProviderSettings.filter({
+      provider_type: providerType,
+      is_active: true
+    });
+    const providerConfig = providerSettings[0] || null;
+
     const { roughNote, patientId, visitType, visitDate, diagnosis, vitalSigns, nurseType } = await req.json();
 
     if (!roughNote || !visitType || !diagnosis) {
@@ -39,9 +47,15 @@ Deno.serve(async (req) => {
     const isLPN = nurseType === 'LPN';
     const nurseTitle = isLPN ? 'LPN' : 'RN';
 
+    // Build prompt with provider-specific customization
+    let basePrompt = `Transform to Medicare-compliant ${nurseTitle} documentation.`;
+    if (providerConfig?.ai_note_prompt) {
+      basePrompt = providerConfig.ai_note_prompt.replace('{nurseTitle}', nurseTitle);
+    }
+
     // SINGLE AI CALL - Does everything at once
     const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `Transform to Medicare-compliant ${nurseTitle} documentation.
+      prompt: `${basePrompt}
 
 ${patientContext}
 Visit: ${visitType}, ${visitDate}

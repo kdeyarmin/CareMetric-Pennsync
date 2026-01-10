@@ -327,6 +327,9 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        {/* Provider Profile */}
+        <ProviderTypeSelector currentUser={currentUser} />
+
         {/* Theme Settings */}
         <ThemeSettings />
 
