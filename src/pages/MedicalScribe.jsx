@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Mic, ArrowRight, Info, CheckCircle2 } from "lucide-react";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import { todayEastern } from "../components/utils/timezone";
-import MedicalScribeRecorder from "../components/smartNote/MedicalScribeRecorder";
+import MedicalScribeWithReview from "../components/smartNote/MedicalScribeWithReview";
 import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
 
 const commonDiagnoses = [
@@ -180,39 +180,12 @@ export default function MedicalScribe() {
           <div className="lg:col-span-2">
             {isReady ? (
               <div className="space-y-4">
-                <MedicalScribeRecorder
+                <MedicalScribeWithReview
                   diagnosis={finalDiagnosis}
                   visitType={visitType}
                   patientId={selectedPatientId}
                   onNoteGenerated={handleNoteGenerated}
                 />
-
-                {/* Generated Note Review */}
-                {generatedNote && (
-                  <Card className="border-green-200 bg-green-50">
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-600" />
-                        Generated Note
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="bg-white p-3 rounded border border-green-200 max-h-80 overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap">
-                        {generatedNote}
-                      </div>
-                      <Button
-                        onClick={handleUseNote}
-                        className="w-full bg-blue-600 hover:bg-blue-700 gap-2"
-                      >
-                        <ArrowRight className="w-4 h-4" />
-                        Continue in Smart Note Assistant
-                      </Button>
-                      <p className="text-xs text-gray-600">
-                        You'll be able to refine, enhance, and save this note in the Smart Note Assistant.
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
               </div>
             ) : (
               <Card className="border-gray-200 bg-gray-50 h-96 flex items-center justify-center">
