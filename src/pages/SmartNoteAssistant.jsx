@@ -89,6 +89,7 @@ import PersonalizedEducationGenerator from "../components/education/Personalized
 import ClinicalNoteReviewer from "../components/review/ClinicalNoteReviewer";
 import DynamicContextAnalyzer from "../components/smartNote/DynamicContextAnalyzer";
 import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
+import InteractiveDocumentationGaps from "../components/smartNote/InteractiveDocumentationGaps";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1704,6 +1705,20 @@ Return JSON with:
             )}
 
 
+
+          {/* Interactive Documentation Gaps - Click for AI help */}
+          {enhancedNote && documentationGaps.length > 0 && (
+            <InteractiveDocumentationGaps
+              gaps={documentationGaps}
+              patientData={selectedPatient}
+              visitType={visitType}
+              diagnosis={finalDiagnosis}
+              vitalSigns={vitalSigns}
+              roughNote={roughNote}
+              onApplySuggestion={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
+              userEmail={currentUser?.email}
+            />
+          )}
 
           {/* One-Click Compliance Fixer - After Enhancement */}
           {enhancedNote && (
