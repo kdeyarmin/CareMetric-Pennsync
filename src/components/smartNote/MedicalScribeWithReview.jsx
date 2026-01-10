@@ -6,7 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Mic, Upload, CheckCircle2, AlertCircle, Loader, Edit3, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import EnhancedDocumentationAssistant from "./EnhancedDocumentationAssistant";
+import PatientHistoryContext from "./PatientHistoryContext";
 
 export default function MedicalScribeWithReview({
   diagnosis = "",
@@ -25,6 +27,16 @@ export default function MedicalScribeWithReview({
   const audioChunksRef = React.useRef([]);
   const timerRef = React.useRef(null);
   const [isRecording, setIsRecording] = useState(false);
+
+  const { data: patientHistory } = useQuery({
+    queryKey: ['patientHistory', patientId],
+    queryFn: async () => {
+      if (!patientId || patientId === 'anonymous') return null;
+      const results = await base44.entities.Patient.filter({ id: patientId });
+      return results[0] || null;
+    },
+    enabled: !!patientId && patientId !== 'anonymous'
+  });
 
   const startRecording = async () => {
     try {
@@ -245,7 +257,18 @@ export default function MedicalScribeWithReview({
   // Reviewing stage - show transcription for editing
   if (stage === 'reviewing' || stage === 'generating') {
     return (
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-1">
+          <PatientHistoryContext
+            patientId={patientId}
+            onInsertSnippet={(snippet) => {
+              setEditedTranscription(prev => prev + '\n\n' + snippet);
+              toast.success('Snippet added to transcription');
+            }}
+          />
+        </div>
+
+        <div className="lg:col-span-3 space-y-4">
         <Card className="w-full border-purple-200 bg-purple-50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -304,11 +327,13 @@ export default function MedicalScribeWithReview({
           diagnosis={diagnosis}
           visitType={visitType}
           patientId={patientId}
+          patientHistory={patientHistory}
           isLoading={isProcessing}
         />
-      </div>
-    );
-  }
+        </div>
+        </div>
+        );
+        }
 
   // Complete stage - show generated note
   if (stage === 'complete') {
@@ -355,13 +380,27 @@ export default function MedicalScribeWithReview({
           </CardContent>
           </Card>
 
-          <EnhancedDocumentationAssistant
-          generatedNote={generatedNote}
-          diagnosis={diagnosis}
-          visitType={visitType}
-          patientId={patientId}
-          isLoading={false}
-          />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-1">
+              <PatientHistoryContext
+                patientId={patientId}
+                onInsertSnippet={(snippet) => {
+                  setGeneratedNote(prev => prev + '\n\n' + snippet);
+                  toast.success('Snippet added to note');
+                }}
+              />
+            </div>
+            <div className="lg:col-span-3">
+              <EnhancedDocumentationAssistant
+                generatedNote={generatedNote}
+                diagnosis={diagnosis}
+                visitType={visitType}
+                patientId={patientId}
+                patientHistory={patientHistory}
+                isLoading={false}
+              />
+            </div>
+          </div>
           </div>
           );
           }

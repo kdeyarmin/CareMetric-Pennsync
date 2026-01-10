@@ -12,6 +12,7 @@ export default function EnhancedDocumentationAssistant({
   diagnosis = "",
   visitType = "",
   patientId = "",
+  patientHistory = null,
   isLoading = false
 }) {
   const [activeTab, setActiveTab] = useState("compliance");
@@ -42,11 +43,21 @@ export default function EnhancedDocumentationAssistant({
 
   const analyzeCompliance = async () => {
     try {
+      const historyContext = patientHistory ? `
+
+PATIENT HISTORY CONTEXT:
+- Current Conditions: ${patientHistory.secondary_diagnoses?.join(', ') || 'N/A'}
+- Allergies: ${patientHistory.allergies || 'None documented'}
+- Current Medications: ${patientHistory.current_medications?.map(m => `${m.name} ${m.dosage || ''}`).join(', ') || 'N/A'}
+- Functional Status: ${patientHistory.functional_status?.adl_independence || 'N/A'}
+- Recent Vitals: BP ${patientHistory.baseline_vitals?.blood_pressure_systolic || 'N/A'}/${patientHistory.baseline_vitals?.blood_pressure_diastolic || 'N/A'}` : '';
+
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: `You are a Medicare and home health compliance expert. Analyze this clinical note for completeness and adherence to Medicare Conditions of Participation and documentation standards.
 
 DIAGNOSIS: ${diagnosis}
 VISIT TYPE: ${visitType}
+${historyContext}
 
 CLINICAL NOTE:
 ${generatedNote}
@@ -102,11 +113,16 @@ Provide a JSON response with:
 
   const suggestEducationMaterials = async () => {
     try {
+      const historyContext = patientHistory ? `
+PATIENT CONDITIONS: ${patientHistory.secondary_diagnoses?.join(', ') || diagnosis}
+MEDICATIONS: ${patientHistory.current_medications?.map(m => m.name).join(', ') || 'N/A'}` : '';
+
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: `You are a patient education specialist for home health. Suggest relevant education materials based on the patient's diagnosis and visit type.
 
 DIAGNOSIS: ${diagnosis}
 VISIT TYPE: ${visitType}
+${historyContext}
 
 Return a JSON with education material suggestions:
 {
