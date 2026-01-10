@@ -1387,69 +1387,49 @@ Return JSON with:
     />
     <div className="w-full max-w-full overflow-hidden min-w-0">
     <div className="p-2.5 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-24 sm:pb-8 lg:pb-6 w-full overflow-hidden min-w-0">
-      <div className="mb-2 sm:mb-4 flex flex-col gap-2 sm:gap-3 w-full overflow-hidden">
-        <div className="flex items-center gap-2 w-full min-w-0">
-          {currentStep !== 'patient' && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleGoBack}
-              className="gap-1 text-gray-600 hover:text-gray-900 flex-shrink-0 min-h-10 px-2"
-            >
-              <ChevronLeft className="w-4 h-4 flex-shrink-0" />
-              <span className="hidden sm:inline text-sm">Back</span>
-            </Button>
-          )}
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Smart Note</h1>
-            <p className="text-xs text-gray-600 hidden sm:block truncate">Transform rough notes into compliant docs</p>
-          </div>
+      <div className="mb-3 sm:mb-4 flex items-center justify-between w-full min-w-0 gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Smart Note Assistant</h1>
         </div>
-        <div className="flex gap-1.5 sm:gap-2 w-full flex-wrap">
-          <FavoriteButton type="page" id="SmartNoteAssistant" name="Smart Note Assistant" />
+        <div className="flex gap-1 flex-shrink-0">
           <Button 
             variant="ghost" 
-            size="sm" 
-            className="text-gray-500 gap-1 flex-shrink-0 min-h-10"
+            size="icon"
+            className="text-gray-500 hover:text-gray-700 h-10 w-10"
             onClick={() => setShowGuidelinesModal(true)}
-            title="Guidelines"
+            title="Clinical Guidelines"
           >
             <BookMarked className="w-4 h-4" />
-            <span className="hidden md:inline text-sm">Guidelines</span>
           </Button>
           <Button 
             variant="ghost" 
-            size="sm" 
-            className="text-gray-500 gap-1 flex-shrink-0 min-h-10"
-            title="Download Guide"
+            size="icon"
+            className="text-gray-500 hover:text-gray-700 h-10 w-10"
+            title="Download Quick Guide"
             onClick={async () => {
               try {
                 const response = await base44.functions.invoke('generateSmartNoteGuide');
                 const data = response.data || response;
-                
                 if (data.pdf) {
                   const binaryString = atob(data.pdf);
                   const bytes = new Uint8Array(binaryString.length);
-                  for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                  }
+                  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
                   const blob = new Blob([bytes], { type: 'application/pdf' });
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = data.filename || 'Smart_Note_Guide.pdf';
+                  a.download = data.filename || 'Guide.pdf';
                   document.body.appendChild(a);
                   a.click();
                   window.URL.revokeObjectURL(url);
                   a.remove();
                 }
               } catch (error) {
-                alert('Failed to download guide. Please try again.');
+                alert('Failed to download guide.');
               }
             }}
           >
             <HelpCircle className="w-4 h-4" />
-            <span className="hidden md:inline text-sm">Guide</span>
           </Button>
         </div>
       </div>
@@ -1631,61 +1611,59 @@ Return JSON with:
             />
           )}
 
-          {/* Differential Diagnosis Suggester - AI-powered diagnosis analysis */}
+          {/* Advanced AI Tools - Hidden by default for cleaner workflow */}
           {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
-            <DifferentialDiagnosisSuggester
-              roughNote={roughNote}
-              vitalSigns={vitalSigns}
-              patientData={selectedPatient}
-              diagnosis={finalDiagnosis}
-              userEmail={currentUser?.email}
-            />
-          )}
-
-          {/* Personalized Documentation Gap Suggestions */}
-          {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
-            <PersonalizedDocumentationGapSuggestions
-              roughNote={roughNote}
-              patientData={selectedPatient}
-              visitType={visitType}
-              diagnosis={finalDiagnosis}
-              carePlans={carePlans}
-              vitalSigns={vitalSigns}
-              onApplySuggestion={(text) => setRoughNote(prev => prev + '\n\n' + text)}
-              userEmail={currentUser?.email}
-            />
-          )}
-
-          {/* Dynamic Context Analyzer - Real-time intelligent suggestions */}
-          {selectedPatientId && roughNote.length >= 30 && !enhancedNote && (
-            <DynamicContextAnalyzer
-              roughNote={roughNote}
-              visitType={visitType}
-              diagnosis={finalDiagnosis}
-              patientData={selectedPatient}
-              vitalSigns={vitalSigns}
-              carePlans={carePlans}
-              onApplySuggestion={(textOrUpdatedNote, isReplacement) => {
-                if (isReplacement) {
-                  setRoughNote(textOrUpdatedNote);
-                } else {
-                  setRoughNote(prev => prev + '\n\n' + textOrUpdatedNote);
-                }
-              }}
-              userEmail={currentUser?.email}
-            />
-          )}
-
-          {/* Adverse Event Predictor - AI-powered risk analysis */}
-          {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
-            <AdverseEventPredictor
-              patientId={selectedPatientId}
-              patientData={selectedPatient}
-              roughNote={roughNote}
-              vitalSigns={vitalSigns}
-              diagnosis={finalDiagnosis}
-              userEmail={currentUser?.email}
-            />
+            <Accordion type="single" collapsible className="border rounded-lg">
+              <AccordionItem value="ai-tools">
+                <AccordionTrigger className="px-3 py-2 text-sm font-medium hover:bg-gray-50">
+                  <Sparkles className="w-4 h-4 mr-2 text-blue-600" />
+                  AI Analysis Tools
+                </AccordionTrigger>
+                <AccordionContent className="p-3 space-y-3 border-t">
+                  <DifferentialDiagnosisSuggester
+                    roughNote={roughNote}
+                    vitalSigns={vitalSigns}
+                    patientData={selectedPatient}
+                    diagnosis={finalDiagnosis}
+                    userEmail={currentUser?.email}
+                  />
+                  <PersonalizedDocumentationGapSuggestions
+                    roughNote={roughNote}
+                    patientData={selectedPatient}
+                    visitType={visitType}
+                    diagnosis={finalDiagnosis}
+                    carePlans={carePlans}
+                    vitalSigns={vitalSigns}
+                    onApplySuggestion={(text) => setRoughNote(prev => prev + '\n\n' + text)}
+                    userEmail={currentUser?.email}
+                  />
+                  <DynamicContextAnalyzer
+                    roughNote={roughNote}
+                    visitType={visitType}
+                    diagnosis={finalDiagnosis}
+                    patientData={selectedPatient}
+                    vitalSigns={vitalSigns}
+                    carePlans={carePlans}
+                    onApplySuggestion={(textOrUpdatedNote, isReplacement) => {
+                      if (isReplacement) {
+                        setRoughNote(textOrUpdatedNote);
+                      } else {
+                        setRoughNote(prev => prev + '\n\n' + textOrUpdatedNote);
+                      }
+                    }}
+                    userEmail={currentUser?.email}
+                  />
+                  <AdverseEventPredictor
+                    patientId={selectedPatientId}
+                    patientData={selectedPatient}
+                    roughNote={roughNote}
+                    vitalSigns={vitalSigns}
+                    diagnosis={finalDiagnosis}
+                    userEmail={currentUser?.email}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           )}
 
           {/* Clinical Decision Support - Only show for abnormal vitals */}
@@ -1789,31 +1767,39 @@ Return JSON with:
 
 
 
-          {/* Interactive Documentation Gaps - Click for AI help */}
-          {enhancedNote && documentationGaps.length > 0 && (
-            <InteractiveDocumentationGaps
-              gaps={documentationGaps}
-              patientData={selectedPatient}
-              visitType={visitType}
-              diagnosis={finalDiagnosis}
-              vitalSigns={vitalSigns}
-              roughNote={roughNote}
-              onApplySuggestion={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
-              userEmail={currentUser?.email}
-            />
-          )}
-
-          {/* One-Click Compliance Fixer - After Enhancement */}
+          {/* Post-Enhancement Refinement Tools */}
           {enhancedNote && (
-            <OneClickComplianceFixer
-              noteContent={enhancedNote}
-              visitType={visitType}
-              diagnosis={finalDiagnosis}
-              patientData={selectedPatient}
-              vitalSigns={vitalSigns}
-              onApplyFix={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
-              autoAnalyze={true}
-            />
+            <Accordion type="single" collapsible className="border rounded-lg">
+              <AccordionItem value="refinements">
+                <AccordionTrigger className="px-3 py-2 text-sm font-medium hover:bg-gray-50">
+                  <Brain className="w-4 h-4 mr-2 text-green-600" />
+                  Refinement Tools
+                </AccordionTrigger>
+                <AccordionContent className="p-3 space-y-3 border-t">
+                  {documentationGaps.length > 0 && (
+                    <InteractiveDocumentationGaps
+                      gaps={documentationGaps}
+                      patientData={selectedPatient}
+                      visitType={visitType}
+                      diagnosis={finalDiagnosis}
+                      vitalSigns={vitalSigns}
+                      roughNote={roughNote}
+                      onApplySuggestion={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
+                      userEmail={currentUser?.email}
+                    />
+                  )}
+                  <OneClickComplianceFixer
+                    noteContent={enhancedNote}
+                    visitType={visitType}
+                    diagnosis={finalDiagnosis}
+                    patientData={selectedPatient}
+                    vitalSigns={vitalSigns}
+                    onApplyFix={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
+                    autoAnalyze={true}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           )}
 
           {/* Step 4: Enhanced Note - Celebration */}
@@ -1845,39 +1831,47 @@ Return JSON with:
                 </CardContent>
               </Card>
 
-              {/* Medication Cross-Checker - Verify all meds documented */}
-              <MedicationCrossChecker
-                enhancedNote={enhancedNote}
-                patientData={selectedPatient}
-                onAddDocumentation={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
-                userEmail={currentUser?.email}
-              />
-
-              {/* Next Best Actions AI - Recommended follow-up */}
-              <NextBestActionsAI
-                enhancedNote={enhancedNote}
-                patientData={selectedPatient}
-                vitalSigns={vitalSigns}
-                diagnosis={finalDiagnosis}
-                onCreateTask={async (action, rationale, priority) => {
-                  try {
-                    await base44.entities.Task.create({
-                      patient_id: selectedPatientId,
-                      title: action,
-                      description: rationale,
-                      type: 'followup',
-                      priority: priority === 'critical' ? 'critical' : priority === 'high' ? 'high' : 'medium',
-                      due_timeframe: priority === 'critical' ? 'today' : '24_hours',
-                      source: 'ai_generated',
-                      assigned_to: currentUser?.email
-                    });
-                    queryClient.invalidateQueries({ queryKey: ['tasks'] });
-                  } catch (error) {
-                    alert('Failed to create task.');
-                  }
-                }}
-                userEmail={currentUser?.email}
-              />
+              {/* Smart Clinical Review - Consolidated insights */}
+              <Accordion type="single" collapsible className="border rounded-lg">
+                <AccordionItem value="review">
+                  <AccordionTrigger className="px-3 py-2 text-sm font-medium hover:bg-gray-50">
+                    <CheckCircle2 className="w-4 h-4 mr-2 text-orange-600" />
+                    Final Review & Actions
+                  </AccordionTrigger>
+                  <AccordionContent className="p-3 space-y-3 border-t">
+                    <MedicationCrossChecker
+                      enhancedNote={enhancedNote}
+                      patientData={selectedPatient}
+                      onAddDocumentation={(text) => setEnhancedNote(prev => prev + '\n\n' + text)}
+                      userEmail={currentUser?.email}
+                    />
+                    <NextBestActionsAI
+                      enhancedNote={enhancedNote}
+                      patientData={selectedPatient}
+                      vitalSigns={vitalSigns}
+                      diagnosis={finalDiagnosis}
+                      onCreateTask={async (action, rationale, priority) => {
+                        try {
+                          await base44.entities.Task.create({
+                            patient_id: selectedPatientId,
+                            title: action,
+                            description: rationale,
+                            type: 'followup',
+                            priority: priority === 'critical' ? 'critical' : priority === 'high' ? 'high' : 'medium',
+                            due_timeframe: priority === 'critical' ? 'today' : '24_hours',
+                            source: 'ai_generated',
+                            assigned_to: currentUser?.email
+                          });
+                          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+                        } catch (error) {
+                          alert('Failed to create task.');
+                        }
+                      }}
+                      userEmail={currentUser?.email}
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
 
               {/* Unified Compliance Insights - All AI Feedback in One Place */}
               <UnifiedComplianceInsights
