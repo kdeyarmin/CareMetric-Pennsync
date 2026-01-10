@@ -415,8 +415,6 @@ export default function SmartNoteAssistant() {
   const [appliedFixes, setAppliedFixes] = useState([]);
   const [dismissedElementNames, setDismissedElementNames] = useState([]);
   const [complianceIssues, setComplianceIssues] = useState([]);
-  const [oasisLinkedItems, setOasisLinkedItems] = useState([]);
-  const [oasisDiscrepancies, setOasisDiscrepancies] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccessfully, setSavedSuccessfully] = useState(false);
   const [detectedComplianceRisks, setDetectedComplianceRisks] = useState([]);
@@ -427,8 +425,6 @@ export default function SmartNoteAssistant() {
   const [isAnalyzingCompliance, setIsAnalyzingCompliance] = useState(false);
   const [interimVoiceText, setInterimVoiceText] = useState('');
   const [comprehensiveContext, setComprehensiveContext] = useState(null);
-  const [oasisAutomationResults, setOasisAutomationResults] = useState(null);
-  const [isRunningOASISAutomation, setIsRunningOASISAutomation] = useState(false);
   const [complianceTarget, setComplianceTarget] = useState(90);
   const [documentationGaps, setDocumentationGaps] = useState([]);
   const [pdgmOpportunities, setPdgmOpportunities] = useState(null);
@@ -484,42 +480,7 @@ export default function SmartNoteAssistant() {
     enabled: !!selectedPatientId,
   });
 
-  const { data: patientOASIS = [] } = useQuery({
-    queryKey: ['patientOASISForNotes', selectedPatientId],
-    queryFn: () => base44.entities.OASISUpload.filter({ patient_id: selectedPatientId }, '-created_date', 1),
-    enabled: !!selectedPatientId,
-  });
 
-  // Extract comprehensive OASIS context
-  const oasisContext = React.useMemo(() => {
-    if (!patientOASIS || patientOASIS.length === 0) return null;
-
-    const latest = patientOASIS[0];
-    const pdgm = latest.pdgm_data || {};
-    const extracted = latest.extracted_data || {};
-
-    return {
-      assessmentDate: latest.created_date,
-      admissionSource: pdgm.admission_source || extracted.admission_source,
-      clinicalGroup: pdgm.clinical_grouping || extracted.clinical_group,
-      functionalLevel: pdgm.functional_impairment_level || extracted.functional_level,
-      comorbidities: Array.isArray(pdgm.comorbidity_level) ? pdgm.comorbidity_level : 
-                    Array.isArray(extracted.comorbidities) ? extracted.comorbidities : [],
-      primaryDiagnosis: extracted.primary_diagnosis || pdgm.primary_diagnosis,
-      secondaryDiagnoses: extracted.secondary_diagnoses || [],
-      medications: extracted.medications || [],
-      admissionReason: extracted.admission_reason,
-      priorHospitalization: extracted.prior_hospitalization,
-      livingArrangement: extracted.living_arrangement,
-      visionStatus: extracted.vision,
-      hearingStatus: extracted.hearing,
-      painLevel: extracted.pain_frequency,
-      fallRisk: extracted.fall_risk,
-      cognitiveStatus: extracted.cognitive_functioning,
-      adlStatus: extracted.adl_limitations || {},
-      iadlStatus: extracted.iadl_limitations || {}
-    };
-  }, [patientOASIS]);
 
   const selectedPatient = selectedPatientId === 'anonymous' ? null : patients.find(p => p.id === selectedPatientId);
   const isAnonymous = selectedPatientId === 'anonymous';
@@ -716,9 +677,6 @@ export default function SmartNoteAssistant() {
       if (result.success) {
         if (result.analyses.compliance) {
           setEnhancedNoteCompliance(result.analyses.compliance);
-        }
-        if (result.analyses.oasis) {
-          setOasisAutomationResults(result.analyses.oasis);
         }
         if (result.analyses.pdgm) {
           setPdgmOpportunities(result.analyses.pdgm);
@@ -1327,176 +1285,7 @@ Return JSON with:
     setRoughNote(prev => prev ? prev + ' ' + text : text);
   }, []);
 
-  const handleRunOASISAutomation = async () => {
-    if (!enhancedNote || !selectedPatientId) return;
 
-    setIsRunningOASISAutomation(true);
-    try {
-      // Use batch analysis for OASIS
-      await runBatchAnalysis(['oasis']);
-      setActiveAccordion('oasis');
-      
-      logActivity(ActivityActions.AI_FEATURE_USED, {
-        feature: 'oasis_automation_batched',
-        patient_id: selectedPatientId,
-        page: 'SmartNoteAssistant'
-      });
-    } catch (error) {
-      alert('Failed to run OASIS automation. Please try again.');
-    }
-    setIsRunningOASISAutomation(false);
-  };
-
-  // Removed old OASIS fallback - using batch analysis only
-  const handleRunOASISAutomationFallback_DEPRECATED = async () => {
-    if (!enhancedNote || !selectedPatientId) return;
-
-    setIsRunningOASISAutomation(true);
-    try {
-      // Enhanced OASIS mapping with detailed justifications
-      const enhancedMapping = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are an OASIS-E expert. Analyze this clinical note and map it to specific OASIS items with detailed justifications.
-
-  ENHANCED CLINICAL NOTE:
-  ${enhancedNote}
-
-  PATIENT DATA:
-  - Diagnosis: ${finalDiagnosis}
-  - Visit Type: ${visitType}
-  - Vitals: ${JSON.stringify(vitalSigns)}
-  ${selectedPatient ? `- Age: ${selectedPatient.date_of_birth ? Math.floor((new Date() - new Date(selectedPatient.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : 'Unknown'}` : ''}
-  ${selectedPatient?.functional_status ? `- Functional Status: ${JSON.stringify(selectedPatient.functional_status)}` : ''}
-
-  For EACH OASIS item you can confidently map, provide:
-  1. OASIS Item Number (e.g., M1800, M1810, M1860)
-  2. Suggested Value/Response
-  3. Confidence Score (0-100)
-  4. Specific Evidence from Note (quote exact phrases)
-  5. Clinical Justification for scoring
-  6. PDGM Impact (if applicable)
-
-  Focus on functional items (M1800-M1890), wounds (M1306-M1342), medications, and comorbidities.
-
-  Return JSON array of mappings with above fields.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            mappings: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  oasis_item: { type: "string" },
-                  item_description: { type: "string" },
-                  suggested_value: { type: "string" },
-                  confidence: { type: "number" },
-                  evidence_from_note: { type: "string" },
-                  clinical_justification: { type: "string" },
-                  pdgm_impact: { type: "string" },
-                  requires_verification: { type: "boolean" }
-                }
-              }
-            },
-            high_confidence_items: { type: "number" },
-            medium_confidence_items: { type: "number" },
-            low_confidence_items: { type: "number" }
-          }
-        }
-      });
-
-      setOasisAutomationResults(enhancedMapping);
-      setActiveAccordion('oasis');
-
-      logActivity(ActivityActions.AI_FEATURE_USED, {
-        feature: 'oasis_automation_enhanced',
-        patient_id: selectedPatientId,
-        items_mapped: enhancedMapping.mappings?.length || 0,
-        high_confidence: enhancedMapping.high_confidence_items || 0,
-        page: 'SmartNoteAssistant'
-      });
-    } catch (error) {
-      alert('Failed to run OASIS automation. Please try again.');
-    }
-    setIsRunningOASISAutomation(false);
-  };
-
-  const handleApplyOASISSuggestion = async (suggestion) => {
-    try {
-      // Update or create OASIS record with AI suggestion
-      const oasisData = {
-        patient_id: selectedPatientId,
-        extracted_data: {
-          [suggestion.item_number]: {
-            value: suggestion.suggested_value,
-            label: suggestion.suggested_value_label,
-            confidence: suggestion.confidence_score,
-            source: 'ai_automation',
-            applied_by: currentUser?.email,
-            applied_at: new Date().toISOString()
-          }
-        }
-      };
-
-      // If OASIS exists, update it; otherwise create new
-      if (patientOASIS?.length > 0) {
-        const existing = patientOASIS[0];
-        const updatedData = {
-          ...existing.extracted_data,
-          ...oasisData.extracted_data
-        };
-        
-        await base44.entities.OASISUpload.update(existing.id, {
-          extracted_data: updatedData
-        });
-      } else {
-        await base44.entities.OASISUpload.create(oasisData);
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['patientOASISForNotes', selectedPatientId] });
-    } catch (error) {
-      alert('Failed to apply OASIS suggestion. Please try again.');
-    }
-  };
-
-  const handleApplyAllOASIS = async (suggestions) => {
-    try {
-      const extractedData = {};
-      
-      suggestions.forEach(s => {
-        extractedData[s.item_number] = {
-          value: s.suggested_value,
-          label: s.suggested_value_label,
-          confidence: s.confidence_score,
-          source: 'ai_automation_bulk',
-          applied_by: currentUser?.email,
-          applied_at: new Date().toISOString()
-        };
-      });
-
-      const oasisData = {
-        patient_id: selectedPatientId,
-        extracted_data: extractedData
-      };
-
-      if (patientOASIS?.length > 0) {
-        const existing = patientOASIS[0];
-        const updatedData = {
-          ...existing.extracted_data,
-          ...extractedData
-        };
-        
-        await base44.entities.OASISUpload.update(existing.id, {
-          extracted_data: updatedData
-        });
-      } else {
-        await base44.entities.OASISUpload.create(oasisData);
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['patientOASISForNotes', selectedPatientId] });
-    } catch (error) {
-      alert('Failed to apply OASIS suggestions. Please try again.');
-    }
-  };
 
   const analyzePDGMOpportunities = async () => {
     if (!enhancedNote || !selectedPatient) return;
@@ -2178,12 +1967,8 @@ Return JSON with:
                   complianceScore={enhancedNoteCompliance?.overall_score}
                   patientData={selectedPatient}
                   vitalSigns={vitalSigns}
-                  hasOASIS={patientOASIS?.length > 0}
-                  oasisLinkedItems={oasisLinkedItems}
                   onAction={handleContextualAction}
                   onInsertGuideline={(text) => setRoughNote(prev => prev + '\n\n' + text)}
-                  onAddOASISLink={(link) => setOasisLinkedItems(prev => [...prev, link])}
-                  onRemoveOASISLink={(idx) => setOasisLinkedItems(prev => prev.filter((_, i) => i !== idx))}
                   roughNote={roughNote}
                   criticalGaps={documentationGaps.filter(g => g.priority === 'critical')}
                 />
