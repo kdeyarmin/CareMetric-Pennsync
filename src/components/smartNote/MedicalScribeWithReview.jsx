@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Mic, Upload, CheckCircle2, AlertCircle, Loader, Edit3, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import AISuggestionPanel from "./AISuggestionPanel";
 
 export default function MedicalScribeWithReview({
   diagnosis = "",
@@ -233,58 +234,68 @@ export default function MedicalScribeWithReview({
   // Reviewing stage - show transcription for editing
   if (stage === 'reviewing' || stage === 'generating') {
     return (
-      <Card className="w-full border-purple-200 bg-purple-50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Edit3 className="w-5 h-5 text-purple-600" />
-            Review & Edit Transcription
-          </CardTitle>
-          <p className="text-xs text-gray-600 mt-2">
-            Review the transcribed text and make corrections before generating the clinical note.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Transcribed Text</label>
-            <Textarea
-              value={editedTranscription}
-              onChange={(e) => setEditedTranscription(e.target.value)}
-              placeholder="Edit transcription here..."
-              className="min-h-40 font-mono text-sm"
-            />
-            <p className="text-xs text-gray-500">
-              {editedTranscription.length} characters
+      <div className="space-y-4">
+        <Card className="w-full border-purple-200 bg-purple-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Edit3 className="w-5 h-5 text-purple-600" />
+              Review & Edit Transcription
+            </CardTitle>
+            <p className="text-xs text-gray-600 mt-2">
+              Review the transcribed text and make corrections before generating the clinical note.
             </p>
-          </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Transcribed Text</label>
+              <Textarea
+                value={editedTranscription}
+                onChange={(e) => setEditedTranscription(e.target.value)}
+                placeholder="Edit transcription here..."
+                className="min-h-40 font-mono text-sm"
+              />
+              <p className="text-xs text-gray-500">
+                {editedTranscription.length} characters
+              </p>
+            </div>
 
-          <div className="flex gap-2">
-            <Button
-              onClick={generateNote}
-              disabled={isProcessing || !editedTranscription.trim()}
-              className="flex-1 bg-green-600 hover:bg-green-700"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader className="w-4 h-4 mr-2 animate-spin" />
-                  Generating Note...
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="w-4 h-4 mr-2" />
-                  Generate Clinical Note
-                </>
-              )}
-            </Button>
-            <Button
-              onClick={handleStartOver}
-              variant="outline"
-              disabled={isProcessing}
-            >
-              Start Over
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex gap-2">
+              <Button
+                onClick={generateNote}
+                disabled={isProcessing || !editedTranscription.trim()}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Generating Note...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="w-4 h-4 mr-2" />
+                    Generate Clinical Note
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleStartOver}
+                variant="outline"
+                disabled={isProcessing}
+              >
+                Start Over
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <AISuggestionPanel
+          transcription={editedTranscription}
+          onApplySuggestion={(improvedText) => {
+            setEditedTranscription(prev => prev + ' ' + improvedText);
+          }}
+          isLoading={isProcessing}
+        />
+      </div>
     );
   }
 
