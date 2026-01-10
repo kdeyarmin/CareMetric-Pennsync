@@ -94,6 +94,8 @@ import PreVisitAIBrief from "../components/smartNote/PreVisitAIBrief";
 import ProactiveDocCoach from "../components/smartNote/ProactiveDocCoach";
 import MedicationCrossChecker from "../components/smartNote/MedicationCrossChecker";
 import NextBestActionsAI from "../components/smartNote/NextBestActionsAI";
+import PersonalizedDocumentationGapSuggestions from "../components/smartNote/PersonalizedDocumentationGapSuggestions";
+import ContextualPhraseTemplates from "../components/smartNote/ContextualPhraseTemplates";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1591,15 +1593,16 @@ Return JSON with:
             </CardContent>
           </Card>
 
-          {/* Proactive Documentation Coach - Real-time during note writing */}
+          {/* Personalized Documentation Gap Suggestions */}
           {selectedPatientId && roughNote.length >= 50 && !enhancedNote && (
-            <ProactiveDocCoach
+            <PersonalizedDocumentationGapSuggestions
               roughNote={roughNote}
               patientData={selectedPatient}
               visitType={visitType}
               diagnosis={finalDiagnosis}
+              carePlans={carePlans}
               vitalSigns={vitalSigns}
-              onInsertSuggestion={(text) => setRoughNote(prev => prev + '\n\n' + text)}
+              onApplySuggestion={(text) => setRoughNote(prev => prev + '\n\n' + text)}
               userEmail={currentUser?.email}
             />
           )}
@@ -1940,11 +1943,13 @@ Return JSON with:
                   roughNote={roughNote}
                   criticalGaps={documentationGaps.filter(g => g.priority === 'critical')}
                 />
-              {selectedPatientId && roughNote.length < 50 && (
-              <CustomPhrasesManager
-                onInsertPhrase={(text) => setRoughNote(prev => prev ? prev + '\n\n' + text : text)}
-                compact={true}
-              />
+              {selectedPatientId && (
+                <ContextualPhraseTemplates
+                  visitType={visitType}
+                  diagnosis={finalDiagnosis}
+                  onInsertPhrase={(text) => setRoughNote(prev => prev ? prev + ' ' + text : text)}
+                  compact={true}
+                />
               )}
               </div>
               </div>
