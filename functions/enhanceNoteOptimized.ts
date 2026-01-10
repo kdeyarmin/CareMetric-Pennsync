@@ -19,13 +19,13 @@ Deno.serve(async (req) => {
     }
 
     // Fetch patient data and context
-    const patient = patientId ? await base44.entities.Patient.filter({ id: patientId }) : [];
+    const patient = (patientId && patientId !== 'anonymous') ? await base44.entities.Patient.filter({ id: patientId }) : [];
     const selectedPatient = patient[0] || null;
     
-    const recentVisits = patientId ? 
+    const recentVisits = (patientId && patientId !== 'anonymous') ? 
       await base44.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3) : [];
     
-    const carePlans = patientId ? 
+    const carePlans = (patientId && patientId !== 'anonymous') ? 
       await base44.entities.CarePlan.filter({ patient_id: patientId }) : [];
 
     // Build comprehensive patient context
@@ -102,7 +102,7 @@ Return COMPLETE ANALYSIS in ONE call:
     });
 
     // Save to patient history
-    if (selectedPatient) {
+    if (selectedPatient && patientId !== 'anonymous') {
       const currentHistory = selectedPatient.enhanced_notes_history || [];
       await base44.entities.Patient.update(patientId, {
         enhanced_notes_history: [
