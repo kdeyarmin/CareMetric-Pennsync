@@ -44,7 +44,9 @@ Deno.serve(async (req) => {
       oasisMapping,
       pdgmAnalysis,
       clinicalAlerts,
-      documentationGaps
+      documentationGaps,
+      hipaaCompliance,
+      stateRegulatory
     ] = await Promise.all([
       // Build compliance prompt with provider customization
       let complianceContext = `Analyze this ${providerType} clinical note for compliance.`;
@@ -334,48 +336,76 @@ What areas need nurse's clinical judgment or additional data collection?`,
       }
     }
 
-    // Consolidate all findings
+    // Consolidate all findings including new regulatory checks
     const consolidatedInsights = {
       overall_compliance_score: medicareCompliance.overall_score || 0,
-      
+
       critical_issues: [
         ...medicareCompliance.violations?.filter(v => v.severity === 'critical') || [],
         ...generalCompliance.guideline_gaps?.filter(g => g.priority === 'high') || [],
-        ...visitTypeCompliance.visit_type_gaps?.filter(g => g.status === 'missing') || []
+        ...visitTypeCompliance.visit_type_gaps?.filter(g => g.status === 'missing') || [],
+        ...hipaaCompliance.violations?.filter(v => v.risk_level === 'critical' || v.risk_level === 'high') || [],
+        ...stateRegulatory.potential_violations?.filter(v => v.severity === 'critical' || v.severity === 'high') || []
       ],
 
       compliance_violations: medicareCompliance.violations || [],
-      
+
       guideline_gaps: generalCompliance.guideline_gaps || [],
-      
+
       visit_type_gaps: visitTypeCompliance.visit_type_gaps || [],
-      
+
       oasis_mappings: oasisMapping.mappings || [],
       missing_oasis_items: oasisMapping.missing_oasis_documentation || [],
-      
+
       pdgm_opportunities: pdgmAnalysis.opportunities || [],
       estimated_revenue_gain: pdgmAnalysis.estimated_revenue_gain || 0,
-      
+
       clinical_alerts: clinicalAlerts.clinical_alerts || [],
-      
+
       remaining_documentation_gaps: documentationGaps.remaining_gaps || [],
-      
+
       compliant_elements: medicareCompliance.compliant_elements || [],
-      
+
+      // NEW: HIPAA Compliance Results
+      hipaa_compliance: {
+        overall_risk_level: hipaaCompliance.overall_risk_level || 'low',
+        violations: hipaaCompliance.violations || [],
+        compliant_areas: hipaaCompliance.compliant_areas || [],
+        proactive_recommendations: hipaaCompliance.proactive_recommendations || []
+      },
+
+      // NEW: State Regulatory Compliance Results
+      state_regulatory: {
+        risk_score: stateRegulatory.risk_score || 0,
+        potential_violations: stateRegulatory.potential_violations || [],
+        best_practices: stateRegulatory.best_practices || [],
+        state_specific_alerts: stateRegulatory.state_specific_alerts || []
+      },
+
       priority_action_items: [
-        ...medicareCompliance.violations?.filter(v => v.severity === 'critical' || v.severity === 'high').slice(0, 5) || [],
-        ...clinicalAlerts.clinical_alerts?.filter(a => a.time_sensitive).slice(0, 3) || []
+        ...medicareCompliance.violations?.filter(v => v.severity === 'critical' || v.severity === 'high').slice(0, 3) || [],
+        ...clinicalAlerts.clinical_alerts?.filter(a => a.time_sensitive).slice(0, 2) || [],
+        ...hipaaCompliance.violations?.filter(v => v.risk_level === 'critical' || v.risk_level === 'high').slice(0, 2) || [],
+        ...stateRegulatory.potential_violations?.filter(v => v.severity === 'critical').slice(0, 2) || []
       ],
 
       summary: {
         total_issues: (medicareCompliance.violations?.length || 0) + 
                      (generalCompliance.guideline_gaps?.length || 0) +
-                     (visitTypeCompliance.visit_type_gaps?.length || 0),
-        critical_count: medicareCompliance.violations?.filter(v => v.severity === 'critical').length || 0,
-        high_priority_count: medicareCompliance.violations?.filter(v => v.severity === 'high').length || 0,
+                     (visitTypeCompliance.visit_type_gaps?.length || 0) +
+                     (hipaaCompliance.violations?.length || 0) +
+                     (stateRegulatory.potential_violations?.length || 0),
+        critical_count: (medicareCompliance.violations?.filter(v => v.severity === 'critical').length || 0) +
+                       (hipaaCompliance.violations?.filter(v => v.risk_level === 'critical').length || 0) +
+                       (stateRegulatory.potential_violations?.filter(v => v.severity === 'critical').length || 0),
+        high_priority_count: (medicareCompliance.violations?.filter(v => v.severity === 'high').length || 0) +
+                            (hipaaCompliance.violations?.filter(v => v.risk_level === 'high').length || 0) +
+                            (stateRegulatory.potential_violations?.filter(v => v.severity === 'high').length || 0),
         revenue_opportunity: pdgmAnalysis.estimated_revenue_gain || 0,
         oasis_items_mapped: oasisMapping.mappings?.length || 0,
-        training_recommendations_created: trainingRecommendations.length
+        training_recommendations_created: trainingRecommendations.length,
+        hipaa_risk_level: hipaaCompliance.overall_risk_level || 'low',
+        state_regulatory_risk: stateRegulatory.risk_score || 0
       }
     };
 
