@@ -3,8 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Spinner } from "@/components/ui/spinner";
-import { Sparkles, Copy, Check, Save, Edit3, Trash2 } from "lucide-react";
+import { Sparkles, Copy, Check, Save, Edit3, Trash2, Loader } from "lucide-react";
 import { toast } from "sonner";
 
 const noteTypes = [
@@ -226,7 +225,7 @@ Please modify the template to incorporate the requested changes while maintainin
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Badge>{noteTypes.find(t => t.id === generatedTemplate.typeId)?.label}</Badge>
-                  {isGenerating && <Spinner className="w-4 h-4" />}
+                  {isGenerating && <Loader className="w-4 h-4 animate-spin text-purple-600" />}
                 </div>
                 <Button
                   size="sm"
