@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
+import { Loader, CheckCircle2, AlertCircle, BookOpen, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
+import NoteFeedbackForm from "./NoteFeedbackForm";
 
 export default function EnhancedDocumentationAssistant({
   generatedNote = "",
@@ -13,13 +14,16 @@ export default function EnhancedDocumentationAssistant({
   visitType = "",
   patientId = "",
   patientHistory = null,
-  isLoading = false
+  isLoading = false,
+  roughNote = "",
+  providerType = "RN"
 }) {
   const [activeTab, setActiveTab] = useState("compliance");
   const [complianceAnalysis, setComplianceAnalysis] = useState(null);
   const [educationMaterials, setEducationMaterials] = useState(null);
   const [noteSummary, setNoteSummary] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
 
   useEffect(() => {
     if (generatedNote && !isLoading) {
@@ -199,10 +203,23 @@ Return JSON:
   return (
     <Card className="w-full border-purple-200 bg-purple-50">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-purple-600" />
-          Documentation Assistant
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-purple-600" />
+            Documentation Assistant
+          </CardTitle>
+          {generatedNote && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowFeedbackForm(!showFeedbackForm)}
+              className="text-xs"
+            >
+              <ThumbsUp className="w-3 h-3 mr-1" />
+              Feedback
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -348,6 +365,24 @@ Return JSON:
           </Button>
         )}
       </CardContent>
+
+      {showFeedbackForm && (
+        <CardContent className="border-t pt-4">
+          <NoteFeedbackForm
+            generatedNote={generatedNote}
+            roughNote={roughNote}
+            patientId={patientId}
+            providerType={providerType}
+            visitType={visitType}
+            diagnosis={diagnosis}
+            onFeedbackSubmitted={() => {
+              setShowFeedbackForm(false);
+              toast.success("Thank you for your feedback!");
+            }}
+            onClose={() => setShowFeedbackForm(false)}
+          />
+        </CardContent>
+      )}
     </Card>
   );
 }
