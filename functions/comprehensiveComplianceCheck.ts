@@ -42,13 +42,15 @@ VISIT TYPE: ${visitType}
 DIAGNOSIS: ${diagnosis}
 NURSE TYPE: ${nurseType}
 
-Check for ALL required elements:
+Check for required Medicare elements:
 1. Homebound Status: Specific mobility limitations, why leaving home is taxing
 2. Skilled Need: Why RN/LPN skills are medically necessary
 3. Patient Response: Verbal understanding, teach-back, demonstrated competency
 4. Safety Assessment: Fall risk, environment hazards, caregiver competency
 5. Functional Status: ADL/IADL abilities, assistance needed
 6. Plan of Care: Continuing plan, next visit, when to contact MD/nurse
+
+IMPORTANT: Patient identifiers (names, ages, DOB) are REQUIRED for home health documentation - do NOT flag them as violations.
 
 Return compliance analysis with specific violations and fixes.`,
         add_context_from_internet: true,
