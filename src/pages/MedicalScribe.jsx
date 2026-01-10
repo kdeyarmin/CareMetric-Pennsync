@@ -125,20 +125,20 @@ export default function MedicalScribe() {
                 </div>
 
                 <div>
-                  <Label className="text-xs sm:text-sm mb-2 block">Visit Type</Label>
-                  <Select value={visitType} onValueChange={setVisitType}>
-                    <SelectTrigger className="h-10 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admission">Admission</SelectItem>
-                      <SelectItem value="routine_visit">Routine Visit</SelectItem>
-                      <SelectItem value="recertification">Recertification</SelectItem>
-                      <SelectItem value="discharge">Discharge</SelectItem>
-                      <SelectItem value="prn">PRN Visit</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                   <Label className="text-xs sm:text-sm mb-2 block">Visit Type</Label>
+                   <Select value={visitType} onValueChange={setVisitType}>
+                     <SelectTrigger className="h-10 text-sm">
+                       <SelectValue />
+                     </SelectTrigger>
+                     <SelectContent>
+                       {getVisitTypesForProvider(currentUser?.credential_type || 'RN').map(vt => (
+                         <SelectItem key={vt.id} value={vt.id} className="text-sm" title={vt.description}>
+                           {vt.label}
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                 </div>
 
                 <div>
                   <Label className="text-xs sm:text-sm mb-2 block">Diagnosis</Label>
