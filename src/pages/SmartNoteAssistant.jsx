@@ -293,9 +293,106 @@ function VoiceHub({ onTranscription, onInterimTranscription, onCommand }) {
   );
 }
 
-// REMOVED: Duplicate ContextualAITools - functionality now in DynamicAISidebar
+// Contextual AI Tools Sidebar - Enhanced with better guidance
+function ContextualAITools({ currentStep, hasPatient, hasNotes, hasEnhancedNote, onAction, diagnosis, complianceScore }) {
+  const getTools = () => {
+    if (!hasPatient) return null;
+    if (!hasNotes) return null;
+    if (!hasEnhancedNote) return { 
+      title: "✨ Ready to Enhance", 
+      subtitle: "Step 3 of 4",
+      items: [
+        { label: "Transform to Medicare-Compliant", action: "enhance", type: "action", primary: true, icon: Sparkles },
+      ],
+      hint: diagnosis ? `AI will optimize for ${diagnosis.split(' ')[0]}` : "AI adds clinical language & compliance elements"
+    };
+    return { 
+      title: "🎉 Note Complete!", 
+      subtitle: complianceScore ? `${complianceScore}% Compliant` : "Ready to use",
+      items: [
+        { label: "Copy to Clipboard", action: "copy", type: "action", primary: true, icon: Copy },
+        { label: "Generate Follow-up Tasks", action: "tasks", type: "action", icon: ClipboardList },
+        { label: "Start New Note", action: "clear", type: "action", icon: RotateCcw }
+      ],
+      hint: "Review the note before pasting to EHR"
+    };
+  };
+  const tools = getTools();
 
-// REMOVED: AI caching now handled server-side in optimized backend function
+  if (!tools) return null;
+
+  return (
+    <Card className="border-2 border-indigo-200 bg-gradient-to-b from-indigo-50 to-white">
+      <CardHeader className="py-3 pb-1">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Brain className="w-4 h-4 text-indigo-600" />
+          {tools.title}
+        </CardTitle>
+        {tools.subtitle && (
+          <p className="text-xs text-indigo-600 font-medium">{tools.subtitle}</p>
+        )}
+      </CardHeader>
+      <CardContent className="py-2 space-y-2">
+        {tools.items.map((item, idx) => (
+          <div key={idx}>
+            {item.type === 'action' ? (
+              <Button
+                size="sm"
+                variant={item.primary ? "default" : "outline"}
+                className={`w-full justify-between ${item.primary ? 'bg-indigo-600 hover:bg-indigo-700' : ''}`}
+                onClick={() => onAction?.(item.action)}
+              >
+                <span className="flex items-center gap-2">
+                  {item.icon && <item.icon className="w-3 h-3" />}
+                  {item.label}
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            ) : item.type === 'example' ? (
+              <div className="bg-white/70 p-2 rounded border border-indigo-100">
+                <p className="text-xs text-indigo-700 italic flex items-center gap-1">
+                  <MessageCircle className="w-3 h-3" /> {item.label}
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                {item.icon && <item.icon className="w-3 h-3 text-indigo-400" />}
+                {item.label}
+              </div>
+            )}
+          </div>
+        ))}
+        {tools.hint && (
+          <div className="pt-2 border-t border-indigo-100">
+            <p className="text-xs text-indigo-600 flex items-center gap-1">
+              <Lightbulb className="w-3 h-3" /> {tools.hint}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Smart caching for AI responses to prevent redundant API calls
+const aiResponseCache = new Map();
+
+const useCachedAIResponse = (cacheKey, fetcher, ttl = 300000) => { // 5 min TTL
+  const getCached = () => {
+    const cached = aiResponseCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < ttl) {
+      return cached.data;
+    }
+    return null;
+  };
+
+  const setCached = (data) => {
+    aiResponseCache.set(cacheKey, { data, timestamp: Date.now() });
+    return data;
+  };
+
+  return { getCached, setCached };
+};
 
 export default function SmartNoteAssistant() {
   const navigate = useNavigate();
@@ -600,7 +697,7 @@ export default function SmartNoteAssistant() {
     setIsProcessing(false);
   };
 
-  // Consolidated batch AI analysis - handles multiple analysis types efficiently
+  // Batch AI analysis for multiple operations
   const runBatchAnalysis = async (analysisTypes) => {
     try {
       const result = await base44.functions.invoke('batchAIAnalysis', {
@@ -623,14 +720,17 @@ export default function SmartNoteAssistant() {
         if (result.analyses.pdgm) {
           setPdgmOpportunities(result.analyses.pdgm);
         }
+        if (result.analyses.proactive) {
+          // Handle proactive suggestions
+        }
       }
     } catch (error) {
       // Error logged server-side
     }
   };
 
-  // Removed fallback implementation - now using optimized backend function only
-  const handleEnhanceNoteFallback_DEPRECATED = async () => {
+  // Old implementation kept as fallback
+  const handleEnhanceNoteFallback = async () => {
     if (!roughNote.trim()) return;
     setIsProcessing(true);
     const enhanceStartTime = Date.now();
@@ -1138,26 +1238,55 @@ Return JSON with:
   };
 
   const handleVoiceCommand = (action, spokenText, extractedValue) => {
-    const commandHandlers = {
-      enhance: handleEnhanceNote,
-      copy: handleCopy,
-      save: handleSaveNote,
-      clear: handleClearNote,
-      next: () => {
+    switch (action) {
+      case 'enhance':
+        handleEnhanceNote();
+        break;
+      case 'copy':
+        handleCopy();
+        break;
+      case 'save':
+        handleSaveNote();
+        break;
+      case 'clear':
+        handleClearNote();
+        break;
+      case 'next':
         const currentIndex = stepOrder.indexOf(currentStep);
         if (currentIndex < stepOrder.length - 1) {
           handleStepClick(stepOrder[currentIndex + 1]);
         }
-      },
-      bp: () => extractedValue?.length >= 2 && setVitalSigns(prev => ({ ...prev, bp: `${extractedValue[0]}/${extractedValue[1]}` })),
-      hr: () => extractedValue?.[0] && setVitalSigns(prev => ({ ...prev, hr: extractedValue[0] })),
-      temp: () => extractedValue?.[0] && setVitalSigns(prev => ({ ...prev, temp: extractedValue[0] })),
-      o2: () => extractedValue?.[0] && setVitalSigns(prev => ({ ...prev, o2: extractedValue[0] })),
-      pain: () => extractedValue?.[0] && setVitalSigns(prev => ({ ...prev, pain: extractedValue[0] }))
-    };
+        break;
+      case 'bp':
+        if (extractedValue && extractedValue.length >= 2) {
+          setVitalSigns(prev => ({ ...prev, bp: `${extractedValue[0]}/${extractedValue[1]}` }));
+        }
+        break;
+      case 'hr':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, hr: extractedValue[0] }));
+        }
+        break;
+      case 'temp':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, temp: extractedValue[0] }));
+        }
+        break;
+      case 'o2':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, o2: extractedValue[0] }));
+        }
+        break;
+      case 'pain':
+        if (extractedValue && extractedValue[0]) {
+          setVitalSigns(prev => ({ ...prev, pain: extractedValue[0] }));
+        }
+        break;
+      default:
+        // Unknown command
+    }
     
-    commandHandlers[action]?.();
-    
+    // Log voice command usage
     logActivity(ActivityActions.AI_FEATURE_USED, {
       feature: 'voice_command',
       command: action,
@@ -1169,13 +1298,10 @@ Return JSON with:
 
 
   const handleContextualAction = (action) => {
-    const actions = {
-      enhance: handleEnhanceNote,
-      copy: handleCopy,
-      tasks: () => setActiveAccordion('tasks'),
-      clear: handleClearNote
-    };
-    actions[action]?.();
+    if (action === 'enhance') handleEnhanceNote();
+    if (action === 'copy') handleCopy();
+    if (action === 'tasks') setActiveAccordion('tasks');
+    if (action === 'clear') handleClearNote();
   };
 
   const handleClearNote = () => {
@@ -1201,11 +1327,12 @@ Return JSON with:
 
     setIsRunningOASISAutomation(true);
     try {
+      // Use batch analysis for OASIS
       await runBatchAnalysis(['oasis']);
       setActiveAccordion('oasis');
       
       logActivity(ActivityActions.AI_FEATURE_USED, {
-        feature: 'oasis_automation',
+        feature: 'oasis_automation_batched',
         patient_id: selectedPatientId,
         page: 'SmartNoteAssistant'
       });
@@ -1215,8 +1342,8 @@ Return JSON with:
     setIsRunningOASISAutomation(false);
   };
 
-  // Removed fallback implementation
-  const handleRunOASISAutomationFallback_DEPRECATED = async () => {
+  // Old OASIS implementation kept as fallback
+  const handleRunOASISAutomationFallback = async () => {
     if (!enhancedNote || !selectedPatientId) return;
 
     setIsRunningOASISAutomation(true);
@@ -1371,10 +1498,11 @@ Return JSON with:
 
     setIsAnalyzingPDGM(true);
     try {
+      // Use batch analysis for PDGM
       await runBatchAnalysis(['pdgm']);
 
       logActivity(ActivityActions.AI_FEATURE_USED, {
-        feature: 'pdgm_optimization',
+        feature: 'pdgm_optimization_batched',
         patient_id: selectedPatientId,
         page: 'SmartNoteAssistant'
       });
@@ -1384,8 +1512,8 @@ Return JSON with:
     setIsAnalyzingPDGM(false);
   };
 
-  // Removed fallback implementation
-  const analyzePDGMOpportunitiesFallback_DEPRECATED = async () => {
+  // Old PDGM implementation kept as fallback
+  const analyzePDGMOpportunitiesFallback = async () => {
     if (!enhancedNote || !selectedPatient) return;
 
     setIsAnalyzingPDGM(true);
