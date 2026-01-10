@@ -124,7 +124,7 @@ Return COMPLETE ANALYSIS in ONE call:
     // Track metrics
     await base44.entities.NoteConversion.create({
       nurse_email: user.email,
-      patient_id: patientId || null,
+      patient_id: (patientId && patientId !== 'anonymous') ? patientId : null,
       visit_type: visitType,
       diagnosis,
       rough_note_length: roughNote.length,
