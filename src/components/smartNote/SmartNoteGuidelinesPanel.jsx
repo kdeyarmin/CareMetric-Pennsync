@@ -5,6 +5,66 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle2, AlertCircle, Clock } from "lucide-react";
 
+const PROVIDER_TYPE_SPECIFIC_GUIDANCE = {
+  MD: {
+    note_focus: "Physician notes emphasize diagnostic reasoning, medical decision-making, and justification for orders/referrals. Include comprehensive HPI, ROS, physical exam findings, and assessment/plan, correlating with CPT/ICD-10 coding.",
+    required_elements_additions: [
+      "Medical Decision Making (MDM) documented",
+      "Justification for orders/referrals",
+      "Correlation of assessment/plan with CPT/ICD-10 codes"
+    ]
+  },
+  NP: {
+    note_focus: "Nurse Practitioner notes blend medical and nursing models, emphasizing holistic patient care, health promotion, and disease prevention. Include comprehensive assessment, diagnostic reasoning, treatment plan, and patient education with psychosocial factors.",
+    required_elements_additions: [
+      "Health promotion/disease prevention strategies",
+      "Detailed patient education plan",
+      "Psychosocial assessment and interventions",
+      "Patient/family understanding and compliance documented"
+    ]
+  },
+  RN: {
+    note_focus: "Registered Nurse notes focus on skilled nursing interventions, patient responses, care plan adherence, and assessment of physical/mental/functional status. Emphasize patient education, safety, and coordination of care.",
+    required_elements_additions: [
+      "Detailed skilled nursing interventions",
+      "Patient's response to interventions",
+      "Coordination of care with other disciplines"
+    ]
+  },
+  PT: {
+    note_focus: "Physical Therapy notes focus on functional assessments, mobility, therapeutic exercises, and progress towards rehabilitation goals. Document objective measures, treatment interventions, and patient's tolerance/progress.",
+    required_elements_additions: [
+      "Objective functional measurements",
+      "Therapeutic exercise details",
+      "Progress toward physical therapy goals"
+    ]
+  },
+  OT: {
+    note_focus: "Occupational Therapy notes focus on ADL/IADL assessments, adaptive strategies, and progress towards occupational goals. Document interventions to improve daily living skills, patient safety, and use of adaptive equipment.",
+    required_elements_additions: [
+      "ADL/IADL assessment and interventions",
+      "Adaptive equipment training",
+      "Progress toward occupational therapy goals"
+    ]
+  },
+  ST: {
+    note_focus: "Speech-Language Pathology notes focus on communication, swallowing, and cognitive assessments/interventions. Document objective findings, treatment techniques, and patient progress in these areas.",
+    required_elements_additions: [
+      "Communication/swallowing assessment",
+      "Cognitive function assessment and interventions",
+      "Progress toward speech-language pathology goals"
+    ]
+  },
+  MSW: {
+    note_focus: "Medical Social Worker notes focus on psychosocial assessments, emotional support, resource allocation, and discharge planning. Document patient/family coping, financial/housing needs, and referrals.",
+    required_elements_additions: [
+      "Psychosocial assessment and support",
+      "Resource allocation and referrals",
+      "Discharge planning and support"
+    ]
+  }
+};
+
 const VISIT_TYPE_REQUIREMENTS = {
   admission: {
     required_elements: [
@@ -134,8 +194,18 @@ export default function SmartNoteGuidelinesPanel({
   const [checkedItems, setCheckedItems] = useState({});
 
   const requirements = useMemo(() => {
-    return VISIT_TYPE_REQUIREMENTS[visitType] || VISIT_TYPE_REQUIREMENTS.routine_visit;
-  }, [visitType]);
+    const baseRequirements = VISIT_TYPE_REQUIREMENTS[visitType] || VISIT_TYPE_REQUIREMENTS.routine_visit;
+    const providerSpecific = PROVIDER_TYPE_SPECIFIC_GUIDANCE[providerType];
+
+    if (providerSpecific) {
+      return {
+        ...baseRequirements,
+        required_elements: [...baseRequirements.required_elements, ...(providerSpecific.required_elements_additions || [])],
+        note_focus: providerSpecific.note_focus
+      };
+    }
+    return baseRequirements;
+  }, [visitType, providerType]);
 
   const toggleCheck = (item) => {
     setCheckedItems(prev => ({
@@ -161,10 +231,11 @@ export default function SmartNoteGuidelinesPanel({
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="checklist" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-8">
+          <TabsList className="grid w-full grid-cols-4 h-8">
             <TabsTrigger value="checklist" className="text-xs">Checklist</TabsTrigger>
             <TabsTrigger value="compliance" className="text-xs">Compliance</TabsTrigger>
             <TabsTrigger value="guidelines" className="text-xs">Guidelines</TabsTrigger>
+            <TabsTrigger value="provider" className="text-xs">Provider Focus</TabsTrigger>
           </TabsList>
 
           {/* Checklist Tab */}
@@ -257,6 +328,42 @@ export default function SmartNoteGuidelinesPanel({
                 <p className="text-xs text-blue-800">
                   For <strong>{diagnosis}</strong>: Ensure documentation addresses disease-specific assessments, interventions aligned with condition management, and response to therapy.
                 </p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Provider Specific Tab */}
+          <TabsContent value="provider" className="space-y-2 mt-3">
+            {requirements.note_focus && (
+              <div className="bg-white p-2 rounded border">
+                <p className="text-xs font-semibold text-gray-900 mb-1">{providerType.toUpperCase()} Note Focus</p>
+                <p className="text-xs text-gray-700 leading-relaxed">{requirements.note_focus}</p>
+              </div>
+            )}
+            {providerType === "MD" && (
+              <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                <p className="text-xs font-semibold text-blue-900 mb-1">Physician Documentation Key (Epic Standard)</p>
+                <ul className="space-y-0.5">
+                  <li className="text-xs text-blue-800">• <strong>HPI:</strong> Detailed history of present illness with temporal elements</li>
+                  <li className="text-xs text-blue-800">• <strong>ROS:</strong> Review of systems - document positive and negative findings</li>
+                  <li className="text-xs text-blue-800">• <strong>PE:</strong> Physical exam findings specific to patient condition</li>
+                  <li className="text-xs text-blue-800">• <strong>MDM:</strong> Medical decision-making with complexity justified</li>
+                  <li className="text-xs text-blue-800">• <strong>Plan:</strong> Clear orders, referrals, and follow-up with rationale</li>
+                  <li className="text-xs text-blue-800">• <strong>Codes:</strong> Document elements supporting CPT/ICD-10 codes</li>
+                </ul>
+              </div>
+            )}
+            {providerType === "NP" && (
+              <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                <p className="text-xs font-semibold text-blue-900 mb-1">Nurse Practitioner Documentation Key (Epic Standard)</p>
+                <ul className="space-y-0.5">
+                  <li className="text-xs text-blue-800">• <strong>Holistic Assessment:</strong> Include physical, mental, functional, and social factors</li>
+                  <li className="text-xs text-blue-800">• <strong>Health Teaching:</strong> Detail patient education provided and understanding demonstrated</li>
+                  <li className="text-xs text-blue-800">• <strong>Prevention:</strong> Document health promotion and disease prevention counseling</li>
+                  <li className="text-xs text-blue-800">• <strong>Psychosocial:</strong> Address mental health, coping, support systems, and resources</li>
+                  <li className="text-xs text-blue-800">• <strong>Care Coordination:</strong> Document collaboration with interdisciplinary team</li>
+                  <li className="text-xs text-blue-800">• <strong>Compliance:</strong> Assess and document patient/family understanding of plan</li>
+                </ul>
               </div>
             )}
           </TabsContent>
