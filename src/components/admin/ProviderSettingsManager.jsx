@@ -24,6 +24,8 @@ import { toast } from "sonner";
 export default function ProviderSettingsManager() {
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [editMode, setEditMode] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: providerSettings = [], isLoading } = useQuery({
