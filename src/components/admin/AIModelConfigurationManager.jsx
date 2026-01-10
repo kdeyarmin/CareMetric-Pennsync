@@ -26,9 +26,11 @@ import {
   TrendingUp,
   AlertCircle,
   TestTube,
-  BarChart3
+  BarChart3,
+  Trophy
 } from "lucide-react";
 import { toast } from "sonner";
+import ABTestComparison from "./ABTestComparison";
 
 export default function AIModelConfigurationManager() {
   const [selectedConfig, setSelectedConfig] = useState(null);
@@ -208,7 +210,7 @@ export default function AIModelConfigurationManager() {
           </div>
         </TabsContent>
 
-        <TabsContent value="testing">
+        <TabsContent value="testing" className="space-y-6">
           <ABTestingManager configurations={configurations} testResults={testResults} />
         </TabsContent>
 
@@ -454,56 +456,126 @@ function ConfigurationEditor({ config, editMode, onSave, onCancel, onDelete, onE
 function ABTestingManager({ configurations, testResults }) {
   const activeTests = configurations.filter(c => c.is_ab_test && c.is_active);
   
+  // Group tests by provider/task pair
+  const testPairs = {};
+  activeTests.forEach(test => {
+    const key = `${test.provider_type}-${test.task_type}`;
+    if (!testPairs[key]) testPairs[key] = [];
+    testPairs[key].push(test);
+  });
+
+  // Only show pairs with both A and B
+  const completePairs = Object.entries(testPairs).filter(([_, tests]) => 
+    tests.some(t => t.ab_test_group === 'A') && tests.some(t => t.ab_test_group === 'B')
+  );
+  
   return (
     <div className="space-y-4">
       <Alert>
         <TestTube className="w-4 h-4" />
         <AlertDescription>
-          {activeTests.length} active A/B test(s) running. Results are automatically tracked.
+          {completePairs.length} active A/B test pair(s) running. Results are automatically tracked and analyzed.
         </AlertDescription>
       </Alert>
 
-      {activeTests.length === 0 ? (
+      {completePairs.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center text-gray-500">
             <TestTube className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <p>No active A/B tests. Create configurations with A/B testing enabled.</p>
+            <p>No active A/B test pairs. Create two configurations (Group A and B) with same provider/task.</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {activeTests.map(test => {
-            const testResultsForConfig = testResults.filter(r => r.configuration_id === test.id);
-            const avgQuality = testResultsForConfig.length > 0
-              ? (testResultsForConfig.reduce((sum, r) => sum + (r.quality_score || 0), 0) / testResultsForConfig.length).toFixed(1)
-              : 'N/A';
-            
+        <div className="space-y-6">
+          {completePairs.map(([key, tests]) => {
+            const [providerType, taskType] = key.split('-');
+            const groupAConfig = tests.find(t => t.ab_test_group === 'A');
+            const groupBConfig = tests.find(t => t.ab_test_group === 'B');
+
+            const resultsA = testResults.filter(r => r.configuration_id === groupAConfig.id);
+            const resultsB = testResults.filter(r => r.configuration_id === groupBConfig.id);
+
+            const metricsA = calculateTestMetrics(resultsA);
+            const metricsB = calculateTestMetrics(resultsB);
+
+            const winner = determineTestWinner(metricsA, metricsB);
+
             return (
-              <Card key={test.id}>
+              <Card key={key} className="border-2 border-purple-300">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">
-                      {test.provider_type} - {test.task_type.replace(/_/g, ' ')}
-                    </CardTitle>
-                    <Badge>{test.ab_test_group}</Badge>
-                  </div>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{providerType} - {taskType.replace(/_/g, ' ')}</span>
+                    {winner && (
+                      <Badge className="bg-green-600">Group {winner} Leading</Badge>
+                    )}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-gray-600">{test.test_hypothesis}</p>
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <p className="text-2xl font-bold">{testResultsForConfig.length}</p>
-                      <p className="text-xs text-gray-600">Uses</p>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Group A Stats */}
+                    <div className={`p-4 rounded-lg border-2 ${winner === 'A' ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold">Group A</h4>
+                        <Badge variant="outline">n={resultsA.length}</Badge>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Quality</span>
+                          <span className="font-semibold">{metricsA.quality.toFixed(1)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Compliance</span>
+                          <span className="font-semibold">{metricsA.compliance.toFixed(1)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Success</span>
+                          <span className="font-semibold">{metricsA.successRate.toFixed(1)}%</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold">{avgQuality}</p>
-                      <p className="text-xs text-gray-600">Avg Quality</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold">{test.ab_test_weight}%</p>
-                      <p className="text-xs text-gray-600">Traffic</p>
+
+                    {/* Group B Stats */}
+                    <div className={`p-4 rounded-lg border-2 ${winner === 'B' ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold">Group B</h4>
+                        <Badge variant="outline">n={resultsB.length}</Badge>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Quality</span>
+                          <span className="font-semibold">{metricsB.quality.toFixed(1)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Compliance</span>
+                          <span className="font-semibold">{metricsB.compliance.toFixed(1)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Success</span>
+                          <span className="font-semibold">{metricsB.successRate.toFixed(1)}%</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Test Hypothesis */}
+                  {groupAConfig.test_hypothesis && (
+                    <Alert className="bg-blue-50 border-blue-200">
+                      <AlertDescription className="text-sm">
+                        <span className="font-semibold">Hypothesis:</span> {groupAConfig.test_hypothesis}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Recommendation */}
+                  {winner && (
+                    <Alert className="bg-green-50 border-green-300">
+                      <Trophy className="w-4 h-4 text-green-600" />
+                      <AlertDescription className="text-sm text-green-900">
+                        Group {winner} shows {Math.abs(metricsB.quality - metricsA.quality).toFixed(1)} point improvement in quality.
+                        Consider promoting to production after reviewing results.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -512,6 +584,24 @@ function ABTestingManager({ configurations, testResults }) {
       )}
     </div>
   );
+}
+
+function calculateTestMetrics(results) {
+  if (results.length === 0) return { quality: 0, compliance: 0, successRate: 0 };
+  
+  return {
+    quality: results.reduce((sum, r) => sum + (r.quality_score || 0), 0) / results.length,
+    compliance: results.reduce((sum, r) => sum + (r.compliance_score || 0), 0) / results.length,
+    successRate: (results.filter(r => r.success).length / results.length) * 100
+  };
+}
+
+function determineTestWinner(metricsA, metricsB) {
+  const scoreA = (metricsA.quality * 0.5) + (metricsA.compliance * 0.5);
+  const scoreB = (metricsB.quality * 0.5) + (metricsB.compliance * 0.5);
+  
+  if (Math.abs(scoreA - scoreB) < 2) return null;
+  return scoreA > scoreB ? 'A' : 'B';
 }
 
 function ConfigurationAnalytics({ configurations, testResults }) {
