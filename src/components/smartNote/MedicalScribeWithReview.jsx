@@ -12,6 +12,7 @@ export default function MedicalScribeWithReview({
   diagnosis = "",
   visitType = "",
   patientId = "",
+  selectedTemplate = null,
   onNoteGenerated = null
 }) {
   const [stage, setStage] = useState('input'); // input, transcribing, reviewing, generating, complete
@@ -84,8 +85,18 @@ export default function MedicalScribeWithReview({
         throw new Error(data.error || 'Transcription failed');
       }
 
-      setTranscription(data.transcript || data.transcription || '');
-      setEditedTranscription(data.transcript || data.transcription || '');
+      let transcribedText = data.transcript || data.transcription || '';
+
+      // Pre-populate with template if selected
+      if (selectedTemplate?.sections) {
+        const templateSections = selectedTemplate.sections
+          .map(s => `${s.section_name}:\n${s.template_text}`)
+          .join('\n\n');
+        transcribedText = templateSections + '\n\n' + transcribedText;
+      }
+
+      setTranscription(transcribedText);
+      setEditedTranscription(transcribedText);
       setStage('reviewing');
       toast.success('Transcription complete - review and edit if needed');
     } catch (error) {
