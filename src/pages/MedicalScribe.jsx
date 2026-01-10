@@ -51,7 +51,7 @@ export default function MedicalScribe() {
   });
 
   const finalDiagnosis = diagnosis === "Custom (type below)" ? customDiagnosis : diagnosis;
-  const isReady = selectedPatientId && visitType && finalDiagnosis;
+  const isReady = visitType && finalDiagnosis;
 
   const handleNoteGenerated = (note) => {
     setGeneratedNote(note);
