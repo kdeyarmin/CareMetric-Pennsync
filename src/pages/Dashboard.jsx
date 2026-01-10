@@ -19,7 +19,7 @@ import NurseRegulatoryAlerts from "../components/compliance/NurseRegulatoryAlert
 import PDGMPredictiveAnalytics from "../components/pdgm/PDGMPredictiveAnalytics";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import AITrainingRecommendations from "../components/training/AITrainingRecommendations";
-import NursePersonalizedInsights from "../components/dashboard/NursePersonalizedInsights";
+
 import ComplianceAlertNotifications from "../components/alerts/ComplianceAlertNotifications";
 import ProactiveClinicalSupport from "../components/clinical/ProactiveClinicalSupport";
 import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
@@ -321,25 +321,7 @@ export default function Dashboard() {
 
 
 
-      {/* Patient Care Insights - Consolidated Alerts & Gaps */}
-      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.careGaps || currentUser.dashboard_config?.riskAlerts) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.careGaps) && (
-            <ProactiveCareGapIdentifier
-              patients={patients}
-              visits={visits}
-              carePlans={carePlans}
-              alerts={[]}
-              autoAnalyze={false}
-              maxGaps={6}
-              compact={true}
-            />
-          )}
-          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.riskAlerts) && (
-            <RiskAlertWidget showAllPatients={true} compact={true} />
-          )}
-        </div>
-      )}
+
 
       {/* Compliance & Clinical Support */}
       {(!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore || currentUser.dashboard_config?.clinicalSupport) && (
