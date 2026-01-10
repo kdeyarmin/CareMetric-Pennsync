@@ -369,6 +369,8 @@ export default function MedicalScribeWithReview({
           patientId={patientId}
           patientHistory={patientHistory}
           isLoading={isProcessing}
+          roughNote={editedTranscription}
+          providerType="RN"
         />
         </div>
         </div>
@@ -443,6 +445,8 @@ export default function MedicalScribeWithReview({
                   patientId={patientId}
                   patientHistory={patientHistory}
                   isLoading={false}
+                  roughNote={editedTranscription}
+                  providerType="RN"
                 />
               </div>
             </div>
