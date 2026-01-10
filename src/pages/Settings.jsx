@@ -13,6 +13,7 @@ import { createPageUrl } from "@/utils";
 import DataRetentionSettings from "../components/settings/DataRetentionSettings";
 import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
 import ThemeSettings from "../components/theme/ThemeSettings";
+import ProviderTypeSelector from "../components/settings/ProviderTypeSelector";
 
 export default function Settings() {
   const queryClient = useQueryClient();
