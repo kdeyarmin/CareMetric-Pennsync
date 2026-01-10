@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import EnhancedDocumentationAssistant from "./EnhancedDocumentationAssistant";
 import PatientHistoryContext from "./PatientHistoryContext";
+import SmartNoteGuidelinesPanel from "./SmartNoteGuidelinesPanel";
 
 export default function MedicalScribeWithReview({
   diagnosis = "",
@@ -380,27 +381,32 @@ export default function MedicalScribeWithReview({
           </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            <div className="lg:col-span-1">
-              <PatientHistoryContext
-                patientId={patientId}
-                onInsertSnippet={(snippet) => {
-                  setGeneratedNote(prev => prev + '\n\n' + snippet);
-                  toast.success('Snippet added to note');
-                }}
-              />
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              <div className="lg:col-span-1 space-y-3">
+                <PatientHistoryContext
+                  patientId={patientId}
+                  onInsertSnippet={(snippet) => {
+                    setGeneratedNote(prev => prev + '\n\n' + snippet);
+                    toast.success('Snippet added to note');
+                  }}
+                />
+                <SmartNoteGuidelinesPanel
+                  visitType={visitType}
+                  diagnosis={diagnosis}
+                  noteContent={generatedNote}
+                />
+              </div>
+              <div className="lg:col-span-4">
+                <EnhancedDocumentationAssistant
+                  generatedNote={generatedNote}
+                  diagnosis={diagnosis}
+                  visitType={visitType}
+                  patientId={patientId}
+                  patientHistory={patientHistory}
+                  isLoading={false}
+                />
+              </div>
             </div>
-            <div className="lg:col-span-3">
-              <EnhancedDocumentationAssistant
-                generatedNote={generatedNote}
-                diagnosis={diagnosis}
-                visitType={visitType}
-                patientId={patientId}
-                patientHistory={patientHistory}
-                isLoading={false}
-              />
-            </div>
-          </div>
           </div>
           );
           }
