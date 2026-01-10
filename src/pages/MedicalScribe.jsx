@@ -33,6 +33,7 @@ export default function MedicalScribe() {
   const [diagnosis, setDiagnosis] = useState("");
   const [customDiagnosis, setCustomDiagnosis] = useState("");
   const [generatedNote, setGeneratedNote] = useState("");
+  const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
