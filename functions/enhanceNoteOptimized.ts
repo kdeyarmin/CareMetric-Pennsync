@@ -18,14 +18,15 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    // Fetch patient data and context
-    const patient = patientId ? await base44.entities.Patient.filter({ id: patientId }) : [];
+    // Fetch patient data and context (skip if anonymous)
+    const isAnonymous = patientId === 'anonymous' || !patientId;
+    const patient = !isAnonymous ? await base44.entities.Patient.filter({ id: patientId }) : [];
     const selectedPatient = patient[0] || null;
     
-    const recentVisits = patientId ? 
+    const recentVisits = !isAnonymous ? 
       await base44.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3) : [];
     
-    const carePlans = patientId ? 
+    const carePlans = !isAnonymous ? 
       await base44.entities.CarePlan.filter({ patient_id: patientId }) : [];
 
     // Build comprehensive patient context
@@ -101,8 +102,8 @@ Return COMPLETE ANALYSIS in ONE call:
       }
     });
 
-    // Save to patient history
-    if (selectedPatient) {
+    // Save to patient history (skip if anonymous)
+    if (selectedPatient && !isAnonymous) {
       const currentHistory = selectedPatient.enhanced_notes_history || [];
       await base44.entities.Patient.update(patientId, {
         enhanced_notes_history: [
@@ -121,19 +122,21 @@ Return COMPLETE ANALYSIS in ONE call:
       });
     }
 
-    // Track metrics
-    await base44.entities.NoteConversion.create({
-      nurse_email: user.email,
-      patient_id: patientId || null,
-      visit_type: visitType,
-      diagnosis,
-      rough_note_length: roughNote.length,
-      enhanced_note_length: result.enhanced_note.length,
-      quality_score: result.quality_score,
-      rough_note_compliance: result.rough_compliance_score,
-      enhanced_note_compliance: result.enhanced_compliance_score,
-      compliance_improvement: result.compliance_improvement
-    });
+    // Track metrics (skip if anonymous)
+    if (!isAnonymous) {
+      await base44.entities.NoteConversion.create({
+        nurse_email: user.email,
+        patient_id: patientId || null,
+        visit_type: visitType,
+        diagnosis,
+        rough_note_length: roughNote.length,
+        enhanced_note_length: result.enhanced_note.length,
+        quality_score: result.quality_score,
+        rough_note_compliance: result.rough_compliance_score,
+        enhanced_note_compliance: result.enhanced_compliance_score,
+        compliance_improvement: result.compliance_improvement
+      });
+    }
 
     return Response.json({
       success: true,
