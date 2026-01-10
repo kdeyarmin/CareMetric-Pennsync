@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Mic, ArrowRight, Info, CheckCircle2 } from "lucide-react";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import { todayEastern } from "../components/utils/timezone";
+import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
 import MedicalScribeWithReview from "../components/smartNote/MedicalScribeWithReview";
 import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
 
