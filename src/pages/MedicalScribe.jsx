@@ -67,6 +67,11 @@ export default function MedicalScribe() {
     });
   };
 
+  const handlePatientCreated = (newPatient) => {
+    queryClient.invalidateQueries({ queryKey: ['patients'] });
+    setSelectedPatientId(newPatient.id);
+  };
+
   const handleUseNote = () => {
     if (generatedNote) {
       const noteText = generatedNote;
