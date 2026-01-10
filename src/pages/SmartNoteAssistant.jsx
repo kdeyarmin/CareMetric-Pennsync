@@ -82,7 +82,7 @@ import FavoriteButton from "../components/navigation/FavoriteButton";
 import ConsolidatedAISuggestions from "../components/smartNote/ConsolidatedAISuggestions";
 import CustomPhrasesManager from "../components/smartNote/CustomPhrasesManager";
 import OneClickComplianceFixer from "../components/smartNote/OneClickComplianceFixer";
-import AdvancedVoiceCommands from "../components/voice/AdvancedVoiceCommands";
+
 import UnifiedComplianceInsights from "../components/compliance/UnifiedComplianceInsights";
 import AdverseEventPredictor from "../components/predictive/AdverseEventPredictor";
 import PersonalizedEducationGenerator from "../components/education/PersonalizedEducationGenerator";
@@ -1685,20 +1685,13 @@ Return JSON with:
                 )}
               </div>
 
-              {/* Character count and Advanced Voice */}
-              <div className="flex items-center justify-between gap-2">
-                <p className={`text-sm ${roughNote.length >= 20 ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
-                  {roughNote.length} characters
-                  {roughNote.length < 20 && roughNote.length > 0 && (
-                    <span className="text-orange-500 ml-2">(min 20 required)</span>
-                  )}
-                </p>
-                <AdvancedVoiceCommands
-                  onVitalSigns={(vitals) => setVitalSigns(prev => ({ ...prev, ...vitals }))}
-                  onTranscription={handleVoiceTranscription}
-                  onCommand={handleVoiceCommand}
-                />
-              </div>
+              {/* Character count */}
+              <p className={`text-sm ${roughNote.length >= 20 ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
+                {roughNote.length} characters
+                {roughNote.length < 20 && roughNote.length > 0 && (
+                  <span className="text-orange-500 ml-2">(min 20 required)</span>
+                )}
+              </p>
               </CardContent>
               </Card>
 
