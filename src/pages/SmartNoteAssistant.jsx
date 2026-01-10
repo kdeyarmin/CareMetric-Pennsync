@@ -96,6 +96,7 @@ import MedicationCrossChecker from "../components/smartNote/MedicationCrossCheck
 import NextBestActionsAI from "../components/smartNote/NextBestActionsAI";
 import PersonalizedDocumentationGapSuggestions from "../components/smartNote/PersonalizedDocumentationGapSuggestions";
 import ContextualPhraseTemplates from "../components/smartNote/ContextualPhraseTemplates";
+import AITemplateGenerator from "../components/smartNote/AITemplateGenerator";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1944,12 +1945,21 @@ Return JSON with:
                   criticalGaps={documentationGaps.filter(g => g.priority === 'critical')}
                 />
               {selectedPatientId && (
+                <>
+                <AITemplateGenerator
+                  visitType={visitType}
+                  diagnosis={finalDiagnosis}
+                  patientData={selectedPatient}
+                  currentUser={currentUser}
+                  onApplyTemplate={(template) => setRoughNote(template)}
+                />
                 <ContextualPhraseTemplates
                   visitType={visitType}
                   diagnosis={finalDiagnosis}
                   onInsertPhrase={(text) => setRoughNote(prev => prev ? prev + ' ' + text : text)}
                   compact={true}
                 />
+                </>
               )}
               </div>
               </div>
