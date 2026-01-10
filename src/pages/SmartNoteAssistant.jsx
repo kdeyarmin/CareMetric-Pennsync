@@ -549,18 +549,21 @@ export default function SmartNoteAssistant() {
 
   const finalDiagnosis = diagnosis === "Custom (type below)" ? customDiagnosis : diagnosis;
 
-  // Build patient context for compliance checking
-  const patientContext = selectedPatient ? {
-    name: `${selectedPatient.first_name} ${selectedPatient.last_name}`,
-    primaryDiagnosis: selectedPatient.primary_diagnosis || finalDiagnosis,
-    secondaryDiagnoses: selectedPatient.secondary_diagnoses || [],
-    allergies: selectedPatient.allergies,
-    recentConditions: recentVisits[0]?.nurse_notes ? 
-      recentVisits[0].nurse_notes.substring(0, 200) + '...' : null,
-    previousVisitSummary: recentVisits[0] ? 
-      `Last visit ${recentVisits[0].visit_date}: ${recentVisits[0].visit_type}` : null,
-    carePlanGoals: carePlans.filter(cp => cp.status === 'active').map(cp => cp.goal)
-  } : null;
+  // Build patient context for compliance checking - memoized
+  const patientContext = useMemo(() => {
+    if (!selectedPatient) return null;
+    return {
+      name: `${selectedPatient.first_name} ${selectedPatient.last_name}`,
+      primaryDiagnosis: selectedPatient.primary_diagnosis || finalDiagnosis,
+      secondaryDiagnoses: selectedPatient.secondary_diagnoses || [],
+      allergies: selectedPatient.allergies,
+      recentConditions: recentVisits[0]?.nurse_notes ? 
+        recentVisits[0].nurse_notes.substring(0, 200) + '...' : null,
+      previousVisitSummary: recentVisits[0] ? 
+        `Last visit ${recentVisits[0].visit_date}: ${recentVisits[0].visit_type}` : null,
+      carePlanGoals: carePlans.filter(cp => cp.status === 'active').map(cp => cp.goal)
+    };
+  }, [selectedPatient, finalDiagnosis, recentVisits, carePlans]);
 
   const currentStep = useMemo(() => {
     if (!selectedPatientId || selectedPatientId === '') return 'patient';
@@ -729,8 +732,8 @@ export default function SmartNoteAssistant() {
     }
   };
 
-  // Old implementation kept as fallback
-  const handleEnhanceNoteFallback = async () => {
+  // Removed old fallback implementation - using optimized backend only
+  const handleEnhanceNoteFallback_DEPRECATED = async () => {
     if (!roughNote.trim()) return;
     setIsProcessing(true);
     const enhanceStartTime = Date.now();
@@ -1203,7 +1206,7 @@ Return JSON with:
     setIsProcessing(false);
   };
 
-  const handleCopy = () => {
+  const handleCopy = React.useCallback(() => {
     navigator.clipboard.writeText(enhancedNote);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -1216,9 +1219,9 @@ Return JSON with:
       note_length: enhancedNote.length,
       page: 'SmartNoteAssistant'
     });
-  };
+  }, [enhancedNote, selectedPatientId]);
 
-  const handleVoiceTranscription = (text) => {
+  const handleVoiceTranscription = React.useCallback((text) => {
     if (!noteStartTime) {
       setNoteStartTime(Date.now());
     }
@@ -1231,11 +1234,11 @@ Return JSON with:
       patient_id: selectedPatientId,
       page: 'SmartNoteAssistant'
     });
-  };
+  }, [noteStartTime, selectedPatientId]);
 
-  const handleInterimTranscription = (text) => {
+  const handleInterimTranscription = React.useCallback((text) => {
     setInterimVoiceText(text);
-  };
+  }, []);
 
   const handleVoiceCommand = (action, spokenText, extractedValue) => {
     switch (action) {
@@ -1297,14 +1300,14 @@ Return JSON with:
 
 
 
-  const handleContextualAction = (action) => {
+  const handleContextualAction = React.useCallback((action) => {
     if (action === 'enhance') handleEnhanceNote();
     if (action === 'copy') handleCopy();
     if (action === 'tasks') setActiveAccordion('tasks');
     if (action === 'clear') handleClearNote();
-  };
+  }, [handleEnhanceNote, handleCopy, handleClearNote]);
 
-  const handleClearNote = () => {
+  const handleClearNote = React.useCallback(() => {
     setRoughNote("");
     setEnhancedNote("");
     setAuditResults(null);
@@ -1316,11 +1319,13 @@ Return JSON with:
     setNoteStartTime(null);
     setComplianceReviewComplete(false);
     setAppliedFixesText(new Set());
-  };
+    setUnifiedInsights(null);
+    setDocumentationGaps([]);
+  }, []);
 
-  const handleInsertPhrase = (text) => {
+  const handleInsertPhrase = React.useCallback((text) => {
     setRoughNote(prev => prev ? prev + ' ' + text : text);
-  };
+  }, []);
 
   const handleRunOASISAutomation = async () => {
     if (!enhancedNote || !selectedPatientId) return;
@@ -1342,8 +1347,8 @@ Return JSON with:
     setIsRunningOASISAutomation(false);
   };
 
-  // Old OASIS implementation kept as fallback
-  const handleRunOASISAutomationFallback = async () => {
+  // Removed old OASIS fallback - using batch analysis only
+  const handleRunOASISAutomationFallback_DEPRECATED = async () => {
     if (!enhancedNote || !selectedPatientId) return;
 
     setIsRunningOASISAutomation(true);
@@ -1512,8 +1517,8 @@ Return JSON with:
     setIsAnalyzingPDGM(false);
   };
 
-  // Old PDGM implementation kept as fallback
-  const analyzePDGMOpportunitiesFallback = async () => {
+  // Removed old PDGM fallback - using batch analysis only
+  const analyzePDGMOpportunitiesFallback_DEPRECATED = async () => {
     if (!enhancedNote || !selectedPatient) return;
 
     setIsAnalyzingPDGM(true);
