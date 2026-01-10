@@ -4,9 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader, CheckCircle2, AlertCircle, BookOpen, ThumbsUp } from "lucide-react";
+import { Loader, CheckCircle2, AlertCircle, BookOpen, ThumbsUp, Edit3 } from "lucide-react";
 import { toast } from "sonner";
 import NoteFeedbackForm from "./NoteFeedbackForm";
+import InlineNoteEditor from "./InlineNoteEditor";
 
 export default function EnhancedDocumentationAssistant({
   generatedNote = "",
@@ -24,6 +25,7 @@ export default function EnhancedDocumentationAssistant({
   const [noteSummary, setNoteSummary] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [showInlineEditor, setShowInlineEditor] = useState(false);
 
   useEffect(() => {
     if (generatedNote && !isLoading) {
@@ -203,31 +205,43 @@ Return JSON:
   return (
     <Card className="w-full border-purple-200 bg-purple-50">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-purple-600" />
             Documentation Assistant
           </CardTitle>
           {generatedNote && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowFeedbackForm(!showFeedbackForm)}
-              className="text-xs"
-            >
-              <ThumbsUp className="w-3 h-3 mr-1" />
-              Feedback
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowInlineEditor(!showInlineEditor)}
+                className="text-xs"
+              >
+                <Edit3 className="w-3 h-3 mr-1" />
+                Inline Feedback
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowFeedbackForm(!showFeedbackForm)}
+                className="text-xs"
+              >
+                <ThumbsUp className="w-3 h-3 mr-1" />
+                Overall Feedback
+              </Button>
+            </div>
           )}
         </div>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="compliance">Compliance</TabsTrigger>
-            <TabsTrigger value="education">Education</TabsTrigger>
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-          </TabsList>
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="compliance" className="text-xs">Compliance</TabsTrigger>
+                    <TabsTrigger value="education" className="text-xs">Education</TabsTrigger>
+                    <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
+                    <TabsTrigger value="inline" className="text-xs">Inline Feedback</TabsTrigger>
+                  </TabsList>
 
           {/* Compliance Tab */}
           <TabsContent value="compliance" className="space-y-3 mt-4">
@@ -322,6 +336,22 @@ Return JSON:
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          {/* Inline Feedback Tab */}
+          <TabsContent value="inline" className="space-y-3 mt-4">
+            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded border border-blue-200 dark:border-blue-800">
+              <p className="text-xs text-blue-900 dark:text-blue-100">
+                <strong>Select text in the note below</strong> and click "Suggest Improvement" to provide feedback on specific sections.
+              </p>
+            </div>
+            <InlineNoteEditor
+              noteContent={generatedNote}
+              patientId={patientId}
+              providerType={providerType}
+              visitType={visitType}
+              diagnosis={diagnosis}
+            />
           </TabsContent>
 
           {/* Summary Tab */}
