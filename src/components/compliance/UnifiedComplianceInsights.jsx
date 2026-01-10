@@ -613,6 +613,13 @@ export default function UnifiedComplianceInsights({
           </div>
         </CardContent>
       </Card>
+
+      {/* Advanced Regulatory Compliance */}
+      <AdvancedRegulatoryCompliance 
+        complianceData={insights}
+        onApplyFix={handleApplyFix}
+        onCreateTask={onCreateTask}
+      />
     </div>
   );
 }
