@@ -52,7 +52,8 @@ import {
   Edit3,
   BookOpen,
   DollarSign,
-  AlertCircle
+  AlertCircle,
+  Target
 } from "lucide-react";
 import { trackRecommendation, categorizeRecommendation } from "../components/training/RecommendationTracker";
 import ComplianceScoreIndicator from "../components/smartNote/ComplianceScoreIndicator";
