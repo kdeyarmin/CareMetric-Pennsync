@@ -168,7 +168,7 @@ export default function MedicalScribe() {
                 {!isReady && (
                   <Alert className="bg-yellow-50 border-yellow-200">
                     <AlertDescription className="text-xs text-yellow-800">
-                      Select a patient, visit type, and diagnosis to get started.
+                      Select visit type and diagnosis to get started. Patient is optional.
                     </AlertDescription>
                   </Alert>
                 )}
