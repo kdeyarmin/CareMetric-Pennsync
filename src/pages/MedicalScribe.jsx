@@ -106,11 +106,21 @@ export default function MedicalScribe() {
               <CardContent className="space-y-4">
                 <div>
                   <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
-                  <SearchablePatientSelect
-                    value={selectedPatientId}
-                    onChange={setSelectedPatientId}
-                    patients={patients}
-                  />
+                  <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
+                    <SelectTrigger className="h-10 text-sm">
+                      <SelectValue placeholder="Select patient..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="anonymous" className="text-sm font-medium text-purple-600">
+                        🔒 Anonymous (No data saved)
+                      </SelectItem>
+                      {patients.map(p => (
+                        <SelectItem key={p.id} value={p.id} className="text-sm">
+                          {p.first_name} {p.last_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
