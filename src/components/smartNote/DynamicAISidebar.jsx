@@ -144,10 +144,8 @@ export default function DynamicAISidebar({
           : `AI will transform your notes into Medicare-compliant documentation${diagnosis ? ` optimized for ${diagnosis.split(' ')[0]}` : ''}`,
         guidance: urgentGaps.length > 0 
           ? `Most urgent: ${urgentGaps[0].element}`
-          : "Click Enhance button below to continue",
-        actions: [
-          { label: "Enhance with AI", action: "enhance", icon: Sparkles, primary: true, highlight: urgentGaps.length > 0 }
-        ],
+          : "Use the main Enhance button to transform your notes",
+        actions: [],
         showGuidelines: true,
         showOASISLinker: hasOASIS,
         alertSeverity: urgentGaps.length > 0 ? 'critical' : null
