@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Mic, Upload, CheckCircle2, AlertCircle, Loader, Edit3, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import AISuggestionPanel from "./AISuggestionPanel";
+import EnhancedDocumentationAssistant from "./EnhancedDocumentationAssistant";
 
 export default function MedicalScribeWithReview({
   diagnosis = "",
@@ -299,11 +299,11 @@ export default function MedicalScribeWithReview({
           </CardContent>
         </Card>
 
-        <AISuggestionPanel
-          transcription={editedTranscription}
-          onApplySuggestion={(improvedText) => {
-            setEditedTranscription(prev => prev + ' ' + improvedText);
-          }}
+        <EnhancedDocumentationAssistant
+          generatedNote={generatedNote}
+          diagnosis={diagnosis}
+          visitType={visitType}
+          patientId={patientId}
           isLoading={isProcessing}
         />
       </div>
@@ -313,15 +313,16 @@ export default function MedicalScribeWithReview({
   // Complete stage - show generated note
   if (stage === 'complete') {
     return (
-      <Card className="w-full border-green-200 bg-green-50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-green-900">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            Clinical Note Generated
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
+      <div className="space-y-4">
+        <Card className="w-full border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-green-900">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              Clinical Note Generated
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Generated Note</label>
               <Button
@@ -351,10 +352,19 @@ export default function MedicalScribeWithReview({
           >
             Create Another Note
           </Button>
-        </CardContent>
-      </Card>
-    );
-  }
+          </CardContent>
+          </Card>
 
-  return null;
+          <EnhancedDocumentationAssistant
+          generatedNote={generatedNote}
+          diagnosis={diagnosis}
+          visitType={visitType}
+          patientId={patientId}
+          isLoading={false}
+          />
+          </div>
+          );
+          }
+
+          return null;
 }
