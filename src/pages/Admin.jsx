@@ -49,6 +49,7 @@ import DetailedAuditTrailViewer from "../components/admin/DetailedAuditTrailView
 import UserManagement from "../components/admin/UserManagement";
 import RegulatoryComplianceManager from "../components/admin/RegulatoryComplianceManager";
 import ProviderSettingsManager from "../components/admin/ProviderSettingsManager";
+import AIModelConfigurationManager from "../components/admin/AIModelConfigurationManager";
 import TrainingProgressDashboard from "../components/training/TrainingProgressDashboard";
 
 export default function Admin() {

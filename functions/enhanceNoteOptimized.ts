@@ -58,6 +58,18 @@ Deno.serve(async (req) => {
       basePrompt = providerConfig.ai_note_prompt.replace('{nurseTitle}', nurseTitle);
     }
 
+    // Get optimal AI model configuration
+    const modelConfig = await base44.functions.invoke('selectOptimalAIModel', {
+      taskType: 'note_enhancement',
+      providerType,
+      complexity: 'high',
+      requiresWebSearch: false,
+      patientContext: selectedPatient ? true : false
+    });
+
+    const aiConfig = modelConfig.data?.config || { model: 'gpt-4o', temperature: 0.3, max_tokens: 3000 };
+    const startTime = Date.now();
+
     // Use OpenAI ChatGPT for better AI service
     const prompt = `${basePrompt}
 
@@ -83,12 +95,15 @@ ${visitType === 'discharge' ? '\nDISCHARGE: Admission vs discharge, improvements
 
 Return valid JSON with: rough_compliance_score (0-100), missing_elements (array), enhanced_note (string), enhanced_compliance_score (0-100), quality_score (0-100), compliance_improvement (number), documentation_gaps (array of {element, reason, priority}), time_saved_minutes (number).`;
 
+    const systemPrompt = aiConfig.system_prompt || 
+      "You are an expert clinical documentation assistant specializing in Medicare-compliant home health documentation. Always return valid JSON.";
+
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: aiConfig.model,
       messages: [
         {
           role: "system",
-          content: "You are an expert clinical documentation assistant specializing in Medicare-compliant home health documentation. Always return valid JSON."
+          content: systemPrompt
         },
         {
           role: "user",
@@ -96,8 +111,11 @@ Return valid JSON with: rough_compliance_score (0-100), missing_elements (array)
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.3
+      temperature: aiConfig.temperature,
+      max_tokens: aiConfig.max_tokens
     });
+
+    const processingTime = Date.now() - startTime;
 
     const result = JSON.parse(completion.choices[0].message.content);
 
@@ -134,6 +152,21 @@ Return valid JSON with: rough_compliance_score (0-100), missing_elements (array)
       enhanced_note_compliance: result.enhanced_compliance_score,
       compliance_improvement: result.compliance_improvement
     });
+
+    // Record A/B test result if applicable
+    if (aiConfig.configuration_id) {
+      await base44.functions.invoke('recordAITestResult', {
+        configuration_id: aiConfig.configuration_id,
+        provider_type: providerType,
+        task_type: 'note_enhancement',
+        ab_test_group: aiConfig.ab_test_group,
+        quality_score: result.quality_score,
+        compliance_score: result.enhanced_compliance_score,
+        processing_time_ms: processingTime,
+        tokens_used: completion.usage?.total_tokens || 0,
+        success: true
+      });
+    }
 
     return Response.json({
       success: true,
