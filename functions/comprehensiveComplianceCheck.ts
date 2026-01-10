@@ -50,6 +50,8 @@ Check for ALL required elements:
 5. Functional Status: ADL/IADL abilities, assistance needed
 6. Plan of Care: Continuing plan, next visit, when to contact MD/nurse
 
+NOTE: Patient identifiers (name, DOB, MRN) ARE required in home health documentation - do not flag them as violations.
+
 Return compliance analysis with specific violations and fixes.`,
         add_context_from_internet: true,
         response_json_schema: {
