@@ -65,10 +65,10 @@ export default function MedicalScribe() {
   };
 
   const handleUseNote = () => {
-    // Save the note to patient chart
-    if (generatedNote && selectedPatientId) {
+    if (generatedNote) {
       const noteText = generatedNote;
-      window.location.href = `/app?redirect=SmartNoteAssistant&patientId=${selectedPatientId}&preFilledNote=${encodeURIComponent(noteText)}`;
+      const patientParam = selectedPatientId && selectedPatientId !== 'anonymous' ? `&patientId=${selectedPatientId}` : '';
+      window.location.href = `/app?redirect=SmartNoteAssistant${patientParam}&preFilledNote=${encodeURIComponent(noteText)}`;
     }
   };
 
