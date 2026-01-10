@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import ProviderFocusChecklist from "./ProviderFocusChecklist";
 
 const PROVIDER_TYPE_SPECIFIC_GUIDANCE = {
   MD: {
@@ -189,7 +190,8 @@ export default function SmartNoteGuidelinesPanel({
   visitType = "routine_visit",
   providerType = "RN",
   diagnosis = "",
-  noteContent = ""
+  noteContent = "",
+  onSectionSelect = null
 }) {
   const [checkedItems, setCheckedItems] = useState({});
 
@@ -335,37 +337,18 @@ export default function SmartNoteGuidelinesPanel({
           {/* Provider Specific Tab */}
           <TabsContent value="provider" className="space-y-2 mt-3">
             {requirements.note_focus && (
-              <div className="bg-white p-2 rounded border">
-                <p className="text-xs font-semibold text-gray-900 mb-1">{providerType.toUpperCase()} Note Focus</p>
-                <p className="text-xs text-gray-700 leading-relaxed">{requirements.note_focus}</p>
+              <div className="bg-white p-2 rounded border border-slate-200">
+                <p className="text-xs font-semibold text-slate-900 mb-1">{providerType.toUpperCase()} Note Focus</p>
+                <p className="text-xs text-slate-700 leading-relaxed">{requirements.note_focus}</p>
               </div>
             )}
-            {providerType === "MD" && (
-              <div className="bg-blue-50 p-2 rounded border border-blue-200">
-                <p className="text-xs font-semibold text-blue-900 mb-1">Physician Documentation Key (Epic Standard)</p>
-                <ul className="space-y-0.5">
-                  <li className="text-xs text-blue-800">• <strong>HPI:</strong> Detailed history of present illness with temporal elements</li>
-                  <li className="text-xs text-blue-800">• <strong>ROS:</strong> Review of systems - document positive and negative findings</li>
-                  <li className="text-xs text-blue-800">• <strong>PE:</strong> Physical exam findings specific to patient condition</li>
-                  <li className="text-xs text-blue-800">• <strong>MDM:</strong> Medical decision-making with complexity justified</li>
-                  <li className="text-xs text-blue-800">• <strong>Plan:</strong> Clear orders, referrals, and follow-up with rationale</li>
-                  <li className="text-xs text-blue-800">• <strong>Codes:</strong> Document elements supporting CPT/ICD-10 codes</li>
-                </ul>
-              </div>
-            )}
-            {providerType === "NP" && (
-              <div className="bg-blue-50 p-2 rounded border border-blue-200">
-                <p className="text-xs font-semibold text-blue-900 mb-1">Nurse Practitioner Documentation Key (Epic Standard)</p>
-                <ul className="space-y-0.5">
-                  <li className="text-xs text-blue-800">• <strong>Holistic Assessment:</strong> Include physical, mental, functional, and social factors</li>
-                  <li className="text-xs text-blue-800">• <strong>Health Teaching:</strong> Detail patient education provided and understanding demonstrated</li>
-                  <li className="text-xs text-blue-800">• <strong>Prevention:</strong> Document health promotion and disease prevention counseling</li>
-                  <li className="text-xs text-blue-800">• <strong>Psychosocial:</strong> Address mental health, coping, support systems, and resources</li>
-                  <li className="text-xs text-blue-800">• <strong>Care Coordination:</strong> Document collaboration with interdisciplinary team</li>
-                  <li className="text-xs text-blue-800">• <strong>Compliance:</strong> Assess and document patient/family understanding of plan</li>
-                </ul>
-              </div>
-            )}
+
+            <ProviderFocusChecklist
+              providerType={providerType}
+              visitType={visitType}
+              noteContent={noteContent}
+              onSectionClick={onSectionSelect}
+            />
           </TabsContent>
         </Tabs>
 
