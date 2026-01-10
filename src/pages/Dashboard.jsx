@@ -319,36 +319,7 @@ export default function Dashboard() {
         </motion.div>
       </motion.div>
 
-      {/* My Daily Overview - Consolidated Insights & Tasks */}
-      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.taskList || currentUser.dashboard_config?.training || currentUser.dashboard_config?.coaching) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.taskList) && (
-            <div className="space-y-4">
-              <TaskNotifications userEmail={currentUser?.email} />
-              <IntelligentTaskPrioritization
-                nurseEmail={currentUser?.email}
-                patients={patients}
-                onTaskCompleted={() => queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })}
-              />
-            </div>
-          )}
-          <div className="space-y-4">
-            {(!currentUser?.dashboard_config || currentUser.dashboard_config?.training) && (
-              <NursePersonalizedInsights
-                nurseEmail={currentUser?.email}
-                recentActivity={nurseActivity}
-                noteConversions={noteConversions}
-                trainingRecommendations={nurseTrainingRecommendations}
-                complianceAudits={nurseComplianceAudits}
-                pendingTasks={nurseTasks}
-              />
-            )}
-            {(!currentUser?.dashboard_config || currentUser.dashboard_config?.coaching) && (
-              <PersonalizedCoachingDashboard nurseEmail={currentUser?.email} />
-            )}
-          </div>
-        </div>
-      )}
+
 
       {/* Patient Care Insights - Consolidated Alerts & Gaps */}
       {(!currentUser?.dashboard_config || currentUser.dashboard_config?.careGaps || currentUser.dashboard_config?.riskAlerts) && (
