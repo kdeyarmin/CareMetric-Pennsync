@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 /**
  * Scheduled job to automatically sync Medicare guidelines from a predefined list.
@@ -67,27 +67,21 @@ Deno.serve(async (req) => {
     // Process each guideline
     for (const guidelineConfig of GUIDELINES_TO_SYNC) {
       try {
-        // Fetch the webpage content
-        const fetchResult = await fetch('https://api.base44.com/v1/fetch-website', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': req.headers.get('Authorization')
-          },
-          body: JSON.stringify({
-            url: guidelineConfig.url,
-            formats: ['markdown']
-          })
+        // Use base44 integration to fetch webpage content directly
+        const fetchResult = await base44.integrations.Core.InvokeLLM({
+          prompt: `Extract and summarize the content from this URL: ${guidelineConfig.url}\n\nReturn the full extracted content as markdown.`,
+          add_context_from_internet: true,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              content: { type: "string" }
+            }
+          }
         });
 
-        if (!fetchResult.ok) {
-          throw new Error(`Failed to fetch ${guidelineConfig.url}`);
-        }
+        const markdownContent = fetchResult.content || '';
 
-        const websiteData = await fetchResult.json();
-        const markdownContent = websiteData.markdown || '';
-
-        if (!markdownContent) {
+        if (!markdownContent || markdownContent.trim().length < 100) {
           throw new Error(`No content extracted from ${guidelineConfig.url}`);
         }
 
@@ -95,7 +89,7 @@ Deno.serve(async (req) => {
         const analysisPrompt = `Analyze this Medicare guideline content and extract structured information.
 
 CONTENT:
-${markdownContent.substring(0, 5000)}
+${markdownContent.substring(0, 4000)}
 
 Extract and return JSON with:
 {
