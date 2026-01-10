@@ -17,7 +17,11 @@ import {
   FileText, 
   CheckSquare, 
   BookOpen,
-  AlertCircle 
+  AlertCircle,
+  TestTube,
+  Download,
+  Copy as CopyIcon,
+  CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,6 +64,67 @@ export default function ProviderSettingsManager() {
       setSelectedProvider(null);
     }
   });
+
+  const handleTestPrompt = async (promptText, promptType) => {
+    try {
+      setTestResult({ loading: true });
+      
+      const testNote = "Patient visited today. Vital signs stable. Patient ambulating with walker. Provided medication education.";
+      
+      const { chatWithChatGPT } = await import('@/functions/chatWithChatGPT');
+      const response = await chatWithChatGPT({
+        messages: [{ role: 'user', content: `${promptText}\n\nTest Note: ${testNote}` }],
+        temperature: 0.3
+      });
+
+      setTestResult({
+        loading: false,
+        success: true,
+        output: response.data.message,
+        type: promptType
+      });
+      
+      toast.success('Prompt tested successfully');
+    } catch (error) {
+      setTestResult({
+        loading: false,
+        success: false,
+        error: error.message
+      });
+      toast.error('Failed to test prompt');
+    }
+  };
+
+  const handleExportSettings = (setting) => {
+    const dataStr = JSON.stringify(setting, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${setting.provider_type}_settings_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    toast.success('Settings exported');
+  };
+
+  const handleCloneSettings = async (setting) => {
+    const newSetting = {
+      ...setting,
+      provider_type: `${setting.provider_type}_Copy`,
+      display_name: `${setting.display_name} (Copy)`,
+      is_active: false
+    };
+    delete newSetting.id;
+    delete newSetting.created_date;
+    delete newSetting.updated_date;
+    
+    try {
+      await base44.entities.ProviderSettings.create(newSetting);
+      queryClient.invalidateQueries(['providerSettings']);
+      toast.success('Settings cloned successfully');
+    } catch (error) {
+      toast.error('Failed to clone settings');
+    }
+  };
 
   const handleSave = (data) => {
     if (selectedProvider?.id) {
@@ -160,6 +225,10 @@ export default function ProviderSettingsManager() {
                 }
               }}
               onEdit={() => setEditMode(true)}
+              onTest={handleTestPrompt}
+              onExport={handleExportSettings}
+              onClone={handleCloneSettings}
+              testResult={testResult}
             />
           )}
         </Card>
@@ -168,7 +237,7 @@ export default function ProviderSettingsManager() {
   );
 }
 
-function ProviderSettingsEditor({ provider, editMode, providerTypes, onSave, onCancel, onDelete, onEdit }) {
+function ProviderSettingsEditor({ provider, editMode, providerTypes, onSave, onCancel, onDelete, onEdit, onTest, onExport, onClone, testResult }) {
   const [formData, setFormData] = useState(provider || {
     provider_type: "",
     display_name: "",
@@ -226,6 +295,14 @@ function ProviderSettingsEditor({ provider, editMode, providerTypes, onSave, onC
               <>
                 <Button type="button" variant="outline" onClick={onEdit}>
                   Edit
+                </Button>
+                <Button type="button" variant="outline" onClick={() => onClone(provider)}>
+                  <CopyIcon className="w-4 h-4 mr-1" />
+                  Clone
+                </Button>
+                <Button type="button" variant="outline" onClick={() => onExport(provider)}>
+                  <Download className="w-4 h-4 mr-1" />
+                  Export
                 </Button>
                 <Button type="button" variant="destructive" onClick={onDelete}>
                   <Trash2 className="w-4 h-4" />
@@ -318,7 +395,38 @@ function ProviderSettingsEditor({ provider, editMode, providerTypes, onSave, onC
                 rows={8}
                 placeholder="Custom instructions for note generation for this provider type..."
               />
+              {editMode && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => onTest(formData.ai_note_prompt, 'note_generation')}
+                  disabled={!formData.ai_note_prompt}
+                >
+                  <TestTube className="w-4 h-4 mr-1" />
+                  Test Prompt
+                </Button>
+              )}
             </div>
+
+            {testResult && !testResult.loading && testResult.type === 'note_generation' && (
+              <Alert className={testResult.success ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}>
+                {testResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                )}
+                <AlertDescription>
+                  <p className="font-semibold mb-2">
+                    {testResult.success ? 'Test Result:' : 'Test Failed:'}
+                  </p>
+                  <div className="text-sm bg-white p-2 rounded border max-h-40 overflow-y-auto">
+                    {testResult.success ? testResult.output : testResult.error}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div>
               <Label className="flex items-center gap-2">
@@ -332,7 +440,38 @@ function ProviderSettingsEditor({ provider, editMode, providerTypes, onSave, onC
                 rows={8}
                 placeholder="Custom compliance checking instructions for this provider type..."
               />
+              {editMode && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => onTest(formData.compliance_prompt, 'compliance')}
+                  disabled={!formData.compliance_prompt}
+                >
+                  <TestTube className="w-4 h-4 mr-1" />
+                  Test Prompt
+                </Button>
+              )}
             </div>
+
+            {testResult && !testResult.loading && testResult.type === 'compliance' && (
+              <Alert className={testResult.success ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}>
+                {testResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                )}
+                <AlertDescription>
+                  <p className="font-semibold mb-2">
+                    {testResult.success ? 'Test Result:' : 'Test Failed:'}
+                  </p>
+                  <div className="text-sm bg-white p-2 rounded border max-h-40 overflow-y-auto">
+                    {testResult.success ? testResult.output : testResult.error}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
           </TabsContent>
 
           <TabsContent value="checklist" className="space-y-4">
