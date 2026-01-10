@@ -603,7 +603,18 @@ export default function SmartNoteAssistant() {
   }, [selectedPatientId, vitalSigns, roughNote, enhancedNote]);
 
   const handleEnhanceNote = async () => {
-    if (!roughNote.trim()) return;
+    if (!roughNote.trim()) {
+      alert('Please enter your notes before enhancing.');
+      return;
+    }
+    if (roughNote.length < 20) {
+      alert('Please enter at least 20 characters of notes.');
+      return;
+    }
+    if (!finalDiagnosis) {
+      alert('Please select a diagnosis before enhancing.');
+      return;
+    }
     setIsProcessing(true);
     const enhanceStartTime = Date.now();
     const actualDocTime = noteStartTime ? (enhanceStartTime - noteStartTime) : 0;
@@ -675,10 +686,12 @@ export default function SmartNoteAssistant() {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
 
     } catch (error) {
+      console.error('Enhancement error:', error);
       if (error.message?.includes('Rate limit')) {
         alert('Too many requests. Please wait a moment before trying again.');
       } else {
-        alert('Failed to enhance note. Please try again.');
+        const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+        alert(`Failed to enhance note: ${errorMsg}\n\nPlease check that you've entered:\n- Patient (or select anonymous)\n- Diagnosis\n- Visit type\n- At least 20 characters of notes`);
       }
     }
     setIsProcessing(false);
