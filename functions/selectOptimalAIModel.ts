@@ -23,6 +23,56 @@ Deno.serve(async (req) => {
       patientContext = null 
     } = await req.json();
 
+    // Check for custom configurations first
+    const customConfigs = await base44.entities.AIModelConfiguration.filter({
+      provider_type: providerType,
+      task_type: taskType,
+      is_active: true
+    }, '-version');
+
+    // Handle A/B testing if enabled
+    let selectedConfig = null;
+    if (customConfigs.length > 0) {
+      const abTestConfigs = customConfigs.filter(c => c.is_ab_test);
+      
+      if (abTestConfigs.length > 0) {
+        // A/B test active - select based on weights
+        selectedConfig = selectABTestVariant(abTestConfigs, user.email);
+      } else {
+        // Use latest non-test configuration
+        selectedConfig = customConfigs[0];
+      }
+    }
+
+    // If custom config exists, use it
+    if (selectedConfig) {
+      const finalConfig = {
+        model: selectedConfig.model,
+        temperature: selectedConfig.temperature,
+        max_tokens: selectedConfig.max_tokens,
+        system_prompt: selectedConfig.system_prompt,
+        requiresWebSearch,
+        configuration_id: selectedConfig.id,
+        ab_test_group: selectedConfig.ab_test_group || null,
+        is_custom: true,
+        features: {
+          useProviderSettings: true,
+          includeRegulatoryContext: ['compliance_check', 'note_enhancement'].includes(taskType),
+          includePatientHistory: patientContext ? true : false,
+          structuredOutput: ['compliance_check', 'risk_analysis', 'care_plan'].includes(taskType)
+        }
+      };
+
+      // Track usage
+      await trackConfigurationUsage(base44, selectedConfig.id);
+
+      return Response.json({
+        success: true,
+        config: finalConfig,
+        explanation: `Using custom configuration v${selectedConfig.version} for ${providerType} ${taskType}${selectedConfig.is_ab_test ? ` (Test Group ${selectedConfig.ab_test_group})` : ''}`
+      });
+    }
+
     // Provider-specific model preferences
     const providerModelMap = {
       'NP': { model: 'gpt-4o', temperature: 0.2, max_tokens: 3000 }, // Nurse Practitioners need detailed clinical reasoning
@@ -137,4 +187,41 @@ function getProviderPromptEnhancement(providerType, taskType) {
   };
 
   return enhancements[providerType] || enhancements['RN'];
+}
+
+function selectABTestVariant(configs, userEmail) {
+  // Use user email hash for consistent variant assignment
+  const hash = userEmail.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const randomValue = (hash % 100);
+  
+  // Sort by weight and select based on cumulative weights
+  const sortedConfigs = configs.sort((a, b) => (b.ab_test_weight || 50) - (a.ab_test_weight || 50));
+  let cumulativeWeight = 0;
+  
+  for (const config of sortedConfigs) {
+    cumulativeWeight += (config.ab_test_weight || 50);
+    if (randomValue < cumulativeWeight) {
+      return config;
+    }
+  }
+  
+  // Fallback to first config
+  return sortedConfigs[0];
+}
+
+async function trackConfigurationUsage(base44, configId) {
+  try {
+    const config = await base44.entities.AIModelConfiguration.filter({ id: configId });
+    if (config[0]) {
+      const metrics = config[0].performance_metrics || {};
+      await base44.entities.AIModelConfiguration.update(configId, {
+        performance_metrics: {
+          ...metrics,
+          total_uses: (metrics.total_uses || 0) + 1
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error tracking usage:', error);
+  }
 }
