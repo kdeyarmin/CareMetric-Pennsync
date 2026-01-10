@@ -54,6 +54,12 @@ VITALS: ${Object.entries(vitalSigns).filter(([k,v]) => v).map(([k,v]) => `${k}: 
 ROUGH NOTE:
 ${roughNote}
 
+CRITICAL RULES:
+- NEVER fabricate patient details not in the rough note or patient profile above
+- Do NOT add age, date of birth, or demographic details unless explicitly provided
+- Only use information directly stated in the rough note or patient profile
+- If information is missing, do not invent it
+
 REQUIREMENTS:
 1. Homebound status (mobility limits making leaving home taxing)
 2. Skilled need (why ${nurseTitle} required)
