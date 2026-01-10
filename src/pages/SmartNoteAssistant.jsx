@@ -418,7 +418,6 @@ export default function SmartNoteAssistant() {
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccessfully, setSavedSuccessfully] = useState(false);
   const [detectedComplianceRisks, setDetectedComplianceRisks] = useState([]);
-  const [pdgmOptimizationWarnings, setPdgmOptimizationWarnings] = useState([]);
   const [noteStartTime, setNoteStartTime] = useState(null);
   const [complianceReviewComplete, setComplianceReviewComplete] = useState(false);
   const [appliedFixesText, setAppliedFixesText] = useState(new Set());
@@ -427,8 +426,6 @@ export default function SmartNoteAssistant() {
   const [comprehensiveContext, setComprehensiveContext] = useState(null);
   const [complianceTarget, setComplianceTarget] = useState(90);
   const [documentationGaps, setDocumentationGaps] = useState([]);
-  const [pdgmOpportunities, setPdgmOpportunities] = useState(null);
-  const [isAnalyzingPDGM, setIsAnalyzingPDGM] = useState(false);
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [unifiedInsights, setUnifiedInsights] = useState(null);
@@ -677,9 +674,6 @@ export default function SmartNoteAssistant() {
       if (result.success) {
         if (result.analyses.compliance) {
           setEnhancedNoteCompliance(result.analyses.compliance);
-        }
-        if (result.analyses.pdgm) {
-          setPdgmOpportunities(result.analyses.pdgm);
         }
         if (result.analyses.proactive) {
           // Handle proactive suggestions
@@ -1287,106 +1281,7 @@ Return JSON with:
 
 
 
-  const analyzePDGMOpportunities = async () => {
-    if (!enhancedNote || !selectedPatient) return;
 
-    setIsAnalyzingPDGM(true);
-    try {
-      // Use batch analysis for PDGM
-      await runBatchAnalysis(['pdgm']);
-
-      logActivity(ActivityActions.AI_FEATURE_USED, {
-        feature: 'pdgm_optimization_batched',
-        patient_id: selectedPatientId,
-        page: 'SmartNoteAssistant'
-      });
-    } catch (error) {
-      // Error logged server-side
-    }
-    setIsAnalyzingPDGM(false);
-  };
-
-  // Removed old PDGM fallback - using batch analysis only
-  const analyzePDGMOpportunitiesFallback_DEPRECATED = async () => {
-    if (!enhancedNote || !selectedPatient) return;
-
-    setIsAnalyzingPDGM(true);
-    try {
-      const pdgmAnalysis = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a PDGM optimization expert. Analyze this clinical note and patient profile for revenue optimization opportunities.
-
-  ENHANCED NOTE:
-  ${enhancedNote}
-
-  PATIENT PROFILE:
-  - Primary Diagnosis: ${finalDiagnosis}
-  - Secondary Diagnoses: ${selectedPatient.secondary_diagnoses?.join(', ') || 'None documented'}
-  - Current Medications: ${selectedPatient.current_medications?.map(m => m.name).join(', ') || 'None'}
-  - Functional Status: ${JSON.stringify(selectedPatient.functional_status || {})}
-  - Age: ${selectedPatient.date_of_birth ? Math.floor((new Date() - new Date(selectedPatient.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : 'Unknown'}
-
-  Identify PDGM optimization opportunities:
-
-  1. COMORBIDITY CAPTURE:
-   - Secondary diagnoses implied by medications but not documented
-   - Clinical findings suggesting additional diagnoses
-   - Comorbidity adjustments that would increase case-mix weight
-
-  2. FUNCTIONAL IMPAIRMENT:
-   - Current functional level vs documented level
-   - ADL/IADL limitations that should be documented
-   - GG items that could be scored more accurately
-
-  3. CLINICAL GROUP ASSIGNMENT:
-   - Current probable clinical group
-   - Alternative groups with higher reimbursement
-   - Documentation needed to support optimal grouping
-
-  4. TIMING FACTORS:
-   - Early vs Late timing considerations
-   - Admission source impact on reimbursement
-
-  Return specific, actionable opportunities with revenue impact estimates.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            current_estimated_case_mix: { type: "number" },
-            optimized_case_mix_potential: { type: "number" },
-            revenue_impact: { type: "number" },
-            opportunities: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  category: { type: "string" },
-                  finding: { type: "string" },
-                  suggested_documentation: { type: "string" },
-                  evidence_in_note: { type: "string" },
-                  revenue_impact: { type: "number" },
-                  priority: { type: "string" },
-                  actionable_now: { type: "boolean" }
-                }
-              }
-            },
-            summary: { type: "string" }
-          }
-        }
-      });
-
-      setPdgmOpportunities(pdgmAnalysis);
-
-      logActivity(ActivityActions.AI_FEATURE_USED, {
-        feature: 'pdgm_optimization_analysis',
-        patient_id: selectedPatientId,
-        opportunities_found: pdgmAnalysis.opportunities?.length || 0,
-        potential_impact: pdgmAnalysis.revenue_impact || 0,
-        page: 'SmartNoteAssistant'
-      });
-    } catch (error) {
-      // Error logged server-side
-    }
-    setIsAnalyzingPDGM(false);
-  };
 
   const handleSaveNote = async () => {
     if (!selectedPatientId || !enhancedNote || isAnonymous) {
