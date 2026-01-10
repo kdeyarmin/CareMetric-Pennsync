@@ -1385,41 +1385,43 @@ Return JSON with:
       specialty={currentUser?.provider_type || ""}
       userEmail={currentUser?.email}
     />
-    <div className="w-full max-w-full overflow-x-hidden min-w-0">
-      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
-      <div className="mb-3 sm:mb-4 flex flex-col gap-3 w-full overflow-hidden">
-        <div className="flex items-center gap-2 w-full overflow-hidden">
+    <div className="w-full max-w-full overflow-hidden min-w-0">
+    <div className="p-2.5 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-24 sm:pb-8 lg:pb-6 w-full overflow-hidden min-w-0">
+      <div className="mb-2 sm:mb-4 flex flex-col gap-2 sm:gap-3 w-full overflow-hidden">
+        <div className="flex items-center gap-2 w-full min-w-0">
           {currentStep !== 'patient' && (
             <Button 
               variant="outline" 
               size="sm"
               onClick={handleGoBack}
-              className="gap-1 text-gray-600 hover:text-gray-900 flex-shrink-0 touch-target"
+              className="gap-1 text-gray-600 hover:text-gray-900 flex-shrink-0 min-h-10 px-2"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4 flex-shrink-0" />
               <span className="hidden sm:inline text-sm">Back</span>
             </Button>
           )}
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">Smart Note Assistant</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Smart Note</h1>
             <p className="text-xs text-gray-600 hidden sm:block truncate">Transform rough notes into compliant docs</p>
           </div>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
+        <div className="flex gap-1.5 sm:gap-2 w-full flex-wrap">
           <FavoriteButton type="page" id="SmartNoteAssistant" name="Smart Note Assistant" />
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-gray-500 gap-1 touch-target flex-1 sm:flex-initial"
+            className="text-gray-500 gap-1 flex-shrink-0 min-h-10"
             onClick={() => setShowGuidelinesModal(true)}
+            title="Guidelines"
           >
-            <BookMarked className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="hidden xl:inline text-sm">Guidelines</span>
+            <BookMarked className="w-4 h-4" />
+            <span className="hidden md:inline text-sm">Guidelines</span>
           </Button>
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-gray-500 gap-1 touch-target flex-1 sm:flex-initial"
+            className="text-gray-500 gap-1 flex-shrink-0 min-h-10"
+            title="Download Guide"
             onClick={async () => {
               try {
                 const response = await base44.functions.invoke('generateSmartNoteGuide');
@@ -1446,11 +1448,11 @@ Return JSON with:
               }
             }}
           >
-            <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="hidden xl:inline text-sm">Guide</span>
-            </Button>
-            </div>
-            </div>
+            <HelpCircle className="w-4 h-4" />
+            <span className="hidden md:inline text-sm">Guide</span>
+          </Button>
+        </div>
+      </div>
 
       {/* Enhanced Step Progress */}
       <EnhancedStepIndicator 
@@ -1495,13 +1497,13 @@ Return JSON with:
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-3 sm:gap-4 w-full">
-        <div className="xl:col-span-3 space-y-3 sm:space-y-4 w-full overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-2.5 sm:gap-3 lg:gap-4 w-full">
+        <div className="xl:col-span-3 space-y-2.5 sm:space-y-3 lg:space-y-4 w-full min-w-0">
 
           {/* Step 1: Patient Selection - Enhanced */}
-          <Card id="step-patient" className={`border-2 transition-all duration-300 w-full overflow-hidden ${currentStep === 'patient' ? 'border-blue-500 ring-4 ring-blue-200 shadow-xl' : 'border-gray-300'}`}>
-            <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-blue-100 to-indigo-100">
-              <CardTitle className="text-sm sm:text-base md:text-lg flex items-center gap-2">
+           <Card id="step-patient" className={`border-2 transition-all duration-300 w-full overflow-hidden ${currentStep === 'patient' ? 'border-blue-500 ring-4 ring-blue-200 shadow-xl' : 'border-gray-300'}`}>
+             <CardHeader className="py-2 sm:py-3 bg-gradient-to-r from-blue-100 to-indigo-100">
+               <CardTitle className="text-sm sm:text-base flex items-center gap-2">
                 <div className={`p-1.5 rounded-full flex-shrink-0 ${currentStep === 'patient' ? 'bg-blue-500' : 'bg-gray-400'}`}>
                   <User className="w-4 h-4 text-white" />
                 </div>
@@ -1509,8 +1511,8 @@ Return JSON with:
                 {selectedPatient && <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 sm:p-4 space-y-3 overflow-hidden">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+            <CardContent className="p-2.5 sm:p-3 space-y-2.5 overflow-hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 w-full">
                 <div className="w-full overflow-hidden">
                   <Label className="text-xs sm:text-sm mb-1.5 block">Patient</Label>
                   <Select value={selectedPatientId} onValueChange={(id) => {
@@ -1599,7 +1601,7 @@ Return JSON with:
 
           {/* Step 2: Vitals - Enhanced */}
           <Card id="step-vitals" className={`border-2 transition-all duration-300 w-full overflow-hidden ${currentStep === 'vitals' ? 'border-green-500 shadow-lg' : 'border-gray-300'}`}>
-            <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-green-100 to-emerald-100">
+            <CardHeader className="py-2 sm:py-3 bg-gradient-to-r from-green-100 to-emerald-100">
               <CardTitle className="text-sm sm:text-base flex items-center gap-2">
                 <div className={`p-1.5 rounded-full flex-shrink-0 ${currentStep === 'vitals' ? 'bg-green-500' : 'bg-gray-400'}`}>
                   <Activity className="w-4 h-4 text-white" />
@@ -1608,7 +1610,7 @@ Return JSON with:
                 {(vitalSigns.bp || vitalSigns.hr) && <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 sm:p-4 overflow-hidden">
+            <CardContent className="p-2.5 sm:p-3 overflow-hidden">
               <SmartVitalsInput 
                 vitalSigns={vitalSigns} 
                 onChange={setVitalSigns} 
@@ -1705,8 +1707,8 @@ Return JSON with:
 
           {/* Step 3: Notes - Enhanced */}
           <Card id="step-notes" className={`border-2 transition-all duration-300 w-full overflow-hidden ${currentStep === 'notes' ? 'border-purple-500 shadow-lg' : 'border-gray-300'}`}>
-          <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-purple-100 to-pink-100">
-          <CardTitle className="text-sm sm:text-base flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 w-full">
+          <CardHeader className="py-2 sm:py-3 bg-gradient-to-r from-purple-100 to-pink-100">
+          <CardTitle className="text-sm sm:text-base flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 w-full min-w-0">
             <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
               <div className={`p-1.5 rounded-full flex-shrink-0 ${currentStep === 'notes' ? 'bg-purple-500' : 'bg-gray-400'}`}>
                 <Edit3 className="w-4 h-4 text-white" />
@@ -1723,9 +1725,9 @@ Return JSON with:
             </div>
           </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-hidden">
+          <CardContent className="p-2.5 sm:p-3 space-y-2.5 sm:space-y-3 overflow-hidden">
               {/* Smart auto-complete textarea with phrase categories */}
-              <div className="relative w-full overflow-hidden">
+              <div className="relative w-full min-w-0">
                 <SmartAutoComplete
                   value={roughNote}
                   onChange={(value) => {
@@ -1760,25 +1762,24 @@ Return JSON with:
             {/* Enhance Button - Prominent CTA */}
             {!enhancedNote && roughNote.length >= 20 && (
               <Card className="border-4 border-purple-400 bg-gradient-to-r from-purple-100 to-pink-100 shadow-xl w-full overflow-hidden">
-                <CardContent className="p-4 sm:p-6">
-                  <div className="flex flex-col items-center gap-3 sm:gap-4 text-center">
-                    <div className="p-3 sm:p-4 bg-purple-500 rounded-full">
-                      <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+                <CardContent className="p-3 sm:p-5">
+                  <div className="flex flex-col items-center gap-2.5 sm:gap-3 text-center">
+                    <div className="p-2.5 bg-purple-500 rounded-full">
+                      <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-base sm:text-lg font-bold text-purple-900 mb-1">Ready to Transform!</h3>
-                      <p className="text-xs sm:text-sm text-purple-700">Create your Medicare-compliant note</p>
+                      <h3 className="text-sm sm:text-base font-bold text-purple-900 mb-1">Ready to Transform!</h3>
+                      <p className="text-xs text-purple-700">Create your Medicare-compliant note</p>
                     </div>
                     <Button
                       onClick={handleEnhanceNote}
                       disabled={isProcessing}
-                      size="lg"
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 w-full touch-target text-base sm:text-lg font-bold shadow-lg"
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 w-full min-h-11 font-bold shadow-lg"
                     >
                       {isProcessing ? (
-                        <><div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-white mr-2" /> Enhancing...</>
+                        <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" /> Enhancing...</>
                       ) : (
-                        <><Sparkles className="w-5 h-5 sm:w-6 sm:h-6 mr-2" /> Enhance with AI</>
+                        <><Sparkles className="w-4 h-4 mr-2" /> Enhance with AI</>
                       )}
                     </Button>
                   </div>
@@ -1819,18 +1820,18 @@ Return JSON with:
           {enhancedNote && (
           <>
             <Card id="step-enhance" className="border-4 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-xl w-full overflow-hidden">
-              <CardHeader className="py-3 sm:py-4 bg-gradient-to-r from-green-100 to-emerald-100">
-                <CardTitle className="text-sm sm:text-base md:text-lg flex flex-col gap-2 w-full">
-                  <div className="flex items-center gap-2">
+              <CardHeader className="py-2 sm:py-3 bg-gradient-to-r from-green-100 to-emerald-100">
+                <CardTitle className="text-sm sm:text-base flex flex-col gap-2 w-full">
+                  <div className="flex items-center gap-2 min-w-0">
                     <div className="p-2 bg-green-500 rounded-full flex-shrink-0">
-                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                      <CheckCircle2 className="w-4 h-4 text-white" />
                     </div>
-                    <span className="text-sm sm:text-base truncate">✨ Note Enhanced!</span>
+                    <span className="truncate">✨ Note Enhanced!</span>
                   </div>
                   <span className="text-[10px] sm:text-xs text-gray-600 font-normal bg-yellow-100 px-2 py-1 rounded-full self-start">💡 Yellow = needs completion</span>
                 </CardTitle>
               </CardHeader>
-                <CardContent className="p-3 sm:p-4 overflow-hidden">
+                <CardContent className="p-2.5 sm:p-3 overflow-hidden">
                   <RichTextNoteEditor
                     value={enhancedNote}
                     onChange={setEnhancedNote}
