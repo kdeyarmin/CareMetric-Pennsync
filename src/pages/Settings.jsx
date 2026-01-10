@@ -188,23 +188,31 @@ export default function Settings() {
                    </Select>
                  </div>
                 <div>
-                  <Label htmlFor="service_type">Service Type</Label>
-                  <Select
-                    value={formData.service_type}
-                    onValueChange={(value) => setFormData({ ...formData, service_type: value })}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="home_health">🏥 Home Health</SelectItem>
-                      <SelectItem value="hospice">🕊️ Hospice</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    This determines which compliance standards apply to your documentation
-                  </p>
-                </div>
+                   <Label htmlFor="service_type">Service Type / Work Setting</Label>
+                   <Select
+                     value={formData.service_type}
+                     onValueChange={(value) => setFormData({ ...formData, service_type: value })}
+                   >
+                     <SelectTrigger className="mt-1">
+                       <SelectValue />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="home_health">🏠 Home Health</SelectItem>
+                       <SelectItem value="hospice">🕊️ Hospice</SelectItem>
+                       <SelectItem value="hospital">🏥 Hospital</SelectItem>
+                       <SelectItem value="clinic">🏢 Clinic / Outpatient</SelectItem>
+                       <SelectItem value="rehab">🔄 Rehabilitation Facility</SelectItem>
+                       <SelectItem value="ltc">🏛️ Long-Term Care / Skilled Nursing</SelectItem>
+                       <SelectItem value="assisted_living">🏘️ Assisted Living</SelectItem>
+                       <SelectItem value="behavioral_health">🧠 Behavioral Health / Mental Health</SelectItem>
+                       <SelectItem value="school_based">🎓 School-Based Services</SelectItem>
+                       <SelectItem value="other">📍 Other</SelectItem>
+                     </SelectContent>
+                   </Select>
+                   <p className="text-xs text-gray-500 mt-1">
+                     This determines which compliance standards and documentation guidelines apply
+                   </p>
+                 </div>
                 <div>
                   <Label htmlFor="preferred_language">Preferred Language</Label>
                   <Select
