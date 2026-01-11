@@ -60,6 +60,7 @@ import PaymentSuccess from './pages/PaymentSuccess';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
 import Pricing from './pages/Pricing';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import ProviderSettings from './pages/ProviderSettings';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
@@ -84,7 +85,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import ProviderSettings from './pages/ProviderSettings';
 import __Layout from './Layout.jsx';
 
 
@@ -151,6 +151,7 @@ export const PAGES = {
     "PredictiveAnalytics": PredictiveAnalytics,
     "Pricing": Pricing,
     "PrivacyPolicy": PrivacyPolicy,
+    "ProviderSettings": ProviderSettings,
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
     "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
@@ -175,7 +176,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "ProviderSettings": ProviderSettings,
 }
 
 export const pagesConfig = {

@@ -6,15 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, ChevronDown, Mic, Brain } from "lucide-react";
+import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
 
 import RealTimePatientAlerts from "../components/dashboard/RealTimePatientAlerts";
 
-import SmartRouteOptimizer from "../components/scheduling/SmartRouteOptimizer";
-import IntelligentTaskPrioritization from "../components/tasks/IntelligentTaskPrioritization";
 import NurseRegulatoryAlerts from "../components/compliance/NurseRegulatoryAlerts";
 import PDGMPredictiveAnalytics from "../components/pdgm/PDGMPredictiveAnalytics";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -25,7 +23,6 @@ import ProactiveClinicalSupport from "../components/clinical/ProactiveClinicalSu
 import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
 import AnnouncementsWidget from "../components/dashboard/AnnouncementsWidget";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
-import OfflineDataManager from "../components/mobile/OfflineDataManager";
 import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
 import ProactiveCareGapIdentifier from "../components/predictive/ProactiveCareGapIdentifier";
 import TaskNotifications from "../components/tasks/TaskNotifications";
@@ -40,7 +37,6 @@ import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
 export default function Dashboard() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [showAdditionalTools, setShowAdditionalTools] = useState(false);
 
     const { data: currentUser } = useQuery({
       queryKey: ['currentUser'],
@@ -352,32 +348,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Additional Tools - Collapsible Section */}
-      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.offlineSync || currentUser.dashboard_config?.routeOptimizer) && (
-        <Card className="mb-4 sm:mb-6">
-          <CardHeader className="cursor-pointer" onClick={() => setShowAdditionalTools(!showAdditionalTools)}>
-            <CardTitle className="text-lg flex items-center justify-between">
-              <span>Additional Tools & Resources</span>
-              <ChevronDown className={`w-5 h-5 transition-transform ${showAdditionalTools ? 'rotate-180' : ''}`} />
-            </CardTitle>
-          </CardHeader>
-          {showAdditionalTools && (
-            <CardContent className="space-y-4">
-              {(!currentUser?.dashboard_config || currentUser.dashboard_config?.offlineSync) && (
-                <OfflineDataManager />
-              )}
-              {(!currentUser?.dashboard_config || currentUser.dashboard_config?.routeOptimizer) && (
-                <SmartRouteOptimizer
-                  visits={visits.filter(v => v.status === 'scheduled')}
-                  patients={patients}
-                  onOptimizedSchedule={(order) => console.log('Optimized:', order)}
-                />
-              )}
-              <NurseRegulatoryAlerts nurseEmail={currentUser?.email} compact={true} />
-            </CardContent>
-          )}
-        </Card>
-      )}
+
     </div>
     </PullToRefresh>
   );
