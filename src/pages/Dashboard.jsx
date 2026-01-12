@@ -24,7 +24,6 @@ import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
 import AnnouncementsWidget from "../components/dashboard/AnnouncementsWidget";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
 import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
-import ProactiveCareGapIdentifier from "../components/predictive/ProactiveCareGapIdentifier";
 import TaskNotifications from "../components/tasks/TaskNotifications";
 import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 import PersonalizedCoachingDashboard from "../components/coaching/PersonalizedCoachingDashboard";
