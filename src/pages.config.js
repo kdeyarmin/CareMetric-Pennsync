@@ -91,6 +91,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import ProviderTrainingHub from './pages/ProviderTrainingHub';
 import __Layout from './Layout.jsx';
 
 
@@ -188,6 +189,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
+    "ProviderTrainingHub": ProviderTrainingHub,
 }
 
 export const pagesConfig = {
