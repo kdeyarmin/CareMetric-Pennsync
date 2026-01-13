@@ -29,6 +29,8 @@ import FollowUpTasksSuggester from "@/components/smartNote/FollowUpTasksSuggeste
 import AIRealTimeDecisionSupport from "@/components/ai/AIRealTimeDecisionSupport";
 import ComplianceBillingOptimizer from "@/components/compliance/ComplianceBillingOptimizer";
 import InvoiceGenerator from "@/components/billing/InvoiceGenerator";
+import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
+import { hasPageAccess } from "@/components/utils/providerAccessControl";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -730,6 +732,16 @@ export default function SmartNoteAssistant() {
                     patient={selectedPatient}
                   />
                 </div>
+
+                {/* Care Plan Suggestions for RN and MSW */}
+                {(currentUser?.provider_type === 'RN' || currentUser?.provider_type === 'MSW') && (
+                  <CarePlanSuggestionsPanel
+                    patientId={selectedPatient?.id}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnoses.join(", ")}
+                    noteContent={generatedNote}
+                  />
+                )}
 
                 {/* Follow-Up Tasks Section */}
                 <Card>
