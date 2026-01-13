@@ -277,9 +277,42 @@ export default function SmartNoteAssistant() {
           </TabsContent>
 
           {/* Analysis Tab */}
-          <TabsContent value="analysis" className="space-y-6">
+          <TabsContent value="clinical" className="space-y-6">
             {extractedData && (
               <>
+                {/* Diagnoses Confirmation Section */}
+                <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Brain className="w-5 h-5 text-purple-600" />
+                      Confirm Diagnoses
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-gray-600">
+                      Select the diagnoses applicable to this patient:
+                    </p>
+                    <div className="space-y-2">
+                      {extractedData.diagnoses?.map((diagnosis, idx) => (
+                        <label
+                          key={idx}
+                          className="flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-white/50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedDiagnoses.includes(diagnosis)}
+                            onChange={() => toggleDiagnosis(diagnosis)}
+                            className="w-4 h-4 rounded"
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            {diagnosis}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Differential Diagnosis Section */}
                 <Card>
                   <SectionHeader
