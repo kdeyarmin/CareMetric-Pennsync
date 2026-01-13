@@ -394,7 +394,7 @@ export default function SmartNoteAssistant() {
                           Primary Diagnoses
                         </h4>
                         <div className="space-y-1">
-                          {extractedData.diagnoses?.map((dx, idx) => (
+                          {selectedDiagnoses.map((dx, idx) => (
                             <div
                               key={idx}
                               className="text-sm text-gray-700 flex items-center gap-2"
