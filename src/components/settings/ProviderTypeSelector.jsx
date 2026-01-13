@@ -91,11 +91,15 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
               className="w-full p-2 border rounded mt-1"
               value={formData.provider_type}
               onChange={(e) => setFormData({ ...formData, provider_type: e.target.value })}
+              disabled={!allowAdminOverride && user?.role !== 'admin'}
             >
               {providerTypes.map(pt => (
                 <option key={pt.value} value={pt.value}>{pt.label}</option>
               ))}
             </select>
+            {!allowAdminOverride && user?.role !== 'admin' && (
+              <p className="text-xs text-gray-500 mt-1">Contact admin to change provider type</p>
+            )}
           </div>
 
           {selectedProviderSetting && (

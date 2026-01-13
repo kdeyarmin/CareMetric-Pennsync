@@ -112,6 +112,9 @@ import PatientEmailGenerator from "../components/patient/PatientEmailGenerator";
 import BillingCodeSuggester from "../components/billing/BillingCodeSuggester";
 import PreferenceTracker, { trackPreference } from "../components/personalization/PreferenceTracker";
 import NoteEmailDialog from "../components/notes/NoteEmailDialog";
+import AutoPatientDataFiller from "../components/smartNote/AutoPatientDataFiller";
+import RealTimeMedicalCodeSuggester from "../components/smartNote/RealTimeMedicalCodeSuggester";
+import RealTimeComplianceFeedback from "../components/smartNote/RealTimeComplianceFeedback";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1629,6 +1632,19 @@ Return JSON with:
             </CardContent>
           </Card>
 
+          {/* Auto Patient Data Filler - AI Context */}
+          {selectedPatientId && !isAnonymous && !enhancedNote && (
+            <AutoPatientDataFiller
+              patientId={selectedPatientId}
+              visitType={visitType}
+              onDataFill={(data) => {
+                const contextText = `\n\nPatient Context: ${data.aiGeneratedContext}\n`;
+                setRoughNote(prev => prev + contextText);
+                toast.success("Patient context added to note");
+              }}
+            />
+          )}
+
           {/* Medical Scribe - Record visit and generate note */}
           {selectedPatientId && !enhancedNote && (
             <div className="space-y-2.5">
@@ -1817,6 +1833,32 @@ Return JSON with:
             )}
 
 
+
+          {/* Real-Time Compliance Feedback */}
+          {roughNote.length >= 50 && !enhancedNote && (
+            <RealTimeComplianceFeedback
+              noteContent={roughNote}
+              visitType={visitType}
+              providerType={providerType || 'RN'}
+              patientData={selectedPatient}
+            />
+          )}
+
+          {/* Real-Time Medical Code Suggester */}
+          {roughNote.length >= 100 && !enhancedNote && (
+            <RealTimeMedicalCodeSuggester
+              noteContent={roughNote}
+              diagnosis={finalDiagnosis}
+              onCodeSelect={(code) => {
+                logActivity(ActivityActions.AI_FEATURE_USED, {
+                  feature: 'medical_code_suggested',
+                  code,
+                  patient_id: selectedPatientId,
+                  page: 'SmartNoteAssistant'
+                });
+              }}
+            />
+          )}
 
           {/* Post-Enhancement Refinement Tools */}
           {enhancedNote && (
