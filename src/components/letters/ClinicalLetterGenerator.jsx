@@ -91,6 +91,24 @@ CRITICAL: Return ONLY the letter text, formatted and ready to send. Do NOT inclu
 
       setGeneratedLetter(result.letter_content);
       toast.success("Letter generated successfully");
+
+      // Track letter generation usage
+      try {
+        const user = await base44.auth.me();
+        if (user?.email) {
+          const patterns = await base44.entities.ProviderUsagePattern.filter({ provider_email: user.email });
+          if (patterns[0]) {
+            const featureUsage = patterns[0].feature_usage || {};
+            featureUsage.letter_generation_count = (featureUsage.letter_generation_count || 0) + 1;
+            await base44.entities.ProviderUsagePattern.update(patterns[0].id, { 
+              feature_usage: featureUsage,
+              last_updated: new Date().toISOString()
+            });
+          }
+        }
+      } catch (e) {
+        // Silent fail
+      }
     } catch (error) {
       toast.error("Failed to generate letter");
     }

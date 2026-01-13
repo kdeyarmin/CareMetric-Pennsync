@@ -107,6 +107,24 @@ Return JSON:
 
       setSuggestedCodes(result);
       toast.success("Billing codes analyzed");
+
+      // Track billing code usage
+      try {
+        const user = await base44.auth.me();
+        if (user?.email) {
+          const patterns = await base44.entities.ProviderUsagePattern.filter({ provider_email: user.email });
+          if (patterns[0]) {
+            const featureUsage = patterns[0].feature_usage || {};
+            featureUsage.billing_codes_count = (featureUsage.billing_codes_count || 0) + 1;
+            await base44.entities.ProviderUsagePattern.update(patterns[0].id, { 
+              feature_usage: featureUsage,
+              last_updated: new Date().toISOString()
+            });
+          }
+        }
+      } catch (e) {
+        // Silent fail
+      }
     } catch (error) {
       toast.error("Failed to analyze billing codes");
     }

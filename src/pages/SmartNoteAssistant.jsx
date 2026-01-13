@@ -110,6 +110,7 @@ import ClinicalLetterGenerator from "../components/letters/ClinicalLetterGenerat
 import PatientHistoryChat from "../components/patient/PatientHistoryChat";
 import PatientEmailGenerator from "../components/patient/PatientEmailGenerator";
 import BillingCodeSuggester from "../components/billing/BillingCodeSuggester";
+import PreferenceTracker, { trackPreference } from "../components/personalization/PreferenceTracker";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -645,6 +646,15 @@ export default function SmartNoteAssistant() {
       setEnhancedNoteCompliance(result.enhanced_compliance);
       setDocumentationGaps(result.documentation_gaps || []);
       setComplianceReviewComplete(false);
+
+      // Track usage pattern
+      if (currentUser?.email) {
+        trackPreference(currentUser.email, providerType || 'RN', 'note_enhanced', {
+          visitType,
+          diagnosis: finalDiagnosis,
+          noteLength: result.enhanced_note.length
+        });
+      }
 
       // Automatically run unified compliance check
       setIsRunningUnifiedCheck(true);

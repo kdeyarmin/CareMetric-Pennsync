@@ -120,6 +120,24 @@ Be direct, accurate, and cite specific dates/visits when referencing information
         sources: result.sources 
       };
       setMessages(prev => [...prev, aiMessage]);
+
+      // Track patient chat usage
+      try {
+        const user = await base44.auth.me();
+        if (user?.email) {
+          const patterns = await base44.entities.ProviderUsagePattern.filter({ provider_email: user.email });
+          if (patterns[0]) {
+            const featureUsage = patterns[0].feature_usage || {};
+            featureUsage.patient_chat_count = (featureUsage.patient_chat_count || 0) + 1;
+            await base44.entities.ProviderUsagePattern.update(patterns[0].id, { 
+              feature_usage: featureUsage,
+              last_updated: new Date().toISOString()
+            });
+          }
+        }
+      } catch (e) {
+        // Silent fail
+      }
     } catch (error) {
       toast.error("Failed to get response");
       setMessages(prev => prev.slice(0, -1)); // Remove user message on error

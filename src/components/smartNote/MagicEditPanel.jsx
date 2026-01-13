@@ -132,6 +132,24 @@ Return JSON:
       onNoteUpdated(result.edited_note);
       toast.success(`✨ ${result.changes_made}`);
       setEditRequest("");
+
+      // Track magic edit usage
+      try {
+        const user = await base44.auth.me();
+        if (user?.email) {
+          const patterns = await base44.entities.ProviderUsagePattern.filter({ provider_email: user.email });
+          if (patterns[0]) {
+            const featureUsage = patterns[0].feature_usage || {};
+            featureUsage.magic_edit_count = (featureUsage.magic_edit_count || 0) + 1;
+            await base44.entities.ProviderUsagePattern.update(patterns[0].id, { 
+              feature_usage: featureUsage,
+              last_updated: new Date().toISOString()
+            });
+          }
+        }
+      } catch (e) {
+        // Silent fail
+      }
     } catch (error) {
       toast.error("Magic Edit failed");
       // Restore from history
