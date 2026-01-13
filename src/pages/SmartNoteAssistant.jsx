@@ -133,8 +133,7 @@ export default function SmartNoteAssistant() {
   };
 
   const isAnalysisReady = () => {
-    return selectedPatient && visitType && selectedDiagnoses.length > 0 && 
-           (vitals.temperature || vitals.blood_pressure_systolic || vitals.heart_rate);
+    return selectedPatient && visitType && selectedDiagnoses.length > 0;
   };
 
   const getMissingRequirements = () => {
@@ -142,9 +141,6 @@ export default function SmartNoteAssistant() {
     if (!selectedPatient) missing.push("Patient selection");
     if (!visitType) missing.push("Visit type");
     if (selectedDiagnoses.length === 0) missing.push("At least one diagnosis");
-    if (!vitals.temperature && !vitals.blood_pressure_systolic && !vitals.heart_rate) {
-      missing.push("At least one vital sign");
-    }
     return missing;
   };
 
