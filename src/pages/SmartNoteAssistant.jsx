@@ -54,7 +54,9 @@ import {
   DollarSign,
   AlertCircle,
   Target,
-  BookMarked
+  BookMarked,
+  Mail,
+  FileText
 } from "lucide-react";
 import { trackRecommendation, categorizeRecommendation } from "../components/training/RecommendationTracker";
 import ComplianceScoreIndicator from "../components/smartNote/ComplianceScoreIndicator";
@@ -102,6 +104,11 @@ import AITemplateGenerator from "../components/smartNote/AITemplateGenerator";
 import ClinicalGuidelinesModal from "../components/guidelines/ClinicalGuidelinesModal";
 import MedicalScribeRecorder from "../components/smartNote/MedicalScribeRecorder";
 import DifferentialDiagnosisSuggester from "../components/smartNote/DifferentialDiagnosisSuggester";
+import LearnMyFormat from "../components/smartNote/LearnMyFormat";
+import MagicEditPanel from "../components/smartNote/MagicEditPanel";
+import ClinicalLetterGenerator from "../components/letters/ClinicalLetterGenerator";
+import PatientHistoryChat from "../components/patient/PatientHistoryChat";
+import PatientEmailGenerator from "../components/patient/PatientEmailGenerator";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -446,6 +453,7 @@ export default function SmartNoteAssistant() {
   const [isRunningUnifiedCheck, setIsRunningUnifiedCheck] = useState(false);
   const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
   const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
+  const [originalEnhancedNote, setOriginalEnhancedNote] = useState("");
   const [providerType, setProviderType] = useState(null);
 
   // Get provider type from user data
@@ -627,6 +635,7 @@ export default function SmartNoteAssistant() {
       }
 
       setEnhancedNote(result.enhanced_note);
+      setOriginalEnhancedNote(result.enhanced_note); // Store original for Learn My Format
       setAuditResults({ 
         enhanced_note: result.enhanced_note,
         quality_score: result.quality_score 
@@ -1903,6 +1912,28 @@ Return JSON with:
                 </AccordionItem>
               </Accordion>
 
+              {/* Learn My Format - AI learns from edits */}
+              <LearnMyFormat
+                originalNote={originalEnhancedNote}
+                editedNote={enhancedNote}
+                visitType={visitType}
+                providerType={providerType || 'RN'}
+                diagnosis={finalDiagnosis}
+                onTemplateSaved={(template) => {
+                  queryClient.invalidateQueries({ queryKey: ['templates'] });
+                  toast.success("Template saved! You can now use it for future notes.");
+                }}
+              />
+
+              {/* Magic Edit - Conversational editing */}
+              <MagicEditPanel
+                noteContent={enhancedNote}
+                onNoteUpdated={setEnhancedNote}
+                patientData={selectedPatient}
+                visitType={visitType}
+                diagnosis={finalDiagnosis}
+              />
+
               {/* Unified Compliance Insights - All AI Feedback in One Place */}
               <UnifiedComplianceInsights
                 insights={unifiedInsights}
@@ -1976,10 +2007,42 @@ Return JSON with:
                   <p className="text-sm text-gray-600">Care plan generation available after enhancement</p>
                 </AccordionContent>
               </AccordionItem>
+              <AccordionItem value="patient-email">
+                <AccordionTrigger className="text-sm">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4" /> Patient Follow-up Email
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  <PatientEmailGenerator
+                    patientData={selectedPatient}
+                    visitNote={enhancedNote}
+                    diagnosis={finalDiagnosis}
+                    vitalSigns={vitalSigns}
+                    providerName={currentUser?.full_name}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="clinical-letters">
+                <AccordionTrigger className="text-sm">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4" /> Clinical Letters
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  <ClinicalLetterGenerator
+                    patientData={selectedPatient}
+                    visitNote={enhancedNote}
+                    diagnosis={finalDiagnosis}
+                    providerName={currentUser?.full_name}
+                    providerCredentials={currentUser?.provider_type}
+                  />
+                </AccordionContent>
+              </AccordionItem>
               <AccordionItem value="education">
                 <AccordionTrigger className="text-sm">
                   <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" /> Patient Education
+                    <BookOpen className="w-4 h-4" /> Patient Education Materials
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-4">
@@ -2016,6 +2079,14 @@ Return JSON with:
 
               {/* Simplified Sidebar */}
               <div className="space-y-2.5 sm:space-y-3 lg:space-y-4 w-full min-w-0 xl:sticky xl:top-4">
+                {/* AI Chat for Patient History */}
+                {selectedPatient && !isAnonymous && (
+                  <PatientHistoryChat
+                    patientId={selectedPatientId}
+                    patientData={selectedPatient}
+                  />
+                )}
+
                 <DynamicAISidebar
                   currentStep={currentStep}
                   hasPatient={!!selectedPatientId}
