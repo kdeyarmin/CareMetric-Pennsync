@@ -426,7 +426,7 @@ export default function MedicalScribeWithReview({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-            <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Generated Note</label>
               <Button
                 size="sm"
@@ -439,7 +439,7 @@ export default function MedicalScribeWithReview({
             <div className="bg-white p-4 rounded border border-green-200 max-h-80 overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap">
               {generatedNote}
             </div>
-          </div>
+            </div>
 
           <Alert className="bg-blue-50 border-blue-200">
             <AlertCircle className="w-4 h-4 text-blue-600" />
