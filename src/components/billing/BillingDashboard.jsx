@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, FileText, TrendingUp, AlertCircle } from 'lucide-react';
+import { DollarSign, FileText, TrendingUp, AlertCircle, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import PaymentRecorder from './PaymentRecorder';
 
 export default function BillingDashboard() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -143,7 +144,11 @@ export default function BillingDashboard() {
                   </thead>
                   <tbody>
                     {invoices.slice(0, 10).map((invoice) => (
-                      <tr key={invoice.id} className="border-b hover:bg-gray-50">
+                      <tr 
+                        key={invoice.id} 
+                        className="border-b hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setSelectedInvoice(invoice)}
+                      >
                         <td className="py-2 px-2 font-semibold">{invoice.invoice_number}</td>
                         <td className="py-2 px-2 text-gray-600">
                           {invoice.visit_type?.replace(/_/g, ' ')}
@@ -221,6 +226,31 @@ export default function BillingDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Quick Payment Recorder Modal */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">Record Payment</h3>
+              <button
+                onClick={() => setSelectedInvoice(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              <PaymentRecorder
+                invoiceId={selectedInvoice.id}
+                onPaymentRecorded={() => {
+                  setSelectedInvoice(null);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
