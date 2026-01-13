@@ -65,6 +65,7 @@ import Pricing from './pages/Pricing';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ProviderScheduling from './pages/ProviderScheduling';
 import ProviderSettings from './pages/ProviderSettings';
+import ProviderTrainingHub from './pages/ProviderTrainingHub';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
@@ -91,7 +92,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import ProviderTrainingHub from './pages/ProviderTrainingHub';
 import __Layout from './Layout.jsx';
 
 
@@ -163,6 +163,7 @@ export const PAGES = {
     "PrivacyPolicy": PrivacyPolicy,
     "ProviderScheduling": ProviderScheduling,
     "ProviderSettings": ProviderSettings,
+    "ProviderTrainingHub": ProviderTrainingHub,
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
     "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
@@ -189,7 +190,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "ProviderTrainingHub": ProviderTrainingHub,
 }
 
 export const pagesConfig = {

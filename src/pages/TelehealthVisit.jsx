@@ -7,9 +7,11 @@ import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertCircle, FileText, CheckCir
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import TelehealthConsentForm from '../components/telehealth/TelehealthConsentForm';
-import TelehealthWaitingRoom from '../components/telehealth/TelehealthWaitingRoom';
+import AdvancedWaitingRoom from '../components/telehealth/AdvancedWaitingRoom';
 import TelehealthFileSharing from '../components/telehealth/TelehealthFileSharing';
 import TelehealthPostCallSummary from '../components/telehealth/TelehealthPostCallSummary';
+import TelehealthMessaging from '../components/telehealth/TelehealthMessaging';
+import ScreenShareEducation from '../components/telehealth/ScreenShareEducation';
 import { createPageUrl } from '@/utils';
 
 export default function TelehealthVisit() {
@@ -47,6 +49,14 @@ export default function TelehealthVisit() {
     queryKey: ['patient', patientId],
     queryFn: () => base44.entities.Patient.filter({ id: patientId }).then(p => p[0]),
     enabled: !!patientId
+  });
+
+  const { data: appointment } = useQuery({
+    queryKey: ['appointment', searchParams.get('appointmentId')],
+    queryFn: () => base44.entities.Appointment.filter({ 
+      id: searchParams.get('appointmentId') 
+    }).then(a => a[0]),
+    enabled: !!searchParams.get('appointmentId')
   });
 
   // Check for existing active consent
@@ -298,10 +308,12 @@ export default function TelehealthVisit() {
       )}
 
       {step === 'waiting' && (
-        <TelehealthWaitingRoom
+        <AdvancedWaitingRoom
           patient={patient}
+          provider={currentUser}
+          appointment={appointment}
           onStart={startVideoCall}
-          onPatientReady={() => setPatientWaiting(true)}
+          onCancel={() => navigate(createPageUrl('TelehealthDashboard'))}
         />
       )}
 
@@ -400,49 +412,51 @@ export default function TelehealthVisit() {
           <div className="grid md:grid-cols-2 gap-4">
             <Alert className="border-blue-200 bg-blue-50">
               <AlertCircle className="w-4 h-4 text-blue-600" />
-              <AlertDescription className="text-blue-900">
-                <strong>HIPAA Compliance:</strong> This session is encrypted end-to-end. 
-                {consent?.recording_consent ? ' Session is being recorded per patient consent.' : ' Session is not being recorded.'}
+              <AlertDescription className="text-blue-900 text-sm">
+                <strong>HIPAA Compliance:</strong> Encrypted end-to-end. 
+                {consent?.recording_consent ? ' Recording enabled.' : ' Not recording.'}
               </AlertDescription>
             </Alert>
 
-            {sharedFiles.length > 0 && (
-              <Card>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-sm">Shared Files ({sharedFiles.length})</CardTitle>
-                </CardHeader>
-                <CardContent className="py-2">
-                  <div className="space-y-1 max-h-24 overflow-y-auto">
-                    {sharedFiles.map((file, idx) => (
-                      <div key={idx} className="text-xs flex items-center gap-2">
-                        <Upload className="w-3 h-3" />
-                        <span className="truncate">{file.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <ScreenShareEducation 
+              onScreenShareStart={(stream) => {
+                // Screen share handling is in toggleScreenShare
+              }}
+              onScreenShareStop={() => {
+                // Handle stop
+              }}
+              isScreenSharing={isScreenSharing}
+            />
           </div>
 
-          {/* In-Call Notes */}
-          <Card>
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
-                Call Notes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="py-2">
-              <textarea
-                value={callNotes}
-                onChange={(e) => setCallNotes(e.target.value)}
-                placeholder="Take notes during the call..."
-                className="w-full px-3 py-2 border rounded-md text-sm"
-                rows={3}
-              />
-            </CardContent>
-          </Card>
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Secure Messaging */}
+            <TelehealthMessaging
+              visitId={visitId}
+              patientId={patientId}
+              providerEmail={currentUser?.email}
+              isActive={true}
+            />
+
+            {/* In-Call Notes */}
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  Visit Notes
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="py-2">
+                <textarea
+                  value={callNotes}
+                  onChange={(e) => setCallNotes(e.target.value)}
+                  placeholder="Take notes during the call..."
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                  rows={3}
+                />
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
