@@ -103,8 +103,63 @@ Be specific and clinical.`,
         </Button>
 
         {interactions && (
-          <div className="bg-white p-4 rounded border text-sm whitespace-pre-wrap">
-            {interactions}
+          <div className="bg-white p-4 rounded border space-y-4">
+            {interactions.split('\n\n').filter(block => block.trim()).map((block, idx) => {
+              const interactionId = `interaction-${idx}`;
+              const isDecided = decisions[interactionId];
+              
+              return (
+                <div key={idx} className={`p-3 rounded border-l-4 ${
+                  isDecided === 'dismiss' ? 'border-l-gray-400 bg-gray-50' : 
+                  isDecided === 'accept' ? 'border-l-green-400 bg-green-50' : 
+                  'border-l-orange-400 bg-orange-50'
+                }`}>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">{block.split('\n')[0]}</p>
+                  <p className="text-xs text-gray-600 whitespace-pre-wrap mb-3">{block}</p>
+                  
+                  {!isDecided && (
+                    <div className="flex gap-2 mb-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDecision(interactionId, 'dismiss')}
+                        className="text-xs"
+                      >
+                        <X className="w-3 h-3 mr-1" /> Dismiss
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleDecision(interactionId, 'accept')}
+                        className="text-xs bg-green-600 hover:bg-green-700"
+                      >
+                        <Check className="w-3 h-3 mr-1" /> Accept
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {isDecided === 'accept' && (
+                    <div className="space-y-2 mt-3">
+                      <textarea
+                        placeholder="Enter clinical rationale for accepting this interaction..."
+                        value={rationaleInput[interactionId] || ''}
+                        onChange={(e) => setRationaleInput(prev => ({
+                          ...prev,
+                          [interactionId]: e.target.value
+                        }))}
+                        className="w-full h-16 p-2 border text-xs rounded"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveRationale(interactionId)}
+                        className="w-full bg-green-600 hover:bg-green-700 text-xs"
+                      >
+                        Save Rationale
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
