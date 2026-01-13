@@ -36,6 +36,7 @@ import NotificationCenter from "../components/notifications/NotificationCenter";
 import { ThemeProvider } from "../components/theme/ThemeProvider";
 import { SessionManager } from "../components/utils/security";
 import PushNotificationManager from "../components/notifications/PushNotificationManager";
+import { getAccessiblePages } from "../components/utils/providerAccessControl";
 
 /* =========================
    iOS / Layout Constants
@@ -136,7 +137,8 @@ export default function Layout({ children, currentPageName }) {
   // Show navigation when user is logged in
   const showNavigationUI = currentUser;
 
-  const userNavItems = [
+  // Get role-specific navigation items
+  const allNavItems = [
     { name: "Dashboard", icon: Home, page: "Dashboard" },
     { name: "My Patients", icon: Users, page: "Patients" },
     { name: "Telehealth", icon: Video, page: "TelehealthDashboard" },
@@ -146,11 +148,21 @@ export default function Layout({ children, currentPageName }) {
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
     { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
     { name: "AI Learning", icon: Sparkles, page: "MyAILearning" },
-    { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
+    { name: "Training Hub", icon: GraduationCap, page: "ProviderTrainingHub" },
     { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
     { name: "Documentation Settings", icon: Settings, page: "ProviderSettings" },
     { name: "Settings", icon: Settings, page: "Settings" }
   ];
+
+  const accessiblePages = currentUser?.provider_type 
+    ? getAccessiblePages(currentUser.provider_type)
+    : [];
+
+  const userNavItems = allNavItems.filter(item => 
+    item.page === "Dashboard" || 
+    item.page === "Settings" || 
+    accessiblePages.includes(item.page)
+  );
 
   const adminNavItems =
     currentUser?.role === "admin"
