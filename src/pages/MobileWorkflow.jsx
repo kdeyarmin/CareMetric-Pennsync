@@ -55,6 +55,38 @@ export default function MobileWorkflow() {
 
   const selectedPatientData = patients.find(p => p.id === selectedPatient);
 
+  const createNewPatient = async () => {
+    if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
+      alert("First and last name are required");
+      return;
+    }
+
+    setCreatingPatient(true);
+    try {
+      const created = await base44.entities.Patient.create({
+        first_name: newPatientData.first_name,
+        last_name: newPatientData.last_name,
+        date_of_birth: newPatientData.date_of_birth || null,
+        medical_record_number: newPatientData.medical_record_number || "",
+      });
+
+      setSelectedPatient(created.id);
+      setShowCreatePatient(false);
+      setNewPatientData({
+        first_name: "",
+        last_name: "",
+        date_of_birth: "",
+        medical_record_number: "",
+      });
+      alert("Patient created successfully");
+    } catch (error) {
+      alert("Failed to create patient");
+      console.error(error);
+    } finally {
+      setCreatingPatient(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Mobile Header */}
