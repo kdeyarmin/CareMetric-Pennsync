@@ -132,6 +132,26 @@ export default function SmartNoteAssistant() {
     }));
   };
 
+  const isAnalysisReady = () => {
+    return selectedPatient && visitType && selectedDiagnoses.length > 0 && 
+           (vitals.temperature || vitals.blood_pressure_systolic || vitals.heart_rate);
+  };
+
+  const getMissingRequirements = () => {
+    const missing = [];
+    if (!selectedPatient) missing.push("Patient selection");
+    if (!visitType) missing.push("Visit type");
+    if (selectedDiagnoses.length === 0) missing.push("At least one diagnosis");
+    if (!vitals.temperature && !vitals.blood_pressure_systolic && !vitals.heart_rate) {
+      missing.push("At least one vital sign");
+    }
+    return missing;
+  };
+
+  const availableVisitTypes = currentUser?.provider_type 
+    ? getVisitTypesForProvider(currentUser.provider_type)
+    : [];
+
   const SectionHeader = ({ icon: Icon, title, badge, section }) => (
     <button
       onClick={() => toggleSection(section)}
