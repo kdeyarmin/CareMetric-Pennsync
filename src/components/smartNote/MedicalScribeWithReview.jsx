@@ -13,6 +13,7 @@ import SmartNoteGuidelinesPanel from "./SmartNoteGuidelinesPanel";
 import ComplianceIssueDetector from "../scribe/ComplianceIssueDetector";
 import VisitSummarizer from "../scribe/VisitSummarizer";
 import DictationAccuracyFeedback from "../scribe/DictationAccuracyFeedback";
+import InvoiceGenerator from "../billing/InvoiceGenerator";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -43,6 +44,7 @@ export default function MedicalScribeWithReview({
   const timerRef = React.useRef(null);
   const [isRecording, setIsRecording] = useState(false);
   const [rawTranscription, setRawTranscription] = useState("");
+  const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
 
   const { data: patientHistory } = useQuery({
     queryKey: ['patientHistory', patientId],
@@ -455,32 +457,54 @@ export default function MedicalScribeWithReview({
             </AlertDescription>
           </Alert>
 
-          <Button
-            onClick={handleStartOver}
-            variant="outline"
-            className="w-full"
-          >
-            Create Another Note
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setShowInvoiceGenerator(true)}
+              className="flex-1 bg-green-600 hover:bg-green-700"
+            >
+              Generate Invoice
+            </Button>
+            <Button
+              onClick={handleStartOver}
+              variant="outline"
+              className="flex-1"
+            >
+              Create Another Note
+            </Button>
+          </div>
           </CardContent>
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              <div className="lg:col-span-1 space-y-3">
-                <PatientHistoryContext
-                  patientId={patientId}
-                  onInsertSnippet={(snippet) => {
-                    setGeneratedNote(prev => prev + '\n\n' + snippet);
-                    toast.success('Snippet added to note');
-                  }}
-                />
-                <SmartNoteGuidelinesPanel
-                  visitType={visitType}
-                  diagnosis={diagnosis}
-                  noteContent={generatedNote}
-                />
-              </div>
-              <div className="lg:col-span-4 space-y-4">
+             <div className="lg:col-span-1 space-y-3">
+               {showInvoiceGenerator ? (
+                 <InvoiceGenerator
+                   patientId={patientId}
+                   visitType={visitType}
+                   diagnosis={diagnosis}
+                   onInvoiceCreated={() => {
+                     setShowInvoiceGenerator(false);
+                     toast.success('Invoice created successfully');
+                   }}
+                 />
+               ) : (
+                 <>
+                   <PatientHistoryContext
+                     patientId={patientId}
+                     onInsertSnippet={(snippet) => {
+                       setGeneratedNote(prev => prev + '\n\n' + snippet);
+                       toast.success('Snippet added to note');
+                     }}
+                   />
+                   <SmartNoteGuidelinesPanel
+                     visitType={visitType}
+                     diagnosis={diagnosis}
+                     noteContent={generatedNote}
+                   />
+                 </>
+               )}
+             </div>
+             <div className="lg:col-span-4 space-y-4">
                 <VisitSummarizer
                   noteContent={generatedNote}
                   diagnosis={diagnosis}
