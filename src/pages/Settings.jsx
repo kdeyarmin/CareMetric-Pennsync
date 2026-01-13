@@ -240,6 +240,32 @@ export default function Settings() {
                   <Label className="text-gray-500">Email (Cannot be changed)</Label>
                   <p className="text-gray-900 mt-1">{currentUser?.email}</p>
                 </div>
+                {currentUser?.role === 'admin' && (
+                  <div>
+                    <Label htmlFor="role">Role (Admin Testing Only)</Label>
+                    <Select
+                      value={currentUser?.role}
+                      onValueChange={async (value) => {
+                        try {
+                          await base44.auth.updateMe({ role: value });
+                          queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+                          window.location.reload();
+                        } catch (error) {
+                          alert('Failed to update role');
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-amber-600 mt-1">⚠️ Admin testing: Switch roles to test different permissions</p>
+                  </div>
+                )}
                 <div>
                   <Label htmlFor="phone_number">Phone Number (for 2FA)</Label>
                   <Input
