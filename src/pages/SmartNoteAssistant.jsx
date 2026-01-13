@@ -343,7 +343,7 @@ export default function SmartNoteAssistant() {
                     <CardContent className="pt-0">
                       <MedicationCrossChecker
                         medications={extractedData.medications?.join("\n") || ""}
-                        diagnoses={extractedData.diagnoses?.join(", ") || ""}
+                        diagnoses={selectedDiagnoses.join(", ") || extractedData.diagnoses?.join(", ") || ""}
                       />
                     </CardContent>
                   )}
