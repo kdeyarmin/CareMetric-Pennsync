@@ -353,9 +353,6 @@ export default function Settings() {
           <ProviderPracticeInfoManager userEmail={currentUser.email} />
         )}
 
-        {/* Theme Settings */}
-        <ThemeSettings />
-
         {/* Data Retention Settings */}
         <DataRetentionSettings />
 
