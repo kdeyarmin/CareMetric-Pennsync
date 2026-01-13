@@ -17,6 +17,7 @@ import InvoiceManager from "../components/billing/InvoiceManager";
 import PaymentTracker from "../components/billing/PaymentTracker";
 import FinancialReports from "../components/billing/FinancialReports";
 import CreateInvoiceDialog from "../components/billing/CreateInvoiceDialog";
+import AutoInvoiceToggle from "../components/billing/AutoInvoiceToggle";
 
 export default function BillingInvoicing() {
   const [activeTab, setActiveTab] = useState("invoices");
@@ -145,6 +146,9 @@ export default function BillingInvoicing() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Automation Settings */}
+        {currentUser?.role === 'admin' && <AutoInvoiceToggle />}
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
+import AIInvoiceOptimizer from "./AIInvoiceOptimizer";
 
 export default function CreateInvoiceDialog() {
   const [open, setOpen] = useState(false);
@@ -22,6 +23,7 @@ export default function CreateInvoiceDialog() {
   const [lineItems, setLineItems] = useState([
     { description: "", service_code: "", quantity: 1, unit_price: 0, total: 0 }
   ]);
+  const [selectedVisit, setSelectedVisit] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -33,6 +35,11 @@ export default function CreateInvoiceDialog() {
   const { data: patients = [] } = useQuery({
     queryKey: ["patients"],
     queryFn: () => base44.entities.Patient.list('first_name', 1000)
+  });
+
+  const { data: visits = [] } = useQuery({
+    queryKey: ["visits"],
+    queryFn: () => base44.entities.Visit.list('-visit_date', 500)
   });
 
   const createInvoiceMutation = useMutation({
@@ -110,6 +117,17 @@ export default function CreateInvoiceDialog() {
 
   const { subtotal, tax_amount, total_amount } = calculateTotals();
 
+  const handlePatientChange = (patientId) => {
+    setFormData({ ...formData, patient_id: patientId });
+    // Find recent visit for this patient
+    const recentVisit = visits.find(v => v.patient_id === patientId && v.status === 'completed');
+    setSelectedVisit(recentVisit || null);
+  };
+
+  const handleOptimizedSuggestions = (optimizedItems) => {
+    setLineItems(optimizedItems);
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -130,7 +148,7 @@ export default function CreateInvoiceDialog() {
               <Label>Patient *</Label>
               <select
                 value={formData.patient_id}
-                onChange={(e) => setFormData({ ...formData, patient_id: e.target.value })}
+                onChange={(e) => handlePatientChange(e.target.value)}
                 className="w-full px-3 py-2 border rounded-md"
               >
                 <option value="">Select patient...</option>
@@ -169,6 +187,15 @@ export default function CreateInvoiceDialog() {
               />
             </div>
           </div>
+
+          {/* AI Optimizer */}
+          {selectedVisit && (
+            <AIInvoiceOptimizer
+              visit={selectedVisit}
+              lineItems={lineItems}
+              onSuggestionsApply={handleOptimizedSuggestions}
+            />
+          )}
 
           {/* Line Items */}
           <div className="space-y-2">
