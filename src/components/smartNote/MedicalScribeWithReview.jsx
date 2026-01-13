@@ -479,14 +479,15 @@ export default function MedicalScribeWithReview({
              <div className="lg:col-span-1 space-y-3">
                {showInvoiceGenerator ? (
                  <InvoiceGenerator
-                   patientId={patientId}
-                   visitType={visitType}
-                   diagnosis={diagnosis}
-                   onInvoiceCreated={() => {
-                     setShowInvoiceGenerator(false);
-                     toast.success('Invoice created successfully');
-                   }}
-                 />
+                     patientId={patientId}
+                     visitType={visitType}
+                     diagnosis={diagnosis}
+                     clinicalNote={generatedNote}
+                     onInvoiceCreated={() => {
+                       setShowInvoiceGenerator(false);
+                       toast.success('Invoice created successfully');
+                     }}
+                   />
                ) : (
                  <>
                    <PatientHistoryContext

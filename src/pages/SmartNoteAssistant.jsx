@@ -802,6 +802,7 @@ export default function SmartNoteAssistant() {
                           patientId={selectedPatient?.id}
                           visitType={visitType}
                           diagnosis={selectedDiagnoses[0] || ''}
+                          clinicalNote={generatedNote}
                           onInvoiceCreated={() => {
                             setShowInvoiceGenerator(false);
                             toast.success('Invoice created successfully');
