@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
 export default function MedicationCrossChecker({ medications, diagnoses }) {
   const [interactions, setInteractions] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [decisions, setDecisions] = useState({});
+  const [rationaleInput, setRationaleInput] = useState({});
 
   const checkInteractions = async () => {
     if (!medications?.trim()) {
