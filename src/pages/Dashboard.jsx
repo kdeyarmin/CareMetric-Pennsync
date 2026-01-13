@@ -58,6 +58,8 @@ export default function Dashboard() {
     const accessibleWidgets = currentUser?.provider_type 
       ? getAccessibleWidgets(currentUser.provider_type)
       : [];
+    
+    const canAccessWidget = (widgetName) => accessibleWidgets.includes(widgetName);
 
     // Redirect to onboarding if not completed
     React.useEffect(() => {
@@ -363,7 +365,7 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          {accessibleWidgets.includes('smart_notes') && (
+          {canAccessWidget('smartNotes') && (
             <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
               <Link to={createPageUrl("SmartNoteAssistant")} className="block">
                 <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift h-full cursor-pointer">
@@ -378,7 +380,7 @@ export default function Dashboard() {
               </Link>
             </motion.div>
           )}
-          {accessibleWidgets.includes('medical_scribe') && (
+          {canAccessWidget('medicalScribe') && (
             <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
               <Link to={createPageUrl("MedicalScribe")} className="block">
                 <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800 hover-lift h-full cursor-pointer">
@@ -393,7 +395,7 @@ export default function Dashboard() {
               </Link>
             </motion.div>
           )}
-          {accessibleWidgets.includes('telehealth') && (
+          {canAccessWidget('telehealth') && (
             <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
               <Link to={createPageUrl("TelehealthDashboard")} className="block">
                 <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift h-full cursor-pointer">

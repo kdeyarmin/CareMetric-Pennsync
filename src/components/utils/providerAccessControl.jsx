@@ -490,3 +490,11 @@ export const filterVisitTypesForProvider = (providerType, allVisitTypes) => {
   const allowedVisitTypeIds = getVisitTypesForProvider(providerType).map(vt => vt.id);
   return allVisitTypes.filter(vt => allowedVisitTypeIds.includes(vt));
 };
+
+/**
+ * Get accessible widgets for a provider type (maps to feature names)
+ */
+export const getAccessibleWidgets = (providerType) => {
+  const config = PROVIDER_DASHBOARD_ACCESS[providerType];
+  return config?.dashboardWidgets || [];
+};
