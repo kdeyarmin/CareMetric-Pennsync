@@ -5,26 +5,27 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-        Home,
-        Users,
-        User,
-        WifiOff,
-        GraduationCap,
-        BarChart3,
-        Settings,
-        Menu,
-        X,
-        Brain,
-        Target,
-        Bell,
-        LogOut,
-        ChevronLeft,
-        ChevronRight,
-        Sparkles,
-        Activity,
-        CreditCard,
-        Mic
-      } from "lucide-react";
+              Home,
+              Users,
+              User,
+              WifiOff,
+              GraduationCap,
+              BarChart3,
+              Settings,
+              Menu,
+              X,
+              Brain,
+              Target,
+              Bell,
+              LogOut,
+              ChevronLeft,
+              ChevronRight,
+              Sparkles,
+              Activity,
+              CreditCard,
+              Mic,
+              Smartphone
+            } from "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -33,6 +34,7 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
 import { ThemeProvider } from "../components/theme/ThemeProvider";
 import { SessionManager } from "../components/utils/security";
+import PushNotificationManager from "../components/notifications/PushNotificationManager";
 
 /* =========================
    iOS / Layout Constants
@@ -138,6 +140,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "My Patients", icon: Users, page: "Patients" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
+    { name: "Mobile Workflow", icon: Smartphone, page: "MobileWorkflow" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
     { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
     { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
@@ -346,6 +349,7 @@ export default function Layout({ children, currentPageName }) {
             </Link>
 
             <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
+              <PushNotificationManager userEmail={currentUser?.email} />
               <NotificationCenter />
               <Button
                 size="icon"
@@ -528,13 +532,13 @@ export default function Layout({ children, currentPageName }) {
             </Link>
 
             <Link
-              to={createPageUrl("SmartNoteAssistant")}
+              to={createPageUrl("MobileWorkflow")}
               className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("SmartNoteAssistant") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                isActive("MobileWorkflow") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
               }`}
             >
-              <Brain className="w-5 h-5" />
-              <span className="text-[11px]">Notes</span>
+              <Smartphone className="w-5 h-5" />
+              <span className="text-[11px]">Mobile</span>
             </Link>
 
             <Link

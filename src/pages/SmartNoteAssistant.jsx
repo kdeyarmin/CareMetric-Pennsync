@@ -56,7 +56,8 @@ import {
   Target,
   BookMarked,
   Mail,
-  FileText
+  FileText,
+  Upload
 } from "lucide-react";
 import { trackRecommendation, categorizeRecommendation } from "../components/training/RecommendationTracker";
 import ComplianceScoreIndicator from "../components/smartNote/ComplianceScoreIndicator";
@@ -111,6 +112,7 @@ import PatientHistoryChat from "../components/patient/PatientHistoryChat";
 import PatientEmailGenerator from "../components/patient/PatientEmailGenerator";
 import BillingCodeSuggester from "../components/billing/BillingCodeSuggester";
 import PreferenceTracker, { trackPreference } from "../components/personalization/PreferenceTracker";
+import EHRPushButton from "../components/ehr/EHRPushButton";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1975,6 +1977,17 @@ Return JSON with:
               />
 
 
+
+              {/* EHR Push Integration */}
+              {!isAnonymous && (
+                <EHRPushButton
+                  noteContent={enhancedNote}
+                  patientMRN={selectedPatient?.medical_record_number}
+                  patientData={selectedPatient}
+                  encounterDate={visitDate}
+                  noteType={visitType.replace(/_/g, ' ')}
+                />
+              )}
 
               {/* Next Steps Panel - Clear action-oriented summary */}
               <NextStepsPanel
