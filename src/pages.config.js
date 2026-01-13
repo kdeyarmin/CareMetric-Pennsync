@@ -62,6 +62,7 @@ import PaymentSuccess from './pages/PaymentSuccess';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
 import Pricing from './pages/Pricing';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import ProviderScheduling from './pages/ProviderScheduling';
 import ProviderSettings from './pages/ProviderSettings';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
@@ -79,6 +80,7 @@ import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import SystemMonitoring from './pages/SystemMonitoring';
 import Tasks from './pages/Tasks';
+import TelehealthDashboard from './pages/TelehealthDashboard';
 import TelehealthVisit from './pages/TelehealthVisit';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
@@ -88,8 +90,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import ProviderScheduling from './pages/ProviderScheduling';
-import TelehealthDashboard from './pages/TelehealthDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -158,6 +158,7 @@ export const PAGES = {
     "PredictiveAnalytics": PredictiveAnalytics,
     "Pricing": Pricing,
     "PrivacyPolicy": PrivacyPolicy,
+    "ProviderScheduling": ProviderScheduling,
     "ProviderSettings": ProviderSettings,
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
     "ReferralProcessor": ReferralProcessor,
@@ -175,6 +176,7 @@ export const PAGES = {
     "SystemJobMonitor": SystemJobMonitor,
     "SystemMonitoring": SystemMonitoring,
     "Tasks": Tasks,
+    "TelehealthDashboard": TelehealthDashboard,
     "TelehealthVisit": TelehealthVisit,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
@@ -184,8 +186,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "ProviderScheduling": ProviderScheduling,
-    "TelehealthDashboard": TelehealthDashboard,
 }
 
 export const pagesConfig = {
