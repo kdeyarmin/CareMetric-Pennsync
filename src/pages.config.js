@@ -86,6 +86,7 @@ import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import MobileWorkflow from './pages/MobileWorkflow';
+import TelehealthVisit from './pages/TelehealthVisit';
 import __Layout from './Layout.jsx';
 
 
@@ -178,6 +179,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
     "MobileWorkflow": MobileWorkflow,
+    "TelehealthVisit": TelehealthVisit,
 }
 
 export const pagesConfig = {
