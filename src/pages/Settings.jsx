@@ -309,11 +309,20 @@ export default function Settings() {
                   <p className="text-gray-900">{currentUser?.credential_type || 'RN'}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Service Type</p>
-                  <p className="text-gray-900">
-                    {currentUser?.service_type === 'hospice' ? '🕊️ Hospice' : '🏥 Home Health'}
-                  </p>
-                </div>
+                   <p className="text-sm font-medium text-gray-500">Service Type</p>
+                   <p className="text-gray-900">
+                     {currentUser?.service_type === 'hospice' ? '🕊️ Hospice' :
+                      currentUser?.service_type === 'hospital' ? '🏥 Hospital' :
+                      currentUser?.service_type === 'clinic' ? '🏢 Clinic / Outpatient' :
+                      currentUser?.service_type === 'rehab' ? '🔄 Rehabilitation Facility' :
+                      currentUser?.service_type === 'ltc' ? '🏛️ Long-Term Care / Skilled Nursing' :
+                      currentUser?.service_type === 'assisted_living' ? '🏘️ Assisted Living' :
+                      currentUser?.service_type === 'behavioral_health' ? '🧠 Behavioral Health / Mental Health' :
+                      currentUser?.service_type === 'school_based' ? '🎓 School-Based Services' :
+                      currentUser?.service_type === 'other' ? '📍 Other' :
+                      '🏠 Home Health'}
+                   </p>
+                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Preferred Language</p>
                   <p className="text-gray-900">
