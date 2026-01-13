@@ -372,7 +372,7 @@ export default function Settings() {
         </Card>
 
         {/* Provider Profile */}
-        <ProviderTypeSelector currentUser={currentUser} />
+        <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
 
         {/* Practice Information */}
         {currentUser && !['RN', 'LPN'].includes(currentUser.credential_type) && (
