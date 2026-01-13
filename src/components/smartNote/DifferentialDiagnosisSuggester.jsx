@@ -104,9 +104,29 @@ Be specific and practical.`,
         </Button>
 
         {suggestions && (
-          <div className="bg-white p-4 rounded border text-sm whitespace-pre-wrap">
-            {suggestions}
+          <div className="bg-white p-4 rounded border space-y-2">
+            {suggestions.split('\n').filter(line => line.trim()).map((line, idx) => {
+              const isDiagnosis = line.includes('Diagnosis') || line.includes('-');
+              return (
+                <div key={idx} className={isDiagnosis ? "font-semibold text-blue-700 py-2 border-b" : "text-sm text-gray-700"}>
+                  {line}
+                </div>
+              );
+            })}
           </div>
+        )}
+
+        {expandedDiagnosis && (
+          <Card className="border-green-200 bg-green-50">
+            <CardHeader>
+              <CardTitle className="text-base">{expandedDiagnosis.name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm whitespace-pre-wrap bg-white p-3 rounded border">
+                {expandedDiagnosis.tests}
+              </div>
+            </CardContent>
+          </Card>
         )}
       </CardContent>
     </Card>
