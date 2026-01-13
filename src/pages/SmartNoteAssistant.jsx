@@ -156,19 +156,123 @@ export default function SmartNoteAssistant() {
 
         {/* Tabbed interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsTrigger value="patient">
+              <Users className="w-4 h-4 mr-2" />
+              Patient
+            </TabsTrigger>
             <TabsTrigger value="extraction">
               <Wand2 className="w-4 h-4 mr-2" />
-              Extraction
+              Notes
             </TabsTrigger>
-            <TabsTrigger value="analysis" disabled={!extractedData}>
+            <TabsTrigger value="clinical" disabled={!extractedData}>
               <Brain className="w-4 h-4 mr-2" />
               Analysis
             </TabsTrigger>
           </TabsList>
 
+          {/* Patient Selection Tab */}
+          <TabsContent value="patient" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Select Patient
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Search Patient
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Search by name or MRN..."
+                    value={searchPatient}
+                    onChange={(e) => setSearchPatient(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+
+                {patients.length > 0 && (
+                  <div className="max-h-64 overflow-y-auto border rounded-lg">
+                    {patients.map((patient) => (
+                      <button
+                        key={patient.id}
+                        onClick={() => {
+                          setSelectedPatient(patient);
+                          setActiveTab("extraction");
+                        }}
+                        className={`w-full text-left p-3 border-b hover:bg-gray-50 transition ${
+                          selectedPatient?.id === patient.id
+                            ? "bg-blue-50 border-l-4 border-l-blue-600"
+                            : ""
+                        }`}
+                      >
+                        <p className="font-semibold text-gray-900">
+                          {patient.first_name} {patient.last_name}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          MRN: {patient.medical_record_number} | DOB:{" "}
+                          {patient.date_of_birth}
+                        </p>
+                        {patient.primary_diagnosis && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Primary: {patient.primary_diagnosis}
+                          </p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedPatient && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          Selected: {selectedPatient.first_name}{" "}
+                          {selectedPatient.last_name}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          MRN: {selectedPatient.medical_record_number}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedPatient(null)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  disabled={!selectedPatient}
+                  onClick={() => setActiveTab("extraction")}
+                >
+                  Continue to Clinical Notes
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Extraction Tab */}
           <TabsContent value="extraction" className="space-y-6">
+            {selectedPatient && (
+              <Card className="bg-blue-50 border-blue-200">
+                <CardContent className="pt-6">
+                  <p className="text-sm text-gray-700">
+                    <strong>Patient:</strong> {selectedPatient.first_name}{" "}
+                    {selectedPatient.last_name} • MRN:{" "}
+                    {selectedPatient.medical_record_number}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
             <ClinicalNoteAnalyzer onDataExtracted={handleDataExtracted} />
           </TabsContent>
 
