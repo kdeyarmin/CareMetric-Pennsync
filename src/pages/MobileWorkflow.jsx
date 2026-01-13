@@ -26,6 +26,14 @@ export default function MobileWorkflow() {
   const [visitType, setVisitType] = useState("routine_visit");
   const [diagnosis, setDiagnosis] = useState("");
   const [generatedNote, setGeneratedNote] = useState("");
+  const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [newPatientData, setNewPatientData] = useState({
+    first_name: "",
+    last_name: "",
+    date_of_birth: "",
+    medical_record_number: "",
+  });
+  const [creatingPatient, setCreatingPatient] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
