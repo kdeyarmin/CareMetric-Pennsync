@@ -413,6 +413,7 @@ export const PROVIDER_PAGE_ACCESS = {
     'SmartNoteAssistant',
     'DocumentVisit',
     'MobileWorkflow',
+    'CarePlanManagement',
     'PatientAlerts',
     'PatientDetails',
     'TelehealthDashboard',
