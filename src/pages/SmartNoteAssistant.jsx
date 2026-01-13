@@ -28,6 +28,7 @@ import AdverseEventPredictor from "@/components/smartNote/AdverseEventPredictor"
 import FollowUpTasksSuggester from "@/components/smartNote/FollowUpTasksSuggester";
 import AIRealTimeDecisionSupport from "@/components/ai/AIRealTimeDecisionSupport";
 import ComplianceBillingOptimizer from "@/components/compliance/ComplianceBillingOptimizer";
+import InvoiceGenerator from "@/components/billing/InvoiceGenerator";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -54,6 +55,7 @@ export default function SmartNoteAssistant() {
   });
   const [creatingPatient, setCreatingPatient] = useState(false);
   const [generatedNote, setGeneratedNote] = useState("");
+  const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -786,6 +788,27 @@ export default function SmartNoteAssistant() {
                         </div>
                       </div>
                     </div>
+                    <div className="border-t pt-4 mt-4">
+                      <Button
+                        onClick={() => setShowInvoiceGenerator(!showInvoiceGenerator)}
+                        className="w-full bg-green-600 hover:bg-green-700"
+                      >
+                        {showInvoiceGenerator ? 'Hide Invoice Generator' : 'Generate Invoice'}
+                      </Button>
+                    </div>
+                    {showInvoiceGenerator && (
+                      <div className="mt-4 pt-4 border-t">
+                        <InvoiceGenerator
+                          patientId={selectedPatient?.id}
+                          visitType={visitType}
+                          diagnosis={selectedDiagnoses[0] || ''}
+                          onInvoiceCreated={() => {
+                            setShowInvoiceGenerator(false);
+                            toast.success('Invoice created successfully');
+                          }}
+                        />
+                      </div>
+                    )}
                     </CardContent>
                     </Card>
                     </>
