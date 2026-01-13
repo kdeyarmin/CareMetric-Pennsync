@@ -8,24 +8,36 @@ import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
-export default function CreateAppointmentDialog() {
-  const [open, setOpen] = useState(false);
+export default function CreateAppointmentDialog({ 
+  open: controlledOpen, 
+  onOpenChange, 
+  onAppointmentCreated,
+  defaultAppointmentType,
+  currentUser: providedUser
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = onOpenChange || setInternalOpen;
+  
   const [formData, setFormData] = useState({
     patient_id: "",
     appointment_date: "",
     start_time: "",
     end_time: "",
-    appointment_type: "in_person",
+    appointment_type: defaultAppointmentType || "in_person",
     visit_type: "routine_visit",
     notes: ""
   });
 
   const queryClient = useQueryClient();
 
-  const { data: currentUser } = useQuery({
+  const { data: fetchedUser } = useQuery({
     queryKey: ["currentUser"],
-    queryFn: () => base44.auth.me()
+    queryFn: () => base44.auth.me(),
+    enabled: !providedUser
   });
+  
+  const currentUser = providedUser || fetchedUser;
 
   const { data: patients = [] } = useQuery({
     queryKey: ["patients"],
@@ -55,7 +67,9 @@ export default function CreateAppointmentDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["telehealthAppointments"] });
       toast.success("Appointment created successfully");
+      if (onAppointmentCreated) onAppointmentCreated();
       setOpen(false);
       resetForm();
     },
@@ -91,12 +105,14 @@ export default function CreateAppointmentDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="w-4 h-4 mr-1" />
-          New Appointment
-        </Button>
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger asChild>
+          <Button size="sm">
+            <Plus className="w-4 h-4 mr-1" />
+            New Appointment
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create Appointment</DialogTitle>
