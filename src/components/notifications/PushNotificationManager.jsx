@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 
 export default function PushNotificationManager({ userEmail }) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [permission, setPermission] = useState(Notification.permission);
+  const [permission, setPermission] = useState(
+    typeof window !== 'undefined' && 'Notification' in window 
+      ? Notification.permission 
+      : 'denied'
+  );
   const queryClient = useQueryClient();
 
   // Check for urgent tasks
