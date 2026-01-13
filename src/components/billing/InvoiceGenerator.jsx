@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { FileText, Loader, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import AIBillingCodeSuggester from './AIBillingCodeSuggester';
 
 const VISIT_TYPE_AMOUNTS = {
   skilled_nursing: 150,
@@ -26,7 +27,7 @@ const BILLING_CODES = {
   prn: '99212',
 };
 
-export default function InvoiceGenerator({ visitId = null, patientId = null, visitType = null, diagnosis = null, onInvoiceCreated = null }) {
+export default function InvoiceGenerator({ visitId = null, patientId = null, visitType = null, diagnosis = null, clinicalNote = null, onInvoiceCreated = null }) {
   const [formData, setFormData] = useState({
     visit_id: visitId || '',
     patient_id: patientId || '',
@@ -36,8 +37,11 @@ export default function InvoiceGenerator({ visitId = null, patientId = null, vis
     invoice_date: new Date().toISOString().split('T')[0],
     due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     payor: 'Medicare',
+    billing_code: '',
+    custom_amount: '',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedAICodes, setSelectedAICodes] = useState(null);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -45,11 +49,29 @@ export default function InvoiceGenerator({ visitId = null, patientId = null, vis
   });
 
   const calculateAmount = () => {
+    if (formData.custom_amount) {
+      return parseFloat(formData.custom_amount);
+    }
     return VISIT_TYPE_AMOUNTS[formData.visit_type] || 0;
   };
 
   const getBillingCode = () => {
+    if (formData.billing_code) {
+      return formData.billing_code;
+    }
     return BILLING_CODES[formData.visit_type] || '';
+  };
+
+  const handleCodesSelected = (selectedCodes, allSuggestions) => {
+    if (selectedCodes.length > 0) {
+      const selectedCode = allSuggestions.find(c => c.code === selectedCodes[0]);
+      setFormData(prev => ({
+        ...prev,
+        billing_code: selectedCode.code,
+        custom_amount: selectedCode.amount.toString(),
+      }));
+      toast.success(`Selected billing code: ${selectedCode.code}`);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -81,6 +103,7 @@ export default function InvoiceGenerator({ visitId = null, patientId = null, vis
         payor: formData.payor,
         remaining_balance: amount,
         amount_paid: 0,
+        ai_suggested: !!selectedAICodes,
       });
 
       toast.success(`Invoice ${invoiceNumber} created successfully`);
@@ -96,7 +119,10 @@ export default function InvoiceGenerator({ visitId = null, patientId = null, vis
         invoice_date: new Date().toISOString().split('T')[0],
         due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         payor: 'Medicare',
+        billing_code: '',
+        custom_amount: '',
       });
+      setSelectedAICodes(null);
     } catch (error) {
       toast.error(error.message || 'Failed to create invoice');
     } finally {
@@ -115,7 +141,15 @@ export default function InvoiceGenerator({ visitId = null, patientId = null, vis
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* AI Billing Code Suggester */}
+          <AIBillingCodeSuggester
+            visitType={formData.visit_type}
+            diagnosis={formData.diagnosis}
+            clinicalNote={clinicalNote}
+            onCodesSelected={handleCodesSelected}
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">
@@ -210,16 +244,35 @@ export default function InvoiceGenerator({ visitId = null, patientId = null, vis
             </div>
           </div>
 
+          <div>
+             <label className="text-sm font-medium text-gray-700 block mb-1">
+               Custom Amount (Optional)
+             </label>
+             <Input
+               type="number"
+               step="0.01"
+               value={formData.custom_amount}
+               onChange={(e) => setFormData({ ...formData, custom_amount: e.target.value })}
+               placeholder="Leave empty to use default"
+             />
+           </div>
+
           {amount > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded p-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">Estimated Amount:</span>
-                <span className="text-lg font-bold text-blue-600">${amount.toFixed(2)}</span>
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                Code: {getBillingCode()}
-              </p>
-            </div>
+           <div className="bg-blue-50 border border-blue-200 rounded p-3">
+             <div className="flex justify-between items-center">
+               <span className="text-sm font-medium text-gray-700">Estimated Amount:</span>
+               <span className="text-lg font-bold text-blue-600">${amount.toFixed(2)}</span>
+             </div>
+             <div className="flex justify-between items-center mt-2">
+               <span className="text-sm text-gray-600">Billing Code:</span>
+               <span className="font-semibold text-gray-900">{getBillingCode()}</span>
+             </div>
+             {selectedAICodes && (
+               <p className="text-xs text-purple-600 mt-1 flex items-center gap-1">
+                 ✨ AI-suggested code
+               </p>
+             )}
+           </div>
           )}
 
           <Button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700">
