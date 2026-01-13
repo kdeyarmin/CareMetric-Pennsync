@@ -1,15 +1,25 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Brain, ChevronDown, ChevronUp, Beaker } from "lucide-react";
+import { Loader2, Brain, ChevronDown, ChevronUp, Beaker, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 export default function DifferentialDiagnosisSuggester({ symptoms, patientHistory }) {
-  const [suggestions, setSuggestions] = useState(null);
+  const [diagnoses, setDiagnoses] = useState([]);
+  const [adjustedConfidences, setAdjustedConfidences] = useState({});
   const [loading, setLoading] = useState(false);
   const [expandedDiagnosis, setExpandedDiagnosis] = useState(null);
   const [generatingTests, setGeneratingTests] = useState(null);
+
+  // Compute sorted diagnoses based on adjusted confidence
+  const rankedDiagnoses = useMemo(() => {
+    return [...diagnoses].sort((a, b) => {
+      const aConf = adjustedConfidences[a.id] ?? a.confidence;
+      const bConf = adjustedConfidences[b.id] ?? b.confidence;
+      return bConf - aConf;
+    });
+  }, [diagnoses, adjustedConfidences]);
 
   const analyzeDiagnoses = async () => {
     if (!symptoms?.trim()) {
