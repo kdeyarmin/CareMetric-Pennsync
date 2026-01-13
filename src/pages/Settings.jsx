@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import DataRetentionSettings from "../components/settings/DataRetentionSettings";
 import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
-import ThemeSettings from "../components/theme/ThemeSettings";
+
 import ProviderTypeSelector from "../components/settings/ProviderTypeSelector";
 import ProviderPracticeInfoManager from "../components/settings/ProviderPracticeInfoManager";
 
