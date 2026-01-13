@@ -17,7 +17,9 @@ import {
   Wand2,
   Users,
   X,
+  AlertTriangle,
 } from "lucide-react";
+import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
 import ClinicalNoteAnalyzer from "@/components/smartNote/ClinicalNoteAnalyzer";
 import DifferentialDiagnosisSuggester from "@/components/smartNote/DifferentialDiagnosisSuggester";
@@ -33,6 +35,15 @@ export default function SmartNoteAssistant() {
   const [collapsedSections, setCollapsedSections] = useState({});
   const [activeTab, setActiveTab] = useState("patient");
   const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [visitType, setVisitType] = useState("");
+  const [vitals, setVitals] = useState({
+    temperature: "",
+    blood_pressure_systolic: "",
+    blood_pressure_diastolic: "",
+    heart_rate: "",
+    respiratory_rate: "",
+    oxygen_saturation: "",
+  });
   const [newPatientData, setNewPatientData] = useState({
     first_name: "",
     last_name: "",
@@ -40,6 +51,11 @@ export default function SmartNoteAssistant() {
     medical_record_number: "",
   });
   const [creatingPatient, setCreatingPatient] = useState(false);
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
 
   const { data: patients = [] } = useQuery({
     queryKey: ["patients", searchPatient],
