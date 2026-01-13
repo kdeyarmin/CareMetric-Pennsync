@@ -5,27 +5,28 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-                  Home,
-                  Users,
-                  User,
-                  WifiOff,
-                  GraduationCap,
-                  BarChart3,
-                  Settings,
-                  Menu,
-                  X,
-                  Brain,
-                  Target,
-                  Bell,
-                  LogOut,
-                  ChevronLeft,
-                  ChevronRight,
-                  Sparkles,
-                  Activity,
-                  CreditCard,
-                  Mic,
-                  Phone
-                } from "lucide-react";
+                        Home,
+                        Users,
+                        User,
+                        WifiOff,
+                        GraduationCap,
+                        BarChart3,
+                        Settings,
+                        Menu,
+                        X,
+                        Brain,
+                        Target,
+                        Bell,
+                        LogOut,
+                        ChevronLeft,
+                        ChevronRight,
+                        Sparkles,
+                        Activity,
+                        CreditCard,
+                        Mic,
+                        Phone,
+                        Video
+                      } from "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
