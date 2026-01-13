@@ -34,6 +34,7 @@ import ProviderSpecificDashboard from "../components/dashboard/ProviderSpecificD
 import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
 import PersonalizedDashboardWidget from "../components/personalization/PersonalizedDashboardWidget";
 import SmartQuickActions from "../components/personalization/SmartQuickActions";
+import PersonalizationEngine from "../components/personalization/PersonalizationEngine";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -278,6 +279,16 @@ export default function Dashboard() {
       )}
 
 
+
+      {/* AI-Powered Personalization Engine */}
+      {currentUser && (!currentUser.dashboard_config || currentUser.dashboard_config?.personalizationEngine) && (
+        <div className="mb-6">
+          <PersonalizationEngine 
+            userEmail={currentUser?.email}
+            providerType={currentUser?.provider_type || currentUser?.credential_type}
+          />
+        </div>
+      )}
 
       {/* Personalized AI Recommendations */}
       {currentUser && (!currentUser.dashboard_config || currentUser.dashboard_config?.personalizedWidget) && (
