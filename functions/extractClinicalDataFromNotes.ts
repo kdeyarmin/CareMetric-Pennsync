@@ -4,7 +4,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    
+
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -15,32 +15,36 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No notes provided' }, { status: 400 });
     }
 
-    const response = await base44.integrations.Core.InvokeLLM({
-      prompt: `Extract clinical data from these rough notes. Return a JSON object with:
-- diagnoses: array of diagnosed conditions
-- medications: array of current medications with dosages
-- vitals: object with BP, HR, RR, O2, temp, weight
-- symptoms: array of reported symptoms
-- patient_history: brief patient history summary
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt: `Extract clinical data from the following rough clinical notes. Return a JSON object with the following structure:
+{
+  "diagnoses": ["diagnosis1", "diagnosis2"],
+  "medications": ["med1", "med2"],
+  "vitals": {"temp": 98.6, "bp": "120/80", "hr": 72},
+  "symptoms": ["symptom1", "symptom2"],
+  "patient_history": "relevant history"
+}
 
-Notes:
+Clinical Notes:
 ${roughNotes}
 
-Return only valid JSON, no markdown.`,
+Return ONLY the JSON object, no other text.`,
+      add_context_from_internet: false,
       response_json_schema: {
-        type: "object",
+        type: 'object',
         properties: {
-          diagnoses: { type: "array", items: { type: "string" } },
-          medications: { type: "array", items: { type: "string" } },
-          vitals: { type: "object" },
-          symptoms: { type: "array", items: { type: "string" } },
-          patient_history: { type: "string" }
+          diagnoses: { type: 'array', items: { type: 'string' } },
+          medications: { type: 'array', items: { type: 'string' } },
+          vitals: { type: 'object' },
+          symptoms: { type: 'array', items: { type: 'string' } },
+          patient_history: { type: 'string' }
         }
       }
     });
 
-    return Response.json(response);
+    return Response.json(result);
   } catch (error) {
+    console.error(error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

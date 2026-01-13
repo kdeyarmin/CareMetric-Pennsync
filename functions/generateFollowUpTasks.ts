@@ -4,35 +4,38 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    
+
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { analysisResults, diagnoses, vitals } = await req.json();
 
-    const response = await base44.integrations.Core.InvokeLLM({
-      prompt: `Based on the following clinical analysis, generate 3-5 specific follow-up actions/tasks.
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt: `Generate actionable follow-up tasks based on the clinical analysis.
 
 Analysis Results:
-${analysisResults}
+${analysisResults || 'Not provided'}
 
-Diagnoses: ${diagnoses?.join(', ') || 'None identified'}
-Vitals: ${vitals ? JSON.stringify(vitals) : 'Not provided'}
+Patient Diagnoses:
+${diagnoses?.join(', ') || 'Not provided'}
 
-For each task, provide:
-- Task name
-- Priority (critical/high/medium/low)
-- Due timeframe (e.g., today, 24 hours, this week)
-- Specific action details
-- Reason/clinical justification
+Vital Signs:
+${vitals ? JSON.stringify(vitals) : 'Not provided'}
 
-Return as a structured list.`,
-      add_context_from_internet: false,
+Create a list of specific follow-up tasks including:
+1. Task description
+2. Priority (high/medium/low)
+3. Timeline for completion
+4. Responsible party
+
+Format as a numbered list.`,
+      add_context_from_internet: false
     });
 
-    return Response.json({ tasks: response });
+    return Response.json({ tasks: result });
   } catch (error) {
+    console.error(error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
