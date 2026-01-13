@@ -50,6 +50,28 @@ Be specific and clinical.`,
     }
   };
 
+  const handleDecision = (interactionId, decision) => {
+    setDecisions(prev => ({
+      ...prev,
+      [interactionId]: decision
+    }));
+    if (decision === 'accept') {
+      setRationaleInput(prev => ({
+        ...prev,
+        [interactionId]: ''
+      }));
+    }
+  };
+
+  const saveRationale = (interactionId) => {
+    const rationale = rationaleInput[interactionId];
+    if (!rationale?.trim()) {
+      toast.error("Please provide a rationale");
+      return;
+    }
+    toast.success(`Decision recorded with rationale`);
+  };
+
   return (
     <Card className="border-orange-200 bg-orange-50">
       <CardHeader>
