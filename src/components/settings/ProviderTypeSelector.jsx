@@ -10,8 +10,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Stethoscope, Save, Info } from "lucide-react";
 import { toast } from "sonner";
 
-export default function ProviderTypeSelector({ currentUser }) {
+export default function ProviderTypeSelector({ currentUser, allowAdminOverride = false }) {
   const queryClient = useQueryClient();
+
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
 
   const { data: providerSettings = [] } = useQuery({
     queryKey: ['providerSettings'],
@@ -22,16 +27,17 @@ export default function ProviderTypeSelector({ currentUser }) {
     mutationFn: (data) => base44.auth.updateMe(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-      toast.success('Provider settings updated');
+      toast.success('Provider settings updated - Page will reload to apply changes');
+      setTimeout(() => window.location.reload(), 1500);
     }
   });
 
   const [formData, setFormData] = React.useState({
-    provider_type: currentUser?.provider_type || 'RN',
-    license_number: currentUser?.license_number || '',
-    credentials: currentUser?.credentials || '',
-    specialty: currentUser?.specialty || '',
-    preferred_note_style: currentUser?.preferred_note_style || 'detailed'
+    provider_type: currentUser?.provider_type || user?.provider_type || 'RN',
+    license_number: currentUser?.license_number || user?.license_number || '',
+    credentials: currentUser?.credentials || user?.credentials || '',
+    specialty: currentUser?.specialty || user?.specialty || '',
+    preferred_note_style: currentUser?.preferred_note_style || user?.preferred_note_style || 'detailed'
   });
 
   const handleSubmit = (e) => {
@@ -57,16 +63,26 @@ export default function ProviderTypeSelector({ currentUser }) {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Stethoscope className="w-5 h-5" />
-          Provider Profile
-        </CardTitle>
-        <p className="text-sm text-gray-600 mt-1">
-          Configure your provider type to customize AI note generation and compliance checks
-        </p>
-      </CardHeader>
+    <div className="space-y-4">
+      {allowAdminOverride && user?.role === 'admin' && (
+        <Alert className="border-amber-300 bg-amber-50">
+          <Info className="w-4 h-4 text-amber-600" />
+          <AlertDescription className="text-amber-900">
+            <strong>Admin Testing Mode:</strong> You can switch provider types to test different features and AI behaviors. Changes will reload the page.
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Stethoscope className="w-5 h-5" />
+            Provider Profile
+          </CardTitle>
+          <p className="text-sm text-gray-600 mt-1">
+            Configure your provider type to customize AI note generation and compliance checks
+          </p>
+        </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -144,5 +160,6 @@ export default function ProviderTypeSelector({ currentUser }) {
         </form>
       </CardContent>
     </Card>
+    </div>
   );
 }
