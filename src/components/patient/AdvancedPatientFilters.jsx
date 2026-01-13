@@ -16,7 +16,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Search, Filter, X, Calendar } from "lucide-react";
+import { Search, Filter, X, Calendar, Lightbulb } from "lucide-react";
+import SavedFiltersManager from "./SavedFiltersManager";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 
 export default function AdvancedPatientFilters({ onFilterChange, activeFilters = {} }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -30,6 +33,18 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
     hasCarePlans: activeFilters.hasCarePlans || "all",
     createdAfter: activeFilters.createdAfter || "",
     createdBefore: activeFilters.createdBefore || "",
+  });
+  const [showSavedFilters, setShowSavedFilters] = useState(false);
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch {
+        return null;
+      }
+    },
   });
 
   const handleFilterChange = (key, value) => {
@@ -219,6 +234,21 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
             </Button>
           )}
         </div>
+
+        {/* Saved Filters Section */}
+        {currentUser && (
+          <div className="mt-4 pt-4 border-t">
+            <SavedFiltersManager
+              currentUser={currentUser}
+              onFilterSelect={(savedFilters) => {
+                setFilters(savedFilters);
+                onFilterChange(savedFilters);
+                setShowSavedFilters(false);
+              }}
+              currentFilters={filters}
+            />
+          </div>
+        )}
 
         {/* Active filter badges */}
         {activeFilterCount > 0 && (
