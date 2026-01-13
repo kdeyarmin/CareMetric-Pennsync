@@ -145,6 +145,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Mobile Workflow", icon: Phone, page: "MobileWorkflow" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
     { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
+    { name: "AI Learning", icon: Sparkles, page: "MyAILearning" },
     { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
     { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
     { name: "Documentation Settings", icon: Settings, page: "ProviderSettings" },

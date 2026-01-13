@@ -622,34 +622,36 @@ export default function SmartNoteAssistant() {
     const actualDocTime = noteStartTime ? (enhanceStartTime - noteStartTime) : 0;
 
     try {
-      // Apply learned preferences to the enhancement
-      let enhancedPromptData = null;
+      // Try to use the enhanced learning-based function first
+      let response;
       try {
-        const prefResponse = await base44.functions.invoke('applyLearnedPreferences', {
-          base_prompt: '', // Will be built in backend
-          provider_email: currentUser?.email,
-          visit_type: visitType,
-          diagnosis: finalDiagnosis
-        });
-        enhancedPromptData = prefResponse.data || prefResponse;
-      } catch (prefError) {
-        // Continue without preferences if it fails
+        response = await secureAICall(
+          () => base44.functions.invoke('enhanceNoteWithLearning', {
+            roughNote,
+            patientId: selectedPatientId,
+            visitType,
+            visitDate,
+            diagnosis: finalDiagnosis,
+            vitalSigns,
+            nurseType: currentUser?.credential_type || 'RN'
+          }),
+          currentUser?.email || 'anonymous'
+        );
+      } catch (learningError) {
+        // Fallback to standard enhancement if learning function fails
+        response = await secureAICall(
+          () => base44.functions.invoke('enhanceNoteOptimized', {
+            roughNote,
+            patientId: selectedPatientId,
+            visitType,
+            visitDate,
+            diagnosis: finalDiagnosis,
+            vitalSigns,
+            nurseType: currentUser?.credential_type || 'RN'
+          }),
+          currentUser?.email || 'anonymous'
+        );
       }
-
-      // Use optimized backend function for enhancement with rate limiting
-      const response = await secureAICall(
-        () => base44.functions.invoke('enhanceNoteOptimized', {
-          roughNote,
-          patientId: selectedPatientId,
-          visitType,
-          visitDate,
-          diagnosis: finalDiagnosis,
-          vitalSigns,
-          nurseType: currentUser?.credential_type || 'RN',
-          learned_preferences: enhancedPromptData?.personalization_applied || null
-        }),
-        currentUser?.email || 'anonymous'
-      );
 
       // Unwrap the data from the function response
       const result = response.data || response;

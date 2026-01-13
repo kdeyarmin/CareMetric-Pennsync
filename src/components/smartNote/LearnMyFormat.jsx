@@ -30,54 +30,42 @@ export default function LearnMyFormat({
   const analyzeFormat = async () => {
     setIsAnalyzing(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Analyze how this clinician edited the AI-generated note to understand their preferred format and style.
-
-ORIGINAL AI NOTE:
-${originalNote}
-
-CLINICIAN'S EDITED VERSION:
-${editedNote}
-
-Analyze the edits to extract:
-1. Structural preferences (sections added/removed, order changes)
-2. Phrasing preferences (clinical language style, terminology choices)
-3. Level of detail preferences (verbose vs concise)
-4. Format preferences (bullets vs paragraphs, headers, etc.)
-
-Create a reusable template structure with section names and example text that captures this provider's style.
-
-Return JSON:
-{
-  "sections": [
-    {"section_name": "Section Name", "template_text": "Example format/phrasing", "order": 1}
-  ],
-  "style_notes": "Brief description of provider's preferred style",
-  "key_changes": ["Change 1", "Change 2"]
-}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            sections: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  section_name: { type: "string" },
-                  template_text: { type: "string" },
-                  order: { type: "number" }
-                }
-              }
-            },
-            style_notes: { type: "string" },
-            key_changes: { type: "array", items: { type: "string" } }
-          }
-        }
+      // Use the advanced pattern analysis function
+      const currentUser = await base44.auth.me();
+      const response = await base44.functions.invoke('analyzeEditPatterns', {
+        original_note: originalNote,
+        edited_note: editedNote,
+        visit_type: visitType,
+        diagnosis: diagnosis,
+        provider_type: providerType
       });
 
-      setExtractedFormat(result);
-      setTemplateDescription(result.style_notes || "Custom template learned from my edits");
+      const result = response.data || response;
+
+      if (!result.success) {
+        throw new Error(result.error || 'Analysis failed');
+      }
+
+      // Convert patterns to template format
+      const templateFormat = {
+        sections: result.patterns.section_order?.map((section, idx) => ({
+          section_name: section,
+          template_text: result.patterns.phrasing_examples?.find(p => p.category === section)?.example || '',
+          order: idx + 1
+        })) || [],
+        style_notes: result.patterns.overall_style_summary || "Learned from my edits",
+        key_changes: [
+          ...(result.patterns.added_elements || []).map(e => `Always includes: ${e}`),
+          ...(result.patterns.removed_elements || []).map(e => `Avoids: ${e}`),
+          ...(result.patterns.terminology_preferences || []).slice(0, 3).map(t => `Uses "${t.preferred_term}" instead of "${t.ai_term}"`)
+        ]
+      };
+
+      setExtractedFormat(templateFormat);
+      setTemplateDescription(result.patterns.overall_style_summary || "Custom template learned from my edits");
       setShowLearnDialog(true);
+      
+      toast.success(`🎯 Learned your style! (${result.personalization_data?.pattern_confidence || 60}% confidence)`);
     } catch (error) {
       toast.error("Failed to analyze format");
     }
@@ -119,7 +107,7 @@ Return JSON:
         <Lightbulb className="w-4 h-4 text-blue-600" />
         <AlertDescription className="text-sm">
           <div className="flex items-center justify-between">
-            <span className="text-blue-900">You've customized this note! Want Freed to learn your format?</span>
+            <span className="text-blue-900">You've customized this note! Want the AI to learn your format?</span>
             <Button 
               size="sm" 
               onClick={analyzeFormat}
