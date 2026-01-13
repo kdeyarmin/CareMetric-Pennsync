@@ -20,6 +20,7 @@ import QuickPatientAccess from "../components/mobile/QuickPatientAccess";
 import PushNotificationManager from "../components/notifications/PushNotificationManager";
 import MobileTaskList from "../components/mobile/MobileTaskList";
 import { todayEastern } from "../components/utils/timezone";
+import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
 
 export default function MobileWorkflow() {
   const [selectedPatient, setSelectedPatient] = useState("");
@@ -54,6 +55,9 @@ export default function MobileWorkflow() {
   });
 
   const selectedPatientData = patients.find(p => p.id === selectedPatient);
+  const availableVisitTypes = currentUser?.provider_type 
+    ? getVisitTypesForProvider(currentUser.provider_type)
+    : [];
 
   const createNewPatient = async () => {
     if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
@@ -173,20 +177,21 @@ export default function MobileWorkflow() {
                   </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-sm font-medium mb-1.5 block">Visit Type</label>
-                    <Select value={visitType} onValueChange={setVisitType}>
-                      <SelectTrigger className="h-12 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="routine_visit">Routine</SelectItem>
-                        <SelectItem value="admission">Admission</SelectItem>
-                        <SelectItem value="recertification">Recert</SelectItem>
-                        <SelectItem value="discharge">Discharge</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Visit Type</label>
+                  <Select value={visitType} onValueChange={setVisitType}>
+                    <SelectTrigger className="h-12 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableVisitTypes.map((vt) => (
+                        <SelectItem key={vt.id} value={vt.id}>
+                          {vt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                   <div>
                     <label className="text-sm font-medium mb-1.5 block">Diagnosis</label>
                     <Select value={diagnosis} onValueChange={setDiagnosis}>
