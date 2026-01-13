@@ -136,12 +136,11 @@ export default function SmartNoteAssistant() {
   };
 
   const isAnalysisReady = () => {
-    return selectedPatient && visitType && selectedDiagnoses.length > 0;
+    return visitType && selectedDiagnoses.length > 0;
   };
 
   const getMissingRequirements = () => {
     const missing = [];
-    if (!selectedPatient) missing.push("Patient selection");
     if (!visitType) missing.push("Visit type");
     if (selectedDiagnoses.length === 0) missing.push("At least one diagnosis");
     return missing;
@@ -334,13 +333,26 @@ export default function SmartNoteAssistant() {
                   </div>
                 )}
 
-                <Button
-                  className="w-full"
-                  disabled={!selectedPatient}
-                  onClick={() => setActiveTab("extraction")}
-                >
-                  Continue to Clinical Notes
-                </Button>
+                <div className="space-y-3 pt-2 border-t">
+                  <p className="text-xs text-gray-600 text-center">Or analyze without saving to a patient:</p>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setSelectedPatient(null);
+                      setActiveTab("extraction");
+                    }}
+                  >
+                    Analyze Anonymously
+                  </Button>
+                  <Button
+                    className="w-full"
+                    disabled={!selectedPatient}
+                    onClick={() => setActiveTab("extraction")}
+                  >
+                    Continue to Clinical Notes
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
@@ -459,7 +471,7 @@ export default function SmartNoteAssistant() {
 
           {/* Extraction Tab */}
           <TabsContent value="extraction" className="space-y-6">
-            {selectedPatient && (
+            {selectedPatient ? (
               <Card className="bg-blue-50 border-blue-200">
                 <CardContent className="pt-6">
                   <p className="text-sm text-gray-700">
@@ -467,6 +479,20 @@ export default function SmartNoteAssistant() {
                     {selectedPatient.last_name} • MRN:{" "}
                     {selectedPatient.medical_record_number}
                   </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="bg-amber-50 border-amber-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-amber-900 font-semibold mb-1">Anonymous Mode</p>
+                      <p className="text-sm text-amber-800">
+                        No patient information will be saved. The note can be checked for compliance and enhanced, but won't be stored in patient records.
+                      </p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
