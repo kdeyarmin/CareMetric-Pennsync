@@ -115,6 +115,9 @@ import NoteEmailDialog from "../components/notes/NoteEmailDialog";
 import AutoPatientDataFiller from "../components/smartNote/AutoPatientDataFiller";
 import RealTimeMedicalCodeSuggester from "../components/smartNote/RealTimeMedicalCodeSuggester";
 import RealTimeComplianceFeedback from "../components/smartNote/RealTimeComplianceFeedback";
+import AIFeedbackCollector from "../components/feedback/AIFeedbackCollector";
+import SmartLearningEngine from "../components/feedback/SmartLearningEngine";
+import AIStyleAdapter from "../components/feedback/AIStyleAdapter";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -619,6 +622,20 @@ export default function SmartNoteAssistant() {
     const actualDocTime = noteStartTime ? (enhanceStartTime - noteStartTime) : 0;
 
     try {
+      // Apply learned preferences to the enhancement
+      let enhancedPromptData = null;
+      try {
+        const prefResponse = await base44.functions.invoke('applyLearnedPreferences', {
+          base_prompt: '', // Will be built in backend
+          provider_email: currentUser?.email,
+          visit_type: visitType,
+          diagnosis: finalDiagnosis
+        });
+        enhancedPromptData = prefResponse.data || prefResponse;
+      } catch (prefError) {
+        // Continue without preferences if it fails
+      }
+
       // Use optimized backend function for enhancement with rate limiting
       const response = await secureAICall(
         () => base44.functions.invoke('enhanceNoteOptimized', {
@@ -628,7 +645,8 @@ export default function SmartNoteAssistant() {
           visitDate,
           diagnosis: finalDiagnosis,
           vitalSigns,
-          nurseType: currentUser?.credential_type || 'RN'
+          nurseType: currentUser?.credential_type || 'RN',
+          learned_preferences: enhancedPromptData?.personalization_applied || null
         }),
         currentUser?.email || 'anonymous'
       );
@@ -2029,6 +2047,26 @@ Return JSON with:
                 />
               )}
 
+              {/* AI Feedback Collector - Learn from nurse's input */}
+              {!isAnonymous && (
+                <AIFeedbackCollector
+                  aiOutput={enhancedNote}
+                  featureType="note_enhancement"
+                  context={{
+                    patient_id: selectedPatientId,
+                    provider_type: providerType || 'RN',
+                    visit_type: visitType,
+                    diagnosis: finalDiagnosis,
+                    rough_note: roughNote
+                  }}
+                  onFeedbackSubmitted={(feedback) => {
+                    queryClient.invalidateQueries({ queryKey: ['providerPreferences', currentUser?.email] });
+                    queryClient.invalidateQueries({ queryKey: ['usagePattern', currentUser?.email] });
+                  }}
+                  compact={false}
+                />
+              )}
+
               {/* Next Steps Panel - Clear action-oriented summary */}
               <NextStepsPanel
                 copied={copied}
@@ -2160,6 +2198,22 @@ Return JSON with:
 
               {/* Simplified Sidebar */}
               <div className="space-y-2.5 sm:space-y-3 lg:space-y-4 w-full min-w-0 xl:sticky xl:top-4">
+                {/* AI Learning Progress */}
+                {currentUser?.email && (
+                  <SmartLearningEngine 
+                    userEmail={currentUser.email}
+                    providerType={providerType || 'RN'}
+                  />
+                )}
+
+                {/* AI Style Customization */}
+                {currentUser?.email && !enhancedNote && (
+                  <AIStyleAdapter
+                    userEmail={currentUser.email}
+                    providerType={providerType || 'RN'}
+                  />
+                )}
+
                 {/* AI Chat for Patient History */}
                 {selectedPatient && !isAnonymous && (
                   <PatientHistoryChat
