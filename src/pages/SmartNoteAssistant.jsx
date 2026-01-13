@@ -465,14 +465,6 @@ export default function SmartNoteAssistant() {
   const [originalEnhancedNote, setOriginalEnhancedNote] = useState("");
   const [providerType, setProviderType] = useState(null);
 
-  // Get provider type from user data
-  useEffect(() => {
-    if (currentUser) {
-      const userProviderType = currentUser.provider_type || currentUser.credential_type || 'RN';
-      setProviderType(userProviderType);
-    }
-  }, [currentUser]);
-
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
@@ -484,6 +476,14 @@ export default function SmartNoteAssistant() {
       }
     },
   });
+
+  // Get provider type from user data
+  useEffect(() => {
+    if (currentUser) {
+      const userProviderType = currentUser.provider_type || currentUser.credential_type || 'RN';
+      setProviderType(userProviderType);
+    }
+  }, [currentUser]);
 
   // Log page visit
   useEffect(() => {
