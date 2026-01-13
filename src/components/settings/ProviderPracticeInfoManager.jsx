@@ -65,11 +65,29 @@ export default function ProviderPracticeInfoManager({ userEmail }) {
   });
 
   // Canvas drawing functions
-  const startDrawing = (e) => {
+  const getCoordinates = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    
+    let clientX, clientY;
+    if (e.touches) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
+
+  const startDrawing = (e) => {
+    e.preventDefault();
+    const { x, y } = getCoordinates(e);
+    const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -78,10 +96,9 @@ export default function ProviderPracticeInfoManager({ userEmail }) {
 
   const draw = (e) => {
     if (!isDrawing) return;
+    e.preventDefault();
+    const { x, y } = getCoordinates(e);
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
     const ctx = canvas.getContext('2d');
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -294,11 +311,14 @@ export default function ProviderPracticeInfoManager({ userEmail }) {
                   ref={canvasRef}
                   width={400}
                   height={150}
-                  className="w-full cursor-crosshair"
+                  className="w-full cursor-crosshair touch-none"
                   onMouseDown={startDrawing}
                   onMouseMove={draw}
                   onMouseUp={stopDrawing}
                   onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
                 />
               </div>
               <Button variant="outline" onClick={clearCanvas} size="sm">
