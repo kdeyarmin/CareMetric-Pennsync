@@ -3,10 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertCircle, FileText, CheckCircle } from 'lucide-react';
+import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertCircle, FileText, CheckCircle, Monitor, Upload, MessageSquare } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import TelehealthConsentForm from '../components/telehealth/TelehealthConsentForm';
+import TelehealthWaitingRoom from '../components/telehealth/TelehealthWaitingRoom';
+import TelehealthFileSharing from '../components/telehealth/TelehealthFileSharing';
+import TelehealthPostCallSummary from '../components/telehealth/TelehealthPostCallSummary';
 import { createPageUrl } from '@/utils';
 
 export default function TelehealthVisit() {
@@ -14,18 +17,26 @@ export default function TelehealthVisit() {
   const [searchParams] = useSearchParams();
   const patientId = searchParams.get('patientId');
   
-  const [step, setStep] = useState('consent'); // consent, connecting, connected, ended
+  const [step, setStep] = useState('consent'); // consent, waiting, connecting, connected, ended
   const [consent, setConsent] = useState(null);
   const [room, setRoom] = useState(null);
   const [localTracks, setLocalTracks] = useState({ video: null, audio: null });
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [visitId, setVisitId] = useState(null);
   const [error, setError] = useState(null);
+  const [sharedFiles, setSharedFiles] = useState([]);
+  const [callNotes, setCallNotes] = useState('');
+  const [callDuration, setCallDuration] = useState(0);
+  const [patientWaiting, setPatientWaiting] = useState(false);
   
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const roomRef = useRef(null);
+  const screenTrackRef = useRef(null);
+  const callStartTimeRef = useRef(null);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -57,12 +68,24 @@ export default function TelehealthVisit() {
 
   const handleConsentComplete = (newConsent) => {
     setConsent(newConsent);
-    setStep('connecting');
+    setStep('waiting');
   };
+
+  useEffect(() => {
+    let interval;
+    if (step === 'connected' && callStartTimeRef.current) {
+      interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
+        setCallDuration(elapsed);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [step]);
 
   const startVideoCall = async () => {
     try {
       setError(null);
+      setStep('connecting');
 
       // Create visit record
       const visit = await base44.entities.Visit.create({
@@ -74,9 +97,14 @@ export default function TelehealthVisit() {
       });
       setVisitId(visit.id);
 
-      // Create Twilio Video room
-      const { createTwilioVideoRoom } = await import('@/functions/createTwilioVideoRoom');
-      const roomData = await createTwilioVideoRoom({ patientId, visitId: visit.id });
+      // Create Twilio Video room with recording option
+      const response = await base44.functions.invoke('createTwilioVideoRoom', {
+        patientId,
+        visitId: visit.id,
+        enableRecording: consent?.recording_consent || false
+      });
+
+      const roomData = response.data;
 
       if (!roomData || !roomData.providerToken) {
         throw new Error('Failed to create video room');
@@ -89,12 +117,17 @@ export default function TelehealthVisit() {
       const videoRoom = await Video.connect(roomData.providerToken, {
         name: roomData.roomName,
         audio: true,
-        video: { width: 640, height: 480 }
+        video: { width: 1280, height: 720 }
       });
 
       roomRef.current = videoRoom;
       setRoom(videoRoom);
       setStep('connected');
+      callStartTimeRef.current = Date.now();
+
+      if (consent?.recording_consent) {
+        setIsRecording(true);
+      }
 
       // Attach local tracks
       videoRoom.localParticipant.videoTracks.forEach(publication => {
@@ -108,6 +141,11 @@ export default function TelehealthVisit() {
       // Handle remote participants
       videoRoom.on('participantConnected', participant => {
         console.log('Patient connected:', participant.identity);
+        setPatientWaiting(false);
+      });
+
+      videoRoom.on('participantDisconnected', participant => {
+        console.log('Patient disconnected:', participant.identity);
       });
 
       videoRoom.on('trackSubscribed', track => {
@@ -122,7 +160,7 @@ export default function TelehealthVisit() {
     } catch (error) {
       console.error('Error starting video call:', error);
       setError(error.message);
-      setStep('consent');
+      setStep('waiting');
     }
   };
 
@@ -150,7 +188,64 @@ export default function TelehealthVisit() {
     }
   };
 
+  const toggleScreenShare = async () => {
+    try {
+      if (!isScreenSharing) {
+        // Start screen sharing
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: false
+        });
+
+        const screenTrack = stream.getVideoTracks()[0];
+        screenTrackRef.current = screenTrack;
+
+        // Replace video track with screen track
+        const videoPublication = Array.from(roomRef.current.localParticipant.videoTracks.values())[0];
+        await videoPublication.track.stop();
+        
+        const newTrack = new (await import('npm:twilio-video@2.28.1')).default.LocalVideoTrack(screenTrack);
+        await roomRef.current.localParticipant.unpublishTrack(videoPublication.track);
+        await roomRef.current.localParticipant.publishTrack(newTrack);
+
+        // Handle when user stops sharing via browser UI
+        screenTrack.onended = () => {
+          toggleScreenShare();
+        };
+
+        setIsScreenSharing(true);
+      } else {
+        // Stop screen sharing
+        if (screenTrackRef.current) {
+          screenTrackRef.current.stop();
+          screenTrackRef.current = null;
+        }
+
+        // Restart camera
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const videoTrack = stream.getVideoTracks()[0];
+        
+        const Video = (await import('npm:twilio-video@2.28.1')).default;
+        const newTrack = new Video.LocalVideoTrack(videoTrack);
+        await roomRef.current.localParticipant.publishTrack(newTrack);
+
+        setIsScreenSharing(false);
+      }
+    } catch (error) {
+      console.error('Error toggling screen share:', error);
+      setError('Failed to share screen');
+    }
+  };
+
+  const handleFileShared = (file) => {
+    setSharedFiles(prev => [...prev, file]);
+  };
+
   const endCall = async () => {
+    if (screenTrackRef.current) {
+      screenTrackRef.current.stop();
+    }
+    
     if (roomRef.current) {
       roomRef.current.disconnect();
       roomRef.current = null;
@@ -202,33 +297,23 @@ export default function TelehealthVisit() {
         <TelehealthConsentForm patient={patient} onConsentComplete={handleConsentComplete} />
       )}
 
+      {step === 'waiting' && (
+        <TelehealthWaitingRoom
+          patient={patient}
+          onStart={startVideoCall}
+          onPatientReady={() => setPatientWaiting(true)}
+        />
+      )}
+
       {step === 'connecting' && (
         <Card>
           <CardHeader>
-            <CardTitle>Ready to Start Video Call</CardTitle>
+            <CardTitle>Connecting to Video Room...</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              <AlertDescription className="text-green-900">
-                Consent obtained and verified. You can now start the video consultation.
-              </AlertDescription>
-            </Alert>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-900 mb-2">Before Starting:</h3>
-              <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                <li>Ensure you're in a private, quiet location</li>
-                <li>Test your camera and microphone</li>
-                <li>Have patient's chart ready for reference</li>
-                <li>Verify patient identity at start of call</li>
-              </ul>
+          <CardContent>
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
-
-            <Button onClick={startVideoCall} className="bg-green-600 hover:bg-green-700 gap-2">
-              <Video className="w-4 h-4" />
-              Start Video Call
-            </Button>
           </CardContent>
         </Card>
       )}
@@ -256,7 +341,7 @@ export default function TelehealthVisit() {
               </div>
 
               {/* Controls */}
-              <div className="flex justify-center gap-3">
+              <div className="flex flex-wrap justify-center gap-2">
                 <Button
                   variant={isVideoEnabled ? "default" : "destructive"}
                   size="lg"
@@ -264,7 +349,7 @@ export default function TelehealthVisit() {
                   className="gap-2"
                 >
                   {isVideoEnabled ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
-                  {isVideoEnabled ? 'Camera On' : 'Camera Off'}
+                  {isVideoEnabled ? 'Camera' : 'Camera Off'}
                 </Button>
 
                 <Button
@@ -274,8 +359,20 @@ export default function TelehealthVisit() {
                   className="gap-2"
                 >
                   {isAudioEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-                  {isAudioEnabled ? 'Mic On' : 'Mic Off'}
+                  {isAudioEnabled ? 'Mic' : 'Mic Off'}
                 </Button>
+
+                <Button
+                  variant={isScreenSharing ? "secondary" : "outline"}
+                  size="lg"
+                  onClick={toggleScreenShare}
+                  className="gap-2"
+                >
+                  <Monitor className="w-5 h-5" />
+                  {isScreenSharing ? 'Stop Share' : 'Share Screen'}
+                </Button>
+
+                <TelehealthFileSharing visitId={visitId} onFileShared={handleFileShared} />
 
                 <Button
                   variant="destructive"
@@ -287,46 +384,79 @@ export default function TelehealthVisit() {
                   End Call
                 </Button>
               </div>
+
+              {/* Call Info */}
+              <div className="mt-4 flex justify-between items-center text-sm text-gray-600">
+                <span>Duration: {Math.floor(callDuration / 60)}:{(callDuration % 60).toString().padStart(2, '0')}</span>
+                {isRecording && (
+                  <span className="flex items-center gap-1 text-red-600">
+                    <span className="animate-pulse">●</span> Recording
+                  </span>
+                )}
+              </div>
             </CardContent>
           </Card>
 
-          <Alert className="border-blue-200 bg-blue-50">
-            <AlertCircle className="w-4 h-4 text-blue-600" />
-            <AlertDescription className="text-blue-900">
-              <strong>HIPAA Compliance:</strong> This session is encrypted end-to-end. 
-              {consent?.recording_consent ? ' Session is being recorded per patient consent.' : ' Session is not being recorded.'}
-            </AlertDescription>
-          </Alert>
+          <div className="grid md:grid-cols-2 gap-4">
+            <Alert className="border-blue-200 bg-blue-50">
+              <AlertCircle className="w-4 h-4 text-blue-600" />
+              <AlertDescription className="text-blue-900">
+                <strong>HIPAA Compliance:</strong> This session is encrypted end-to-end. 
+                {consent?.recording_consent ? ' Session is being recorded per patient consent.' : ' Session is not being recorded.'}
+              </AlertDescription>
+            </Alert>
+
+            {sharedFiles.length > 0 && (
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">Shared Files ({sharedFiles.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="py-2">
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {sharedFiles.map((file, idx) => (
+                      <div key={idx} className="text-xs flex items-center gap-2">
+                        <Upload className="w-3 h-3" />
+                        <span className="truncate">{file.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* In-Call Notes */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" />
+                Call Notes
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="py-2">
+              <textarea
+                value={callNotes}
+                onChange={(e) => setCallNotes(e.target.value)}
+                placeholder="Take notes during the call..."
+                className="w-full px-3 py-2 border rounded-md text-sm"
+                rows={3}
+              />
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {step === 'ended' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              Telehealth Visit Completed
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              <AlertDescription className="text-green-900">
-                The video call has ended. Please document the visit.
-              </AlertDescription>
-            </Alert>
-
-            <div className="flex gap-3">
-              <Button onClick={goToDocumentation} className="bg-blue-600 hover:bg-blue-700 gap-2">
-                <FileText className="w-4 h-4" />
-                Document Visit
-              </Button>
-              <Button variant="outline" onClick={() => navigate(createPageUrl('Patients'))}>
-                Return to Patients
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <TelehealthPostCallSummary
+          visitId={visitId}
+          patient={patient}
+          callDuration={callDuration}
+          callNotes={callNotes}
+          sharedFiles={sharedFiles}
+          wasRecorded={isRecording}
+          onDocumentVisit={goToDocumentation}
+          onReturnToPatients={() => navigate(createPageUrl('Patients'))}
+        />
       )}
     </div>
   );

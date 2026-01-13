@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { patientId, visitId } = await req.json();
+    const { patientId, visitId, enableRecording } = await req.json();
 
     if (!patientId) {
       return Response.json({ error: 'Patient ID required' }, { status: 400 });
@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
         body: new URLSearchParams({
           UniqueName: roomName,
           Type: 'group', // group room for HIPAA compliance features
-          RecordParticipantsOnConnect: 'false',
+          RecordParticipantsOnConnect: enableRecording ? 'true' : 'false',
           MaxParticipants: '2',
           StatusCallback: '', // Optional: webhook for room events
         }),
