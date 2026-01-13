@@ -385,6 +385,12 @@ export default function MedicalScribeWithReview({
           </Card>
 
           <div className="space-y-4 mt-4">
+            <SmartNoteGuidelinesPanel
+              visitType={visitType}
+              diagnosis={diagnosis}
+              noteContent={editedTranscription}
+            />
+
             <EnhancedDocumentationAssistant
               generatedNote={generatedNote}
               diagnosis={diagnosis}
