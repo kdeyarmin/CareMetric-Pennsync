@@ -109,6 +109,7 @@ import MagicEditPanel from "../components/smartNote/MagicEditPanel";
 import ClinicalLetterGenerator from "../components/letters/ClinicalLetterGenerator";
 import PatientHistoryChat from "../components/patient/PatientHistoryChat";
 import PatientEmailGenerator from "../components/patient/PatientEmailGenerator";
+import BillingCodeSuggester from "../components/billing/BillingCodeSuggester";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -2056,10 +2057,27 @@ Return JSON with:
                   />
                 </AccordionContent>
               </AccordionItem>
+              <AccordionItem value="billing">
+                <AccordionTrigger className="text-sm">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4" /> ICD-10 & CPT Codes
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  <BillingCodeSuggester
+                    noteContent={enhancedNote}
+                    diagnosis={finalDiagnosis}
+                    visitType={visitType}
+                    vitalSigns={vitalSigns}
+                    providerType={providerType || currentUser?.provider_type || currentUser?.credential_type}
+                    autoAnalyze={false}
+                  />
+                </AccordionContent>
+              </AccordionItem>
               <AccordionItem value="review">
                 <AccordionTrigger className="text-sm">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" /> Clinical Note Review (Completeness & Billing)
+                    <Sparkles className="w-4 h-4" /> Clinical Note Review
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
