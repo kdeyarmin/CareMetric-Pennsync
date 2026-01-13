@@ -148,19 +148,29 @@ export default function MobileWorkflow() {
               <CardContent className="p-3 space-y-3">
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Patient</label>
-                  <Select value={selectedPatient} onValueChange={setSelectedPatient}>
-                    <SelectTrigger className="h-12 text-base">
-                      <SelectValue placeholder="Select patient..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {patients.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.first_name} {p.last_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="space-y-2">
+                    <Select value={selectedPatient} onValueChange={setSelectedPatient}>
+                      <SelectTrigger className="h-12 text-base">
+                        <SelectValue placeholder="Select patient..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {patients.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.first_name} {p.last_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full border-dashed text-xs"
+                      onClick={() => setShowCreatePatient(true)}
+                    >
+                      + Add New Patient
+                    </Button>
+                  </div>
+                  </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
