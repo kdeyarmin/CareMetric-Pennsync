@@ -330,7 +330,7 @@ export default function MedicalScribeWithReview({
           />
         </div>
 
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3">
         <Card className="w-full border-purple-200 bg-purple-50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -382,9 +382,9 @@ export default function MedicalScribeWithReview({
               </Button>
             </div>
           </CardContent>
-        </Card>
+          </Card>
 
-        <div className="space-y-4">
+          <div className="space-y-4 mt-4">
           <EnhancedDocumentationAssistant
             generatedNote={generatedNote}
             diagnosis={diagnosis}
