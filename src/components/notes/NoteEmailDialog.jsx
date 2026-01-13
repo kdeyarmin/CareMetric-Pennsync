@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mail, Send, Loader2, CheckCircle2 } from "lucide-react";
+import { Mail, Send, Loader2, CheckCircle2, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 export default function NoteEmailDialog({ 
@@ -18,6 +18,7 @@ export default function NoteEmailDialog({
   const [isSending, setIsSending] = useState(false);
   const [providerEmail, setProviderEmail] = useState(currentUser?.email || "");
   const [patientEmail, setPatientEmail] = useState(patientData?.email || "");
+  const [faxNumber, setFaxNumber] = useState(patientData?.physician_phone || "");
   const [sentTo, setSentTo] = useState(null);
 
   const handleSendEmail = async (recipientType) => {
@@ -58,6 +59,41 @@ export default function NoteEmailDialog({
     setIsSending(false);
   };
 
+  const handleSendFax = async () => {
+    if (!faxNumber) {
+      toast.error('Please enter a fax number');
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      const response = await base44.functions.invoke('sendNoteFax', {
+        recipientFaxNumber: faxNumber,
+        noteContent,
+        patientName: patientData ? `${patientData.first_name} ${patientData.last_name}` : null,
+        subject: `Clinical Note - ${visitType?.replace(/_/g, ' ') || 'Visit'}`
+      });
+
+      const data = response.data || response;
+
+      if (data.success) {
+        setSentTo(`Fax: ${faxNumber}`);
+        toast.success(`Fax sent to ${faxNumber}`);
+        setTimeout(() => {
+          setSentTo(null);
+          setIsOpen(false);
+        }, 2000);
+      } else {
+        throw new Error(data.error || 'Failed to send fax');
+      }
+    } catch (error) {
+      toast.error(`Failed to send fax: ${error.message}`);
+    }
+
+    setIsSending(false);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
@@ -70,7 +106,7 @@ export default function NoteEmailDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-blue-600" />
-            Email Clinical Note
+            Send Clinical Note
           </DialogTitle>
         </DialogHeader>
 
@@ -82,9 +118,10 @@ export default function NoteEmailDialog({
           </div>
         ) : (
           <Tabs defaultValue="provider" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="provider">To Myself</TabsTrigger>
-              <TabsTrigger value="patient">To Patient</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="provider">Email Me</TabsTrigger>
+              <TabsTrigger value="patient">Email Patient</TabsTrigger>
+              <TabsTrigger value="fax">Fax</TabsTrigger>
             </TabsList>
 
             <TabsContent value="provider" className="space-y-4">
@@ -148,6 +185,39 @@ export default function NoteEmailDialog({
                   <>
                     <Send className="w-4 h-4 mr-2" />
                     Send to Patient
+                  </>
+                )}
+              </Button>
+            </TabsContent>
+
+            <TabsContent value="fax" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="fax-number">Fax Number</Label>
+                <Input
+                  id="fax-number"
+                  type="tel"
+                  placeholder="+1234567890"
+                  value={faxNumber}
+                  onChange={(e) => setFaxNumber(e.target.value)}
+                />
+                <p className="text-xs text-gray-600">
+                  HIPAA-compliant secure fax with delivery confirmation
+                </p>
+              </div>
+              <Button
+                onClick={handleSendFax}
+                disabled={isSending || !faxNumber}
+                className="w-full bg-purple-600 hover:bg-purple-700"
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Printer className="w-4 h-4 mr-2" />
+                    Send Fax
                   </>
                 )}
               </Button>
