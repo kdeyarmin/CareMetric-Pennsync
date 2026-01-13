@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain } from "lucide-react";
+import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
@@ -311,30 +311,6 @@ export default function Dashboard() {
       )}
 
       {/* Quick Action Cards - Mobile Optimized */}
-       <motion.div 
-         className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
-         initial={{ opacity: 0, y: 20 }}
-         animate={{ opacity: 1, y: 0 }}
-         transition={{ delay: 0.3 }}
-       >
-        <Link to={createPageUrl("MobileWorkflow")}>
-          <motion.div 
-            className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl p-4 sm:p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer active:scale-95 mobile-card"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <Smartphone className="w-7 h-7 sm:w-8 sm:h-8 mb-2" />
-                <h3 className="text-base sm:text-lg font-bold mb-1">Mobile Workflow</h3>
-                <p className="text-xs sm:text-sm text-purple-100">Quick visit documentation on-the-go</p>
-              </div>
-              <Badge className="bg-white/20 text-white text-xs">NEW</Badge>
-            </div>
-          </motion.div>
-        </Link>
-       </motion.div>
-
        <motion.div 
          className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
          initial={{ opacity: 0, y: 20 }}
