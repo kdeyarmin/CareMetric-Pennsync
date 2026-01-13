@@ -8,6 +8,7 @@ import { toast } from "sonner";
 export default function AdverseEventPredictor({ patientData }) {
   const [riskAnalysis, setRiskAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [reasonForVisit, setReasonForVisit] = useState("");
 
   const analyzeRisks = async () => {
     if (!patientData?.trim()) {
