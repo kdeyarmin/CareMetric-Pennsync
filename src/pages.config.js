@@ -30,6 +30,7 @@ import ManageNewFeatures from './pages/ManageNewFeatures';
 import MedicalScribe from './pages/MedicalScribe';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
 import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
+import MobileWorkflow from './pages/MobileWorkflow';
 import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
 import NurseEducationVideos from './pages/NurseEducationVideos';
 import NursePerformanceDashboard from './pages/NursePerformanceDashboard';
@@ -77,6 +78,7 @@ import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import SystemMonitoring from './pages/SystemMonitoring';
 import Tasks from './pages/Tasks';
+import TelehealthVisit from './pages/TelehealthVisit';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
@@ -85,8 +87,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import MobileWorkflow from './pages/MobileWorkflow';
-import TelehealthVisit from './pages/TelehealthVisit';
+import BillingInvoicing from './pages/BillingInvoicing';
 import __Layout from './Layout.jsx';
 
 
@@ -123,6 +124,7 @@ export const PAGES = {
     "MedicalScribe": MedicalScribe,
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
     "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
+    "MobileWorkflow": MobileWorkflow,
     "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
     "NurseEducationVideos": NurseEducationVideos,
     "NursePerformanceDashboard": NursePerformanceDashboard,
@@ -170,6 +172,7 @@ export const PAGES = {
     "SystemJobMonitor": SystemJobMonitor,
     "SystemMonitoring": SystemMonitoring,
     "Tasks": Tasks,
+    "TelehealthVisit": TelehealthVisit,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
@@ -178,8 +181,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "MobileWorkflow": MobileWorkflow,
-    "TelehealthVisit": TelehealthVisit,
+    "BillingInvoicing": BillingInvoicing,
 }
 
 export const pagesConfig = {
