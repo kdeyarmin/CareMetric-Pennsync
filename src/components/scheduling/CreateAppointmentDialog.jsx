@@ -52,7 +52,7 @@ export default function CreateAppointmentDialog({
     mutationFn: async (data) => {
       const appointment = await base44.entities.Appointment.create(data);
       
-      // If telehealth, create room
+      // If telehealth, create room and send invite
       if (data.appointment_type === 'telehealth') {
         const roomResponse = await base44.functions.invoke('createTwilioVideoRoom', {
           roomName: `appointment_${appointment.id}`,
@@ -65,6 +65,20 @@ export default function CreateAppointmentDialog({
             telehealth_room_id: roomResponse.data.roomSid
           });
         }
+
+        // Send telehealth invite email
+        const patient = patients.find(p => p.id === data.patient_id);
+        if (patient && patient.email) {
+          await base44.functions.invoke('sendTelehealthInvite', {
+            appointmentId: appointment.id,
+            patientEmail: patient.email,
+            patientName: `${patient.first_name} ${patient.last_name}`,
+            providerName: currentUser.full_name,
+            appointmentDate: data.appointment_date,
+            startTime: data.start_time,
+            endTime: data.end_time
+          });
+        }
       }
       
       return appointment;
@@ -72,7 +86,7 @@ export default function CreateAppointmentDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["telehealthAppointments"] });
-      toast.success("Appointment created successfully");
+      toast.success("Appointment created and invite sent");
       if (onAppointmentCreated) onAppointmentCreated();
       setOpen(false);
       resetForm();
