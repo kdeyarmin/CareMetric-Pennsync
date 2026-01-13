@@ -743,15 +743,15 @@ export default function SmartNoteAssistant() {
                         </div>
                       </div>
                     </div>
-                  </CardContent>
-                  </Card>
-                  </>
-                  )}
-                  </>
-                  )}
-                  </TabsContent>
-                  </Tabs>
-                  </div>
-                  </div>
-                  );
-                  }
+                    </CardContent>
+                    </Card>
+                    </>
+                    )}
+                    </>
+                    )}
+                    </TabsContent>
+                    </Tabs>
+                    </div>
+                    </div>
+                    );
+                    }
