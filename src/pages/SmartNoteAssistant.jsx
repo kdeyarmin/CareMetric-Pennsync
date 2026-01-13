@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,7 +15,10 @@ import {
   Heart,
   ListTodo,
   Wand2,
+  Users,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import ClinicalNoteAnalyzer from "@/components/smartNote/ClinicalNoteAnalyzer";
 import DifferentialDiagnosisSuggester from "@/components/smartNote/DifferentialDiagnosisSuggester";
 import MedicationCrossChecker from "@/components/smartNote/MedicationCrossChecker";
@@ -21,9 +26,31 @@ import AdverseEventPredictor from "@/components/smartNote/AdverseEventPredictor"
 import FollowUpTasksSuggester from "@/components/smartNote/FollowUpTasksSuggester";
 
 export default function SmartNoteAssistant() {
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [searchPatient, setSearchPatient] = useState("");
   const [extractedData, setExtractedData] = useState(null);
+  const [selectedDiagnoses, setSelectedDiagnoses] = useState([]);
   const [collapsedSections, setCollapsedSections] = useState({});
-  const [activeTab, setActiveTab] = useState("extraction");
+  const [activeTab, setActiveTab] = useState("patient");
+
+  const { data: patients = [] } = useQuery({
+    queryKey: ["patients", searchPatient],
+    queryFn: async () => {
+      if (!searchPatient.trim()) return [];
+      const results = await base44.entities.Patient.filter(
+        {
+          $or: [
+            { first_name: { $regex: searchPatient, $options: "i" } },
+            { last_name: { $regex: searchPatient, $options: "i" } },
+            { medical_record_number: searchPatient },
+          ],
+        },
+        "-updated_date",
+        10
+      );
+      return results;
+    },
+  });
 
   const handleDataExtracted = (data) => {
     setExtractedData(data);
