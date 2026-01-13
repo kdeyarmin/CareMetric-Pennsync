@@ -147,14 +147,145 @@ Be specific and practical.`,
           )}
         </Button>
 
-        {suggestions && (
-          <div className="bg-white p-4 rounded border space-y-2">
-            {suggestions.split('\n').filter(line => line.trim()).map((line, idx) => {
-              const isDiagnosis = line.includes('Diagnosis') || line.includes('-');
+        {diagnoses.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">Ranked Diagnoses</h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={resetConfidences}
+                className="gap-1"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset
+              </Button>
+            </div>
+
+            {rankedDiagnoses.map((dx) => {
+              const currentConf = adjustedConfidences[dx.id] ?? dx.confidence;
+              const likelihood =
+                currentConf >= 75 ? "high" : currentConf >= 40 ? "medium" : "low";
+              const bgColor =
+                likelihood === "high"
+                  ? "bg-green-50 border-green-200"
+                  : likelihood === "medium"
+                  ? "bg-yellow-50 border-yellow-200"
+                  : "bg-red-50 border-red-200";
+
               return (
-                <div key={idx} className={isDiagnosis ? "font-semibold text-blue-700 py-2 border-b" : "text-sm text-gray-700"}>
-                  {line}
-                </div>
+                <Card key={dx.id} className={`${bgColor} border`}>
+                  <CardContent className="pt-6 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900">{dx.name}</h4>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-xs font-medium px-2 py-1 rounded bg-white">
+                            Confidence: {Math.round(currentConf)}%
+                          </span>
+                          <span
+                            className={`text-xs font-medium px-2 py-1 rounded ${
+                              likelihood === "high"
+                                ? "bg-green-200 text-green-800"
+                                : likelihood === "medium"
+                                ? "bg-yellow-200 text-yellow-800"
+                                : "bg-red-200 text-red-800"
+                            }`}
+                          >
+                            {likelihood.charAt(0).toUpperCase() +
+                              likelihood.slice(1)}{" "}
+                            Likelihood
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setExpandedDiagnosis(
+                            expandedDiagnosis?.id === dx.id ? null : dx
+                          )
+                        }
+                      >
+                        {expandedDiagnosis?.id === dx.id ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Confidence Adjustment Slider */}
+                    <div className="bg-white p-3 rounded border">
+                      <label className="text-xs font-medium text-gray-700 block mb-2">
+                        Adjust Confidence (based on clinical judgment):
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={currentConf}
+                        onChange={(e) =>
+                          adjustConfidence(dx.id, parseInt(e.target.value))
+                        }
+                        className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>0%</span>
+                        <span>{Math.round(currentConf)}%</span>
+                        <span>100%</span>
+                      </div>
+                    </div>
+
+                    {/* Expanded Details */}
+                    {expandedDiagnosis?.id === dx.id && (
+                      <div className="space-y-2 border-t pt-3">
+                        <div>
+                          <p className="text-xs font-semibold text-gray-700 mb-1">
+                            Key Clinical Features:
+                          </p>
+                          <ul className="text-sm text-gray-600 space-y-1">
+                            {dx.keyFeatures?.map((feature, idx) => (
+                              <li key={idx} className="flex gap-2">
+                                <span>•</span> {feature}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-gray-700 mb-1">
+                            Recommended Next Steps:
+                          </p>
+                          <ul className="text-sm text-gray-600 space-y-1">
+                            {dx.nextSteps?.map((step, idx) => (
+                              <li key={idx} className="flex gap-2">
+                                <span>•</span> {step}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => generateDiagnosticTests(dx.name)}
+                          disabled={generatingTests === dx.name}
+                          className="w-full gap-2 mt-2"
+                        >
+                          {generatingTests === dx.name ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Generating Tests...
+                            </>
+                          ) : (
+                            <>
+                              <Beaker className="w-3 h-3" />
+                              Generate Diagnostic Tests
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               );
             })}
           </div>
