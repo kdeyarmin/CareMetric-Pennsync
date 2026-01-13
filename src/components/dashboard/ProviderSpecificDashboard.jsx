@@ -247,21 +247,6 @@ export default function ProviderSpecificDashboard({ user }) {
         </CardContent>
       </Card>
 
-      {/* Provider-Specific Priority Alerts */}
-      <Alert className="bg-orange-50 border-orange-300">
-        <AlertCircle className="w-4 h-4 text-orange-600" />
-        <AlertDescription>
-          <p className="font-semibold text-orange-900 mb-2">
-            Priority Items for {providerType}s
-          </p>
-          <ul className="space-y-1 text-sm text-orange-800">
-            {priorityAlerts.slice(0, 3).map((alert, idx) => (
-              <li key={idx}>• {alert}</li>
-            ))}
-          </ul>
-        </AlertDescription>
-      </Alert>
-
       {/* Provider-Specific Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {stats.map((stat, idx) => {
