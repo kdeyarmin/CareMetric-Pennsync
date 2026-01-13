@@ -44,6 +44,35 @@ Format as a structured list.`,
     }
   };
 
+  const generateDiagnosticTests = async (diagnosisName) => {
+    setGeneratingTests(diagnosisName);
+    try {
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `For the diagnosis: "${diagnosisName}"
+        
+Patient Symptoms: ${symptoms}
+
+Generate a specific diagnostic test plan including:
+1. First-line lab tests
+2. Imaging studies (if needed)
+3. Diagnostic procedures
+4. Expected timeline
+5. Cost considerations
+
+Be specific and practical.`,
+        add_context_from_internet: false,
+      });
+
+      toast.success("Diagnostic tests generated");
+      setExpandedDiagnosis({ name: diagnosisName, tests: result });
+    } catch (error) {
+      toast.error("Failed to generate diagnostic tests");
+      console.error(error);
+    } finally {
+      setGeneratingTests(null);
+    }
+  };
+
   return (
     <Card className="border-blue-200 bg-blue-50">
       <CardHeader>
