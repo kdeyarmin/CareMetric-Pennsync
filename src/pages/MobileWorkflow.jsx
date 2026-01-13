@@ -255,6 +255,112 @@ export default function MobileWorkflow() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Create Patient Dialog */}
+        {showCreatePatient && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Create New Patient</CardTitle>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowCreatePatient(false)}
+                    className="h-8 w-8"
+                  >
+                    ✕
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">
+                    First Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={newPatientData.first_name}
+                    onChange={(e) =>
+                      setNewPatientData({
+                        ...newPatientData,
+                        first_name: e.target.value,
+                      })
+                    }
+                    placeholder="John"
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">
+                    Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={newPatientData.last_name}
+                    onChange={(e) =>
+                      setNewPatientData({
+                        ...newPatientData,
+                        last_name: e.target.value,
+                      })
+                    }
+                    placeholder="Doe"
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">
+                    Date of Birth
+                  </label>
+                  <input
+                    type="date"
+                    value={newPatientData.date_of_birth}
+                    onChange={(e) =>
+                      setNewPatientData({
+                        ...newPatientData,
+                        date_of_birth: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">
+                    Medical Record Number
+                  </label>
+                  <input
+                    type="text"
+                    value={newPatientData.medical_record_number}
+                    onChange={(e) =>
+                      setNewPatientData({
+                        ...newPatientData,
+                        medical_record_number: e.target.value,
+                      })
+                    }
+                    placeholder="MRN-12345"
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 text-sm"
+                    onClick={() => setShowCreatePatient(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 text-sm"
+                    onClick={createNewPatient}
+                    disabled={creatingPatient}
+                  >
+                    {creatingPatient ? "Creating..." : "Create"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );
