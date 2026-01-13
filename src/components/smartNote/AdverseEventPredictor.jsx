@@ -24,11 +24,13 @@ export default function AdverseEventPredictor({ patientData }) {
 Patient Data:
 ${patientData}
 
+${reasonForVisit ? `Reason for Visit: ${reasonForVisit}` : ''}
+
 Provide a comprehensive risk assessment including:
 1. High-risk factors identified
 2. Potential adverse events by likelihood (high/medium/low)
 3. Clinical warning signs to monitor
-4. Preventive interventions
+4. Preventive interventions specific to the reason for visit
 5. Monitoring recommendations
 
 Be specific and actionable.`,
