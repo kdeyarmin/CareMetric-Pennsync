@@ -10,6 +10,9 @@ import { useQuery } from "@tanstack/react-query";
 import EnhancedDocumentationAssistant from "./EnhancedDocumentationAssistant";
 import PatientHistoryContext from "./PatientHistoryContext";
 import SmartNoteGuidelinesPanel from "./SmartNoteGuidelinesPanel";
+import ComplianceIssueDetector from "../scribe/ComplianceIssueDetector";
+import VisitSummarizer from "../scribe/VisitSummarizer";
+import DictationAccuracyFeedback from "../scribe/DictationAccuracyFeedback";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -39,6 +42,7 @@ export default function MedicalScribeWithReview({
   const audioChunksRef = React.useRef([]);
   const timerRef = React.useRef(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [rawTranscription, setRawTranscription] = useState("");
 
   const { data: patientHistory } = useQuery({
     queryKey: ['patientHistory', patientId],
@@ -124,6 +128,9 @@ export default function MedicalScribeWithReview({
       }
 
       let transcribedText = data.transcript || data.transcription || '';
+      
+      // Store raw transcription for accuracy feedback
+      setRawTranscription(transcribedText);
 
       // Pre-populate with template if selected
       if (selectedTemplate?.sections) {
@@ -377,16 +384,30 @@ export default function MedicalScribeWithReview({
           </CardContent>
         </Card>
 
-        <EnhancedDocumentationAssistant
-          generatedNote={generatedNote}
-          diagnosis={diagnosis}
-          visitType={visitType}
-          patientId={patientId}
-          patientHistory={patientHistory}
-          isLoading={isProcessing}
-          roughNote={editedTranscription}
-          providerType={currentUser?.provider_type || currentUser?.credential_type || 'RN'}
-        />
+        <div className="space-y-4">
+          <EnhancedDocumentationAssistant
+            generatedNote={generatedNote}
+            diagnosis={diagnosis}
+            visitType={visitType}
+            patientId={patientId}
+            patientHistory={patientHistory}
+            isLoading={isProcessing}
+            roughNote={editedTranscription}
+            providerType={currentUser?.provider_type || currentUser?.credential_type || 'RN'}
+          />
+          
+          {/* Real-time feedback components */}
+          <DictationAccuracyFeedback 
+            rawTranscription={rawTranscription}
+            refinedNote={editedTranscription}
+            selectedLanguage={selectedLanguage}
+          />
+          
+          <ComplianceIssueDetector
+            noteContent={editedTranscription}
+            diagnosis={diagnosis}
+            visitType={visitType}
+          />
         </div>
         </div>
         );
@@ -452,7 +473,26 @@ export default function MedicalScribeWithReview({
                   noteContent={generatedNote}
                 />
               </div>
-              <div className="lg:col-span-4">
+              <div className="lg:col-span-4 space-y-4">
+                <VisitSummarizer
+                  noteContent={generatedNote}
+                  diagnosis={diagnosis}
+                  visitType={visitType}
+                  patientName={patientId ? "patient" : ""}
+                />
+                
+                <ComplianceIssueDetector
+                  noteContent={generatedNote}
+                  diagnosis={diagnosis}
+                  visitType={visitType}
+                />
+                
+                <DictationAccuracyFeedback 
+                  rawTranscription={rawTranscription}
+                  refinedNote={editedTranscription}
+                  selectedLanguage={selectedLanguage}
+                />
+                
                 <EnhancedDocumentationAssistant
                   generatedNote={generatedNote}
                   diagnosis={diagnosis}
