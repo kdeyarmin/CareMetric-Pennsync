@@ -26,6 +26,8 @@ import DifferentialDiagnosisSuggester from "@/components/smartNote/DifferentialD
 import MedicationCrossChecker from "@/components/smartNote/MedicationCrossChecker";
 import AdverseEventPredictor from "@/components/smartNote/AdverseEventPredictor";
 import FollowUpTasksSuggester from "@/components/smartNote/FollowUpTasksSuggester";
+import AIRealTimeDecisionSupport from "@/components/ai/AIRealTimeDecisionSupport";
+import ComplianceBillingOptimizer from "@/components/compliance/ComplianceBillingOptimizer";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -51,6 +53,7 @@ export default function SmartNoteAssistant() {
     medical_record_number: "",
   });
   const [creatingPatient, setCreatingPatient] = useState(false);
+  const [generatedNote, setGeneratedNote] = useState("");
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -681,6 +684,24 @@ export default function SmartNoteAssistant() {
                     </CardContent>
                   )}
                 </Card>
+
+                {/* Real-Time Clinical Support & Compliance */}
+                <div className="grid md:grid-cols-2 gap-6">
+                  <AIRealTimeDecisionSupport
+                    patient={selectedPatient}
+                    currentNotes={generatedNote}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnoses.join(", ")}
+                    medications={extractedData.medications || []}
+                  />
+
+                  <ComplianceBillingOptimizer
+                    currentNotes={generatedNote}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnoses.join(", ")}
+                    patient={selectedPatient}
+                  />
+                </div>
 
                 {/* Follow-Up Tasks Section */}
                 <Card>
