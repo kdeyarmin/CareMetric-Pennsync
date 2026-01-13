@@ -32,6 +32,14 @@ export default function SmartNoteAssistant() {
   const [selectedDiagnoses, setSelectedDiagnoses] = useState([]);
   const [collapsedSections, setCollapsedSections] = useState({});
   const [activeTab, setActiveTab] = useState("patient");
+  const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [newPatientData, setNewPatientData] = useState({
+    first_name: "",
+    last_name: "",
+    date_of_birth: "",
+    medical_record_number: "",
+  });
+  const [creatingPatient, setCreatingPatient] = useState(false);
 
   const { data: patients = [] } = useQuery({
     queryKey: ["patients", searchPatient],
