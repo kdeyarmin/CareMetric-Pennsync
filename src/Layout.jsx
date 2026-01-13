@@ -138,6 +138,7 @@ export default function Layout({ children, currentPageName }) {
   const userNavItems = [
     { name: "Dashboard", icon: Home, page: "Dashboard" },
     { name: "My Patients", icon: Users, page: "Patients" },
+    { name: "Telehealth", icon: Video, page: "TelehealthDashboard" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
     { name: "Mobile Workflow", icon: Phone, page: "MobileWorkflow" },

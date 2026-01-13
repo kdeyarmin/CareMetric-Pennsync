@@ -89,6 +89,7 @@ import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import ProviderScheduling from './pages/ProviderScheduling';
+import TelehealthDashboard from './pages/TelehealthDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -184,6 +185,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
     "ProviderScheduling": ProviderScheduling,
+    "TelehealthDashboard": TelehealthDashboard,
 }
 
 export const pagesConfig = {

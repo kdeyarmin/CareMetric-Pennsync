@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone } from "lucide-react";
+import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
@@ -35,6 +35,7 @@ import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
 import PersonalizedDashboardWidget from "../components/personalization/PersonalizedDashboardWidget";
 import SmartQuickActions from "../components/personalization/SmartQuickActions";
 import PersonalizationEngine from "../components/personalization/PersonalizationEngine";
+import QuickTelehealthLauncher from "../components/telehealth/QuickTelehealthLauncher";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -144,6 +145,27 @@ export default function Dashboard() {
     queryFn: () => base44.entities.Subscription.filter({ user_email: currentUser.email }),
     enabled: !!currentUser?.email,
     select: (data) => data[0]
+  });
+
+  const { data: todayTelehealthAppointments = [] } = useQuery({
+    queryKey: ['todayTelehealthAppointments', currentUser?.email],
+    queryFn: async () => {
+      const today = todayEastern();
+      const appointments = await base44.entities.Appointment.filter({
+        provider_email: currentUser.email,
+        appointment_type: 'telehealth',
+        appointment_date: today
+      }, 'start_time');
+      
+      return appointments.map(apt => {
+        const patient = patients.find(p => p.id === apt.patient_id);
+        return {
+          ...apt,
+          patient_name: patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown'
+        };
+      });
+    },
+    enabled: !!currentUser?.email && patients.length > 0
   });
 
   // Handle errors gracefully (logged server-side)
@@ -311,6 +333,12 @@ export default function Dashboard() {
       )}
 
       {/* Quick Action Cards - Mobile Optimized */}
+       {/* Telehealth Quick Launcher */}
+       <QuickTelehealthLauncher
+         todayAppointments={todayTelehealthAppointments}
+         onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))}
+       />
+
        <motion.div 
          className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
          initial={{ opacity: 0, y: 20 }}
@@ -344,15 +372,17 @@ export default function Dashboard() {
            </Link>
          </motion.div>
          <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-           <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift">
-             <CardContent className="p-4 sm:p-6">
-               <div className="flex items-center gap-3 mb-2">
-                 <Clock className="w-6 h-6 text-green-600" />
-                 <p className="text-sm font-medium text-green-900">Time Saved</p>
-               </div>
-               <p className="text-xs text-green-700">0h 0m through AI</p>
-             </CardContent>
-           </Card>
+           <Link to={createPageUrl("TelehealthDashboard")} className="block">
+             <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift h-full cursor-pointer">
+               <CardContent className="p-4 sm:p-6">
+                 <div className="flex items-center gap-3 mb-2">
+                   <Video className="w-6 h-6 text-green-600" />
+                   <p className="text-sm font-medium text-green-900">Telehealth</p>
+                 </div>
+                 <p className="text-xs text-green-700">Virtual visits & video calls</p>
+               </CardContent>
+             </Card>
+           </Link>
          </motion.div>
        </motion.div>
 
