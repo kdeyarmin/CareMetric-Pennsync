@@ -576,9 +576,32 @@ export default function SmartNoteAssistant() {
 
           {/* Analysis Tab */}
           <TabsContent value="clinical" className="space-y-6">
-            {extractedData && (
+            {!isAnalysisReady() ? (
+              <Card className="border-amber-200 bg-amber-50">
+                <CardContent className="pt-6">
+                  <div className="flex gap-4 items-start">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-amber-900 mb-2">Missing Requirements</h4>
+                      <p className="text-sm text-amber-800 mb-3">
+                        Before analysis, please complete the following:
+                      </p>
+                      <ul className="space-y-1">
+                        {getMissingRequirements().map((req, idx) => (
+                          <li key={idx} className="text-sm text-amber-800">
+                            • {req}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
               <>
-                {/* Diagnoses Confirmation Section */}
+                {extractedData && (
+                  <>
+                    {/* Diagnoses Confirmation Section */}
                 <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
