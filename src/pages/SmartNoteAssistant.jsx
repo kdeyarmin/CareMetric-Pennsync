@@ -54,7 +54,18 @@ export default function SmartNoteAssistant() {
 
   const handleDataExtracted = (data) => {
     setExtractedData(data);
-    setActiveTab("analysis");
+    if (data.diagnoses) {
+      setSelectedDiagnoses(data.diagnoses);
+    }
+    setActiveTab("clinical");
+  };
+
+  const toggleDiagnosis = (diagnosis) => {
+    setSelectedDiagnoses((prev) =>
+      prev.includes(diagnosis)
+        ? prev.filter((d) => d !== diagnosis)
+        : [...prev, diagnosis]
+    );
   };
 
   const toggleSection = (section) => {
