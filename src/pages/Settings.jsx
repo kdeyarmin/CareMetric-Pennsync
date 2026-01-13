@@ -14,6 +14,7 @@ import DataRetentionSettings from "../components/settings/DataRetentionSettings"
 import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
 import ThemeSettings from "../components/theme/ThemeSettings";
 import ProviderTypeSelector from "../components/settings/ProviderTypeSelector";
+import ProviderPracticeInfoManager from "../components/settings/ProviderPracticeInfoManager";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -346,6 +347,11 @@ export default function Settings() {
 
         {/* Provider Profile */}
         <ProviderTypeSelector currentUser={currentUser} />
+
+        {/* Practice Information */}
+        {currentUser && !['RN', 'LPN'].includes(currentUser.credential_type) && (
+          <ProviderPracticeInfoManager userEmail={currentUser.email} />
+        )}
 
         {/* Theme Settings */}
         <ThemeSettings />
