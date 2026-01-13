@@ -267,6 +267,15 @@ export default function SmartNoteAssistant() {
                   </div>
                 )}
 
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full mt-2 border-dashed"
+                  onClick={() => setShowCreatePatient(true)}
+                >
+                  + Create New Patient
+                </Button>
+
                 {selectedPatient && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex items-start justify-between">
