@@ -111,6 +111,7 @@ import PatientHistoryChat from "../components/patient/PatientHistoryChat";
 import PatientEmailGenerator from "../components/patient/PatientEmailGenerator";
 import BillingCodeSuggester from "../components/billing/BillingCodeSuggester";
 import PreferenceTracker, { trackPreference } from "../components/personalization/PreferenceTracker";
+import NoteEmailDialog from "../components/notes/NoteEmailDialog";
 
 // Common diagnoses list
 const commonDiagnoses = [
@@ -1975,6 +1976,16 @@ Return JSON with:
               />
 
 
+
+              {/* Email Note */}
+              {!isAnonymous && (
+                <NoteEmailDialog
+                  noteContent={enhancedNote}
+                  patientData={selectedPatient}
+                  visitType={visitType}
+                  currentUser={currentUser}
+                />
+              )}
 
               {/* Next Steps Panel - Clear action-oriented summary */}
               <NextStepsPanel
