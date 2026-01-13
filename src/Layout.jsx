@@ -5,27 +5,27 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-              Home,
-              Users,
-              User,
-              WifiOff,
-              GraduationCap,
-              BarChart3,
-              Settings,
-              Menu,
-              X,
-              Brain,
-              Target,
-              Bell,
-              LogOut,
-              ChevronLeft,
-              ChevronRight,
-              Sparkles,
-              Activity,
-              CreditCard,
-              Mic,
-              Smartphone
-            } from "lucide-react";
+                  Home,
+                  Users,
+                  User,
+                  WifiOff,
+                  GraduationCap,
+                  BarChart3,
+                  Settings,
+                  Menu,
+                  X,
+                  Brain,
+                  Target,
+                  Bell,
+                  LogOut,
+                  ChevronLeft,
+                  ChevronRight,
+                  Sparkles,
+                  Activity,
+                  CreditCard,
+                  Mic,
+                  Phone
+                } from "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -140,7 +140,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "My Patients", icon: Users, page: "Patients" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
-    { name: "Mobile Workflow", icon: Smartphone, page: "MobileWorkflow" },
+    { name: "Mobile Workflow", icon: Phone, page: "MobileWorkflow" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
     { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
     { name: "Training Hub", icon: GraduationCap, page: "StaffTrainingHub" },
@@ -537,7 +537,7 @@ export default function Layout({ children, currentPageName }) {
                 isActive("MobileWorkflow") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
               }`}
             >
-              <Smartphone className="w-5 h-5" />
+              <Phone className="w-5 h-5" />
               <span className="text-[11px]">Mobile</span>
             </Link>
 
