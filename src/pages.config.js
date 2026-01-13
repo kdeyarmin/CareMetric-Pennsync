@@ -32,7 +32,6 @@ import MedicalScribe from './pages/MedicalScribe';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
 import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
 import MobileWorkflow from './pages/MobileWorkflow';
-import MyAILearning from './pages/MyAILearning';
 import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
 import NurseEducationVideos from './pages/NurseEducationVideos';
 import NursePerformanceDashboard from './pages/NursePerformanceDashboard';
@@ -91,6 +90,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import MyAILearning from './pages/MyAILearning';
 import __Layout from './Layout.jsx';
 
 
@@ -129,7 +129,6 @@ export const PAGES = {
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
     "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
     "MobileWorkflow": MobileWorkflow,
-    "MyAILearning": MyAILearning,
     "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
     "NurseEducationVideos": NurseEducationVideos,
     "NursePerformanceDashboard": NursePerformanceDashboard,
@@ -188,6 +187,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
+    "MyAILearning": MyAILearning,
 }
 
 export const pagesConfig = {
