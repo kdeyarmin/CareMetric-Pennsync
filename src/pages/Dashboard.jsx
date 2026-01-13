@@ -36,6 +36,7 @@ import PersonalizedDashboardWidget from "../components/personalization/Personali
 import SmartQuickActions from "../components/personalization/SmartQuickActions";
 import PersonalizationEngine from "../components/personalization/PersonalizationEngine";
 import QuickTelehealthLauncher from "../components/telehealth/QuickTelehealthLauncher";
+import { getAccessibleWidgets } from "../components/utils/providerAccessControl";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -52,6 +53,11 @@ export default function Dashboard() {
         }
       },
     });
+
+    // Get role-specific widgets
+    const accessibleWidgets = currentUser?.provider_type 
+      ? getAccessibleWidgets(currentUser.provider_type)
+      : [];
 
     // Redirect to onboarding if not completed
     React.useEffect(() => {
@@ -352,51 +358,57 @@ export default function Dashboard() {
        />
 
        <motion.div 
-         className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
-         initial={{ opacity: 0, y: 20 }}
-         animate={{ opacity: 1, y: 0 }}
-         transition={{ delay: 0.3 }}
-       >
-         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-           <Link to={createPageUrl("SmartNoteAssistant")} className="block">
-             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift h-full cursor-pointer">
-               <CardContent className="p-4 sm:p-6">
-                 <div className="flex items-center gap-3 mb-2">
-                   <Brain className="w-6 h-6 text-blue-600" />
-                   <p className="text-sm font-medium text-blue-900">Smart Notes</p>
-                 </div>
-                 <p className="text-xs text-blue-700">AI-powered note enhancement</p>
-               </CardContent>
-             </Card>
-           </Link>
-         </motion.div>
-         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-           <Link to={createPageUrl("MedicalScribe")} className="block">
-             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800 hover-lift h-full cursor-pointer">
-               <CardContent className="p-4 sm:p-6">
-                 <div className="flex items-center gap-3 mb-2">
-                   <Mic className="w-6 h-6 text-purple-600" />
-                   <p className="text-sm font-medium text-purple-900">Medical Scribe</p>
-                 </div>
-                 <p className="text-xs text-purple-700">Record & auto-generate notes</p>
-               </CardContent>
-             </Card>
-           </Link>
-         </motion.div>
-         <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-           <Link to={createPageUrl("TelehealthDashboard")} className="block">
-             <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift h-full cursor-pointer">
-               <CardContent className="p-4 sm:p-6">
-                 <div className="flex items-center gap-3 mb-2">
-                   <Video className="w-6 h-6 text-green-600" />
-                   <p className="text-sm font-medium text-green-900">Telehealth</p>
-                 </div>
-                 <p className="text-xs text-green-700">Virtual visits & video calls</p>
-               </CardContent>
-             </Card>
-           </Link>
-         </motion.div>
-       </motion.div>
+          className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          {accessibleWidgets.includes('smart_notes') && (
+            <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+              <Link to={createPageUrl("SmartNoteAssistant")} className="block">
+                <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift h-full cursor-pointer">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Brain className="w-6 h-6 text-blue-600" />
+                      <p className="text-sm font-medium text-blue-900">Smart Notes</p>
+                    </div>
+                    <p className="text-xs text-blue-700">AI-powered note enhancement</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
+          )}
+          {accessibleWidgets.includes('medical_scribe') && (
+            <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+              <Link to={createPageUrl("MedicalScribe")} className="block">
+                <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800 hover-lift h-full cursor-pointer">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Mic className="w-6 h-6 text-purple-600" />
+                      <p className="text-sm font-medium text-purple-900">Medical Scribe</p>
+                    </div>
+                    <p className="text-xs text-purple-700">Record & auto-generate notes</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
+          )}
+          {accessibleWidgets.includes('telehealth') && (
+            <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+              <Link to={createPageUrl("TelehealthDashboard")} className="block">
+                <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift h-full cursor-pointer">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Video className="w-6 h-6 text-green-600" />
+                      <p className="text-sm font-medium text-green-900">Telehealth</p>
+                    </div>
+                    <p className="text-xs text-green-700">Virtual visits & video calls</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
+          )}
+        </motion.div>
 
 
 
