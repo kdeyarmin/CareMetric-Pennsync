@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
 
 export default function CreateAppointmentDialog({ 
   open: controlledOpen, 
@@ -43,6 +44,9 @@ export default function CreateAppointmentDialog({
     queryKey: ["patients"],
     queryFn: () => base44.entities.Patient.list('first_name', 1000)
   });
+
+  const providerType = currentUser?.credential_type || 'RN';
+  const availableVisitTypes = getVisitTypesForProvider(providerType);
 
   const createAppointmentMutation = useMutation({
     mutationFn: async (data) => {
@@ -182,13 +186,16 @@ export default function CreateAppointmentDialog({
                 onChange={(e) => setFormData({ ...formData, visit_type: e.target.value })}
                 className="w-full px-3 py-2 border rounded-md"
               >
-                <option value="routine_visit">Routine Visit</option>
-                <option value="admission">Admission</option>
-                <option value="recertification">Recertification</option>
-                <option value="discharge">Discharge</option>
-                <option value="skilled_nursing">Skilled Nursing</option>
-                <option value="prn">PRN</option>
+                <option value="">Select visit type...</option>
+                {availableVisitTypes.map(vt => (
+                  <option key={vt.id} value={vt.id}>{vt.label}</option>
+                ))}
               </select>
+              {availableVisitTypes.find(vt => vt.id === formData.visit_type)?.description && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {availableVisitTypes.find(vt => vt.id === formData.visit_type).description}
+                </p>
+              )}
             </div>
 
             <div className="col-span-2 space-y-2">
