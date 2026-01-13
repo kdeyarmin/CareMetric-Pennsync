@@ -35,23 +35,57 @@ export default function DifferentialDiagnosisSuggester({ symptoms, patientHistor
 Symptoms: ${symptoms}
 Patient History: ${patientHistory || "Not provided"}
 
-Provide 3-5 potential diagnoses with:
-- Diagnosis name
-- Likelihood (high/medium/low)
-- Key clinical features to look for
-- Recommended next steps
+Provide 3-5 potential diagnoses in JSON format. Each diagnosis must have:
+- name: diagnosis name
+- confidence: a number from 0-100 representing your confidence level
+- likelihood: "high" (75-100), "medium" (40-74), or "low" (0-39) based on confidence
+- keyFeatures: array of clinical features to look for
+- nextSteps: array of recommended diagnostic steps
 
-Format as a structured list.`,
+Return ONLY valid JSON array with diagnoses, no other text.`,
+        response_json_schema: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              confidence: { type: "number", minimum: 0, maximum: 100 },
+              likelihood: { type: "string", enum: ["high", "medium", "low"] },
+              keyFeatures: { type: "array", items: { type: "string" } },
+              nextSteps: { type: "array", items: { type: "string" } },
+            },
+            required: ["name", "confidence", "likelihood", "keyFeatures", "nextSteps"],
+          },
+        },
         add_context_from_internet: false,
       });
 
-      setSuggestions(result);
+      // Add IDs for tracking adjustments
+      const withIds = result.map((d, idx) => ({
+        ...d,
+        id: `dx_${idx}`,
+      }));
+      setDiagnoses(withIds);
+      setAdjustedConfidences({});
     } catch (error) {
       toast.error("Failed to analyze diagnoses");
       console.error(error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const adjustConfidence = (diagnosisId, newConfidence) => {
+    const clamped = Math.max(0, Math.min(100, newConfidence));
+    setAdjustedConfidences((prev) => ({
+      ...prev,
+      [diagnosisId]: clamped,
+    }));
+  };
+
+  const resetConfidences = () => {
+    setAdjustedConfidences({});
+    toast.success("Confidence scores reset to original values");
   };
 
   const generateDiagnosticTests = async (diagnosisName) => {
