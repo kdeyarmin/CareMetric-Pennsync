@@ -104,7 +104,7 @@ Be specific and clinical.`,
 
         {interactions && (
           <div className="bg-white p-4 rounded border space-y-4">
-            {interactions.split('\n\n').filter(block => block.trim()).map((block, idx) => {
+            {(typeof interactions === 'string' ? interactions.split('\n\n') : []).filter(block => block.trim()).map((block, idx) => {
               const interactionId = `interaction-${idx}`;
               const isDecided = decisions[interactionId];
               
