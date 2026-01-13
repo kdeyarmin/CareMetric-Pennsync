@@ -76,7 +76,7 @@ import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
 import AIPatientHistorySummarizer from "../components/smartNote/AIPatientHistorySummarizer";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import { todayEastern, formatEastern } from "../components/utils/timezone";
-import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
+import { getVisitTypesForProvider, getProviderConfig } from "../components/utils/providerVisitTypeMapping";
 import NextStepsPanel from "../components/smartNote/NextStepsPanel";
 import EnhancedPatientContext from "../components/patient/EnhancedPatientContext";
 import DynamicAISidebar from "../components/smartNote/DynamicAISidebar";
@@ -446,6 +446,15 @@ export default function SmartNoteAssistant() {
   const [isRunningUnifiedCheck, setIsRunningUnifiedCheck] = useState(false);
   const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
   const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
+  const [providerType, setProviderType] = useState(null);
+
+  // Get provider type from user data
+  useEffect(() => {
+    if (currentUser) {
+      const userProviderType = currentUser.provider_type || currentUser.credential_type || 'RN';
+      setProviderType(userProviderType);
+    }
+  }, [currentUser]);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -1549,7 +1558,7 @@ Return JSON with:
                   <Select value={visitType} onValueChange={setVisitType}>
                     <SelectTrigger className="h-11 text-sm w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {getVisitTypesForProvider(currentUser?.credential_type || 'RN').map(vt => (
+                      {getVisitTypesForProvider(providerType || 'RN').map(vt => (
                         <SelectItem key={vt.id} value={vt.id} className="text-sm" title={vt.description}>
                           {vt.label}
                         </SelectItem>

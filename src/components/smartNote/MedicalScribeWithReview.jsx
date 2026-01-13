@@ -146,7 +146,7 @@ export default function MedicalScribeWithReview({
         visitType,
         diagnosis,
         vitalSigns: {},
-        nurseType: 'RN'
+        nurseType: currentUser?.provider_type || currentUser?.credential_type || 'RN'
       });
 
       const data = response.data || response;
@@ -370,7 +370,7 @@ export default function MedicalScribeWithReview({
           patientHistory={patientHistory}
           isLoading={isProcessing}
           roughNote={editedTranscription}
-          providerType="RN"
+          providerType={currentUser?.provider_type || currentUser?.credential_type || 'RN'}
         />
         </div>
         </div>
@@ -446,7 +446,7 @@ export default function MedicalScribeWithReview({
                   patientHistory={patientHistory}
                   isLoading={false}
                   roughNote={editedTranscription}
-                  providerType="RN"
+                  providerType={currentUser?.provider_type || currentUser?.credential_type || 'RN'}
                 />
               </div>
             </div>
