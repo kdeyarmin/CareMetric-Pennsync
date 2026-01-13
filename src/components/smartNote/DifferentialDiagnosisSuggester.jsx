@@ -291,18 +291,7 @@ Be specific and practical.`,
           </div>
         )}
 
-        {expandedDiagnosis && (
-          <Card className="border-green-200 bg-green-50">
-            <CardHeader>
-              <CardTitle className="text-base">{expandedDiagnosis.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm whitespace-pre-wrap bg-white p-3 rounded border">
-                {expandedDiagnosis.tests}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+
       </CardContent>
     </Card>
   );
