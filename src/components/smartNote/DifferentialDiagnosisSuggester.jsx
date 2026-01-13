@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Brain } from "lucide-react";
+import { Loader2, Brain, ChevronDown, ChevronUp, Beaker } from "lucide-react";
 import { toast } from "sonner";
 
 export default function DifferentialDiagnosisSuggester({ symptoms, patientHistory }) {
   const [suggestions, setSuggestions] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [expandedDiagnosis, setExpandedDiagnosis] = useState(null);
+  const [generatingTests, setGeneratingTests] = useState(null);
 
   const analyzeDiagnoses = async () => {
     if (!symptoms?.trim()) {
