@@ -16,6 +16,8 @@ Deno.serve(async (req) => {
     const diagnosis = formData.get('diagnosis');
     const visitType = formData.get('visitType');
     const patientId = formData.get('patientId');
+    const language = formData.get('language') || 'en';
+    const customTerminology = formData.get('customTerminology');
 
     if (!audioFile) {
       return Response.json({ error: 'No audio file provided' }, { status: 400 });
@@ -25,6 +27,7 @@ Deno.serve(async (req) => {
     const transcriptionData = new FormData();
     transcriptionData.append('file', audioFile, 'audio.wav');
     transcriptionData.append('model', 'whisper-1');
+    transcriptionData.append('language', language);
 
     const transcriptionResponse = await fetch(
       'https://api.openai.com/v1/audio/transcriptions',
@@ -47,6 +50,25 @@ Deno.serve(async (req) => {
 
     const transcription = await transcriptionResponse.json();
     const rawTranscript = transcription.text;
+
+    // Build custom terminology context
+    let terminologyContext = '';
+    if (customTerminology) {
+      try {
+        const terms = JSON.parse(customTerminology);
+        if (terms.length > 0) {
+          terminologyContext = '\n\nCustom Medical Terminology:\n' + 
+            terms.map(t => `- "${t.term}" should be written as "${t.preferred_translation || t.term}"${t.context ? ` (${t.context})` : ''}`).join('\n');
+        }
+      } catch (e) {
+        console.error('Failed to parse custom terminology:', e);
+      }
+    }
+
+    // Language-specific instructions
+    const languageInstructions = language !== 'en' 
+      ? `\n\nIMPORTANT: Generate the clinical note in ${language} language. Use proper medical terminology for this language.`
+      : '';
 
     // Generate structured note from transcription using Claude
     const noteGenerationResponse = await fetch(
@@ -72,7 +94,7 @@ Deno.serve(async (req) => {
               5. Patient Response
               6. Goals
               
-              Be specific and measurable. Include vital signs if mentioned. Avoid vague language.`
+              Be specific and measurable. Include vital signs if mentioned. Avoid vague language.${languageInstructions}${terminologyContext}`
             },
             {
               role: 'user',

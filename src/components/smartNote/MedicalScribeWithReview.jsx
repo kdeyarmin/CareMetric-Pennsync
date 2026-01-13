@@ -16,6 +16,7 @@ export default function MedicalScribeWithReview({
         visitType = "",
         patientId = "",
         selectedTemplate = null,
+        selectedLanguage = "en",
         onNoteGenerated = null
       }) {
         const { data: currentUser } = useQuery({
@@ -47,6 +48,16 @@ export default function MedicalScribeWithReview({
       return results[0] || null;
     },
     enabled: !!patientId && patientId !== 'anonymous'
+  });
+
+  const { data: customTerminology = [] } = useQuery({
+    queryKey: ['terminologyGlossary', currentUser?.email, selectedLanguage],
+    queryFn: () => base44.entities.TerminologyGlossary.filter({
+      user_email: currentUser?.email,
+      language: selectedLanguage,
+      is_active: true
+    }),
+    enabled: !!currentUser?.email
   });
 
   const startRecording = async () => {
@@ -100,6 +111,10 @@ export default function MedicalScribeWithReview({
     try {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'audio.wav');
+      formData.append('language', selectedLanguage);
+      if (customTerminology.length > 0) {
+        formData.append('customTerminology', JSON.stringify(customTerminology));
+      }
 
       const response = await base44.functions.invoke('transcribeAndExtractClinicalData', formData);
       const data = response.data || response;

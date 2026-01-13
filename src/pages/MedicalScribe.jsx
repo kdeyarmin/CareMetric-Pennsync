@@ -14,6 +14,8 @@ import MedicalScribeWithReview from "../components/smartNote/MedicalScribeWithRe
 import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
 import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
 import NoteTemplateSelector from "../components/smartNote/NoteTemplateSelector";
+import LanguageSelector from "../components/scribe/LanguageSelector";
+import TerminologyGlossaryManager from "../components/scribe/TerminologyGlossaryManager";
 
 const commonDiagnoses = [
   "CHF (Congestive Heart Failure)",
@@ -36,6 +38,7 @@ export default function MedicalScribe() {
   const [generatedNote, setGeneratedNote] = useState("");
   const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -190,6 +193,11 @@ export default function MedicalScribe() {
                   />
                 )}
 
+                <LanguageSelector
+                  value={selectedLanguage}
+                  onChange={setSelectedLanguage}
+                />
+
                 {!isReady && (
                   <Alert className="bg-yellow-50 border-yellow-200">
                     <AlertDescription className="text-xs text-yellow-800">
@@ -199,6 +207,13 @@ export default function MedicalScribe() {
                 )}
               </CardContent>
             </Card>
+
+            {currentUser && (
+              <TerminologyGlossaryManager
+                userEmail={currentUser.email}
+                selectedLanguage={selectedLanguage}
+              />
+            )}
           </div>
 
           {/* Recording Section */}
@@ -216,6 +231,7 @@ export default function MedicalScribe() {
                   visitType={visitType}
                   patientId={selectedPatientId}
                   selectedTemplate={selectedTemplate}
+                  selectedLanguage={selectedLanguage}
                   onNoteGenerated={handleNoteGenerated}
                 />
               </div>
