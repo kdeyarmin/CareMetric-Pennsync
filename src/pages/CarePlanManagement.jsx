@@ -47,6 +47,14 @@ export default function CarePlanManagement() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showAITools, setShowAITools] = useState(false);
   const [viewMode, setViewMode] = useState("list"); // "list" or "timeline"
+  const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [newPatientData, setNewPatientData] = useState({
+    first_name: "",
+    last_name: "",
+    date_of_birth: "",
+    medical_record_number: "",
+  });
+  const [creatingPatient, setCreatingPatient] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
