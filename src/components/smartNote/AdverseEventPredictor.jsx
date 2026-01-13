@@ -55,6 +55,17 @@ Be specific and actionable.`,
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Reason for Visit</label>
+          <input
+            type="text"
+            placeholder="e.g., Post-op follow-up, Acute exacerbation, Routine visit..."
+            value={reasonForVisit}
+            onChange={(e) => setReasonForVisit(e.target.value)}
+            className="w-full p-2 border rounded text-sm"
+          />
+        </div>
+        
         <textarea
           placeholder="Enter patient vitals, labs, history, and current condition..."
           className="w-full h-24 p-2 border rounded text-sm"
