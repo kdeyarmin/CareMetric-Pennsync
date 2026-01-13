@@ -33,12 +33,25 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
   });
 
   const [formData, setFormData] = React.useState({
-    provider_type: currentUser?.provider_type || user?.provider_type || 'RN',
-    license_number: currentUser?.license_number || user?.license_number || '',
-    credentials: currentUser?.credentials || user?.credentials || '',
-    specialty: currentUser?.specialty || user?.specialty || '',
-    preferred_note_style: currentUser?.preferred_note_style || user?.preferred_note_style || 'detailed'
+    provider_type: 'RN',
+    license_number: '',
+    credentials: '',
+    specialty: '',
+    preferred_note_style: 'detailed'
   });
+
+  React.useEffect(() => {
+    const activeUser = currentUser || user;
+    if (activeUser) {
+      setFormData({
+        provider_type: activeUser.provider_type || 'RN',
+        license_number: activeUser.license_number || '',
+        credentials: activeUser.credentials || '',
+        specialty: activeUser.specialty || '',
+        preferred_note_style: activeUser.preferred_note_style || 'detailed'
+      });
+    }
+  }, [currentUser, user]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
