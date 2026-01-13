@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Mic, MicOff, Sparkles, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import VoiceDictationEnhanced from "./VoiceDictationEnhanced";
 
 export default function MobileNoteInterface({ 
   patientId,
@@ -23,15 +24,27 @@ export default function MobileNoteInterface({
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      // Request microphone with optimal settings for voice
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+      });
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
-      mediaRecorderRef.current.start();
+      mediaRecorderRef.current.start(1000); // Capture in 1-second chunks
       setIsRecording(true);
       setRecordingTime(0);
 
@@ -39,11 +52,15 @@ export default function MobileNoteInterface({
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      // Vibrate on start (mobile feedback)
+      // Haptic feedback on start
       if (navigator.vibrate) navigator.vibrate(50);
-      toast.success('Recording started');
+      toast.success('🎤 Recording started', { duration: 2000 });
     } catch (error) {
-      toast.error('Microphone access denied');
+      if (error.name === 'NotAllowedError') {
+        toast.error('Microphone permission denied. Please enable in settings.');
+      } else {
+        toast.error('Could not access microphone: ' + error.message);
+      }
     }
   };
 
@@ -97,31 +114,37 @@ export default function MobileNoteInterface({
 
   return (
     <div className="space-y-3 w-full">
-      {/* Large Recording Button - Touch Optimized */}
+      {/* Large Recording Button - Touch Optimized with Visual Feedback */}
       <div className="flex flex-col gap-2">
         <Button
           onClick={isRecording ? stopRecording : startRecording}
           disabled={isProcessing}
-          className={`h-32 rounded-2xl text-lg font-bold ${
+          className={`h-36 rounded-3xl text-lg font-bold touch-target transition-all duration-200 ${
             isRecording 
-              ? 'bg-red-600 hover:bg-red-700 active:bg-red-800' 
-              : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'
+              ? 'bg-red-600 hover:bg-red-700 active:bg-red-800 animate-pulse shadow-xl shadow-red-400/50' 
+              : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 shadow-lg shadow-blue-400/30'
           }`}
+          style={{
+            transform: isProcessing ? 'scale(0.95)' : 'scale(1)'
+          }}
         >
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-3">
             {isRecording ? (
               <>
                 <div className="relative">
-                  <MicOff className="w-12 h-12" />
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-pulse" />
+                  <MicOff className="w-14 h-14 drop-shadow-lg" />
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full animate-ping" />
                 </div>
-                <span>Stop Recording</span>
-                <span className="text-sm font-mono">{formatTime(recordingTime)}</span>
+                <span className="drop-shadow-md">Stop Recording</span>
+                <span className="text-base font-mono bg-white/20 px-3 py-1 rounded-full">
+                  {formatTime(recordingTime)}
+                </span>
               </>
             ) : (
               <>
-                <Mic className="w-12 h-12" />
-                <span>Tap to Record Visit</span>
+                <Mic className="w-14 h-14 drop-shadow-lg" />
+                <span className="drop-shadow-md">Tap to Record Visit</span>
+                <span className="text-xs opacity-90">Voice-to-Note AI</span>
               </>
             )}
           </div>
@@ -136,14 +159,20 @@ export default function MobileNoteInterface({
         )}
       </div>
 
-      {/* Quick Text Input - For manual notes */}
+      {/* Quick Text Input - For manual notes with voice dictation */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">Or Type Quick Notes:</label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-gray-700">Or Type Quick Notes:</label>
+          <VoiceDictationEnhanced 
+            onTranscript={(text) => setRoughNote(prev => prev + text)}
+            buttonSize="sm"
+          />
+        </div>
         <Textarea
           value={roughNote}
           onChange={(e) => setRoughNote(e.target.value)}
-          placeholder="Tap to type quick notes..."
-          className="min-h-[120px] text-base"
+          placeholder="Tap to type or use voice dictation..."
+          className="min-h-[120px] text-base touch-target"
           disabled={isRecording || isProcessing}
         />
         {roughNote.length > 20 && (

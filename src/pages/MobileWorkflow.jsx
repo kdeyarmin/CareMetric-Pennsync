@@ -12,11 +12,13 @@ import {
   FileText, 
   CheckCircle2,
   Clock,
-  AlertCircle
+  AlertCircle,
+  ListTodo
 } from "lucide-react";
 import MobileNoteInterface from "../components/mobile/MobileNoteInterface";
 import QuickPatientAccess from "../components/mobile/QuickPatientAccess";
 import PushNotificationManager from "../components/notifications/PushNotificationManager";
+import MobileTaskList from "../components/mobile/MobileTaskList";
 import { todayEastern } from "../components/utils/timezone";
 
 export default function MobileWorkflow() {
@@ -86,13 +88,18 @@ export default function MobileWorkflow() {
         </div>
 
         <Tabs defaultValue="patients" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="patients" className="text-sm">Patients</TabsTrigger>
-            <TabsTrigger value="document" className="text-sm">Quick Note</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="patients" className="text-xs sm:text-sm">Patients</TabsTrigger>
+            <TabsTrigger value="document" className="text-xs sm:text-sm">Quick Note</TabsTrigger>
+            <TabsTrigger value="tasks" className="text-xs sm:text-sm">Tasks</TabsTrigger>
           </TabsList>
 
           <TabsContent value="patients" className="space-y-3">
             <QuickPatientAccess userEmail={currentUser?.email} />
+          </TabsContent>
+          
+          <TabsContent value="tasks" className="space-y-3">
+            <MobileTaskList userEmail={currentUser?.email} />
           </TabsContent>
 
           <TabsContent value="document" className="space-y-3">

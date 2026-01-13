@@ -102,52 +102,69 @@
   .touch-target {
     @apply min-h-[44px] min-w-[44px];
   }
-  
+
   /* Prevent text selection on buttons for better mobile feel */
   button, a {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
     user-select: none;
   }
-  
-  /* Smooth scrolling */
+
+  /* Smooth scrolling with momentum */
   html {
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  
+
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* Prevent zoom on input focus (iOS) */
   @media screen and (max-width: 768px) {
-    input, select, textarea {
+    input, select, textarea, button {
       font-size: 16px !important;
     }
 
-    /* Better touch interactions */
+    /* Better touch interactions with haptic feedback */
     button, a, [role="button"] {
-      -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+      -webkit-tap-highlight-color: rgba(59, 130, 246, 0.1);
+      cursor: pointer;
     }
-    
-    /* Larger cards on mobile for easier interaction */
+
+    button:active, a:active, [role="button"]:active {
+      transform: scale(0.97);
+      transition: transform 0.05s ease-out;
+    }
+
+    /* Larger touch-friendly cards */
     .mobile-card {
-      @apply p-4 rounded-xl;
+      @apply p-4 rounded-xl shadow-sm active:shadow-md;
+      min-height: 60px;
     }
-    
+
     /* Optimize spacing for mobile */
     body {
       -webkit-text-size-adjust: 100%;
+      overscroll-behavior-y: none;
+    }
+
+    /* Hide scrollbars on mobile for cleaner look */
+    ::-webkit-scrollbar {
+      width: 0px;
+      height: 0px;
     }
   }
 
   /* Active state for touch devices */
   @media (hover: none) and (pointer: coarse) {
+    .hover\:shadow-lg:active {
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
     .active\:scale-95:active {
       transform: scale(0.95);
-    }
-    
-    button:active, a:active {
-      transform: scale(0.98);
-      transition: transform 0.1s;
     }
   }
 

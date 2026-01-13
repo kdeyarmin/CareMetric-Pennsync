@@ -137,27 +137,31 @@ export default function PushNotificationManager({ userEmail }) {
 
   return (
     <Button
-      size="sm"
-      variant={notificationsEnabled ? "default" : "outline"}
+      size="icon"
+      variant={notificationsEnabled ? "default" : "ghost"}
       onClick={notificationsEnabled ? 
         () => {
           setNotificationsEnabled(false);
-          toast.info('Notifications disabled');
+          toast.info('Push notifications disabled');
         } : 
         requestNotificationPermission
       }
-      className="gap-2"
+      className={`h-8 w-8 sm:h-9 sm:w-9 relative touch-target ${
+        notificationsEnabled ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+      }`}
+      title={notificationsEnabled ? 'Notifications enabled' : 'Enable push notifications'}
     >
       {notificationsEnabled ? (
         <>
-          <Bell className="w-3 h-3" />
-          Alerts On
+          <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+          {(urgentTasks.length + criticalAlerts.length) > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+              {urgentTasks.length + criticalAlerts.length}
+            </span>
+          )}
         </>
       ) : (
-        <>
-          <BellOff className="w-3 h-3" />
-          Enable Alerts
-        </>
+        <BellOff className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600 dark:text-slate-400" />
       )}
     </Button>
   );
