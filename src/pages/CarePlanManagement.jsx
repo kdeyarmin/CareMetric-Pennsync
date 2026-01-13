@@ -379,6 +379,14 @@ export default function CarePlanManagement() {
                   <SelectItem value="revised" className="text-sm">Revised</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full sm:w-auto border-dashed"
+                onClick={() => setShowCreatePatient(true)}
+              >
+                + Add Patient
+              </Button>
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   variant={viewMode === "list" ? "default" : "outline"}
