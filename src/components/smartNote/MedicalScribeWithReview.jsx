@@ -385,32 +385,33 @@ export default function MedicalScribeWithReview({
           </Card>
 
           <div className="space-y-4 mt-4">
-          <EnhancedDocumentationAssistant
-            generatedNote={generatedNote}
-            diagnosis={diagnosis}
-            visitType={visitType}
-            patientId={patientId}
-            patientHistory={patientHistory}
-            isLoading={isProcessing}
-            roughNote={editedTranscription}
-            providerType={currentUser?.provider_type || currentUser?.credential_type || 'RN'}
-          />
-          
-          {/* Real-time feedback components */}
-          <DictationAccuracyFeedback 
-            rawTranscription={rawTranscription}
-            refinedNote={editedTranscription}
-            selectedLanguage={selectedLanguage}
-          />
-          
-          <ComplianceIssueDetector
-            noteContent={editedTranscription}
-            diagnosis={diagnosis}
-            visitType={visitType}
-          />
+            <EnhancedDocumentationAssistant
+              generatedNote={generatedNote}
+              diagnosis={diagnosis}
+              visitType={visitType}
+              patientId={patientId}
+              patientHistory={patientHistory}
+              isLoading={isProcessing}
+              roughNote={editedTranscription}
+              providerType={currentUser?.provider_type || currentUser?.credential_type || 'RN'}
+            />
+            
+            {/* Real-time feedback components */}
+            <DictationAccuracyFeedback 
+              rawTranscription={rawTranscription}
+              refinedNote={editedTranscription}
+              selectedLanguage={selectedLanguage}
+            />
+            
+            <ComplianceIssueDetector
+              noteContent={editedTranscription}
+              diagnosis={diagnosis}
+              visitType={visitType}
+            />
+          </div>
         </div>
-        </div>
-        );
+      </div>
+    );
         }
 
   // Complete stage - show generated note
