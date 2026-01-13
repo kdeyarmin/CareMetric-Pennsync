@@ -471,6 +471,106 @@ export default function SmartNoteAssistant() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Visit Type Selection */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Wand2 className="w-5 h-5" />
+                  Visit Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">
+                    Visit Type *
+                  </label>
+                  <select
+                    value={visitType}
+                    onChange={(e) => setVisitType(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option value="">Select visit type...</option>
+                    {availableVisitTypes.map((vt) => (
+                      <option key={vt.id} value={vt.id}>
+                        {vt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Vitals Input */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">
+                    Vital Signs (at least one required) *
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-600">Temperature (°F)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={vitals.temperature}
+                        onChange={(e) => setVitals({ ...vitals, temperature: e.target.value })}
+                        placeholder="98.6"
+                        className="w-full px-2 py-1.5 border rounded text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Heart Rate (bpm)</label>
+                      <input
+                        type="number"
+                        value={vitals.heart_rate}
+                        onChange={(e) => setVitals({ ...vitals, heart_rate: e.target.value })}
+                        placeholder="72"
+                        className="w-full px-2 py-1.5 border rounded text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-600">Blood Pressure (mmHg)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={vitals.blood_pressure_systolic}
+                          onChange={(e) => setVitals({ ...vitals, blood_pressure_systolic: e.target.value })}
+                          placeholder="120"
+                          className="flex-1 px-2 py-1.5 border rounded text-sm"
+                        />
+                        <span className="flex items-center">/</span>
+                        <input
+                          type="number"
+                          value={vitals.blood_pressure_diastolic}
+                          onChange={(e) => setVitals({ ...vitals, blood_pressure_diastolic: e.target.value })}
+                          placeholder="80"
+                          className="flex-1 px-2 py-1.5 border rounded text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Respiratory Rate</label>
+                      <input
+                        type="number"
+                        value={vitals.respiratory_rate}
+                        onChange={(e) => setVitals({ ...vitals, respiratory_rate: e.target.value })}
+                        placeholder="16"
+                        className="w-full px-2 py-1.5 border rounded text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">O2 Saturation (%)</label>
+                      <input
+                        type="number"
+                        value={vitals.oxygen_saturation}
+                        onChange={(e) => setVitals({ ...vitals, oxygen_saturation: e.target.value })}
+                        placeholder="98"
+                        className="w-full px-2 py-1.5 border rounded text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             <ClinicalNoteAnalyzer onDataExtracted={handleDataExtracted} />
           </TabsContent>
 
