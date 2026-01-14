@@ -13,38 +13,76 @@ export default function AIVisitSummaryGenerator({ visit, patient, messages = [] 
 
   const generateSummaryMutation = useMutation({
     mutationFn: async () => {
-      const prompt = `Generate a comprehensive telehealth visit summary based on the following information:
+      const prompt = `Generate a comprehensive, Medicare-compliant telehealth visit encounter note based on the following information:
 
-PATIENT: ${patient?.first_name} ${patient?.last_name}
-DOB: ${patient?.date_of_birth}
-PRIMARY DIAGNOSIS: ${patient?.primary_diagnosis}
+PATIENT INFORMATION:
+- Name: ${patient?.first_name} ${patient?.last_name}
+- DOB: ${patient?.date_of_birth}
+- MRN: ${patient?.medical_record_number || 'N/A'}
+- Primary Diagnosis: ${patient?.primary_diagnosis}
+- Secondary Diagnoses: ${patient?.secondary_diagnoses?.join(', ') || 'None documented'}
+- Medications: ${patient?.current_medications?.map(m => m.name).join(', ') || 'None documented'}
 
-VISIT TYPE: ${visit?.visit_type}
-DATE: ${visit?.visit_date}
-DURATION: ${visit?.telehealth_call_duration ? Math.round(visit.telehealth_call_duration / 60) : 'N/A'} minutes
+VISIT DETAILS:
+- Visit Type: ${visit?.visit_type}
+- Date: ${visit?.visit_date}
+- Time: ${visit?.visit_time}
+- Duration: ${visit?.telehealth_call_duration ? Math.round(visit.telehealth_call_duration / 60) : 'N/A'} minutes
+- Modality: Telehealth Video Consultation
 
-VISIT NOTES: ${visit?.nurse_notes || 'Not documented yet'}
+PROVIDER NOTES:
+${visit?.nurse_notes || 'Not documented yet'}
 
-VITAL SIGNS:
-- Temperature: ${visit?.vital_signs?.temperature || 'N/A'}°F
+VITAL SIGNS (if collected):
+- Temperature: ${visit?.vital_signs?.temperature || 'Not collected'}°F
 - Blood Pressure: ${visit?.vital_signs?.blood_pressure_systolic || 'N/A'}/${visit?.vital_signs?.blood_pressure_diastolic || 'N/A'} mmHg
-- Heart Rate: ${visit?.vital_signs?.heart_rate || 'N/A'} bpm
-- O2 Saturation: ${visit?.vital_signs?.oxygen_saturation || 'N/A'}%
-- Pain Level: ${visit?.vital_signs?.pain_level || 'N/A'}/10
+- Heart Rate: ${visit?.vital_signs?.heart_rate || 'Not collected'} bpm
+- Respiratory Rate: ${visit?.vital_signs?.respiratory_rate || 'Not collected'} breaths/min
+- O2 Saturation: ${visit?.vital_signs?.oxygen_saturation || 'Not collected'}%
+- Pain Level: ${visit?.vital_signs?.pain_level || 'Not collected'}/10
+- Weight: ${visit?.vital_signs?.weight || 'Not collected'} lbs
 
-${messages.length > 0 ? `VISIT CONVERSATION HIGHLIGHTS:\n${messages.slice(-10).map(m => `${m.sender_type}: ${m.message_text}`).join('\n')}` : ''}
+${messages.length > 0 ? `CONVERSATION SUMMARY:\n${messages.slice(-15).map(m => `${m.sender_type}: ${m.message_text}`).join('\n')}` : ''}
 
-Generate a professional, Medicare-compliant visit summary including:
-1. Chief complaint and reason for visit
-2. History of present illness
-3. Review of systems
-4. Physical assessment findings (based on visual observation)
-5. Vital signs interpretation
-6. Clinical impression
-7. Plan of care and patient education provided
-8. Follow-up recommendations
+Generate a complete clinical encounter note in SOAP format with the following sections:
 
-Format as a clinical note ready for documentation.`;
+**SUBJECTIVE:**
+- Chief complaint
+- History of present illness (HPI)
+- Review of systems (ROS) - relevant systems only
+- Current medication compliance and side effects
+- Functional status updates
+
+**OBJECTIVE:**
+- General appearance and demeanor (from video observation)
+- Vital signs interpretation
+- Visual assessment findings (mobility, skin color, respiratory effort, etc.)
+- Home environment observations if relevant
+- Technology/connectivity quality during visit
+
+**ASSESSMENT:**
+- Clinical impression
+- Problem list with ICD-10 codes if applicable
+- Progress toward treatment goals
+- Risk factors identified
+- Medicare homebound status confirmation (if applicable)
+
+**PLAN:**
+- Interventions provided during visit
+- Patient education topics discussed
+- Medication adjustments (if any)
+- Follow-up plan and timeline
+- Referrals or coordination needs
+- Documentation of telehealth consent and HIPAA compliance
+
+**BILLING JUSTIFICATION:**
+Include specific documentation elements to support telehealth billing:
+- Medical necessity of visit
+- Time spent and complexity
+- Skilled services provided
+- Patient progress and response to treatment
+
+Format as a professional clinical note ready for EHR documentation.`;
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt

@@ -16,6 +16,9 @@ import ScreenShareEducation from '../components/telehealth/ScreenShareEducation'
 import AIRealtimeTranscription from '../components/telehealth/AIRealtimeTranscription';
 import AISymptomChecker from '../components/telehealth/AISymptomChecker';
 import AIFollowUpGenerator from '../components/telehealth/AIFollowUpGenerator';
+import ConnectionQualityMonitor from '../components/telehealth/ConnectionQualityMonitor';
+import AIVisitSummaryGenerator from '../components/telehealth/AIVisitSummaryGenerator';
+import RealTimePatientRiskMonitor from '../components/telehealth/RealTimePatientRiskMonitor';
 import { createPageUrl } from '@/utils';
 
 export default function TelehealthVisit() {
@@ -417,7 +420,7 @@ export default function TelehealthVisit() {
             </CardContent>
           </Card>
 
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-3 gap-4">
             <Alert className="border-blue-200 bg-blue-50">
               <AlertCircle className="w-4 h-4 text-blue-600" />
               <AlertDescription className="text-blue-900 text-sm">
@@ -425,6 +428,16 @@ export default function TelehealthVisit() {
                 {consent?.recording_consent ? ' Recording enabled.' : ' Not recording.'}
               </AlertDescription>
             </Alert>
+
+            <ConnectionQualityMonitor 
+              room={room}
+              roomName={room?.name}
+              onQualityChange={(quality) => {
+                if (quality === 'poor') {
+                  console.log('Poor connection detected, quality auto-adjusted');
+                }
+              }}
+            />
 
             <ScreenShareEducation 
               onScreenShareStart={(stream) => {
@@ -455,12 +468,27 @@ export default function TelehealthVisit() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
+            {/* Real-Time Risk Monitor */}
+            <RealTimePatientRiskMonitor
+              visitId={visitId}
+              patientId={patientId}
+              isActive={step === 'connected'}
+              transcript={transcript}
+              vitals={patient?.vital_signs}
+              callDuration={callDuration}
+              onEscalate={(analysis) => {
+                setError(`ESCALATION: ${analysis.escalation_protocol?.reason || 'Risk detected'}`);
+              }}
+            />
+
             {/* AI Symptom Checker */}
             <AISymptomChecker 
               patientId={patientId}
               visitId={visitId}
             />
+          </div>
 
+          <div className="grid md:grid-cols-2 gap-4">
             {/* In-Call Notes */}
             <Card>
               <CardHeader className="py-3">
@@ -479,6 +507,20 @@ export default function TelehealthVisit() {
                 />
               </CardContent>
             </Card>
+
+            {/* AI Visit Summary Generator */}
+            <AIVisitSummaryGenerator
+              visit={{ 
+                id: visitId,
+                visit_type: 'telehealth',
+                visit_date: new Date().toISOString().split('T')[0],
+                visit_time: new Date().toLocaleTimeString(),
+                telehealth_call_duration: callDuration,
+                nurse_notes: callNotes,
+                vital_signs: patient?.vital_signs
+              }}
+              patient={patient}
+            />
           </div>
 
           {/* AI Follow-Up Instructions Generator */}
