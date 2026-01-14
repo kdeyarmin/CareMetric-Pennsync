@@ -14,14 +14,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch provider-specific settings
-    const providerType = user.provider_type || 'RN';
-    const providerSettings = await base44.entities.ProviderSettings.filter({
-      provider_type: providerType,
-      is_active: true
-    });
-    const providerConfig = providerSettings[0] || null;
-
     const { roughNote, patientId, visitType, visitDate, diagnosis, vitalSigns, nurseType } = await req.json();
 
     if (!roughNote || !visitType || !diagnosis) {
@@ -31,15 +23,27 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    // Fetch patient data and context
-    const patient = (patientId && patientId !== 'anonymous') ? await base44.entities.Patient.filter({ id: patientId }) : [];
-    const selectedPatient = patient[0] || null;
+    const providerType = user.provider_type || 'RN';
+    const isAnonymous = !patientId || patientId === 'anonymous';
+
+    // Parallel fetch: provider settings + patient data (avoid sequential calls)
+    const [providerSettings, patientData] = await Promise.all([
+      base44.entities.ProviderSettings.filter({
+        provider_type: providerType,
+        is_active: true
+      }),
+      !isAnonymous ? base44.entities.Patient.filter({ id: patientId }) : Promise.resolve([])
+    ]);
+
+    const providerConfig = providerSettings[0] || null;
+    const selectedPatient = patientData[0] || null;
     
-    const recentVisits = (patientId && patientId !== 'anonymous') ? 
-      await base44.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3) : [];
-    
-    const carePlans = (patientId && patientId !== 'anonymous') ? 
-      await base44.entities.CarePlan.filter({ patient_id: patientId }) : [];
+    // Parallel fetch related patient data
+    const [recentVisits, carePlans] = !isAnonymous ? 
+      await Promise.all([
+        base44.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3),
+        base44.entities.CarePlan.filter({ patient_id: patientId })
+      ]) : [[], []];
 
     // Build concise patient context
     const patientContext = selectedPatient ? `
@@ -119,54 +123,63 @@ Return valid JSON with: rough_compliance_score (0-100), missing_elements (array)
 
     const result = JSON.parse(completion.choices[0].message.content);
 
-    // Save to patient history
-    if (selectedPatient && patientId !== 'anonymous') {
+    // Parallel operations: update patient history, track metrics, record A/B test
+    const updatePromises = [];
+
+    if (selectedPatient && !isAnonymous) {
       const currentHistory = selectedPatient.enhanced_notes_history || [];
-      await base44.entities.Patient.update(patientId, {
-        enhanced_notes_history: [
-          ...currentHistory,
-          {
-            date: new Date().toISOString(),
-            visit_type: visitType,
-            diagnosis,
-            enhanced_note: result.enhanced_note,
-            rough_note: roughNote,
-            quality_score: result.quality_score,
-            nurse_email: user.email,
-            vital_signs: vitalSigns
-          }
-        ].slice(-10)
-      });
+      updatePromises.push(
+        base44.entities.Patient.update(patientId, {
+          enhanced_notes_history: [
+            ...currentHistory,
+            {
+              date: new Date().toISOString(),
+              visit_type: visitType,
+              diagnosis,
+              enhanced_note: result.enhanced_note,
+              rough_note: roughNote,
+              quality_score: result.quality_score,
+              nurse_email: user.email,
+              vital_signs: vitalSigns
+            }
+          ].slice(-10)
+        })
+      );
     }
 
-    // Track metrics
-    await base44.entities.NoteConversion.create({
-      nurse_email: user.email,
-      patient_id: (patientId && patientId !== 'anonymous') ? patientId : null,
-      visit_type: visitType,
-      diagnosis,
-      rough_note_length: roughNote.length,
-      enhanced_note_length: result.enhanced_note.length,
-      quality_score: result.quality_score,
-      rough_note_compliance: result.rough_compliance_score,
-      enhanced_note_compliance: result.enhanced_compliance_score,
-      compliance_improvement: result.compliance_improvement
-    });
-
-    // Record A/B test result if applicable
-    if (aiConfig.configuration_id) {
-      await base44.functions.invoke('recordAITestResult', {
-        configuration_id: aiConfig.configuration_id,
-        provider_type: providerType,
-        task_type: 'note_enhancement',
-        ab_test_group: aiConfig.ab_test_group,
+    updatePromises.push(
+      base44.entities.NoteConversion.create({
+        nurse_email: user.email,
+        patient_id: !isAnonymous ? patientId : null,
+        visit_type: visitType,
+        diagnosis,
+        rough_note_length: roughNote.length,
+        enhanced_note_length: result.enhanced_note.length,
         quality_score: result.quality_score,
-        compliance_score: result.enhanced_compliance_score,
-        processing_time_ms: processingTime,
-        tokens_used: completion.usage?.total_tokens || 0,
-        success: true
-      });
+        rough_note_compliance: result.rough_compliance_score,
+        enhanced_note_compliance: result.enhanced_compliance_score,
+        compliance_improvement: result.compliance_improvement
+      })
+    );
+
+    if (aiConfig.configuration_id) {
+      updatePromises.push(
+        base44.functions.invoke('recordAITestResult', {
+          configuration_id: aiConfig.configuration_id,
+          provider_type: providerType,
+          task_type: 'note_enhancement',
+          ab_test_group: aiConfig.ab_test_group,
+          quality_score: result.quality_score,
+          compliance_score: result.enhanced_compliance_score,
+          processing_time_ms: processingTime,
+          tokens_used: completion.usage?.total_tokens || 0,
+          success: true
+        })
+      );
     }
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
 
     return Response.json({
       success: true,
