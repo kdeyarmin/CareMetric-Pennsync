@@ -36,7 +36,6 @@ import SmartQuickActions from "../components/personalization/SmartQuickActions";
 import PersonalizationEngine from "../components/personalization/PersonalizationEngine";
 import QuickTelehealthLauncher from "../components/telehealth/QuickTelehealthLauncher";
 import { getAccessibleWidgets } from "../components/utils/providerAccessControl";
-import ProactiveRiskIdentifier from "../components/predictive/ProactiveRiskIdentifier";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -382,13 +381,6 @@ export default function Dashboard() {
         todayAppointments={todayTelehealthAppointments}
         onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))}
       />
-
-      {/* Proactive Risk Identification */}
-      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.riskIdentification) && (
-        <div className="mb-6">
-          <ProactiveRiskIdentifier />
-        </div>
-      )}
 
 
       {/* Compliance & Clinical Support */}
