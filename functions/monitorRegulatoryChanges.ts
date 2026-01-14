@@ -71,16 +71,20 @@ Return JSON array of updates.`;
       }
     });
 
-    // Store new regulatory updates
-    const createdUpdates = [];
-    for (const update of result.updates || []) {
-      // Check if already exists (avoid duplicates)
-      const existing = await base44.asServiceRole.entities.RegulatoryUpdate.filter({
-        title: update.title
-      });
+    // Batch check for duplicates & create new updates in parallel
+    const updates = result.updates || [];
+    
+    // Get all existing titles in one query (not one per update)
+    const existingUpdates = await base44.asServiceRole.entities.RegulatoryUpdate.filter({});
+    const existingTitles = new Set(existingUpdates.map(u => u.title));
 
-      if (existing.length === 0) {
-        const created = await base44.asServiceRole.entities.RegulatoryUpdate.create({
+    // Filter only new updates
+    const newUpdates = updates.filter(update => !existingTitles.has(update.title));
+
+    // Batch create all new updates at once
+    const createdUpdates = newUpdates.length > 0 ? 
+      await base44.asServiceRole.entities.RegulatoryUpdate.bulkCreate(
+        newUpdates.map(update => ({
           title: update.title,
           source: update.regulation_source || 'CMS',
           category: update.category || 'quality',
@@ -93,10 +97,8 @@ Return JSON array of updates.`;
           suggested_training: [],
           status: 'pending_review',
           reference_url: update.reference_url
-        });
-        createdUpdates.push(created);
-      }
-    }
+        }))
+      ) : [];
 
     console.log(`Regulatory monitoring complete: ${createdUpdates.length} new updates`);
 
