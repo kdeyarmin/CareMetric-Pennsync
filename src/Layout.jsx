@@ -180,12 +180,12 @@ export default function Layout({ children, currentPageName }) {
                 <ThemeProvider>
                 <div className="fixed inset-0 -z-10">
         {/* Main gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900" />
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-100 dark:from-slate-950 dark:via-blue-900 dark:to-indigo-950" />
         
-        {/* Animated gradient mesh overlays */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-300/20 to-purple-300/20 dark:from-blue-500/10 dark:to-purple-500/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-indigo-300/20 to-pink-300/20 dark:from-indigo-500/10 dark:to-pink-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-cyan-300/10 to-blue-300/10 dark:from-cyan-500/5 dark:to-blue-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+        {/* Animated gradient mesh overlays with higher contrast */}
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-400/40 to-purple-400/40 dark:from-blue-600/30 dark:to-purple-600/30 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-indigo-400/40 to-pink-400/40 dark:from-indigo-600/30 dark:to-pink-600/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-cyan-400/35 to-blue-400/35 dark:from-cyan-600/25 dark:to-blue-600/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
       </div>
                 <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
@@ -216,7 +216,7 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
         <aside
-               className={`hidden lg:flex flex-col bg-gradient-to-b from-white/50 to-slate-50/40 dark:from-slate-900/60 dark:to-slate-800/40 backdrop-blur-2xl border-r border-white/20 dark:border-slate-700/30 shadow-xl transition-all duration-300 ${
+               className={`hidden lg:flex flex-col bg-gradient-to-b from-white/70 to-blue-50/50 dark:from-slate-800/80 dark:to-blue-900/50 backdrop-blur-xl border-r border-white/40 dark:border-blue-500/20 shadow-2xl transition-all duration-300 ${
                  sidebarCollapsed ? "w-16" : "w-56"
                }`}
              >
@@ -316,7 +316,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/50 via-blue-50/40 to-white/50 dark:from-slate-900/60 dark:via-slate-800/50 dark:to-slate-900/60 backdrop-blur-2xl border-b border-white/20 dark:border-slate-700/30 shadow-lg flex flex-col transition-colors duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/70 via-blue-50/60 to-white/70 dark:from-slate-800/80 dark:via-blue-900/60 dark:to-slate-800/80 backdrop-blur-xl border-b border-white/40 dark:border-blue-500/20 shadow-xl flex flex-col transition-colors duration-300 ${
           showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
         }`}
         style={{
@@ -472,7 +472,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white/50 via-slate-50/40 to-white/30 dark:from-slate-900/60 dark:via-slate-800/50 dark:to-slate-900/40 backdrop-blur-2xl border-t border-white/20 dark:border-slate-700/30 shadow-2xl lg:hidden transition-colors duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white/80 via-blue-50/60 to-white/50 dark:from-slate-800/90 dark:via-blue-900/70 dark:to-slate-800/60 backdrop-blur-xl border-t border-white/40 dark:border-blue-500/20 shadow-2xl lg:hidden transition-colors duration-300 ${
           showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
         }`}
         style={{ 
