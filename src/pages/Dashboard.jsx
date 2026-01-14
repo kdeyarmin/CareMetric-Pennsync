@@ -288,9 +288,9 @@ export default function Dashboard() {
               <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
                     onClick={() => navigate(createPageUrl('SmartNoteAssistant'))}>
                 <CardContent className="p-4 text-center">
-                  <Shield className="w-10 h-10 text-white mx-auto mb-2" />
-                  <h3 className="font-bold text-sm text-white mb-1">Compliance Review</h3>
-                  <p className="text-xs text-white/80">Check any note</p>
+                  <Brain className="w-10 h-10 text-white mx-auto mb-2" />
+                  <h3 className="font-bold text-sm text-white mb-1">Smart Note</h3>
+                  <p className="text-xs text-white/80">AI documentation</p>
                 </CardContent>
               </Card>
               
