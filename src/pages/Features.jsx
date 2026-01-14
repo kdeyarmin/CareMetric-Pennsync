@@ -39,47 +39,49 @@ export default function Features() {
 
   const features = [
     {
-      category: "Smart Documentation",
-      icon: Brain,
+      category: "AI Compliance Review",
+      icon: Shield,
       color: "blue",
       items: [
         {
           name: "Smart Note Assistant",
           icon: Sparkles,
-          description: "Transform rough notes into Medicare-compliant clinical narratives in seconds",
+          description: "AI reviews any healthcare documentation for compliance with Medicare, Medicaid, and payer requirements",
           howTo: [
-            "1. Select your patient and visit type",
-            "2. Enter vital signs quickly",
-            "3. Type or dictate your rough notes",
-            "4. Click 'Enhance with AI' for instant transformation",
-            "5. Review, copy, and paste into your EHR"
+            "1. Paste or type your clinical note",
+            "2. Click 'Review for Compliance'",
+            "3. AI analyzes against Medicare/Medicaid requirements",
+            "4. View compliance score and missing elements",
+            "5. Apply one-click fixes or enhance full note",
+            "6. Copy compliant note back to your EHR"
           ],
           bestPractices: [
-            "Include specific observations, not vague terms",
-            "Mention skilled interventions performed",
-            "Document patient response to teaching",
-            "Note homebound status indicators",
-            "Save detailed patient info for better AI recommendations"
+            "Works for any provider type - RN, MD, PT, OT, ST, etc.",
+            "Paste notes from any EHR for instant review",
+            "Use for audit preparation and quality assurance",
+            "Learn compliance requirements through AI feedback",
+            "Apply one-click fixes to meet payer standards"
           ],
           page: "SmartNoteAssistant"
         },
         {
-          name: "Voice Dictation",
+          name: "Medical Scribe (Full Interaction Recording)",
           icon: Mic,
-          description: "Hands-free documentation with advanced voice commands and multi-language support",
+          description: "Records entire patient interaction and converts it into a fully compliant clinical note",
           howTo: [
-            "1. Click the 'Voice' button to start",
-            "2. Speak naturally - AI transcribes automatically",
-            "3. Use voice commands: 'enhance note', 'save note', 'copy note'",
-            "4. Dictate vitals: 'blood pressure 120 over 80'",
-            "5. Switch languages for multilingual patients"
+            "1. Start recording before patient interaction",
+            "2. Conduct your visit naturally - talk to patient normally",
+            "3. AI transcribes entire conversation in real-time",
+            "4. Click 'Generate Note' when done",
+            "5. AI creates SOAP note from full interaction",
+            "6. Review and copy to EHR"
           ],
           bestPractices: [
-            "Speak clearly and at normal pace",
-            "Use medical abbreviations you normally write",
-            "Pause briefly between sentences",
-            "Use commands for quick actions",
-            "Review transcription before enhancing"
+            "Perfect for telehealth and in-person visits",
+            "Captures everything - no need to remember details",
+            "Works for any provider specialty",
+            "Auto-formats into proper clinical structure",
+            "Includes only clinically relevant information"
           ],
           page: "SmartNoteAssistant"
         },
@@ -166,9 +168,86 @@ export default function Features() {
       ]
     },
     {
+      category: "Telehealth",
+      icon: Video,
+      color: "green",
+      items: [
+        {
+          name: "HIPAA-Compliant Video Visits",
+          icon: Video,
+          description: "Built-in secure telehealth with AI transcription and automated visit notes",
+          howTo: [
+            "1. Schedule appointment from Telehealth Dashboard",
+            "2. Send secure link to patient",
+            "3. Start video call at appointment time",
+            "4. AI transcribes conversation automatically",
+            "5. Generate visit note after call",
+            "6. Review and save to patient chart"
+          ],
+          bestPractices: [
+            "Works for all provider types",
+            "AI captures clinical conversation",
+            "No need to document during visit",
+            "Screen share for patient education",
+            "Auto-generates compliant visit summary"
+          ],
+          page: "TelehealthDashboard"
+        }
+      ]
+    },
+    {
+      category: "Automated Care Planning & Billing",
+      icon: Target,
+      color: "purple",
+      items: [
+        {
+          name: "Auto Care Plan Generation (Nurses)",
+          icon: Target,
+          description: "AI generates evidence-based care plans from your notes for RNs, LPNs, and care coordinators",
+          howTo: [
+            "1. Complete patient assessment/visit note",
+            "2. Click 'Generate Care Plans'",
+            "3. AI analyzes diagnoses and conditions",
+            "4. Review suggested problems, goals, interventions",
+            "5. Customize and save to patient chart",
+            "6. Update care plans after each visit"
+          ],
+          bestPractices: [
+            "Works for home health, hospice, and long-term care",
+            "Evidence-based interventions from clinical guidelines",
+            "Meets Medicare and Joint Commission standards",
+            "Auto-updates based on patient progress",
+            "Perfect for OASIS documentation"
+          ],
+          page: "CarePlanManagement"
+        },
+        {
+          name: "Billing Code Suggestions (Providers)",
+          icon: FileText,
+          description: "AI suggests appropriate CPT, ICD-10, and HCPCS codes based on documentation for MDs, DOs, NPs, PAs",
+          howTo: [
+            "1. Complete clinical documentation",
+            "2. Click 'Suggest Billing Codes'",
+            "3. AI analyzes visit complexity and diagnoses",
+            "4. Review suggested CPT codes with justification",
+            "5. View ICD-10 diagnosis codes",
+            "6. Copy codes to billing system"
+          ],
+          bestPractices: [
+            "Works for all medical specialties",
+            "Maximizes compliant reimbursement",
+            "Explains code selection rationale",
+            "Flags potential compliance issues",
+            "Helps avoid downcoding and denials"
+          ],
+          page: "SmartNoteAssistant"
+        }
+      ]
+    },
+    {
       category: "Patient Management",
       icon: Users,
-      color: "green",
+      color: "orange",
       items: [
         {
           name: "Patient Dashboard",
@@ -232,76 +311,10 @@ export default function Features() {
         }
       ]
     },
+
     {
-      category: "Care Planning",
-      icon: Target,
-      color: "purple",
-      items: [
-        {
-          name: "AI Care Plan Generator",
-          icon: Target,
-          description: "Automatically generate evidence-based care plans from diagnoses and visit notes",
-          howTo: [
-            "1. Document patient visit normally",
-            "2. AI suggests care plans based on diagnosis",
-            "3. Review suggested problems, goals, and interventions",
-            "4. Customize as needed",
-            "5. Click 'Create' to add to patient chart"
-          ],
-          bestPractices: [
-            "Review suggestions against clinical judgment",
-            "Set realistic, measurable goals",
-            "Include patient/family input",
-            "Update care plans after each visit",
-            "Document progress toward goals"
-          ],
-          page: "CarePlanManagement"
-        },
-        {
-          name: "Care Plan Gap Analyzer",
-          icon: AlertTriangle,
-          description: "Identifies missing care plan elements based on diagnosis and guidelines",
-          howTo: [
-            "1. Open patient details page",
-            "2. View Care Plan Gap Analyzer section",
-            "3. Review identified gaps",
-            "4. Click suggested care plans to add",
-            "5. Track gap resolution over time"
-          ],
-          bestPractices: [
-            "Run after new diagnosis documented",
-            "Address high-priority gaps first",
-            "Use as audit preparation tool",
-            "Educate yourself on why gaps exist",
-            "Create comprehensive care coverage"
-          ],
-          page: "PatientDetails"
-        },
-        {
-          name: "AI Care Plans from Notes",
-          icon: Sparkles,
-          description: "Generate accurate care plans directly from your enhanced clinical notes",
-          howTo: [
-            "1. Enhance your visit note normally",
-            "2. Click 'Suggest Care Plans' button",
-            "3. AI analyzes complete note for needs",
-            "4. Review generated care plans",
-            "5. Select and create plans with one click"
-          ],
-          bestPractices: [
-            "Use after documenting complete assessments",
-            "Review AI suggestions against clinical judgment",
-            "Customize goals to be patient-specific",
-            "Generate after significant status changes",
-            "Creates plans based on actual documented needs"
-          ],
-          page: "SmartNoteAssistant"
-        }
-      ]
-    },
-    {
-      category: "Compliance & Quality",
-      icon: Shield,
+      category: "Additional Tools",
+      icon: Zap,
       color: "red",
       items: [
         {
@@ -346,82 +359,7 @@ export default function Features() {
         }
       ]
     },
-    {
-      category: "Training & Education",
-      icon: GraduationCap,
-      color: "orange",
-      items: [
-        {
-          name: "Personalized Training Hub",
-          icon: GraduationCap,
-          description: "AI identifies your documentation gaps and recommends targeted micro-learning",
-          howTo: [
-            "1. AI analyzes your note patterns automatically",
-            "2. View recommended training in Training Hub",
-            "3. Complete interactive modules and quizzes",
-            "4. Track your progress and scores",
-            "5. Apply learning immediately to practice"
-          ],
-          bestPractices: [
-            "Complete critical recommendations first",
-            "Practice new skills on next visit",
-            "Review training before complex cases",
-            "Track certification expiration dates",
-            "Share valuable modules with peers"
-          ],
-          page: "StaffTrainingHub"
-        },
 
-      ]
-    },
-    {
-      category: "Productivity Tools",
-      icon: Zap,
-      color: "indigo",
-      items: [
-        {
-          name: "Intelligent Task Prioritization",
-          icon: Activity,
-          description: "AI prioritizes your tasks based on urgency, patient risk, and clinical importance",
-          howTo: [
-            "1. Tasks auto-generate from visit notes and alerts",
-            "2. View prioritized task list on dashboard",
-            "3. AI explains priority reasoning",
-            "4. Complete tasks and mark done",
-            "5. Track task completion trends"
-          ],
-          bestPractices: [
-            "Review tasks at start of day",
-            "Address high-priority items first",
-            "Set realistic due dates",
-            "Use task notes to track actions",
-            "Create recurring tasks for routine follow-ups"
-          ],
-          page: "Dashboard"
-        },
-
-        {
-          name: "Offline Mode",
-          icon: Activity,
-          description: "Document visits without internet - auto-syncs when back online",
-          howTo: [
-            "1. App automatically detects offline status",
-            "2. Continue documenting visits normally",
-            "3. Data saves locally on your device",
-            "4. When online, data auto-syncs to cloud",
-            "5. See sync status in bottom corner"
-          ],
-          bestPractices: [
-            "Sync before leaving office",
-            "Check offline indicator regularly",
-            "Don't close browser until synced",
-            "Keep critical patients cached",
-            "Test offline mode before field use"
-          ],
-          page: "OfflineMode"
-        }
-      ]
-    }
   ];
 
   const allFeatures = features.flatMap(cat => 
