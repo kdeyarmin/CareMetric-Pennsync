@@ -11,84 +11,99 @@ Deno.serve(async (req) => {
 
     const { patientId, visitId, enableRecording } = await req.json();
 
-    if (!patientId) {
-      return Response.json({ error: 'Patient ID required' }, { status: 400 });
+    // Validate required fields
+    if (!patientId || !visitId) {
+      return Response.json({ error: 'Missing patientId or visitId' }, { status: 400 });
     }
 
-    const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
-    const authToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+    // Get Twilio credentials from environment
+    const twilioAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
+    const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
 
-    if (!accountSid || !authToken) {
+    if (!twilioAccountSid || !twilioAuthToken) {
       return Response.json({ error: 'Twilio credentials not configured' }, { status: 500 });
     }
 
-    // Create unique room name
-    const roomName = `telehealth-${patientId}-${Date.now()}`;
+    // Generate unique room name
+    const roomName = `visit-${visitId}-${Date.now()}`;
 
-    // Create Twilio Video room
-    const response = await fetch(
-      `https://video.twilio.com/v1/Rooms`,
+    // Create tokens for both provider and patient
+    const { connect } = await import('npm:twilio@3.78.0');
+    const twilio = connect(twilioAccountSid, twilioAuthToken);
+
+    // Provider token - full permissions
+    const { default: jwt } = await import('npm:jsonwebtoken@9.1.0');
+    const providerToken = jwt.sign(
       {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + btoa(`${accountSid}:${authToken}`),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          UniqueName: roomName,
-          Type: 'group', // group room for HIPAA compliance features
-          RecordParticipantsOnConnect: enableRecording ? 'true' : 'false',
-          MaxParticipants: '2',
-          StatusCallback: '', // Optional: webhook for room events
-        }),
+        sub: user.id,
+        name: user.full_name,
+        iss: twilioAccountSid,
+        grants: {
+          video: {
+            room: roomName,
+            roomProfiles: ['group'],
+            recordParticipantsOnConnect: enableRecording || false
+          }
+        }
+      },
+      twilioAuthToken,
+      {
+        header: { typ: 'JWT', alg: 'HS256' },
+        expiresIn: 3600
       }
     );
 
-    if (!response.ok) {
-      const error = await response.text();
-      return Response.json({ error: `Failed to create room: ${error}` }, { status: 500 });
-    }
+    // Patient token - with recording limitations
+    const patientToken = jwt.sign(
+      {
+        sub: patientId,
+        name: 'Patient',
+        iss: twilioAccountSid,
+        grants: {
+          video: {
+            room: roomName,
+            roomProfiles: ['group']
+          }
+        }
+      },
+      twilioAuthToken,
+      {
+        header: { typ: 'JWT', alg: 'HS256' },
+        expiresIn: 3600
+      }
+    );
 
-    const room = await response.json();
-
-    // Generate access tokens for provider and patient
-    const jwt = await import('npm:jsonwebtoken@9.0.2');
-    const AccessToken = (await import('npm:twilio@5.3.7')).jwt.AccessToken;
-    const VideoGrant = AccessToken.VideoGrant;
-
-    // Provider token
-    const providerToken = new AccessToken(accountSid, Deno.env.get('TWILIO_API_KEY') || accountSid, authToken, {
-      identity: `provider-${user.email}`,
-      ttl: 3600, // 1 hour
-    });
-    providerToken.addGrant(new VideoGrant({ room: roomName }));
-
-    // Patient token (simplified - in production, patient would authenticate)
-    const patientToken = new AccessToken(accountSid, Deno.env.get('TWILIO_API_KEY') || accountSid, authToken, {
-      identity: `patient-${patientId}`,
-      ttl: 3600,
-    });
-    patientToken.addGrant(new VideoGrant({ room: roomName }));
-
-    // Log telehealth visit initiation
-    if (visitId) {
-      await base44.entities.Visit.update(visitId, {
-        telehealth_room_id: room.sid,
-        telehealth_room_name: roomName,
-        visit_type: 'telehealth'
+    // Store room metadata for later retrieval
+    try {
+      await base44.asServiceRole.entities.SystemLog.create({
+        timestamp: new Date().toISOString(),
+        user_email: user.email,
+        action: 'telehealth_room_created',
+        details: {
+          roomName,
+          visitId,
+          patientId,
+          enableRecording,
+          providerEmail: user.email
+        }
       });
+    } catch (logError) {
+      console.error('Failed to log room creation:', logError);
     }
 
     return Response.json({
-      roomSid: room.sid,
-      roomName: roomName,
-      providerToken: providerToken.toJwt(),
-      patientToken: patientToken.toJwt(),
-      patientUrl: `${req.headers.get('origin')}/telehealth-patient/${roomName}?token=${patientToken.toJwt()}`
+      roomName,
+      providerToken,
+      patientToken,
+      patientUrl: `${Deno.env.get('BASE44_APP_URL') || 'https://app.caremetric.ai'}/telehealth?room=${roomName}&token=${patientToken}`,
+      recordingEnabled: enableRecording,
+      expiresIn: 3600
     });
-
   } catch (error) {
-    console.error('Error creating video room:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Error creating Twilio video room:', error);
+    return Response.json(
+      { error: error.message || 'Failed to create video room' },
+      { status: 500 }
+    );
   }
 });
