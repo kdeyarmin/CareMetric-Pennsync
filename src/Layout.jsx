@@ -177,8 +177,9 @@ export default function Layout({ children, currentPageName }) {
   const mobileBottomNavTotalHeight = `calc(${BOTTOM_NAV_HEIGHT_REM}rem + max(env(safe-area-inset-bottom), 0px))`;
 
   return (
-          <ThemeProvider>
-          <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+                <ThemeProvider>
+                <div className="fixed inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 -z-10" />
+                <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
           Scoped overrides:
           Force any internal Tailwind "fixed" inside FAB components to behave like normal content
