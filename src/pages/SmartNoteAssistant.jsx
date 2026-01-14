@@ -18,6 +18,7 @@ import {
   Users,
   X,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
