@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import DetailedComplianceFeedback from "../compliance/DetailedComplianceFeedback";
 import { getProviderCompliancePrompt } from "../utils/providerSpecificConfig";
@@ -6,11 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
 export default function ClinicalNoteAnalyzer({ onDataExtracted }) {
   const [roughNotes, setRoughNotes] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
 
   const extractData = async () => {
     if (!roughNotes.trim()) {
@@ -67,26 +74,37 @@ export default function ClinicalNoteAnalyzer({ onDataExtracted }) {
         </Button>
 
         {extractedData && (
-          <div className="bg-white p-4 rounded border space-y-3 text-sm">
-            {extractedData.diagnoses?.length > 0 && (
-              <div>
-                <p className="font-semibold text-gray-700">Diagnoses:</p>
-                <p className="text-gray-600">{extractedData.diagnoses.join(", ")}</p>
-              </div>
-            )}
-            {extractedData.medications?.length > 0 && (
-              <div>
-                <p className="font-semibold text-gray-700">Medications:</p>
-                <p className="text-gray-600">{extractedData.medications.join(", ")}</p>
-              </div>
-            )}
-            {extractedData.symptoms?.length > 0 && (
-              <div>
-                <p className="font-semibold text-gray-700">Symptoms:</p>
-                <p className="text-gray-600">{extractedData.symptoms.join(", ")}</p>
-              </div>
-            )}
-          </div>
+          <>
+            <div className="bg-white p-4 rounded border space-y-3 text-sm">
+              {extractedData.diagnoses?.length > 0 && (
+                <div>
+                  <p className="font-semibold text-gray-700">Diagnoses:</p>
+                  <p className="text-gray-600">{extractedData.diagnoses.join(", ")}</p>
+                </div>
+              )}
+              {extractedData.medications?.length > 0 && (
+                <div>
+                  <p className="font-semibold text-gray-700">Medications:</p>
+                  <p className="text-gray-600">{extractedData.medications.join(", ")}</p>
+                </div>
+              )}
+              {extractedData.symptoms?.length > 0 && (
+                <div>
+                  <p className="font-semibold text-gray-700">Symptoms:</p>
+                  <p className="text-gray-600">{extractedData.symptoms.join(", ")}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Detailed Compliance Feedback */}
+            <div className="mt-4">
+              <DetailedComplianceFeedback 
+                note={roughNotes}
+                providerType={currentUser?.provider_type || 'RN'}
+                visitType={extractedData?.visit_type || 'routine_visit'}
+              />
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
