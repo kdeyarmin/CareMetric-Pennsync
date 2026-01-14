@@ -1,7 +1,10 @@
 /**
  * Offline Storage Utility for Penn Sync
  * Handles local storage of visit data when offline
+ * ENHANCED: Now with PHI encryption for HIPAA compliance
  */
+
+import { secureOfflineStorage } from "../security/SecureOfflineStorage";
 
 const STORAGE_PREFIX = 'penn_sync_offline_';
 const PENDING_VISITS_KEY = `${STORAGE_PREFIX}pending_visits`;
@@ -24,20 +27,23 @@ class OfflineStorage {
     });
   }
 
-  // Save visit data locally
-  saveVisit(visitData) {
+  // Save visit data locally with encryption
+  async saveVisit(visitData) {
     try {
       const pending = this.getPendingVisits();
       const visitId = `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      pending.push({
+      const visitRecord = {
         id: visitId,
         data: visitData,
         timestamp: new Date().toISOString(),
         synced: false
-      });
+      };
 
-      localStorage.setItem(PENDING_VISITS_KEY, JSON.stringify(pending));
+      pending.push(visitRecord);
+
+      // Store encrypted for HIPAA compliance
+      await secureOfflineStorage.setItem('pending_visits', pending);
       return visitId;
     } catch (error) {
       console.error('Error saving offline visit:', error);
@@ -65,11 +71,11 @@ class OfflineStorage {
     }
   }
 
-  // Get all pending visits
-  getPendingVisits() {
+  // Get all pending visits with decryption
+  async getPendingVisits() {
     try {
-      const data = localStorage.getItem(PENDING_VISITS_KEY);
-      return data ? JSON.parse(data) : [];
+      const data = await secureOfflineStorage.getItem('pending_visits');
+      return data || [];
     } catch {
       return [];
     }
@@ -154,8 +160,9 @@ class OfflineStorage {
     localStorage.setItem(PENDING_UPDATES_KEY, JSON.stringify(updates));
   }
 
-  // Clear all offline data
-  clearAll() {
+  // Clear all offline data securely
+  async clearAll() {
+    await secureOfflineStorage.clearAll();
     localStorage.removeItem(PENDING_VISITS_KEY);
     localStorage.removeItem(PENDING_UPDATES_KEY);
   }
