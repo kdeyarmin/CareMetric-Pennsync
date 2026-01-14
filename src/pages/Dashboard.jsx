@@ -20,6 +20,8 @@ import AITrainingRecommendations from "../components/training/AITrainingRecommen
 
 import ComplianceAlertNotifications from "../components/alerts/ComplianceAlertNotifications";
 import ProactiveClinicalSupport from "../components/clinical/ProactiveClinicalSupport";
+import SkillGapAnalyzer from "../components/learning/SkillGapAnalyzer";
+import RegulatoryAlertsDashboard from "../components/regulatory/RegulatoryAlertsDashboard";
 import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
 import AnnouncementsWidget from "../components/dashboard/AnnouncementsWidget";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
@@ -407,6 +409,11 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* AI Learning & Development */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+        <SkillGapAnalyzer userEmail={currentUser?.email} />
+        <RegulatoryAlertsDashboard />
+      </div>
 
     </div>
     </PullToRefresh>
