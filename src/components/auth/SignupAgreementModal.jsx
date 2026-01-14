@@ -18,30 +18,43 @@ export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
 
     setIsSubmitting(true);
     try {
-      const user = await base44.auth.me();
-      
-      // Log agreement acceptance
-      await base44.entities.UserActivity.create({
-        user_email: user.email,
-        user_name: user.full_name,
-        action: "terms_accepted",
-        details: {
-          terms_of_service: true,
-          privacy_policy: true,
-          business_associate_agreement: true,
-          ai_disclaimer_acknowledged: true,
-          ai_use_acknowledgment: true,
-          probabilistic_models_acknowledged: true,
-          no_medical_advice_acknowledged: true,
-          accepted_date: new Date().toISOString()
+      // Record terms acceptance with audit trail
+      const documents = [
+        {
+          name: "CareMetric AI Terms of Service",
+          id: "CM-TOS-001",
+          version: "v1.0"
         },
-        page: "signup_agreement"
+        {
+          name: "CareMetric AI Privacy Policy",
+          id: "CM-PP-001",
+          version: "v1.0"
+        },
+        {
+          name: "CareMetric AI Business Associate Agreement",
+          id: "CM-BAA-001",
+          version: "v1.0"
+        },
+        {
+          name: "CareMetric AI Use Acknowledgment",
+          id: "CM-AI-001",
+          version: "v1.0"
+        }
+      ];
+
+      const response = await base44.functions.invoke('recordTermsAcceptance', {
+        documents,
+        acceptanceMethod: 'modal'
       });
 
-      onAccept?.();
+      if (response?.data?.success) {
+        onAccept?.();
+      } else {
+        throw new Error('Failed to record acceptance');
+      }
     } catch (error) {
       console.error("Error logging agreement:", error);
-      onAccept?.(); // Still proceed even if logging fails
+      alert("There was an error recording your acceptance. Please try again.");
     }
     setIsSubmitting(false);
   };
