@@ -32,6 +32,7 @@ import ComplianceBillingOptimizer from "@/components/compliance/ComplianceBillin
 import InvoiceGenerator from "@/components/billing/InvoiceGenerator";
 import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
 import { hasPageAccess } from "@/components/utils/providerAccessControl";
+import SpecializationContextualSuggestions from "@/components/smartNote/SpecializationContextualSuggestions";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -733,6 +734,14 @@ export default function SmartNoteAssistant() {
                     patient={selectedPatient}
                   />
                 </div>
+
+                {/* Specialization Contextual Suggestions */}
+                <SpecializationContextualSuggestions
+                  patientDiagnosis={selectedDiagnoses.join(", ")}
+                  providerEmail={currentUser?.email}
+                  noteContent={generatedNote}
+                  onSuggestionApplied={(text) => setGeneratedNote(prev => `${prev}\n\n${text}`)}
+                />
 
                 {/* Care Plan Suggestions for RN and MSW */}
                 {(currentUser?.provider_type === 'RN' || currentUser?.provider_type === 'MSW') && (
