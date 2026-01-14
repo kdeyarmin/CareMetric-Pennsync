@@ -179,13 +179,13 @@ export default function Layout({ children, currentPageName }) {
   return (
                 <ThemeProvider>
                 <div className="fixed inset-0 -z-10">
-        {/* Main gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-100 dark:from-slate-950 dark:via-blue-900 dark:to-indigo-950" />
+        {/* Main gradient background - sophisticated light theme */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-gray-100 to-slate-100 dark:from-gray-900 dark:via-slate-800 dark:to-gray-900" />
         
-        {/* Animated gradient mesh overlays with higher contrast */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-400/40 to-cyan-400/40 dark:from-blue-600/30 dark:to-cyan-600/30 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-blue-500/40 to-sky-400/40 dark:from-blue-600/30 dark:to-sky-600/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-cyan-400/35 to-blue-400/35 dark:from-cyan-600/25 dark:to-blue-600/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+        {/* Subtle accent overlays */}
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-amber-200/20 to-amber-300/20 dark:from-amber-900/20 dark:to-amber-800/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-slate-300/20 to-gray-300/20 dark:from-slate-600/15 dark:to-gray-600/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-slate-200/15 to-gray-200/15 dark:from-slate-600/10 dark:to-gray-600/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
       </div>
                 <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
@@ -216,24 +216,24 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
         <aside
-               className={`hidden lg:flex flex-col bg-gradient-to-b from-white/70 to-blue-50/50 dark:from-slate-800/80 dark:to-blue-900/50 backdrop-blur-xl border-r border-white/40 dark:border-blue-500/20 shadow-2xl transition-all duration-300 ${
+               className={`hidden lg:flex flex-col bg-gradient-to-b from-white/90 to-slate-50/80 dark:from-slate-900/90 dark:to-gray-900/80 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-700/30 shadow-lg transition-all duration-300 ${
                  sidebarCollapsed ? "w-16" : "w-56"
                }`}
              >
           <div className="h-16 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0 group">
               <div className="relative flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
-                <img
-                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
-                  className="w-8 h-8 object-contain"
-                  alt="CareMetric AI Logo"
-                />
-              </div>
-              {!sidebarCollapsed && (
-                <span className="font-bold truncate flex items-center gap-1 dark:text-white">
-                  CareMetric AI
-                </span>
-              )}
+                    <img
+                      src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
+                      className="w-8 h-8 object-contain"
+                      alt="CareMetric AI Logo"
+                    />
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-bold truncate flex items-center gap-1 text-slate-800 dark:text-slate-100">
+                      CareMetric AI
+                    </span>
+                  )}
             </Link>
             <div className="flex items-center gap-1">
               <Button
@@ -258,7 +258,7 @@ export default function Layout({ children, currentPageName }) {
                 to={createPageUrl(item.page)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
                   isActive(item.page) 
-                    ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-medium" 
+                    ? "bg-slate-100 dark:bg-slate-800 text-primary font-medium" 
                     : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
@@ -278,7 +278,7 @@ export default function Layout({ children, currentPageName }) {
                     to={createPageUrl(item.page)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
                       isActive(item.page) 
-                        ? "bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-300 font-medium" 
+                        ? "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-200 font-medium" 
                         : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                     }`}
                   >
@@ -316,7 +316,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/70 via-blue-50/60 to-white/70 dark:from-slate-800/80 dark:via-blue-900/60 dark:to-slate-800/80 backdrop-blur-xl border-b border-white/40 dark:border-blue-500/20 shadow-xl flex flex-col transition-colors duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/90 via-slate-50/80 to-white/90 dark:from-slate-900/90 dark:via-gray-900/80 dark:to-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/30 shadow-lg flex flex-col transition-colors duration-300 ${
           showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
         }`}
         style={{
@@ -339,7 +339,7 @@ export default function Layout({ children, currentPageName }) {
                   alt="CareMetric AI Logo"
                 />
               </div>
-              <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">CareMetric AI</span>
+              <span className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm truncate">CareMetric AI</span>
             </Link>
 
             <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
@@ -472,7 +472,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white/80 via-blue-50/60 to-white/50 dark:from-slate-800/90 dark:via-blue-900/70 dark:to-slate-800/60 backdrop-blur-xl border-t border-white/40 dark:border-blue-500/20 shadow-2xl lg:hidden transition-colors duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white/90 via-slate-50/80 to-white/80 dark:from-slate-900/90 dark:via-gray-900/80 dark:to-slate-900/80 backdrop-blur-xl border-t border-slate-200/50 dark:border-slate-700/30 shadow-lg lg:hidden transition-colors duration-300 ${
           showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
         }`}
         style={{ 
@@ -488,7 +488,7 @@ export default function Layout({ children, currentPageName }) {
             <Link
               to={createPageUrl("Dashboard")}
               className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("Dashboard") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                isActive("Dashboard") ? "text-primary dark:text-slate-100 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
               }`}
             >
               <Home className="w-5 h-5" />
@@ -498,7 +498,7 @@ export default function Layout({ children, currentPageName }) {
             <Link
               to={createPageUrl("MobileWorkflow")}
               className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("MobileWorkflow") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                isActive("MobileWorkflow") ? "text-primary dark:text-slate-100 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
               }`}
             >
               <Phone className="w-5 h-5" />
