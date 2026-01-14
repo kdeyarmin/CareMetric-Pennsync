@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import DetailedComplianceFeedback from "../compliance/DetailedComplianceFeedback";
+import { getProviderCompliancePrompt } from "../utils/providerSpecificConfig";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Wand2 } from "lucide-react";
