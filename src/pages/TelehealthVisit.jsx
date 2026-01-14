@@ -19,6 +19,7 @@ import AIFollowUpGenerator from '../components/telehealth/AIFollowUpGenerator';
 import ConnectionQualityMonitor from '../components/telehealth/ConnectionQualityMonitor';
 import AIVisitSummaryGenerator from '../components/telehealth/AIVisitSummaryGenerator';
 import RealTimePatientRiskMonitor from '../components/telehealth/RealTimePatientRiskMonitor';
+import TelehealthRecordingManager from '../components/telehealth/TelehealthRecordingManager';
 import { createPageUrl } from '@/utils';
 
 export default function TelehealthVisit() {
@@ -450,13 +451,23 @@ export default function TelehealthVisit() {
             />
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* AI Real-Time Transcription */}
-            <AIRealtimeTranscription 
+          <div className="grid md:grid-cols-3 gap-4">
+            {/* Recording Manager */}
+            <TelehealthRecordingManager
               visitId={visitId}
               patientId={patientId}
-              isActive={step === 'connected'}
+              isRecording={isRecording}
+              onRecordingStatusChange={(status) => setIsRecording(status === 'recording')}
             />
+
+            {/* AI Real-Time Transcription */}
+            <div className="md:col-span-2">
+              <AIRealtimeTranscription 
+                visitId={visitId}
+                patientId={patientId}
+                isActive={step === 'connected'}
+              />
+            </div>
 
             {/* Secure Messaging */}
             <TelehealthMessaging
@@ -465,7 +476,7 @@ export default function TelehealthVisit() {
               providerEmail={currentUser?.email}
               isActive={true}
             />
-          </div>
+            </div>
 
           <div className="grid md:grid-cols-2 gap-4">
             {/* Real-Time Risk Monitor */}
