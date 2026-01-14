@@ -121,7 +121,7 @@ export default function Patients() {
   // Handle query errors gracefully (logged server-side)
 
   const createPatientMutation = useMutation({
-    mutationFn: (patientData) => base44.entities.Patient.create(patientData),
+    mutationFn: (patientData) => secureEntity.create('Patient', patientData),
     onSuccess: (newPatient) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       setShowForm(false);
@@ -138,7 +138,7 @@ export default function Patients() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Patient.update(id, data),
+    mutationFn: ({ id, data }) => secureEntity.update('Patient', id, data),
     onSuccess: (updatedPatient, variables) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       setShowForm(false);
