@@ -33,6 +33,8 @@ import InvoiceGenerator from "@/components/billing/InvoiceGenerator";
 import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
 import { hasPageAccess } from "@/components/utils/providerAccessControl";
 import SpecializationContextualSuggestions from "@/components/smartNote/SpecializationContextualSuggestions";
+import SpecializationDocumentationTemplate from "@/components/smartNote/SpecializationDocumentationTemplate";
+import SpecializationComplianceChecker from "@/components/smartNote/SpecializationComplianceChecker";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -602,6 +604,17 @@ export default function SmartNoteAssistant() {
               </CardContent>
             </Card>
 
+            {/* Specialization-Based Documentation Template */}
+            {currentUser?.provider_type && selectedPatient && (
+              <SpecializationDocumentationTemplate
+                providerEmail={currentUser?.email}
+                specialtyCode={currentUser?.primary_specialty_code || currentUser?.provider_type?.toLowerCase()}
+                diagnosis={extractedData?.diagnoses?.[0] || selectedDiagnoses[0] || ''}
+                visitType={visitType}
+                onTemplateApplied={(content) => setGeneratedNote(prev => `${prev}\n\n${content}`)}
+              />
+            )}
+
             <ClinicalNoteAnalyzer onDataExtracted={handleDataExtracted} />
           </TabsContent>
 
@@ -736,12 +749,21 @@ export default function SmartNoteAssistant() {
                 </div>
 
                 {/* Specialization Contextual Suggestions */}
-                <SpecializationContextualSuggestions
-                  patientDiagnosis={selectedDiagnoses.join(", ")}
-                  providerEmail={currentUser?.email}
-                  noteContent={generatedNote}
-                  onSuggestionApplied={(text) => setGeneratedNote(prev => `${prev}\n\n${text}`)}
-                />
+            <SpecializationContextualSuggestions
+              patientDiagnosis={selectedDiagnoses.join(", ")}
+              providerEmail={currentUser?.email}
+              noteContent={generatedNote}
+              onSuggestionApplied={(text) => setGeneratedNote(prev => `${prev}\n\n${text}`)}
+            />
+
+            {/* Real-Time Specialization Compliance Checker */}
+            <SpecializationComplianceChecker
+              specialtyCode={currentUser?.primary_specialty_code || currentUser?.provider_type?.toLowerCase()}
+              noteContent={generatedNote}
+              diagnosis={selectedDiagnoses.join(", ")}
+              visitType={visitType}
+              providerEmail={currentUser?.email}
+            />
 
                 {/* Care Plan Suggestions for RN and MSW */}
                 {(currentUser?.provider_type === 'RN' || currentUser?.provider_type === 'MSW') && (
