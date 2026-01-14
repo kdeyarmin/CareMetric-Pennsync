@@ -39,7 +39,6 @@ import { getAccessibleWidgets } from "../components/utils/providerAccessControl"
 import DashboardHeader from "../components/dashboard/DashboardHeader";
 import QuickAccessCards from "../components/dashboard/QuickAccessCards";
 import DashboardSection from "../components/dashboard/DashboardSection";
-import { Brain, Shield, AlertCircle, Zap } from "lucide-react";
 
 export default function Dashboard() {
     const navigate = useNavigate();
