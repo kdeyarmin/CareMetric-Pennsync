@@ -12,11 +12,30 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import ProviderUserGuide from "@/components/guides/ProviderUserGuide";
 
 export const publicPage = true;
 
 export default function Features() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [showUserGuide, setShowUserGuide] = useState(false);
+
+  if (showUserGuide) {
+    return (
+      <div className="min-h-screen p-6">
+        <div className="max-w-7xl mx-auto">
+          <Button
+            variant="outline"
+            onClick={() => setShowUserGuide(false)}
+            className="mb-4"
+          >
+            ← Back to Features
+          </Button>
+          <ProviderUserGuide />
+        </div>
+      </div>
+    );
+  }
 
   const features = [
     {
@@ -421,7 +440,14 @@ export default function Features() {
     <div className="p-3 sm:p-4 md:p-8 max-w-7xl mx-auto">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Features Guide</h1>
-        <p className="text-sm sm:text-base text-gray-600">Learn how to use CareMetric AI to streamline your nursing practice</p>
+        <p className="text-sm sm:text-base text-gray-600 mb-4">Learn how to use CareMetric AI to streamline your nursing practice</p>
+        <Button
+          onClick={() => setShowUserGuide(true)}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
+          <BookOpen className="w-4 h-4 mr-2" />
+          View User Guide by Provider Type
+        </Button>
       </div>
 
       {/* Search */}
