@@ -89,19 +89,19 @@ export default function Test2FA() {
 
   return (
     <div className="p-4 md:p-8 max-w-2xl mx-auto">
-      <Card className="border-2 border-blue-200">
-        <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+      <Card className="border border-slate-700 dark:border-slate-600">
+        <CardHeader className="bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 dark:from-slate-600 dark:via-slate-700 dark:to-slate-800 text-white">
           <CardTitle className="flex items-center gap-2">
             <Shield className="w-6 h-6" />
             Test Two-Factor Authentication
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6 space-y-6">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-sm text-yellow-800">
+          <div className="bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 rounded-lg p-4">
+            <p className="text-sm text-slate-300">
               <strong>Testing Mode:</strong> Use this page to test the 2FA SMS functionality before enabling it on your account.
             </p>
-            <p className="text-sm text-yellow-800 mt-2">
+            <p className="text-sm text-slate-300 mt-2">
               Current user: <strong>{currentUser?.email}</strong>
             </p>
           </div>
@@ -118,13 +118,13 @@ export default function Test2FA() {
                 placeholder="+1234567890"
                 className="mt-1"
               />
-              <p className="text-xs text-gray-500 mt-1">Include country code (e.g., +1 for US)</p>
+              <p className="text-xs text-slate-400 mt-1">Include country code (e.g., +1 for US)</p>
             </div>
 
             <Button
               onClick={handleSendCode}
               disabled={isSending || !phoneNumber}
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className="w-full bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700"
             >
               {isSending ? (
                 <>
@@ -140,8 +140,8 @@ export default function Test2FA() {
             </Button>
 
             {sendResult && (
-              <Alert className={sendResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-                <AlertDescription className={sendResult.success ? "text-green-800" : "text-red-800"}>
+              <Alert className={sendResult.success ? "border-slate-700 bg-slate-800 dark:bg-slate-700" : "border-slate-700 bg-slate-800 dark:bg-slate-700"}>
+                <AlertDescription className={sendResult.success ? "text-slate-300" : "text-slate-300"}>
                   {sendResult.message}
                 </AlertDescription>
               </Alert>
@@ -169,7 +169,7 @@ export default function Test2FA() {
             <Button
               onClick={handleVerifyCode}
               disabled={isVerifying || !code || code.length !== 6}
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700"
             >
               {isVerifying ? (
                 <>
@@ -185,8 +185,8 @@ export default function Test2FA() {
             </Button>
 
             {verifyResult && (
-              <Alert className={verifyResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-                <AlertDescription className={verifyResult.success ? "text-green-800" : "text-red-800"}>
+              <Alert className={verifyResult.success ? "border-slate-700 bg-slate-800 dark:bg-slate-700" : "border-slate-700 bg-slate-800 dark:bg-slate-700"}>
+                <AlertDescription className={verifyResult.success ? "text-slate-300" : "text-slate-300"}>
                   {verifyResult.message}
                   {verifyResult.attemptsRemaining !== undefined && (
                     <span className="block mt-1">Attempts remaining: {verifyResult.attemptsRemaining}</span>
@@ -198,16 +198,16 @@ export default function Test2FA() {
 
           {/* Test Results Summary */}
           {sendResult && verifyResult && (
-            <div className="border-t pt-6">
-              <h3 className="font-semibold text-gray-900 mb-3">Test Summary</h3>
+            <div className="border-t border-slate-700 dark:border-slate-600 pt-6">
+              <h3 className="font-semibold text-slate-100 mb-3">Test Summary</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${sendResult.success ? 'bg-green-500' : 'bg-red-500'}`} />
-                  <span>SMS Sending: {sendResult.success ? 'Success' : 'Failed'}</span>
+                  <div className={`w-3 h-3 rounded-full ${sendResult.success ? 'bg-slate-500' : 'bg-slate-600'}`} />
+                  <span className="text-slate-300">SMS Sending: {sendResult.success ? 'Success' : 'Failed'}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${verifyResult.success ? 'bg-green-500' : 'bg-red-500'}`} />
-                  <span>Code Verification: {verifyResult.success ? 'Success' : 'Failed'}</span>
+                  <div className={`w-3 h-3 rounded-full ${verifyResult.success ? 'bg-slate-500' : 'bg-slate-600'}`} />
+                  <span className="text-slate-300">Code Verification: {verifyResult.success ? 'Success' : 'Failed'}</span>
                 </div>
               </div>
             </div>
