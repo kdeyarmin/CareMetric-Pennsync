@@ -93,9 +93,9 @@ export default function MobileWorkflow() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Mobile Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 sticky top-0 z-10 shadow-lg">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-20">
+     {/* Mobile Header */}
+     <div className="bg-slate-700 dark:bg-slate-800 text-white p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Smartphone className="w-5 h-5" />
@@ -103,7 +103,7 @@ export default function MobileWorkflow() {
           </div>
           <PushNotificationManager userEmail={currentUser?.email} />
         </div>
-        <p className="text-xs text-blue-100">Optimized for on-the-go documentation</p>
+        <p className="text-xs text-slate-200 dark:text-slate-300">Optimized for on-the-go documentation</p>
       </div>
 
       <div className="p-3 space-y-3">
@@ -111,23 +111,23 @@ export default function MobileWorkflow() {
         <div className="grid grid-cols-3 gap-2">
           <Card>
             <CardContent className="p-3 text-center">
-              <Calendar className="w-5 h-5 mx-auto mb-1 text-blue-600" />
-              <p className="text-lg font-bold text-gray-900">5</p>
-              <p className="text-xs text-gray-600">Today</p>
+              <Calendar className="w-5 h-5 mx-auto mb-1 text-slate-700 dark:text-slate-400" />
+              <p className="text-lg font-bold text-slate-900 dark:text-slate-100">5</p>
+               <p className="text-xs text-slate-600 dark:text-slate-400">Today</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
-              <FileText className="w-5 h-5 mx-auto mb-1 text-green-600" />
-              <p className="text-lg font-bold text-gray-900">12</p>
-              <p className="text-xs text-gray-600">This Week</p>
+              <FileText className="w-5 h-5 mx-auto mb-1 text-slate-700 dark:text-slate-400" />
+              <p className="text-lg font-bold text-slate-900 dark:text-slate-100">12</p>
+               <p className="text-xs text-slate-600 dark:text-slate-400">This Week</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
-              <Clock className="w-5 h-5 mx-auto mb-1 text-purple-600" />
-              <p className="text-lg font-bold text-gray-900">2.5h</p>
-              <p className="text-xs text-gray-600">Saved</p>
+              <Clock className="w-5 h-5 mx-auto mb-1 text-slate-700 dark:text-slate-400" />
+              <p className="text-lg font-bold text-slate-900 dark:text-slate-100">2.5h</p>
+               <p className="text-xs text-slate-600 dark:text-slate-400">Saved</p>
             </CardContent>
           </Card>
         </div>
@@ -227,10 +227,10 @@ export default function MobileWorkflow() {
 
             {/* Generated Note Display */}
             {generatedNote && (
-              <Card className="border-2 border-green-400 bg-green-50">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+              <Card className="border-2 border-slate-400 dark:border-slate-600 bg-slate-200 dark:bg-slate-800">
+                   <CardHeader className="pb-2">
+                     <CardTitle className="text-sm flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                       <CheckCircle2 className="w-4 h-4 text-slate-700 dark:text-slate-400" />
                     Note Generated
                   </CardTitle>
                 </CardHeader>
@@ -245,7 +245,7 @@ export default function MobileWorkflow() {
                         toast.success('Copied!');
                         if (navigator.vibrate) navigator.vibrate(50);
                       }}
-                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      className="flex-1 bg-slate-600 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600"
                     >
                       Copy to EHR
                     </Button>

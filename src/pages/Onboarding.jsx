@@ -63,14 +63,14 @@ export default function Onboarding() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-700 dark:text-slate-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50 flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -85,10 +85,10 @@ export default function Onboarding() {
                 className="w-20 h-20 object-contain"
               />
             </div>
-            <CardTitle className="text-3xl font-bold text-gray-900 mb-2">
+            <CardTitle className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
               Welcome to CareMetric AI! 👋
             </CardTitle>
-            <p className="text-gray-600">
+            <p className="text-slate-600 dark:text-slate-400">
               Let's personalize your experience in just 2 quick steps
             </p>
           </CardHeader>
@@ -96,8 +96,8 @@ export default function Onboarding() {
           <CardContent className="px-8 pb-8">
             {/* Progress Indicator */}
             <div className="flex justify-center gap-2 mb-8">
-              <div className={`h-2 w-20 rounded-full ${step >= 1 ? 'bg-blue-600' : 'bg-gray-200'}`} />
-              <div className={`h-2 w-20 rounded-full ${step >= 2 ? 'bg-blue-600' : 'bg-gray-200'}`} />
+              <div className={`h-2 w-20 rounded-full ${step >= 1 ? 'bg-slate-600 dark:bg-slate-400' : 'bg-slate-300 dark:bg-slate-700'}`} />
+               <div className={`h-2 w-20 rounded-full ${step >= 2 ? 'bg-slate-600 dark:bg-slate-400' : 'bg-slate-300 dark:bg-slate-700'}`} />
             </div>
 
             {/* Step 1: Service Type */}
@@ -108,10 +108,10 @@ export default function Onboarding() {
                 className="space-y-6"
               >
                 <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
                     What type of care do you provide?
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
                     This helps us customize your documentation templates and compliance checks
                   </p>
                 </div>
@@ -120,18 +120,18 @@ export default function Onboarding() {
                   <label
                     className={`flex items-center gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${
                       serviceType === 'home_health' 
-                        ? 'border-blue-600 bg-blue-50 shadow-lg' 
-                        : 'border-gray-200 hover:border-blue-300'
+                        ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                        : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                     }`}
                   >
                     <RadioGroupItem value="home_health" id="home_health" />
                     <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Stethoscope className="w-6 h-6 text-blue-600" />
+                      <div className="w-12 h-12 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center">
+                        <Stethoscope className="w-6 h-6 text-slate-700 dark:text-slate-300" />
                       </div>
                       <div className="text-left">
-                        <p className="font-semibold text-gray-900">Home Health</p>
-                        <p className="text-sm text-gray-600">Skilled nursing care in patients' homes</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">Home Health</p>
+                         <p className="text-sm text-slate-600 dark:text-slate-400">Skilled nursing care in patients' homes</p>
                       </div>
                     </div>
                     {serviceType === 'home_health' && (
@@ -142,18 +142,18 @@ export default function Onboarding() {
                   <label
                     className={`flex items-center gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${
                       serviceType === 'hospice' 
-                        ? 'border-purple-600 bg-purple-50 shadow-lg' 
-                        : 'border-gray-200 hover:border-purple-300'
+                        ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                        : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                     }`}
                   >
                     <RadioGroupItem value="hospice" id="hospice" />
                     <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                        <Heart className="w-6 h-6 text-purple-600" />
+                      <div className="w-12 h-12 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center">
+                        <Heart className="w-6 h-6 text-slate-700 dark:text-slate-300" />
                       </div>
                       <div className="text-left">
-                        <p className="font-semibold text-gray-900">Hospice</p>
-                        <p className="text-sm text-gray-600">End-of-life comfort care</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">Hospice</p>
+                         <p className="text-sm text-slate-600 dark:text-slate-400">End-of-life comfort care</p>
                       </div>
                     </div>
                     {serviceType === 'hospice' && (
@@ -182,10 +182,10 @@ export default function Onboarding() {
                 className="space-y-6"
               >
                 <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
                     What are your credentials?
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
                     This helps us provide you with role-appropriate features
                   </p>
                 </div>
@@ -194,18 +194,18 @@ export default function Onboarding() {
                   <label
                     className={`flex items-center gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${
                       credentialType === 'RN' 
-                        ? 'border-blue-600 bg-blue-50 shadow-lg' 
-                        : 'border-gray-200 hover:border-blue-300'
+                        ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                        : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                     }`}
                   >
                     <RadioGroupItem value="RN" id="RN" />
                     <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                        <UserCircle className="w-6 h-6 text-blue-600" />
+                      <div className="w-12 h-12 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center">
+                        <UserCircle className="w-6 h-6 text-slate-700 dark:text-slate-300" />
                       </div>
                       <div className="text-left">
-                        <p className="font-semibold text-gray-900">RN</p>
-                        <p className="text-sm text-gray-600">Registered Nurse</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">RN</p>
+                         <p className="text-sm text-slate-600 dark:text-slate-400">Registered Nurse</p>
                       </div>
                     </div>
                     {credentialType === 'RN' && (
@@ -216,40 +216,40 @@ export default function Onboarding() {
                   <label
                     className={`flex items-center gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${
                       credentialType === 'LPN' 
-                        ? 'border-green-600 bg-green-50 shadow-lg' 
-                        : 'border-gray-200 hover:border-green-300'
+                        ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                        : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                     }`}
                   >
                     <RadioGroupItem value="LPN" id="LPN" />
                     <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                        <UserCircle className="w-6 h-6 text-green-600" />
+                      <div className="w-12 h-12 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center">
+                        <UserCircle className="w-6 h-6 text-slate-700 dark:text-slate-300" />
                       </div>
                       <div className="text-left">
-                        <p className="font-semibold text-gray-900">LPN</p>
-                        <p className="text-sm text-gray-600">Licensed Practical Nurse</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">LPN</p>
+                         <p className="text-sm text-slate-600 dark:text-slate-400">Licensed Practical Nurse</p>
                       </div>
                     </div>
                     {credentialType === 'LPN' && (
-                      <CheckCircle2 className="w-6 h-6 text-green-600" />
+                      <CheckCircle2 className="w-6 h-6 text-slate-700 dark:text-slate-400" />
                     )}
                   </label>
 
                   <label
                     className={`flex items-center gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${
                       credentialType === 'Admin Staff' 
-                        ? 'border-purple-600 bg-purple-50 shadow-lg' 
-                        : 'border-gray-200 hover:border-purple-300'
+                        ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                        : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                     }`}
                   >
                     <RadioGroupItem value="Admin Staff" id="admin_staff" />
                     <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                        <UserCircle className="w-6 h-6 text-purple-600" />
+                      <div className="w-12 h-12 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center">
+                        <UserCircle className="w-6 h-6 text-slate-700 dark:text-slate-300" />
                       </div>
                       <div className="text-left">
-                        <p className="font-semibold text-gray-900">Admin Staff</p>
-                        <p className="text-sm text-gray-600">Administrative personnel</p>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">Admin Staff</p>
+                         <p className="text-sm text-slate-600 dark:text-slate-400">Administrative personnel</p>
                       </div>
                     </div>
                     {credentialType === 'Admin Staff' && (
@@ -268,7 +268,7 @@ export default function Onboarding() {
                   <Button
                     onClick={handleComplete}
                     disabled={!credentialType || completeOnboardingMutation.isPending}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-8"
+                    className="bg-slate-600 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 px-8"
                   >
                     {completeOnboardingMutation.isPending ? (
                       <>

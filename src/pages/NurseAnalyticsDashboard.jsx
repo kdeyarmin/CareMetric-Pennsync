@@ -158,8 +158,8 @@ export default function NurseAnalyticsDashboard() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">My Performance Analytics</h1>
-            <p className="text-gray-600">AI-powered insights into your clinical documentation</p>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">My Performance Analytics</h1>
+             <p className="text-slate-600 dark:text-slate-400">AI-powered insights into your clinical documentation</p>
           </div>
           <Select value={dateRange.toString()} onValueChange={(val) => setDateRange(parseInt(val))}>
             <SelectTrigger className="w-40">
@@ -177,54 +177,54 @@ export default function NurseAnalyticsDashboard() {
 
         {/* Key Stats Overview */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-blue-600 font-medium">Notes Enhanced</p>
-                  <p className="text-3xl font-bold text-blue-900">{stats.noteConversions}</p>
-                  <p className="text-xs text-blue-600">Last {dateRange} days</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">Notes Enhanced</p>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.noteConversions}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Last {dateRange} days</p>
                 </div>
-                <BarChart3 className="w-10 h-10 text-blue-400" />
+                <BarChart3 className="w-10 h-10 text-slate-600 dark:text-slate-400" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-green-600 font-medium">Time Saved</p>
-                  <p className="text-2xl font-bold text-green-900">{stats.timeSavedDisplay}</p>
-                  <p className="text-xs text-green-600">With AI assistance</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">Time Saved</p>
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.timeSavedDisplay}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">With AI assistance</p>
                 </div>
-                <Clock className="w-10 h-10 text-green-400" />
+                <Clock className="w-10 h-10 text-slate-600 dark:text-slate-400" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-purple-600 font-medium">Avg Compliance</p>
-                  <p className="text-3xl font-bold text-purple-900">{performanceData.avgCompliance}%</p>
-                  <p className="text-xs text-purple-600">Recent average</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">Avg Compliance</p>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{performanceData.avgCompliance}%</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Recent average</p>
                 </div>
-                <Target className="w-10 h-10 text-purple-400" />
+                <Target className="w-10 h-10 text-slate-600 dark:text-slate-400" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-orange-600 font-medium">AI Adoption</p>
-                  <p className="text-3xl font-bold text-orange-900">{featureUsage.adoptionRate}%</p>
-                  <p className="text-xs text-orange-600">Of your workflow</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">AI Adoption</p>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{featureUsage.adoptionRate}%</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Of your workflow</p>
                 </div>
-                <Sparkles className="w-10 h-10 text-orange-400" />
+                <Sparkles className="w-10 h-10 text-slate-600 dark:text-slate-400" />
               </div>
             </CardContent>
           </Card>
