@@ -26,6 +26,7 @@ import DuplicatePatients from './pages/DuplicatePatients';
 import EULA from './pages/EULA';
 import FAQ from './pages/FAQ';
 import Features from './pages/Features';
+import HIPAACompliance from './pages/HIPAACompliance';
 import HowToGuide from './pages/HowToGuide';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
@@ -93,7 +94,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import HIPAACompliance from './pages/HIPAACompliance';
 import __Layout from './Layout.jsx';
 
 
@@ -126,6 +126,7 @@ export const PAGES = {
     "EULA": EULA,
     "FAQ": FAQ,
     "Features": Features,
+    "HIPAACompliance": HIPAACompliance,
     "HowToGuide": HowToGuide,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
@@ -193,7 +194,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "HIPAACompliance": HIPAACompliance,
 }
 
 export const pagesConfig = {

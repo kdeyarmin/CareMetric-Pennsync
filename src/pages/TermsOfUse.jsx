@@ -12,100 +12,77 @@ export default function TermsOfUse() {
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <FileText className="w-8 h-8 text-blue-600" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms of Use</h1>
-          <p className="text-gray-600">Last Updated: December 28, 2024</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">CareMetric AI – Terms of Service</h1>
+          <p className="text-gray-600">Version: v1.0 | Document ID: CM-TOS-001</p>
+          <p className="text-gray-600">Last Updated: January 13, 2026</p>
         </div>
 
         <Card>
           <CardContent className="p-8 space-y-6 text-gray-700">
             <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">1. Acceptance of Terms</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">1. Introduction</h2>
               <p>
-                By accessing and using CareMetric AI ("the Service"), you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to these terms, please do not use the Service.
+                These Terms of Service ("Terms") govern access to and use of the CareMetric AI platform 
+                ("Service") provided by CareMetric AI, LLC, a Pennsylvania limited liability company ("CareMetric"). 
+                By using the Service, you agree to these Terms.
               </p>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">2. Description of Service</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">2. Nature of the Service</h2>
               <p>
-                CareMetric AI provides AI-powered clinical documentation, compliance monitoring, and care management tools for home health and hospice nurses. The Service is designed to assist healthcare professionals in their documentation and patient care workflows.
+                CareMetric AI provides assistive documentation and workflow tools only. The Service does not 
+                provide medical advice, diagnosis, treatment, or clinical decision-making.
               </p>
             </section>
 
             <section>
               <h2 className="text-2xl font-bold text-gray-900 mb-3">3. User Responsibilities</h2>
-              <p className="mb-2">As a user of CareMetric AI, you agree to:</p>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Provide accurate and complete information</li>
-                <li>Maintain the security of your account credentials</li>
-                <li>Use the Service in compliance with all applicable laws and regulations</li>
-                <li>Not share your account with unauthorized users</li>
-                <li>Verify all AI-generated content before clinical use</li>
-                <li>Comply with HIPAA and other healthcare privacy regulations</li>
-              </ul>
-            </section>
-
-            <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">4. Professional Responsibility</h2>
               <p>
-                CareMetric AI is a tool to assist healthcare professionals. All clinical decisions and documentation remain the responsibility of the licensed healthcare provider. Users must verify all AI-generated suggestions and content before use in patient care.
+                Users remain solely responsible for accuracy, completeness, clinical judgment, and regulatory 
+                compliance.
               </p>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">5. Subscription and Payment</h2>
-              <p className="mb-2">
-                Access to certain features requires a paid subscription. By subscribing, you agree to:
-              </p>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Pay all applicable subscription fees</li>
-                <li>Automatic renewal unless cancelled before the renewal date</li>
-                <li>Subscription fees are non-refundable except as required by law</li>
-                <li>Pricing may change with 30 days notice</li>
-              </ul>
-            </section>
-
-            <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">6. Data Ownership and Usage</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">4. Accounts and Security</h2>
               <p>
-                You retain ownership of all data you input into the Service. We use your data solely to provide and improve the Service. See our Privacy Policy for detailed information about data handling.
+                Users must safeguard credentials and promptly report unauthorized access.
               </p>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">7. Intellectual Property</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">5. Fees and Payment</h2>
               <p>
-                The Service, including all software, algorithms, and content, is owned by CareMetric AI and is protected by intellectual property laws. You may not copy, modify, distribute, or create derivative works without explicit permission.
+                Fees are governed by subscription or enterprise agreements.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">6. Intellectual Property</h2>
+              <p>
+                CareMetric retains all rights to the Service. Users retain ownership of their data subject to the BAA.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">7. Disclaimers</h2>
+              <p className="font-semibold">
+                THE SERVICE IS PROVIDED "AS IS" WITHOUT WARRANTIES.
               </p>
             </section>
 
             <section>
               <h2 className="text-2xl font-bold text-gray-900 mb-3">8. Limitation of Liability</h2>
               <p>
-                CareMetric AI provides the Service "as is" without warranties of any kind. We are not liable for any indirect, incidental, or consequential damages arising from your use of the Service. Our total liability shall not exceed the amount you paid for the Service in the 12 months preceding the claim.
+                CareMetric's liability shall not exceed fees paid in the prior 12 months.
               </p>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">9. Termination</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">9. Governing Law</h2>
               <p>
-                We reserve the right to suspend or terminate your access to the Service at any time for violation of these terms or for any other reason. Upon termination, you must cease all use of the Service.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">10. Changes to Terms</h2>
-              <p>
-                We may modify these terms at any time. Continued use of the Service after changes constitutes acceptance of the modified terms. We will notify users of material changes via email or in-app notification.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">11. Contact Information</h2>
-              <p>
-                For questions about these terms, please contact us at:<br />
-                <strong>Email:</strong> legal@caremetricai.com<br />
-                <strong>Address:</strong> CareMetric AI, Inc.
+                Pennsylvania law governs these Terms.
               </p>
             </section>
           </CardContent>
