@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video } from "lucide-react";
+import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video, Shield, Target } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
@@ -275,17 +275,52 @@ export default function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 dark:from-blue-700 dark:via-blue-800 dark:to-blue-900 text-white border-none shadow-xl overflow-hidden hover-glow">
-          <CardContent className="p-4 sm:p-6 md:p-8 relative">
-            <div className="absolute top-0 right-0 w-48 h-48 sm:w-64 sm:h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-            <div className="absolute bottom-0 left-0 w-24 h-24 sm:w-32 sm:h-32 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2" />
-            <div className="relative z-10">
-              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-2">
-                {getGreeting()}, {fullName}! 👋
-              </h1>
-              <p className="text-white/80 text-xs sm:text-sm md:text-base mb-3">
-                {isValid(new Date()) ? formatEastern(new Date(), 'EEEE, MMMM d, yyyy').replace(' ET', '') : new Date().toLocaleDateString()}
-              </p>
+        <Card className="mb-6 bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 text-white border-none shadow-xl">
+          <CardContent className="p-6 md:p-8">
+            <h1 className="text-3xl md:text-4xl font-bold mb-2">
+              {getGreeting()}, {fullName}! 👋
+            </h1>
+            <p className="text-white/80 text-sm md:text-base mb-6">
+              {isValid(new Date()) ? formatEastern(new Date(), 'EEEE, MMMM d, yyyy').replace(' ET', '') : new Date().toLocaleDateString()}
+            </p>
+            
+            {/* Core Features Quick Access */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
+                    onClick={() => navigate(createPageUrl('SmartNoteAssistant'))}>
+                <CardContent className="p-4 text-center">
+                  <Shield className="w-10 h-10 text-white mx-auto mb-2" />
+                  <h3 className="font-bold text-sm text-white mb-1">Compliance Review</h3>
+                  <p className="text-xs text-white/80">Check any note</p>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
+                    onClick={() => navigate(createPageUrl('TelehealthDashboard'))}>
+                <CardContent className="p-4 text-center">
+                  <Video className="w-10 h-10 text-white mx-auto mb-2" />
+                  <h3 className="font-bold text-sm text-white mb-1">Telehealth</h3>
+                  <p className="text-xs text-white/80">Video visits with AI</p>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
+                    onClick={() => navigate(createPageUrl('MedicalScribe'))}>
+                <CardContent className="p-4 text-center">
+                  <Mic className="w-10 h-10 text-white mx-auto mb-2" />
+                  <h3 className="font-bold text-sm text-white mb-1">Medical Scribe</h3>
+                  <p className="text-xs text-white/80">Record interactions</p>
+                </CardContent>
+              </Card>
+              
+              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
+                    onClick={() => navigate(createPageUrl('CarePlanManagement'))}>
+                <CardContent className="p-4 text-center">
+                  <Target className="w-10 h-10 text-white mx-auto mb-2" />
+                  <h3 className="font-bold text-sm text-white mb-1">Auto Plans & Codes</h3>
+                  <p className="text-xs text-white/80">Care plans & billing</p>
+                </CardContent>
+              </Card>
             </div>
           </CardContent>
         </Card>
@@ -342,75 +377,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Smart Quick Actions - Learns what you use most */}
-      {currentUser && (
-        <div className="mb-6">
-          <SmartQuickActions 
-            userEmail={currentUser?.email}
-            maxActions={6}
-          />
-        </div>
-      )}
-
-      {/* Quick Action Cards - Mobile Optimized */}
-       {/* Telehealth Quick Launcher */}
-       <QuickTelehealthLauncher
-         todayAppointments={todayTelehealthAppointments}
-         onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))}
-       />
-
-       <motion.div 
-          className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          {canAccessWidget('smartNotes') && (
-            <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-              <Link to={createPageUrl("SmartNoteAssistant")} className="block">
-                <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover-lift h-full cursor-pointer">
-                  <CardContent className="p-4 sm:p-6">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Brain className="w-6 h-6 text-blue-600" />
-                      <p className="text-sm font-medium text-blue-900">Smart Notes</p>
-                    </div>
-                    <p className="text-xs text-blue-700">AI-powered note enhancement</p>
-                  </CardContent>
-                </Card>
-              </Link>
-            </motion.div>
-          )}
-          {canAccessWidget('medicalScribe') && (
-            <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-              <Link to={createPageUrl("MedicalScribe")} className="block">
-                <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800 hover-lift h-full cursor-pointer">
-                  <CardContent className="p-4 sm:p-6">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Mic className="w-6 h-6 text-purple-600" />
-                      <p className="text-sm font-medium text-purple-900">Medical Scribe</p>
-                    </div>
-                    <p className="text-xs text-purple-700">Record & auto-generate notes</p>
-                  </CardContent>
-                </Card>
-              </Link>
-            </motion.div>
-          )}
-          {canAccessWidget('telehealth') && (
-            <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-              <Link to={createPageUrl("TelehealthDashboard")} className="block">
-                <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover-lift h-full cursor-pointer">
-                  <CardContent className="p-4 sm:p-6">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Video className="w-6 h-6 text-green-600" />
-                      <p className="text-sm font-medium text-green-900">Telehealth</p>
-                    </div>
-                    <p className="text-xs text-green-700">Virtual visits & video calls</p>
-                  </CardContent>
-                </Card>
-              </Link>
-            </motion.div>
-          )}
-        </motion.div>
+      {/* Telehealth Quick Launcher */}
+      <QuickTelehealthLauncher
+        todayAppointments={todayTelehealthAppointments}
+        onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))}
+      />
 
 
 
