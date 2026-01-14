@@ -273,8 +273,8 @@ export default function Dashboard() {
       ]);
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
-      {/* Header */}
-      <DashboardHeader fullName={fullName} />
+      {/* Header with integrated banners */}
+      <DashboardHeader fullName={fullName} subscription={subscription} />
 
       {/* Quick Stats */}
       <QuickStatsSummary stats={{
@@ -286,19 +286,6 @@ export default function Dashboard() {
 
       {/* Workflow Shortcuts */}
       <WorkflowShortcuts />
-
-      {/* New Features Banner */}
-      <NewFeaturesBanner />
-
-      {/* Admin Announcements */}
-      <AnnouncementsWidget />
-
-      {/* Trial Status Banner */}
-      {subscription && subscription.status === 'trialing' && (
-        <div className="mb-6">
-          <TrialStatusBanner subscription={subscription} />
-        </div>
-      )}
 
 
 
