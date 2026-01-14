@@ -178,7 +178,7 @@ export default function Layout({ children, currentPageName }) {
 
   return (
           <ThemeProvider>
-          <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative" style={{ background: 'transparent' }}>
+          <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
       {/* =========================
           Scoped overrides:
           Force any internal Tailwind "fixed" inside FAB components to behave like normal content
