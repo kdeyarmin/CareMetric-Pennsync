@@ -19,7 +19,6 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 
 import ComplianceAlertNotifications from "../components/alerts/ComplianceAlertNotifications";
 import ProactiveClinicalSupport from "../components/clinical/ProactiveClinicalSupport";
-import RegulatoryAlertsDashboard from "../components/regulatory/RegulatoryAlertsDashboard";
 import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
 import AnnouncementsWidget from "../components/dashboard/AnnouncementsWidget";
 import { calculateNurseStats } from "@/components/utils/statsCalculator";
@@ -31,9 +30,6 @@ import { motion } from "framer-motion";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 
 import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
-import PersonalizedDashboardWidget from "../components/personalization/PersonalizedDashboardWidget";
-import SmartQuickActions from "../components/personalization/SmartQuickActions";
-import PersonalizationEngine from "../components/personalization/PersonalizationEngine";
 import QuickTelehealthLauncher from "../components/telehealth/QuickTelehealthLauncher";
 import { getAccessibleWidgets } from "../components/utils/providerAccessControl";
 import DashboardHeader from "../components/dashboard/DashboardHeader";
