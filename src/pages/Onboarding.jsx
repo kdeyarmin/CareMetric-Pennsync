@@ -166,7 +166,7 @@ export default function Onboarding() {
                   <Button
                     onClick={() => setStep(2)}
                     disabled={!serviceType}
-                    className="bg-blue-600 hover:bg-blue-700 px-8"
+                    className="bg-slate-600 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white px-8"
                   >
                     Next Step →
                   </Button>

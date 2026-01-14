@@ -436,12 +436,12 @@ export default function AdminDashboard() {
             <Download className="w-4 h-4 mr-2" />
             <span className="text-xs sm:text-sm">Export</span>
           </Button>
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg flex-1 sm:flex-initial">
+          <div className="flex gap-1 bg-slate-200 dark:bg-slate-800 p-1 rounded-lg flex-1 sm:flex-initial">
             {[7, 30, 90].map(days => (
               <Button
                 key={days}
                 size="sm"
-                variant={dateRange === days ? "primary" : "ghost"}
+                variant={dateRange === days ? "default" : "ghost"}
                 onClick={() => setDateRange(days)}
                 className="min-h-[36px] px-3 sm:px-4 flex-1 shadow-sm data-[state=active]:bg-white data-[state=active]:dark:bg-gray-900"
               >
@@ -455,63 +455,63 @@ export default function AdminDashboard() {
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-800 hover-lift">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-              <Badge className="bg-blue-600 text-[10px] sm:text-xs">{stats.activeUsers}/{stats.totalUsers}</Badge>
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
+              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.activeUsers}/{stats.totalUsers}</Badge>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Active Nurses</p>
+            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.activeUsers}</p>
+            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Active Nurses</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-800 hover-lift">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <UserCheck className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
+              <UserCheck className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalPatients}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Total Patients</p>
+            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalPatients}</p>
+            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Total Patients</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-purple-200 dark:border-purple-800 hover-lift">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
+              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.completedVisits}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Visits ({dateRange}d)</p>
+            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.completedVisits}</p>
+            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Visits ({dateRange}d)</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 border-indigo-200 dark:border-indigo-800 hover-lift">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" />
-              <Badge className="bg-indigo-600 text-[10px] sm:text-xs">{stats.aiAdoptionRate}%</Badge>
+              <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
+              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.aiAdoptionRate}%</Badge>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalEnhancements}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">AI Enhancements</p>
+            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalEnhancements}</p>
+            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">AI Enhancements</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
-          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border-orange-200 dark:border-orange-800 hover-lift">
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600" />
+              <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalTimeSaved}</p>
-            <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">Minutes Saved</p>
+            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalTimeSaved}</p>
+            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Minutes Saved</p>
           </CardContent>
         </Card>
         </motion.div>
@@ -522,57 +522,57 @@ export default function AdminDashboard() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
-              <Shield className="w-4 h-4 text-blue-600" />
-              <p className="text-sm font-medium text-gray-600">Compliance</p>
+              <Shield className="w-4 h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Compliance</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.avgComplianceScore}%</p>
-            <p className="text-xs text-green-600">↑ +{stats.avgComplianceImprovement}% avg improvement</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.avgComplianceScore}%</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">↑ +{stats.avgComplianceImprovement}% avg improvement</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
-              <Target className="w-4 h-4 text-purple-600" />
-              <p className="text-sm font-medium text-gray-600">Quality</p>
+              <Target className="w-4 h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Quality</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.avgQualityScore}%</p>
-            <p className="text-xs text-gray-500">{stats.totalAudits} audits</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.avgQualityScore}%</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{stats.totalAudits} audits</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
-              <GraduationCap className="w-4 h-4 text-green-600" />
-              <p className="text-sm font-medium text-gray-600">Training</p>
+              <GraduationCap className="w-4 h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Training</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.totalTrainingCompleted}</p>
-            <p className="text-xs text-gray-500">{stats.avgTrainingScore}% avg score</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.totalTrainingCompleted}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{stats.avgTrainingScore}% avg score</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              <p className="text-sm font-medium text-gray-600">Incidents</p>
+              <AlertTriangle className="w-4 h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Incidents</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.totalIncidents}</p>
-            <p className="text-xs text-red-600">{stats.criticalIncidents} critical</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.totalIncidents}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">{stats.criticalIncidents} critical</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Auto-Fetch Guidelines Success/Error */}
       {autoFetchGuidelinesMutation.isSuccess && (
-        <Card className="mb-6 bg-green-50 border-2 border-green-300">
+        <Card className="mb-6 bg-slate-200 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
+              <CheckCircle2 className="w-6 h-6 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-1" />
               <div className="flex-1">
-                <p className="font-semibold text-green-900 mb-1">Guidelines Updated Successfully</p>
-                <p className="text-sm text-green-800">
+                <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">Guidelines Updated Successfully</p>
+                <p className="text-sm text-slate-800 dark:text-slate-200">
                   {autoFetchGuidelinesMutation.data?.message || 'CMS guidelines have been fetched and stored.'}
                 </p>
               </div>
@@ -582,13 +582,13 @@ export default function AdminDashboard() {
       )}
       
       {autoFetchGuidelinesMutation.isError && (
-        <Card className="mb-6 bg-red-50 border-2 border-red-300">
+        <Card className="mb-6 bg-slate-200 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+              <AlertTriangle className="w-6 h-6 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-1" />
               <div className="flex-1">
-                <p className="font-semibold text-red-900 mb-1">Failed to Fetch Guidelines</p>
-                <p className="text-sm text-red-800">
+                <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">Failed to Fetch Guidelines</p>
+                <p className="text-sm text-slate-800 dark:text-slate-200">
                   {autoFetchGuidelinesMutation.error?.message || 'An error occurred while fetching CMS guidelines.'}
                 </p>
               </div>
@@ -599,26 +599,26 @@ export default function AdminDashboard() {
 
       {/* Critical Alerts Banner */}
       {(stats.criticalAlerts > 0 || stats.flaggedAudits > 0 || stats.pendingUsers > 0) && (
-        <Card className="mb-6 bg-red-50 border-2 border-red-300">
+        <Card className="mb-6 bg-slate-200 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+              <AlertTriangle className="w-6 h-6 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-1" />
               <div className="flex-1">
-                <p className="font-semibold text-red-900 mb-2">Action Required</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Action Required</p>
                 <div className="space-y-1 text-sm">
                   {stats.criticalAlerts > 0 && (
-                    <p className="text-red-800">• {stats.criticalAlerts} critical patient alert{stats.criticalAlerts > 1 ? 's' : ''}</p>
+                    <p className="text-slate-800 dark:text-slate-200">• {stats.criticalAlerts} critical patient alert{stats.criticalAlerts > 1 ? 's' : ''}</p>
                   )}
                   {stats.flaggedAudits > 0 && (
-                    <p className="text-red-800">• {stats.flaggedAudits} flagged compliance audit{stats.flaggedAudits > 1 ? 's' : ''}</p>
+                    <p className="text-slate-800 dark:text-slate-200">• {stats.flaggedAudits} flagged compliance audit{stats.flaggedAudits > 1 ? 's' : ''}</p>
                   )}
                   {stats.pendingUsers > 0 && (
-                    <p className="text-red-800">• {stats.pendingUsers} user{stats.pendingUsers > 1 ? 's' : ''} pending approval</p>
+                    <p className="text-slate-800 dark:text-slate-200">• {stats.pendingUsers} user{stats.pendingUsers > 1 ? 's' : ''} pending approval</p>
                   )}
                 </div>
               </div>
               <Link to={createPageUrl("UserManagement")}>
-                <Button size="sm" className="bg-red-600 hover:bg-red-700">
+                <Button size="sm" className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 text-white">
                   Review
                 </Button>
               </Link>
@@ -656,8 +656,8 @@ export default function AdminDashboard() {
             <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <DollarSign className="w-8 h-8 text-green-600" />
-                  <TrendingUp className="w-5 h-5 text-green-600" />
+                  <DollarSign className="w-8 h-8 text-slate-700 dark:text-slate-400" />
+                  <TrendingUp className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 </div>
                 <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
                 <p className="text-xs text-gray-600">Monthly Recurring Revenue</p>
@@ -701,34 +701,34 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-blue-600" />
+                  <CreditCard className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                   Subscription Status Breakdown
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                      <CheckCircle2 className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                       <span className="font-medium">Active Subscriptions</span>
                     </div>
-                    <Badge className="bg-green-600 text-lg">{subscriptionStats.activeSubscriptions}</Badge>
+                    <Badge className="bg-slate-600 dark:bg-slate-500 text-white text-lg">{subscriptionStats.activeSubscriptions}</Badge>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-blue-600" />
+                      <Clock className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                       <span className="font-medium">Trial Users</span>
                     </div>
-                    <Badge className="bg-blue-600 text-lg">{subscriptionStats.trialingSubscriptions}</Badge>
+                    <Badge className="bg-slate-600 dark:bg-slate-500 text-white text-lg">{subscriptionStats.trialingSubscriptions}</Badge>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <TrendingDown className="w-5 h-5 text-red-600" />
+                      <TrendingDown className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                       <span className="font-medium">Canceled</span>
                     </div>
-                    <Badge className="bg-red-600 text-lg">{subscriptionStats.canceledSubscriptions}</Badge>
+                    <Badge className="bg-slate-600 dark:bg-slate-500 text-white text-lg">{subscriptionStats.canceledSubscriptions}</Badge>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg">
                     <span className="font-medium">Churn Rate</span>
                     <Badge variant="outline" className="text-lg">{subscriptionStats.churnRate}%</Badge>
                   </div>
@@ -739,7 +739,7 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-purple-600" />
+                  <BarChart3 className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                   Subscription Distribution
                 </CardTitle>
               </CardHeader>
@@ -771,7 +771,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-600" />
+                <TrendingUp className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 30-Day Revenue Trend
               </CardTitle>
             </CardHeader>
@@ -791,7 +791,7 @@ export default function AdminDashboard() {
                         return (
                           <div className="bg-white p-3 border border-gray-200 rounded shadow-lg">
                             <p className="text-sm font-semibold">{payload[0].payload.date}</p>
-                            <p className="text-sm text-green-600">Revenue: ${payload[0].value.toFixed(2)}</p>
+                            <p className="text-sm text-slate-800 dark:text-slate-200">Revenue: ${payload[0].value.toFixed(2)}</p>
                             <p className="text-xs text-gray-500">{payload[0].payload.count} payments</p>
                           </div>
                         );
@@ -803,9 +803,9 @@ export default function AdminDashboard() {
                   <Line 
                     type="monotone" 
                     dataKey="revenue" 
-                    stroke="#10B981" 
+                    stroke="#64748B" 
                     strokeWidth={3}
-                    dot={{ fill: '#10B981', r: 4 }}
+                    dot={{ fill: '#64748B', r: 4 }}
                     name="Daily Revenue"
                   />
                 </LineChart>
@@ -817,7 +817,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-green-600" />
+                <DollarSign className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 Recent Payments
               </CardTitle>
             </CardHeader>
@@ -825,7 +825,7 @@ export default function AdminDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b">
+                    <tr className="border-b border-slate-300 dark:border-slate-700">
                       <th className="text-left p-2">Date</th>
                       <th className="text-left p-2">User</th>
                       <th className="text-center p-2">Amount</th>
@@ -844,7 +844,7 @@ export default function AdminDashboard() {
                           <td className="p-2">{payment.user_email}</td>
                           <td className="text-center p-2 font-semibold">${(payment.amount || 0).toFixed(2)}</td>
                           <td className="text-center p-2">
-                            <Badge className={payment.status === 'succeeded' ? 'bg-green-600' : 'bg-red-600'}>
+                            <Badge className={payment.status === 'succeeded' ? 'bg-slate-600 text-white' : 'bg-slate-500 text-white'}>
                               {payment.status}
                             </Badge>
                           </td>
@@ -854,7 +854,7 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
                 {allPayments.length === 0 && (
-                  <p className="text-center text-gray-500 py-8">No payments yet</p>
+                  <p className="text-center text-slate-500 dark:text-slate-400 py-8">No payments yet</p>
                 )}
               </div>
             </CardContent>
@@ -864,7 +864,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-600" />
+                <Users className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 Active Subscriptions
               </CardTitle>
             </CardHeader>
@@ -872,7 +872,7 @@ export default function AdminDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b">
+                    <tr className="border-b border-slate-300 dark:border-slate-700">
                       <th className="text-left p-2">User</th>
                       <th className="text-center p-2">Status</th>
                       <th className="text-center p-2">Plan</th>
@@ -889,7 +889,7 @@ export default function AdminDashboard() {
                         <tr key={idx} className="border-b hover:bg-gray-50">
                           <td className="p-2">{sub.user_email}</td>
                           <td className="text-center p-2">
-                            <Badge className={sub.status === 'active' ? 'bg-green-600' : 'bg-blue-600'}>
+                            <Badge className={sub.status === 'active' ? 'bg-slate-600 text-white' : 'bg-slate-500 text-white'}>
                               {sub.status}
                             </Badge>
                           </td>
@@ -906,7 +906,7 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
                 {allSubscriptions.filter(s => s.status === 'active' || s.status === 'trialing').length === 0 && (
-                  <p className="text-center text-gray-500 py-8">No active subscriptions</p>
+                  <p className="text-center text-slate-500 dark:text-slate-400 py-8">No active subscriptions</p>
                 )}
               </div>
             </CardContent>
@@ -999,18 +999,18 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between mb-2">
                   <TrendingUp className="w-8 h-8 text-purple-600" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(2)}</p>
-                <p className="text-xs text-gray-600">Total Revenue</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">${subscriptionStats.totalRevenue.toFixed(2)}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Total Revenue</p>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <TrendingDown className="w-8 h-8 text-orange-600" />
+                  <TrendingDown className="w-8 h-8 text-slate-700 dark:text-slate-400" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{subscriptionStats.churnRate}%</p>
-                <p className="text-xs text-gray-600">Churn Rate</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{subscriptionStats.churnRate}%</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Churn Rate</p>
               </CardContent>
             </Card>
           </div>
@@ -1018,7 +1018,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-yellow-600" />
+                <Award className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 Top Performing Nurses
               </CardTitle>
             </CardHeader>
@@ -1027,17 +1027,17 @@ export default function AdminDashboard() {
                 {topPerformers.map((nurse, idx) => (
                   <div key={nurse.email} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
-                      idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-orange-600' : 'bg-gray-300'
+                      idx === 0 ? 'bg-slate-600' : idx === 1 ? 'bg-slate-500' : idx === 2 ? 'bg-slate-400' : 'bg-slate-300 text-slate-900'
                     }`}>
                       {idx + 1}
                     </div>
                     <div className="flex-1">
                       <p className="font-medium text-gray-900">{nurse.email}</p>
-                      <p className="text-xs text-gray-600">{nurse.enhancements} enhancements</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">{nurse.enhancements} enhancements</p>
                     </div>
                     <div className="text-right">
                       <Badge className="bg-green-600">{nurse.avgCompliance}%</Badge>
-                      <p className="text-xs text-gray-500 mt-1">Quality: {nurse.avgQuality}%</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Quality: {nurse.avgQuality}%</p>
                     </div>
                   </div>
                 ))}
@@ -1049,7 +1049,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-600" />
+                <TrendingUp className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 30-Day Compliance Score Trend
               </CardTitle>
             </CardHeader>
@@ -1069,8 +1069,8 @@ export default function AdminDashboard() {
                         return (
                           <div className="bg-white p-3 border border-gray-200 rounded shadow-lg">
                             <p className="text-sm font-semibold">{payload[0].payload.date}</p>
-                            <p className="text-sm text-blue-600">Score: {payload[0].value}%</p>
-                            <p className="text-xs text-gray-500">{payload[0].payload.count} audits</p>
+                            <p className="text-sm text-slate-800 dark:text-slate-200">Score: {payload[0].value}%</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">{payload[0].payload.count} audits</p>
                           </div>
                         );
                       }
@@ -1081,9 +1081,9 @@ export default function AdminDashboard() {
                   <Line 
                     type="monotone" 
                     dataKey="score" 
-                    stroke="#3B82F6" 
+                    stroke="#64748B" 
                     strokeWidth={3}
-                    dot={{ fill: '#3B82F6', r: 4 }}
+                    dot={{ fill: '#64748B', r: 4 }}
                     name="Compliance Score"
                     connectNulls
                   />
@@ -1096,7 +1096,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Brain className="w-5 h-5 text-indigo-600" />
+                <Brain className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 AI Feature Usage Breakdown
               </CardTitle>
             </CardHeader>
@@ -1123,7 +1123,7 @@ export default function AdminDashboard() {
                 </ResponsiveContainer>
                 <div className="space-y-3">
                   {aiFeatureUsage.map((feature, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 rounded-lg">
                       <div className="flex items-center gap-3">
                         <div 
                           className="w-4 h-4 rounded"
@@ -1143,7 +1143,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-purple-600" />
+                <BarChart3 className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 Visit Types Completed
               </CardTitle>
             </CardHeader>
@@ -1163,7 +1163,7 @@ export default function AdminDashboard() {
                   <Legend />
                   <Bar 
                     dataKey="count" 
-                    fill="#8B5CF6" 
+                    fill="#64748B" 
                     name="Visits Completed"
                     radius={[8, 8, 0, 0]}
                   />
@@ -1175,47 +1175,47 @@ export default function AdminDashboard() {
           {/* Quick Links */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
             <Link to={createPageUrl("UserManagement")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-200 h-full active:scale-95">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full active:scale-95">
                 <CardContent className="p-3 sm:p-4 text-center touch-target flex flex-col items-center justify-center">
-                  <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 mx-auto mb-1 sm:mb-2" />
+                  <Users className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-1 sm:mb-2" />
                   <p className="font-medium text-xs sm:text-sm">Manage Users</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("TrainingManagement")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200 h-full">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
                 <CardContent className="p-4 text-center">
-                  <GraduationCap className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                  <GraduationCap className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
                   <p className="font-medium text-sm">Training Mgmt</p>
                 </CardContent>
               </Card>
             </Link>
 
             <Link to={createPageUrl("AuditTrail")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-orange-200 h-full">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
                 <CardContent className="p-4 text-center">
-                  <Activity className="w-8 h-8 text-orange-600 mx-auto mb-2" />
+                  <Activity className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
                   <p className="font-medium text-sm">Audit Trail</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("Test2FA")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-red-200 h-full">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
                 <CardContent className="p-4 text-center">
-                  <Shield className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                  <Shield className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
                   <p className="font-medium text-sm">Test 2FA</p>
                 </CardContent>
               </Card>
             </Link>
             <Card 
-              className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-200 h-full"
+              className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full"
               onClick={() => autoFetchGuidelinesMutation.mutate()}
             >
               <CardContent className="p-4 text-center">
                 {autoFetchGuidelinesMutation.isPending ? (
-                  <RefreshCw className="w-8 h-8 text-green-600 mx-auto mb-2 animate-spin" />
+                  <RefreshCw className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2 animate-spin" />
                 ) : (
-                  <BookOpen className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                  <BookOpen className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
                 )}
                 <p className="font-medium text-sm">
                   {autoFetchGuidelinesMutation.isPending ? 'Fetching...' : 'Update CMS Guidelines'}
@@ -1234,21 +1234,21 @@ export default function AdminDashboard() {
                 <CardTitle className="text-lg">Documentation Metrics</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                  <span className="text-sm text-gray-700">Avg Quality Score</span>
-                  <Badge className="bg-blue-600 text-lg">{stats.avgQualityScore}%</Badge>
+                <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                  <span className="text-sm text-slate-900 dark:text-slate-100">Avg Quality Score</span>
+                  <Badge className="bg-slate-600 text-white text-lg">{stats.avgQualityScore}%</Badge>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                  <span className="text-sm text-gray-700">Avg Compliance</span>
-                  <Badge className="bg-green-600 text-lg">{stats.avgComplianceScore}%</Badge>
+                <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                  <span className="text-sm text-slate-900 dark:text-slate-100">Avg Compliance</span>
+                  <Badge className="bg-slate-600 text-white text-lg">{stats.avgComplianceScore}%</Badge>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-                  <span className="text-sm text-gray-700">Compliance Gain</span>
-                  <Badge className="bg-purple-600 text-lg">+{stats.avgComplianceImprovement}%</Badge>
+                <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                  <span className="text-sm text-slate-900 dark:text-slate-100">Compliance Gain</span>
+                  <Badge className="bg-slate-600 text-white text-lg">+{stats.avgComplianceImprovement}%</Badge>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
-                  <span className="text-sm text-gray-700">Visits/Day</span>
-                  <Badge className="bg-orange-600 text-lg">{stats.avgVisitsPerDay}</Badge>
+                <div className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                  <span className="text-sm text-slate-900 dark:text-slate-100">Visits/Day</span>
+                  <Badge className="bg-slate-600 text-white text-lg">{stats.avgVisitsPerDay}</Badge>
                 </div>
               </CardContent>
             </Card>
@@ -1263,7 +1263,7 @@ export default function AdminDashboard() {
                   {topPerformers.map((nurse, idx) => (
                     <div key={nurse.email} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                        idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : 'bg-orange-600'
+                        idx === 0 ? 'bg-slate-600' : idx === 1 ? 'bg-slate-500' : 'bg-slate-400'
                       }`}>
                         {idx + 1}
                       </div>
@@ -1288,20 +1288,20 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-center p-4 bg-slate-200 dark:bg-slate-800 rounded-lg">
                   <p className="text-2xl font-bold text-gray-900">{stats.totalVisits}</p>
                   <p className="text-xs text-gray-600">Total Visits</p>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <p className="text-2xl font-bold text-green-900">{stats.completedVisits}</p>
+                <div className="text-center p-4 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.completedVisits}</p>
                   <p className="text-xs text-gray-600">Completed</p>
                 </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-900">{stats.avgVisitsPerDay}</p>
+                <div className="text-center p-4 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.avgVisitsPerDay}</p>
                   <p className="text-xs text-gray-600">Per Day</p>
                 </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <p className="text-2xl font-bold text-purple-900">{stats.totalEnhancements}</p>
+                <div className="text-center p-4 bg-slate-200 dark:bg-slate-800 rounded-lg">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalEnhancements}</p>
                   <p className="text-xs text-gray-600">AI Enhanced</p>
                 </div>
               </div>
@@ -1316,18 +1316,18 @@ export default function AdminDashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm text-gray-600">Flagged Audits</p>
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                  <AlertTriangle className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 </div>
                 <p className="text-3xl font-bold text-gray-900">{stats.flaggedAudits}</p>
                 <p className="text-xs text-gray-500">Needs review</p>
               </CardContent>
             </Card>
 
-            <Card className="border-2 border-green-300">
+            <Card className="border-2 border-slate-300 dark:border-slate-600">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm text-gray-600">Passed Audits</p>
-                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <CheckCircle2 className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 </div>
                 <p className="text-3xl font-bold text-gray-900">{stats.passedAudits}</p>
                 <p className="text-xs text-gray-500">{((stats.passedAudits / Math.max(stats.totalAudits, 1)) * 100).toFixed(0)}% pass rate</p>
@@ -1338,7 +1338,7 @@ export default function AdminDashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm text-gray-600">Avg Score</p>
-                  <Target className="w-5 h-5 text-blue-600" />
+                  <Target className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 </div>
                 <p className="text-3xl font-bold text-gray-900">{stats.avgAuditScore}%</p>
                 <p className="text-xs text-gray-500">Audit compliance</p>
@@ -1357,14 +1357,14 @@ export default function AdminDashboard() {
                   .filter(a => a.status === 'flagged' || a.status === 'critical')
                   .slice(0, 5)
                   .map((audit, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg">
                       <div className="flex-1">
                         <p className="text-sm font-medium">{audit.nurse_email}</p>
                         <p className="text-xs text-gray-600">
                           {audit.audit_date ? formatEastern(audit.audit_date, 'MMM d, yyyy') : 'Unknown date'}
                         </p>
                       </div>
-                      <Badge className={audit.status === 'critical' ? 'bg-red-600' : 'bg-orange-600'}>
+                      <Badge className={audit.status === 'critical' ? 'bg-slate-700 text-white' : 'bg-slate-600 text-white'}>
                         {audit.compliance_score}%
                       </Badge>
                     </div>
@@ -1385,11 +1385,11 @@ export default function AdminDashboard() {
                 <CardTitle className="text-lg">Training Overview</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex justify-between items-center p-3 bg-green-50 rounded">
+                <div className="flex justify-between items-center p-3 bg-slate-200 dark:bg-slate-800 rounded">
                   <span className="text-sm">Completed Modules</span>
                   <span className="font-bold text-lg">{stats.totalTrainingCompleted}</span>
                 </div>
-                <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
+                <div className="flex justify-between items-center p-3 bg-slate-200 dark:bg-slate-800 rounded">
                   <span className="text-sm">Average Score</span>
                   <span className="font-bold text-lg">{stats.avgTrainingScore}%</span>
                 </div>
@@ -1413,7 +1413,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div 
-                          className="bg-green-600 h-2 rounded-full"
+                          className="bg-slate-600 dark:bg-slate-500 h-2 rounded-full"
                           style={{ width: `${Math.min((userCompletions / 10) * 100, 100)}%` }}
                         />
                       </div>
@@ -1440,7 +1440,7 @@ export default function AdminDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b">
+                    <tr className="border-b border-slate-300 dark:border-slate-700">
                       <th className="text-left p-2">Nurse</th>
                       <th className="text-center p-2">Enhancements</th>
                       <th className="text-center p-2">Avg Quality</th>
@@ -1479,7 +1479,7 @@ export default function AdminDashboard() {
                   Recent System Activity
                 </CardTitle>
                 <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <Input
                     placeholder="Search activity..."
                     value={activitySearch}
@@ -1496,23 +1496,23 @@ export default function AdminDashboard() {
               <div className="space-y-2 min-h-[400px]">
                 {paginatedActivity.length > 0 ? (
                   paginatedActivity.map((activity, idx) => (
-                    <div key={idx} className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded">
+                    <div key={idx} className="flex items-start gap-3 p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded">
                       <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{activity.user_name}</p>
-                        <p className="text-xs text-gray-600">{activity.action}</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">{activity.action}</p>
                         {activity.user_email && (
-                          <p className="text-xs text-gray-500">{activity.user_email}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{activity.user_email}</p>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 flex-shrink-0">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
                         {activity.created_date ? formatEastern(activity.created_date, 'MMM d, h:mm a') : ''}
                       </p>
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Activity className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                    <Activity className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
                     <p>No activity found</p>
                   </div>
                 )}
@@ -1521,7 +1521,7 @@ export default function AdminDashboard() {
               {/* Pagination */}
               {totalActivityPages > 1 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
                     Showing {((activityPage - 1) * activityPerPage) + 1} to {Math.min(activityPage * activityPerPage, filteredActivity.length)} of {filteredActivity.length} activities
                   </p>
                   <div className="flex gap-2">
@@ -1577,7 +1577,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
+                <AlertTriangle className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                 Critical Events
               </CardTitle>
             </CardHeader>
@@ -1587,18 +1587,18 @@ export default function AdminDashboard() {
                   .filter(i => i.severity === 'high')
                   .slice(0, 5)
                   .map((incident, idx) => (
-                    <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div key={idx} className="p-3 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg">
                       <div className="flex justify-between items-start mb-1">
                         <p className="text-sm font-medium">{incident.incident_name || incident.incident_type}</p>
-                        <Badge className="bg-red-600">High</Badge>
+                        <Badge className="bg-slate-600 text-white">High</Badge>
                       </div>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
                         {incident.incident_date ? new Date(incident.incident_date).toLocaleDateString() : 'Unknown date'}
                       </p>
                     </div>
                   ))}
                 {allIncidents.filter(i => i.severity === 'high').length === 0 && (
-                  <p className="text-center text-gray-500 py-8">No critical incidents</p>
+                  <p className="text-center text-slate-500 dark:text-slate-400 py-8">No critical incidents</p>
                 )}
               </div>
             </CardContent>

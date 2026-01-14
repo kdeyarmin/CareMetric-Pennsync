@@ -98,12 +98,12 @@ export default function ProviderTrainingHub() {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 sm:gap-4 mb-4">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-slate-600 dark:bg-slate-700 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
             <GraduationCap className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Provider Training Hub</h1>
-            <p className="text-xs sm:text-sm text-gray-600 truncate">Master advanced features and earn certifications</p>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 truncate">Provider Training Hub</h1>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 truncate">Master advanced features and earn certifications</p>
           </div>
         </div>
 
@@ -111,26 +111,26 @@ export default function ProviderTrainingHub() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">{completions.length}</p>
-              <p className="text-sm text-gray-600 mt-1">Modules Completed</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{completions.length}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Modules Completed</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{badges.length}</p>
-              <p className="text-sm text-gray-600 mt-1">Badges Earned</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{badges.length}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Badges Earned</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-purple-600">{earnedCerts.length}</p>
-              <p className="text-sm text-gray-600 mt-1">Certifications</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{earnedCerts.length}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Certifications</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-orange-600">{inProgressCerts.length}</p>
-              <p className="text-sm text-gray-600 mt-1">In Progress</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{inProgressCerts.length}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">In Progress</p>
             </CardContent>
           </Card>
         </div>
@@ -161,17 +161,17 @@ export default function ProviderTrainingHub() {
               const isCompleted = completedModuleIds.includes(module.id);
               
               return (
-                <Card key={module.id} className={isCompleted ? "border-green-300 bg-green-50" : ""}>
+                <Card key={module.id} className={isCompleted ? "border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800" : ""}>
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <CardTitle className="text-lg">{module.title}</CardTitle>
-                        <Badge className="mt-2 bg-blue-100 text-blue-800">
+                        <Badge className="mt-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
                           {module.category}
                         </Badge>
                       </div>
                       {isCompleted && (
-                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-1" />
+                        <CheckCircle2 className="w-5 h-5 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-1" />
                       )}
                     </div>
                   </CardHeader>
