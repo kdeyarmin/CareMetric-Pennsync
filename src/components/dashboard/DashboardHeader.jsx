@@ -38,7 +38,7 @@ export default function DashboardHeader({ fullName, subscription, providerType, 
 
   return (
     <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="space-y-3 mb-6">
-      <Card className="bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 text-white border-none shadow-xl">
+      <Card className="bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 dark:from-slate-600 dark:via-slate-700 dark:to-slate-800 text-white border-none shadow-lg">
         <CardContent className="p-6 md:p-8">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">

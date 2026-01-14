@@ -11,32 +11,32 @@ const SHORTCUTS = [
     label: 'New Visit',
     description: 'Create a visit',
     action: 'DocumentVisit',
-    color: 'bg-blue-500 hover:bg-blue-600',
-    textColor: 'text-blue-600'
+    color: 'bg-slate-600 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600',
+    textColor: 'text-slate-600 dark:text-slate-300'
   },
   {
     icon: FileText,
     label: 'Smart Note',
     description: 'AI documentation',
     action: 'SmartNoteAssistant',
-    color: 'bg-purple-500 hover:bg-purple-600',
-    textColor: 'text-purple-600'
+    color: 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700',
+    textColor: 'text-slate-700 dark:text-slate-300'
   },
   {
     icon: Clock,
     label: 'Schedule',
     description: 'View schedule',
     action: 'ProviderScheduling',
-    color: 'bg-orange-500 hover:bg-orange-600',
-    textColor: 'text-orange-600'
+    color: 'bg-slate-600 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600',
+    textColor: 'text-slate-600 dark:text-slate-300'
   },
   {
     icon: Users,
     label: 'Patients',
     description: 'View patients',
     action: 'Patients',
-    color: 'bg-green-500 hover:bg-green-600',
-    textColor: 'text-green-600'
+    color: 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700',
+    textColor: 'text-slate-700 dark:text-slate-300'
   }
 ];
 
