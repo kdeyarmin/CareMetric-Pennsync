@@ -205,9 +205,9 @@ If you have any questions, please contact your administrator.`,
   if (isAdmin === false) {
     return (
       <div className="p-8 max-w-7xl mx-auto">
-        <Alert className="border-red-300 bg-red-50">
-          <AlertTriangle className="w-5 h-5 text-red-600" />
-          <AlertDescription className="text-red-900">
+        <Alert className="border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900">
+           <AlertTriangle className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+           <AlertDescription className="text-slate-900 dark:text-slate-100">
             <p className="font-semibold mb-2">Access Denied</p>
             <p>You do not have administrator privileges to access this page.</p>
           </AlertDescription>
@@ -219,60 +219,60 @@ If you have any questions, please contact your administrator.`,
   return (
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-        <p className="text-sm sm:text-base text-gray-600">Manage users, monitor system, and view security logs</p>
+         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">Admin Dashboard</h1>
+         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage users, monitor system, and view security logs</p>
       </div>
 
       {/* Overview Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-lg">
+        <Card className="bg-slate-600 dark:bg-slate-700 text-white border-none shadow-lg">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-xs sm:text-sm font-medium mb-1">Total Users</p>
+                <p className="text-slate-200 text-xs sm:text-sm font-medium mb-1">Total Users</p>
                 <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{totalUsers}</p>
-                <p className="text-blue-100 text-xs mt-1">{adminUsers} admins</p>
-              </div>
-              <Users className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-blue-200" />
+                <p className="text-slate-200 text-xs mt-1">{adminUsers} admins</p>
+                </div>
+                <Users className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-slate-300" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none shadow-lg">
+        <Card className="bg-slate-500 dark:bg-slate-600 text-white border-none shadow-lg">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-xs sm:text-sm font-medium mb-1">Active Patients</p>
+                <p className="text-slate-100 text-xs sm:text-sm font-medium mb-1">Active Patients</p>
                 <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{activePatients}</p>
-                <p className="text-green-100 text-xs mt-1">of {patients.length} total</p>
-              </div>
-              <Activity className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-green-200" />
+                <p className="text-slate-100 text-xs mt-1">of {patients.length} total</p>
+                </div>
+                <Activity className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-slate-300" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none shadow-lg">
+        <Card className="bg-slate-400 dark:bg-slate-600 text-white border-none shadow-lg">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-xs sm:text-sm font-medium mb-1">Visits This Week</p>
+                <p className="text-slate-100 text-xs sm:text-sm font-medium mb-1">Visits This Week</p>
                 <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{visitsThisWeek}</p>
-                <p className="text-purple-100 text-xs mt-1">{completedVisits} total completed</p>
+                <p className="text-slate-100 text-xs mt-1">{completedVisits} total completed</p>
               </div>
               <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-purple-200" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none shadow-lg">
+        <Card className="bg-slate-300 dark:bg-slate-600 text-white border-none shadow-lg">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-100 text-xs sm:text-sm font-medium mb-1">Avg Doc Time</p>
+                <p className="text-slate-100 text-xs sm:text-sm font-medium mb-1">Avg Doc Time</p>
                 <p className="text-2xl sm:text-3xl md:text-4xl font-bold">{Math.round(avgDocTime)}</p>
-                <p className="text-orange-100 text-xs mt-1">minutes</p>
-              </div>
-              <Database className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-orange-200" />
+                <p className="text-slate-100 text-xs mt-1">minutes</p>
+                </div>
+                <Database className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-slate-300" />
             </div>
           </CardContent>
         </Card>
@@ -322,27 +322,27 @@ If you have any questions, please contact your administrator.`,
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <div className="space-y-3 sm:space-y-4">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 sm:p-4 bg-green-50 rounded-lg border border-green-200">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 sm:p-4 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-700">
                   <div className="flex items-center gap-2 sm:gap-3">
-                    <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" />
+                    <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700 dark:text-slate-400 flex-shrink-0" />
                     <div>
-                      <p className="font-semibold text-sm sm:text-base text-gray-900">System Online</p>
-                      <p className="text-xs sm:text-sm text-gray-600">All services operational</p>
+                      <p className="font-semibold text-sm sm:text-base text-slate-900 dark:text-slate-100">System Online</p>
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">All services operational</p>
                     </div>
                   </div>
-                  <Badge className="bg-green-100 text-green-800 text-xs sm:text-sm">Healthy</Badge>
+                  <Badge className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 text-xs sm:text-sm">Healthy</Badge>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                  <div className="p-4 bg-gray-50 rounded-lg border">
-                    <p className="text-sm text-gray-600 mb-1">Database Records</p>
-                    <p className="text-2xl font-bold text-gray-900">
+                  <div className="p-4 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-700">
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Database Records</p>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                       {patients.length + visits.length + users.length}
                     </p>
                   </div>
-                  <div className="p-4 bg-gray-50 rounded-lg border">
-                    <p className="text-sm text-gray-600 mb-1">Security Events (Last 100)</p>
-                    <p className="text-2xl font-bold text-gray-900">{securityLogs.length}</p>
+                  <div className="p-4 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-700">
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Security Events (Last 100)</p>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{securityLogs.length}</p>
                   </div>
                 </div>
               </div>
@@ -358,19 +358,19 @@ If you have any questions, please contact your administrator.`,
                 {visits.slice(0, 5).map((visit) => {
                   const patient = patients.find(p => p.id === visit.patient_id);
                   return (
-                    <div key={visit.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg">
+                    <div key={visit.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-slate-100 dark:bg-slate-900 rounded-lg">
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm sm:text-base text-gray-900 break-words">
+                        <p className="font-medium text-sm sm:text-base text-slate-900 dark:text-slate-100 break-words">
                           Visit: {patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown Patient'}
                         </p>
-                        <p className="text-xs sm:text-sm text-gray-600">
+                        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                           {visit.visit_date} • {visit.visit_type.replace(/_/g, ' ')}
                         </p>
                       </div>
                       <Badge className={`flex-shrink-0 text-xs ${
-                        visit.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        visit.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-blue-100 text-blue-800'
+                        visit.status === 'completed' ? 'bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100' :
+                        visit.status === 'in_progress' ? 'bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100' :
+                        'bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100'
                       }`}>
                         {visit.status}
                       </Badge>
@@ -442,9 +442,9 @@ If you have any questions, please contact your administrator.`,
                   .sort(([,a], [,b]) => b - a)
                   .slice(0, 6)
                   .map(([action, count]) => (
-                    <div key={action} className="p-4 bg-gray-50 rounded-lg border">
-                      <p className="text-sm text-gray-600 mb-1">{action.replace(/_/g, ' ')}</p>
-                      <p className="text-2xl font-bold text-gray-900">{count}</p>
+                    <div key={action} className="p-4 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-700">
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">{action.replace(/_/g, ' ')}</p>
+                      <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{count}</p>
                     </div>
                   ))}
               </div>
@@ -510,17 +510,17 @@ If you have any questions, please contact your administrator.`,
                     <span className="font-bold">{patients.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Active</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Active</span>
                     <span className="font-bold">{activePatients}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Home Health</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Home Health</span>
                     <span className="font-bold">
                       {patients.filter(p => p.care_type === 'home_health').length}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Hospice</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Hospice</span>
                     <span className="font-bold">
                       {patients.filter(p => p.care_type === 'hospice').length}
                     </span>
@@ -540,17 +540,17 @@ If you have any questions, please contact your administrator.`,
                     <span className="font-bold">{visits.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Completed</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Completed</span>
                     <span className="font-bold">{completedVisits}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Scheduled</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Scheduled</span>
                     <span className="font-bold">
                       {visits.filter(v => v.status === 'scheduled').length}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">In Progress</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">In Progress</span>
                     <span className="font-bold">
                       {visits.filter(v => v.status === 'in_progress').length}
                     </span>
@@ -566,19 +566,19 @@ If you have any questions, please contact your administrator.`,
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Users</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Users</span>
                     <span className="font-bold">{users.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Security Logs</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Security Logs</span>
                     <span className="font-bold">{securityLogs.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Care Plans</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Care Plans</span>
                     <span className="font-bold">N/A</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Storage Used</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Storage Used</span>
                     <span className="font-bold">N/A</span>
                   </div>
                 </div>

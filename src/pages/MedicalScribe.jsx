@@ -97,20 +97,20 @@ export default function MedicalScribe() {
          {/* Header */}
          <div className="mb-3 sm:mb-6">
            <div className="flex items-center gap-2 sm:gap-3 mb-2">
-             <div className="p-2 sm:p-2.5 bg-blue-100 rounded-full flex-shrink-0">
-               <Mic className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+             <div className="p-2 sm:p-2.5 bg-slate-200 dark:bg-slate-700 rounded-full flex-shrink-0">
+               <Mic className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700 dark:text-slate-300" />
             </div>
             <div className="flex-1 min-w-0 overflow-hidden">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Medical Scribe</h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1 hidden sm:block">Record or upload visit audio to auto-generate clinical notes</p>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 truncate">Medical Scribe</h1>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1 hidden sm:block">Record or upload visit audio to auto-generate clinical notes</p>
             </div>
           </div>
         </div>
 
         {/* Info Card */}
-        <Alert className="mb-3 sm:mb-6 bg-blue-50 border-blue-200">
-          <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
-          <AlertDescription className="text-xs sm:text-sm text-blue-800 ml-2">
+        <Alert className="mb-3 sm:mb-6 bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600">
+          <Info className="w-4 h-4 text-slate-700 dark:text-slate-400 flex-shrink-0" />
+          <AlertDescription className="text-xs sm:text-sm text-slate-900 dark:text-slate-100 ml-2">
             Record your patient visit conversation or upload an audio file. Our AI will transcribe it and generate a Medicare-compliant clinical note that you can review and refine.
           </AlertDescription>
         </Alert>
@@ -136,10 +136,10 @@ export default function MedicalScribe() {
                        <SelectValue placeholder="Select patient..." />
                      </SelectTrigger>
                      <SelectContent>
-                       <SelectItem value="__add_new__" className="text-sm font-bold text-blue-600 border-b mb-1">
+                       <SelectItem value="__add_new__" className="text-sm font-bold text-slate-700 dark:text-slate-300 border-b mb-1">
                          ➕ Add New Patient
                        </SelectItem>
-                       <SelectItem value="anonymous" className="text-sm font-medium text-purple-600">
+                       <SelectItem value="anonymous" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                          🔒 Anonymous (No data saved)
                        </SelectItem>
                        {patients.map(p => (
@@ -199,8 +199,8 @@ export default function MedicalScribe() {
                 />
 
                 {!isReady && (
-                  <Alert className="bg-yellow-50 border-yellow-200">
-                    <AlertDescription className="text-xs text-yellow-800">
+                  <Alert className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600">
+                    <AlertDescription className="text-xs text-slate-900 dark:text-slate-100">
                       Select visit type and diagnosis to get started. Patient is optional.
                     </AlertDescription>
                   </Alert>
@@ -236,14 +236,14 @@ export default function MedicalScribe() {
                 />
               </div>
             ) : (
-              <Card className="border-gray-200 bg-gray-50 h-96 flex items-center justify-center">
+              <Card className="border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900 h-96 flex items-center justify-center">
                 <CardContent className="text-center space-y-3">
-                  <div className="p-4 bg-gray-200 rounded-full w-fit mx-auto">
-                    <Mic className="w-8 h-8 text-gray-600" />
+                  <div className="p-4 bg-slate-300 dark:bg-slate-700 rounded-full w-fit mx-auto">
+                    <Mic className="w-8 h-8 text-slate-700 dark:text-slate-300" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700">Select patient details to begin</p>
-                    <p className="text-xs text-gray-600 mt-1">Choose a patient, visit type, and diagnosis from the left panel</p>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Select patient details to begin</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Choose a patient, visit type, and diagnosis from the left panel</p>
                   </div>
                 </CardContent>
               </Card>
