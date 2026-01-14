@@ -268,7 +268,7 @@ export default function Dashboard() {
         queryClient.invalidateQueries({ queryKey: ['myTasks'] })
       ]);
     }}>
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0 bg-transparent">
       {/* Welcome Banner */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
