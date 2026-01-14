@@ -183,8 +183,8 @@ export default function Layout({ children, currentPageName }) {
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-100 dark:from-slate-950 dark:via-blue-900 dark:to-indigo-950" />
         
         {/* Animated gradient mesh overlays with higher contrast */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-400/40 to-purple-400/40 dark:from-blue-600/30 dark:to-purple-600/30 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-indigo-400/40 to-pink-400/40 dark:from-indigo-600/30 dark:to-pink-600/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-400/40 to-cyan-400/40 dark:from-blue-600/30 dark:to-cyan-600/30 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-blue-500/40 to-sky-400/40 dark:from-blue-600/30 dark:to-sky-600/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
         <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-cyan-400/35 to-blue-400/35 dark:from-cyan-600/25 dark:to-blue-600/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
       </div>
                 <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
