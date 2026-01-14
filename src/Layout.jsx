@@ -178,7 +178,15 @@ export default function Layout({ children, currentPageName }) {
 
   return (
                 <ThemeProvider>
-                <div className="fixed inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 -z-10" />
+                <div className="fixed inset-0 -z-10">
+        {/* Main gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900" />
+        
+        {/* Animated gradient mesh overlays */}
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-300/20 to-purple-300/20 dark:from-blue-500/10 dark:to-purple-500/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-indigo-300/20 to-pink-300/20 dark:from-indigo-500/10 dark:to-pink-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-cyan-300/10 to-blue-300/10 dark:from-cyan-500/5 dark:to-blue-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+      </div>
                 <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
           Scoped overrides:
@@ -208,10 +216,10 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
         <aside
-             className={`hidden lg:flex flex-col bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-800/50 shadow-sm transition-all duration-300 ${
-               sidebarCollapsed ? "w-16" : "w-56"
-             }`}
-           >
+               className={`hidden lg:flex flex-col bg-gradient-to-b from-white/50 to-slate-50/40 dark:from-slate-900/60 dark:to-slate-800/40 backdrop-blur-2xl border-r border-white/20 dark:border-slate-700/30 shadow-xl transition-all duration-300 ${
+                 sidebarCollapsed ? "w-16" : "w-56"
+               }`}
+             >
           <div className="h-16 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0 group">
               <div className="relative flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
@@ -308,7 +316,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 shadow-sm flex flex-col transition-colors duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/50 via-blue-50/40 to-white/50 dark:from-slate-900/60 dark:via-slate-800/50 dark:to-slate-900/60 backdrop-blur-2xl border-b border-white/20 dark:border-slate-700/30 shadow-lg flex flex-col transition-colors duration-300 ${
           showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
         }`}
         style={{
@@ -464,7 +472,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-t border-slate-200/50 dark:border-slate-800/50 shadow-sm lg:hidden transition-colors duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white/50 via-slate-50/40 to-white/30 dark:from-slate-900/60 dark:via-slate-800/50 dark:to-slate-900/40 backdrop-blur-2xl border-t border-white/20 dark:border-slate-700/30 shadow-2xl lg:hidden transition-colors duration-300 ${
           showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
         }`}
         style={{ 
