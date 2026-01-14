@@ -35,6 +35,7 @@ import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
 import { ThemeProvider } from "../components/theme/ThemeProvider";
 import { SessionManager } from "../components/utils/security";
+import { RealTimeBreachMonitor } from "../components/security/RealTimeBreachAlerts";
 import PushNotificationManager from "../components/notifications/PushNotificationManager";
 import { getAccessiblePages } from "../components/utils/providerAccessControl";
 
@@ -590,6 +591,7 @@ export default function Layout({ children, currentPageName }) {
       </nav>
 
       {showNavigationUI && <OfflineIndicator />}
+      <RealTimeBreachMonitor />
       </div>
       </ThemeProvider>
       );

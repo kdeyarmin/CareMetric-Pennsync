@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, FileText, AlertTriangle, Lock } from "lucide-react";
 import HIPAAComplianceChecker from "../components/security/HIPAAComplianceChecker";
+import ComplianceStatsGrid from "../components/security/ComplianceStatsGrid";
 import SecurityMonitor from "../components/security/SecurityMonitor";
 import HIPAACompliance from "../components/security/HIPAACompliance";
 import SecurityDocumentation from "../components/security/SecurityDocumentation";
@@ -58,64 +59,8 @@ export default function HIPAACompliancePage() {
           </div>
         </div>
 
-        {/* Compliance Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <Lock className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Encryption Status</p>
-                  <p className="text-lg font-bold text-gray-900">Active</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Audit Logs</p>
-                  <p className="text-lg font-bold text-gray-900">Enabled</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Shield className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Access Controls</p>
-                  <p className="text-lg font-bold text-gray-900">Configured</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Active Alerts</p>
-                  <p className="text-lg font-bold text-gray-900">0</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Compliance Overview with Real-Time Stats */}
+        <ComplianceStatsGrid />
 
         {/* Main Content */}
         <Tabs defaultValue="checker" className="w-full">
