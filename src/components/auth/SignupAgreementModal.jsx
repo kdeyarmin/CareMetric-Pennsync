@@ -30,6 +30,9 @@ export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
           privacy_policy: true,
           business_associate_agreement: true,
           ai_disclaimer_acknowledged: true,
+          ai_use_acknowledgment: true,
+          probabilistic_models_acknowledged: true,
+          no_medical_advice_acknowledged: true,
           accepted_date: new Date().toISOString()
         },
         page: "signup_agreement"
@@ -96,6 +99,31 @@ export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
               </div>
             </div>
 
+            {/* AI Use Acknowledgment */}
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 mb-2">
+                    AI Use Acknowledgment
+                  </p>
+                  <div className="text-sm text-gray-900 leading-relaxed space-y-2">
+                    <p>
+                      CareMetric AI uses <strong>machine-assisted and probabilistic models</strong>.
+                    </p>
+                    <p>
+                      AI-generated outputs may be <strong>inaccurate, incomplete, or outdated</strong> and 
+                      must be reviewed and verified by a qualified professional prior to use.
+                    </p>
+                    <p>
+                      CareMetric AI <strong>does not provide medical advice</strong>, make clinical decisions, 
+                      or guarantee compliance or reimbursement outcomes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Legal Documents Links */}
             <div className="border-t pt-4 space-y-2">
               <p className="text-sm font-semibold text-gray-900 mb-3">Legal Documents:</p>
@@ -137,8 +165,10 @@ export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
             />
             <label htmlFor="agree" className="text-sm text-gray-900 leading-relaxed cursor-pointer">
               I have read and agree to the Terms of Service, Privacy Policy, and Business Associate 
-              Agreement. I understand that CareMetric AI provides assistive tools only and that all 
-              AI-generated content must be reviewed by a qualified healthcare professional.
+              Agreement. I acknowledge that CareMetric AI uses machine-assisted probabilistic models 
+              that may produce inaccurate, incomplete, or outdated outputs. I understand that all 
+              AI-generated content must be reviewed and verified by a qualified healthcare professional, 
+              and that CareMetric AI does not provide medical advice or guarantee clinical outcomes.
             </label>
           </div>
         </div>
