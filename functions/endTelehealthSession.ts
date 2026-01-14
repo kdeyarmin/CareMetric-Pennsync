@@ -12,48 +12,35 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { patientId, visitId, serviceCodeId } = await req.json();
+        const { visitId, roomSid, callDuration, summary } = await req.json();
 
-        if (!patientId || !visitId) {
-            return Response.json({ error: 'Patient ID and Visit ID required' }, { status: 400 });
+        if (!visitId || !roomSid) {
+            return Response.json({ error: 'Visit ID and room SID required' }, { status: 400 });
         }
 
-        // Generate unique room name
-        const roomName = `visit-${visitId}-${Date.now()}`;
-
-        // Create Twilio room via REST API
+        // Close the Twilio room
         const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-        const roomResponse = await fetch(`https://video.twilio.com/v1/Rooms`, {
+        await fetch(`https://video.twilio.com/v1/Rooms/${roomSid}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
             body: new URLSearchParams({
-                UniqueName: roomName,
-                Type: 'group',
-                RecordParticipantsOnConnect: true,
-                MaxParticipants: 2
+                Status: 'completed'
             })
         });
 
-        const roomData = await roomResponse.json();
-
-        if (!roomResponse.ok) {
-            throw new Error(roomData.message || 'Failed to create Twilio room');
-        }
-
-        // Update visit with telehealth data
+        // Update visit with session data
         await base44.entities.Visit.update(visitId, {
-            telehealth_room_id: roomData.sid,
-            telehealth_room_name: roomName
+            telehealth_call_duration: callDuration,
+            telehealth_summary: summary,
+            status: 'completed'
         });
 
         return Response.json({
             success: true,
-            roomSid: roomData.sid,
-            roomName: roomName,
-            visitId: visitId
+            message: 'Telehealth session ended and visit updated'
         });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });
