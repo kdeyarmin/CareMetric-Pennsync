@@ -28,6 +28,8 @@ For each significant change found, provide:
 - Detailed description
 - Effective date
 - Severity (critical/high/medium/low)
+- Category (documentation/oasis/safety/billing/quality/infection_control/patient_rights/hipaa/staffing)
+- Impact level (critical/high/medium/low)
 - Provider types affected (RN, LPN, PT, OT, ST, MD, DO, NP, etc.)
 - Action required (if any)
 - Compliance deadline (if applicable)
@@ -52,6 +54,8 @@ Return JSON array of updates.`;
                 detailed_description: { type: "string" },
                 effective_date: { type: "string" },
                 severity: { type: "string" },
+                category: { type: "string" },
+                impact_level: { type: "string" },
                 affected_provider_types: {
                   type: "array",
                   items: { type: "string" }
@@ -77,9 +81,18 @@ Return JSON array of updates.`;
 
       if (existing.length === 0) {
         const created = await base44.asServiceRole.entities.RegulatoryUpdate.create({
-          ...update,
-          source: 'automated_monitoring',
-          read_by: []
+          title: update.title,
+          source: update.regulation_source || 'CMS',
+          category: update.category || 'quality',
+          effective_date: update.effective_date,
+          summary: update.summary,
+          full_details: update.detailed_description,
+          impact_level: update.impact_level || 'medium',
+          affected_areas: update.affected_provider_types || [],
+          required_actions: [update.action_required].filter(Boolean),
+          suggested_training: [],
+          status: 'pending_review',
+          reference_url: update.reference_url
         });
         createdUpdates.push(created);
       }
