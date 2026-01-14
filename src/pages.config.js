@@ -96,6 +96,7 @@ import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import AppointmentBooking from './pages/AppointmentBooking';
+import PatientBilling from './pages/PatientBilling';
 import __Layout from './Layout.jsx';
 
 
@@ -198,6 +199,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
     "AppointmentBooking": AppointmentBooking,
+    "PatientBilling": PatientBilling,
 }
 
 export const pagesConfig = {
