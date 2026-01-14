@@ -20,6 +20,10 @@ import ConnectionQualityMonitor from '../components/telehealth/ConnectionQuality
 import AIVisitSummaryGenerator from '../components/telehealth/AIVisitSummaryGenerator';
 import RealTimePatientRiskMonitor from '../components/telehealth/RealTimePatientRiskMonitor';
 import TelehealthRecordingManager from '../components/telehealth/TelehealthRecordingManager';
+import AICallTranscriptionPanel from '../components/telehealth/AICallTranscriptionPanel';
+import AIDiscussionTracker from '../components/telehealth/AIDiscussionTracker';
+import SecureInCallChat from '../components/telehealth/SecureInCallChat';
+import EnhancedPostCallSummary from '../components/telehealth/EnhancedPostCallSummary';
 import { createPageUrl } from '@/utils';
 
 export default function TelehealthVisit() {
@@ -43,6 +47,8 @@ export default function TelehealthVisit() {
   const [patientWaiting, setPatientWaiting] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [symptomAssessment, setSymptomAssessment] = useState(null);
+  const [keyPoints, setKeyPoints] = useState([]);
+  const [actionItems, setActionItems] = useState([]);
   
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -451,7 +457,7 @@ export default function TelehealthVisit() {
             />
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-4 gap-4">
             {/* Recording Manager */}
             <TelehealthRecordingManager
               visitId={visitId}
@@ -462,21 +468,27 @@ export default function TelehealthVisit() {
 
             {/* AI Real-Time Transcription */}
             <div className="md:col-span-2">
-              <AIRealtimeTranscription 
+              <AICallTranscriptionPanel
                 visitId={visitId}
-                patientId={patientId}
                 isActive={step === 'connected'}
+                callStartTime={callStartTimeRef.current}
               />
             </div>
 
-            {/* Secure Messaging */}
-            <TelehealthMessaging
+            {/* Secure In-Call Chat */}
+            <SecureInCallChat
               visitId={visitId}
               patientId={patientId}
               providerEmail={currentUser?.email}
-              isActive={true}
             />
             </div>
+
+          {/* Discussion Tracker - Key Points & Action Items */}
+          <AIDiscussionTracker
+            visitId={visitId}
+            transcription={transcript}
+            isActive={step === 'connected'}
+          />
 
           <div className="grid md:grid-cols-2 gap-4">
             {/* Real-Time Risk Monitor */}
@@ -519,18 +531,18 @@ export default function TelehealthVisit() {
               </CardContent>
             </Card>
 
-            {/* AI Visit Summary Generator */}
-            <AIVisitSummaryGenerator
-              visit={{ 
-                id: visitId,
-                visit_type: 'telehealth',
-                visit_date: new Date().toISOString().split('T')[0],
-                visit_time: new Date().toLocaleTimeString(),
-                telehealth_call_duration: callDuration,
-                nurse_notes: callNotes,
-                vital_signs: patient?.vital_signs
-              }}
+            {/* Enhanced Post-Call Summary */}
+            <EnhancedPostCallSummary
+              visitId={visitId}
               patient={patient}
+              callDuration={callDuration}
+              callNotes={callNotes}
+              transcription={transcript}
+              keyPoints={keyPoints}
+              actionItems={actionItems}
+              onSummaryGenerated={(summaryText) => {
+                // Optional: Store summary or trigger additional actions
+              }}
             />
           </div>
 
