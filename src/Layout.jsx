@@ -181,7 +181,7 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <ThemeProvider>
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex overflow-x-hidden transition-colors duration-300 relative">
+    <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
           Scoped overrides:
           Force any internal Tailwind "fixed" inside FAB components to behave like normal content
@@ -210,10 +210,10 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
         <aside
-           className={`hidden lg:flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-300 ${
-             sidebarCollapsed ? "w-16" : "w-56"
-           }`}
-         >
+             className={`hidden lg:flex flex-col bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-r border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-300 ${
+               sidebarCollapsed ? "w-16" : "w-56"
+             }`}
+           >
           <div className="h-16 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0 group">
               <div className="relative flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
@@ -338,7 +338,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm flex flex-col transition-colors duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm flex flex-col transition-colors duration-300 ${
           showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
         }`}
         style={{
@@ -350,7 +350,7 @@ export default function Layout({ children, currentPageName }) {
       >
         {showNavigationUI && (
           <div
-            className="flex items-center justify-between px-2 sm:px-3 w-full bg-white dark:bg-slate-900"
+            className="flex items-center justify-between px-2 sm:px-3 w-full bg-transparent"
             style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}
           >
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
@@ -393,10 +393,10 @@ export default function Layout({ children, currentPageName }) {
       {showNavigationUI && mobileMenuOpen && (
         <div className="fixed inset-0 bg-black/50 z-[290]" onClick={() => setMobileMenuOpen(false)}>
           <div
-            className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white dark:bg-slate-900 shadow-xl overflow-y-auto"
+            className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
+            <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">Menu</span>
               </div>
@@ -524,7 +524,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-sm lg:hidden transition-colors duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 shadow-sm lg:hidden transition-colors duration-300 ${
           showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
         }`}
         style={{ 
