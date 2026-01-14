@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import DetailedComplianceFeedback from "../compliance/DetailedComplianceFeedback";
 import { getProviderCompliancePrompt } from "../utils/providerSpecificConfig";
