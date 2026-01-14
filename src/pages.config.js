@@ -59,6 +59,7 @@ import PatientEducation from './pages/PatientEducation';
 import PatientEducationGenerator from './pages/PatientEducationGenerator';
 import PatientEducationHub from './pages/PatientEducationHub';
 import PatientEducationLibrary from './pages/PatientEducationLibrary';
+import PatientMessaging from './pages/PatientMessaging';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
@@ -94,7 +95,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import PatientMessaging from './pages/PatientMessaging';
 import __Layout from './Layout.jsx';
 
 
@@ -160,6 +160,7 @@ export const PAGES = {
     "PatientEducationGenerator": PatientEducationGenerator,
     "PatientEducationHub": PatientEducationHub,
     "PatientEducationLibrary": PatientEducationLibrary,
+    "PatientMessaging": PatientMessaging,
     "PatientRecordDashboard": PatientRecordDashboard,
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
@@ -195,7 +196,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "PatientMessaging": PatientMessaging,
 }
 
 export const pagesConfig = {
