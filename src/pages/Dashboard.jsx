@@ -39,6 +39,8 @@ import { getAccessibleWidgets } from "../components/utils/providerAccessControl"
 import DashboardHeader from "../components/dashboard/DashboardHeader";
 import QuickAccessCards from "../components/dashboard/QuickAccessCards";
 import DashboardSection from "../components/dashboard/DashboardSection";
+import QuickStatsSummary from "../components/dashboard/QuickStatsSummary";
+import WorkflowShortcuts from "../components/dashboard/WorkflowShortcuts";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -274,10 +276,16 @@ export default function Dashboard() {
       {/* Header */}
       <DashboardHeader fullName={fullName} />
 
-      {/* Quick Access Cards */}
-      <div className="mb-6">
-        <QuickAccessCards />
-      </div>
+      {/* Quick Stats */}
+      <QuickStatsSummary stats={{
+        activePatients: patients.length,
+        completedVisits: visits.length,
+        pendingAlerts: 0,
+        upcomingVisits: todayTelehealthAppointments.length
+      }} />
+
+      {/* Workflow Shortcuts */}
+      <WorkflowShortcuts />
 
       {/* New Features Banner */}
       <NewFeaturesBanner />
