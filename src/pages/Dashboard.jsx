@@ -36,6 +36,10 @@ import SmartQuickActions from "../components/personalization/SmartQuickActions";
 import PersonalizationEngine from "../components/personalization/PersonalizationEngine";
 import QuickTelehealthLauncher from "../components/telehealth/QuickTelehealthLauncher";
 import { getAccessibleWidgets } from "../components/utils/providerAccessControl";
+import DashboardHeader from "../components/dashboard/DashboardHeader";
+import QuickAccessCards from "../components/dashboard/QuickAccessCards";
+import DashboardSection from "../components/dashboard/DashboardSection";
+import { Brain, Shield, AlertCircle, Zap } from "lucide-react";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -268,62 +272,13 @@ export default function Dashboard() {
       ]);
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
-      {/* Welcome Banner */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <Card className="mb-6 bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 text-white border-none shadow-xl">
-          <CardContent className="p-6 md:p-8">
-            <h1 className="text-3xl md:text-4xl font-bold mb-2">
-              {getGreeting()}, {fullName}! 👋
-            </h1>
-            <p className="text-white/80 text-sm md:text-base mb-6">
-              {isValid(new Date()) ? formatEastern(new Date(), 'EEEE, MMMM d, yyyy').replace(' ET', '') : new Date().toLocaleDateString()}
-            </p>
-            
-            {/* Core Features Quick Access */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
-                    onClick={() => navigate(createPageUrl('SmartNoteAssistant'))}>
-                <CardContent className="p-4 text-center">
-                  <Brain className="w-10 h-10 text-white mx-auto mb-2" />
-                  <h3 className="font-bold text-sm text-white mb-1">Smart Note</h3>
-                  <p className="text-xs text-white/80">AI documentation</p>
-                </CardContent>
-              </Card>
-              
-              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
-                    onClick={() => navigate(createPageUrl('TelehealthDashboard'))}>
-                <CardContent className="p-4 text-center">
-                  <Video className="w-10 h-10 text-white mx-auto mb-2" />
-                  <h3 className="font-bold text-sm text-white mb-1">Telehealth</h3>
-                  <p className="text-xs text-white/80">Video visits with AI</p>
-                </CardContent>
-              </Card>
-              
-              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
-                    onClick={() => navigate(createPageUrl('MedicalScribe'))}>
-                <CardContent className="p-4 text-center">
-                  <Mic className="w-10 h-10 text-white mx-auto mb-2" />
-                  <h3 className="font-bold text-sm text-white mb-1">Medical Scribe</h3>
-                  <p className="text-xs text-white/80">Record interactions</p>
-                </CardContent>
-              </Card>
-              
-              <Card className="border-2 border-white/30 hover:shadow-lg transition-all cursor-pointer bg-white/10 backdrop-blur"
-                    onClick={() => navigate(createPageUrl('CarePlanManagement'))}>
-                <CardContent className="p-4 text-center">
-                  <Target className="w-10 h-10 text-white mx-auto mb-2" />
-                  <h3 className="font-bold text-sm text-white mb-1">Care Plans</h3>
-                  <p className="text-xs text-white/80">Care plans & billing</p>
-                </CardContent>
-              </Card>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+      {/* Header */}
+      <DashboardHeader fullName={fullName} />
+
+      {/* Quick Access Cards */}
+      <div className="mb-6">
+        <QuickAccessCards />
+      </div>
 
       {/* New Features Banner */}
       <NewFeaturesBanner />
@@ -383,9 +338,9 @@ export default function Dashboard() {
       />
 
 
-      {/* Compliance & Clinical Support */}
-      {(!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore || currentUser.dashboard_config?.clinicalSupport) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
+      {/* Critical Alerts & Compliance Section */}
+      <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden">
           {(!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
             <ComplianceAlertNotifications 
               nurseEmail={currentUser?.email}
@@ -401,12 +356,12 @@ export default function Dashboard() {
             />
           )}
         </div>
-      )}
+      </DashboardSection>
 
-      {/* Regulatory Alerts */}
-      <div className="mb-4 sm:mb-6">
+      {/* Regulatory & Compliance Updates */}
+      <DashboardSection title="Regulatory Updates" icon={Shield} defaultOpen={false} collapsible={true}>
         <RegulatoryAlertsDashboard />
-      </div>
+      </DashboardSection>
 
     </div>
     </PullToRefresh>
