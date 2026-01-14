@@ -1,255 +1,150 @@
-import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, FileText, TrendingUp, AlertCircle, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import PaymentRecorder from './PaymentRecorder';
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { DollarSign, FileText, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import InvoiceList from "./InvoiceList";
+import FinancialReportGenerator from "./FinancialReportGenerator";
 
 export default function BillingDashboard() {
-  const [selectedInvoice, setSelectedInvoice] = useState(null);
-
-  const { data: invoices = [] } = useQuery({
-    queryKey: ['invoices'],
-    queryFn: () => base44.entities.Invoice.list('-created_date', 100),
+  const [activeTab, setActiveTab] = useState("overview");
+  const [dateRange, setDateRange] = useState({
+    start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
   });
 
-  const { data: payments = [] } = useQuery({
-    queryKey: ['payments'],
-    queryFn: () => base44.entities.Payment.list('-created_date', 100),
+  const { data: invoices } = useQuery({
+    queryKey: ["invoices"],
+    queryFn: () => base44.entities.Invoice.list(),
+    initialData: []
   });
 
-  const calculateMetrics = () => {
-    const totalInvoiced = invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
-    const totalPaid = invoices.reduce((sum, inv) => sum + (inv.amount_paid || 0), 0);
-    const totalOutstanding = invoices.reduce((sum, inv) => sum + (inv.remaining_balance || 0), 0);
-    const paidCount = invoices.filter(inv => inv.status === 'paid').length;
+  const { data: report } = useQuery({
+    queryKey: ["financialReport", dateRange],
+    queryFn: async () => {
+      const { data } = await base44.functions.invoke('generateFinancialReport', {
+        startDate: dateRange.start,
+        endDate: dateRange.end
+      });
+      return data;
+    },
+    enabled: activeTab === "reports"
+  });
 
-    return {
-      totalInvoiced,
-      totalPaid,
-      totalOutstanding,
-      paidCount,
-      overdueCount: invoices.filter(inv => inv.status === 'overdue').length,
-    };
+  const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total_amount, 0);
+  const totalPaid = invoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+  const outstanding = totalRevenue - totalPaid;
+  const paidInvoices = invoices.filter(inv => inv.status === 'paid').length;
+  const overdueInvoices = invoices.filter(inv => new Date(inv.due_date) < new Date() && inv.status !== 'paid').length;
+
+  const handleSendReminders = async () => {
+    await base44.functions.invoke('sendPaymentReminders', {});
+    alert('Payment reminders sent!');
   };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      draft: 'bg-gray-100 text-gray-800',
-      sent: 'bg-blue-100 text-blue-800',
-      paid: 'bg-green-100 text-green-800',
-      overdue: 'bg-red-100 text-red-800',
-      cancelled: 'bg-gray-100 text-gray-800',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
-
-  const metrics = calculateMetrics();
 
   return (
-    <div className="space-y-6">
-      {/* Metrics Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Total Invoiced</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  ${metrics.totalInvoiced.toFixed(2)}
-                </p>
-              </div>
-              <FileText className="w-8 h-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Total Paid</p>
-                <p className="text-2xl font-bold text-green-600 mt-2">
-                  ${metrics.totalPaid.toFixed(2)}
-                </p>
-              </div>
-              <DollarSign className="w-8 h-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Outstanding</p>
-                <p className="text-2xl font-bold text-orange-600 mt-2">
-                  ${metrics.totalOutstanding.toFixed(2)}
-                </p>
-              </div>
-              <AlertCircle className="w-8 h-8 text-orange-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-gray-600">Collection Rate</p>
-                <p className="text-2xl font-bold text-purple-600 mt-2">
-                  {metrics.totalInvoiced > 0 
-                    ? ((metrics.totalPaid / metrics.totalInvoiced) * 100).toFixed(1)
-                    : '0'
-                  }%
-                </p>
-              </div>
-              <TrendingUp className="w-8 h-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Billing Dashboard</h1>
+        <div className="flex gap-2">
+          <Button variant={activeTab === "overview" ? "default" : "outline"} onClick={() => setActiveTab("overview")}>Overview</Button>
+          <Button variant={activeTab === "invoices" ? "default" : "outline"} onClick={() => setActiveTab("invoices")}>Invoices</Button>
+          <Button variant={activeTab === "reports" ? "default" : "outline"} onClick={() => setActiveTab("reports")}>Reports</Button>
+        </div>
       </div>
 
-      {/* Invoices and Payments Tabs */}
-      <Tabs defaultValue="invoices" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="invoices">
-            Invoices ({invoices.length})
-          </TabsTrigger>
-          <TabsTrigger value="payments">
-            Payments ({payments.length})
-          </TabsTrigger>
-        </TabsList>
+      {activeTab === "overview" && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Total Revenue</p>
+                    <p className="text-2xl font-bold">${totalRevenue.toFixed(2)}</p>
+                  </div>
+                  <DollarSign className="w-8 h-8 text-blue-500" />
+                </div>
+              </CardContent>
+            </Card>
 
-        <TabsContent value="invoices" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Invoices</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-2">Invoice #</th>
-                      <th className="text-left py-2 px-2">Visit Type</th>
-                      <th className="text-left py-2 px-2">Amount</th>
-                      <th className="text-left py-2 px-2">Paid</th>
-                      <th className="text-left py-2 px-2">Balance</th>
-                      <th className="text-left py-2 px-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoices.slice(0, 10).map((invoice) => (
-                      <tr 
-                        key={invoice.id} 
-                        className="border-b hover:bg-gray-50 cursor-pointer"
-                        onClick={() => setSelectedInvoice(invoice)}
-                      >
-                        <td className="py-2 px-2 font-semibold">{invoice.invoice_number}</td>
-                        <td className="py-2 px-2 text-gray-600">
-                          {invoice.visit_type?.replace(/_/g, ' ')}
-                        </td>
-                        <td className="py-2 px-2">${invoice.amount?.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-green-600">
-                          ${(invoice.amount_paid || 0).toFixed(2)}
-                        </td>
-                        <td className="py-2 px-2 text-orange-600">
-                          ${(invoice.remaining_balance || 0).toFixed(2)}
-                        </td>
-                        <td className="py-2 px-2">
-                          <Badge className={getStatusColor(invoice.status)}>
-                            {invoice.status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {invoices.length === 0 && (
-                <p className="text-center text-gray-500 py-8">No invoices found</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Total Paid</p>
+                    <p className="text-2xl font-bold">${totalPaid.toFixed(2)}</p>
+                  </div>
+                  <CheckCircle className="w-8 h-8 text-green-500" />
+                </div>
+              </CardContent>
+            </Card>
 
-        <TabsContent value="payments" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Payments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-2">Invoice #</th>
-                      <th className="text-left py-2 px-2">Amount</th>
-                      <th className="text-left py-2 px-2">Payment Date</th>
-                      <th className="text-left py-2 px-2">Method</th>
-                      <th className="text-left py-2 px-2">Payor</th>
-                      <th className="text-left py-2 px-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.slice(0, 10).map((payment) => (
-                      <tr key={payment.id} className="border-b hover:bg-gray-50">
-                        <td className="py-2 px-2 font-semibold">{payment.invoice_id}</td>
-                        <td className="py-2 px-2 text-green-600 font-semibold">
-                          ${payment.amount?.toFixed(2)}
-                        </td>
-                        <td className="py-2 px-2 text-gray-600">
-                          {new Date(payment.payment_date).toLocaleDateString()}
-                        </td>
-                        <td className="py-2 px-2">
-                          {payment.payment_method?.replace(/_/g, ' ')}
-                        </td>
-                        <td className="py-2 px-2 text-gray-600">{payment.payor}</td>
-                        <td className="py-2 px-2">
-                          <Badge className="bg-green-100 text-green-800">
-                            {payment.status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {payments.length === 0 && (
-                <p className="text-center text-gray-500 py-8">No payments recorded</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Outstanding</p>
+                    <p className="text-2xl font-bold">${outstanding.toFixed(2)}</p>
+                  </div>
+                  <AlertCircle className="w-8 h-8 text-orange-500" />
+                </div>
+              </CardContent>
+            </Card>
 
-      {/* Quick Payment Recorder Modal */}
-      {selectedInvoice && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Record Payment</h3>
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4">
-              <PaymentRecorder
-                invoiceId={selectedInvoice.id}
-                onPaymentRecorded={() => {
-                  setSelectedInvoice(null);
-                }}
-              />
-            </div>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Overdue Invoices</p>
+                    <p className="text-2xl font-bold">{overdueInvoices}</p>
+                  </div>
+                  <Clock className="w-8 h-8 text-red-500" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Invoice Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Total Invoices</p>
+                  <p className="text-xl font-semibold">{invoices.length}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Paid</p>
+                  <Badge className="mt-2">{paidInvoices}</Badge>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Pending</p>
+                  <Badge variant="outline" className="mt-2">{invoices.filter(i => i.status === 'pending').length}</Badge>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Collection Rate</p>
+                  <p className="text-lg font-semibold">{((totalPaid / totalRevenue) * 100).toFixed(1)}%</p>
+                </div>
+              </div>
+              <Button onClick={handleSendReminders} className="mt-4">Send Payment Reminders</Button>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {activeTab === "invoices" && <InvoiceList />}
+
+      {activeTab === "reports" && (
+        <FinancialReportGenerator 
+          dateRange={dateRange} 
+          setDateRange={setDateRange} 
+          report={report} 
+        />
       )}
     </div>
   );
