@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertCircle, FileText, CheckCircle, Monitor, Upload, MessageSquare } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { secureEntity } from '../components/security/SecureEntityWrapper';
 import TelehealthConsentForm from '../components/telehealth/TelehealthConsentForm';
 import AdvancedWaitingRoom from '../components/telehealth/AdvancedWaitingRoom';
 import TelehealthFileSharing from '../components/telehealth/TelehealthFileSharing';
@@ -97,13 +98,14 @@ export default function TelehealthVisit() {
       setError(null);
       setStep('connecting');
 
-      // Create visit record
-      const visit = await base44.entities.Visit.create({
+      // Create visit record with secure logging
+      const visit = await secureEntity.create('Visit', {
         patient_id: patientId,
         visit_date: new Date().toISOString().split('T')[0],
         visit_time: new Date().toLocaleTimeString(),
         visit_type: 'telehealth',
-        status: 'in_progress'
+        status: 'in_progress',
+        nurse_notes: `Telehealth visit initiated. Consent ID: ${consent?.id}. Patient consented to ${consent?.consent_type} consultation.`
       });
       setVisitId(visit.id);
 
@@ -261,11 +263,12 @@ export default function TelehealthVisit() {
       roomRef.current = null;
     }
 
-    // Update visit record
+    // Update visit record with secure logging
     if (visitId) {
-      await base44.entities.Visit.update(visitId, {
+      await secureEntity.update('Visit', visitId, {
         status: 'completed',
-        end_time: new Date().toLocaleTimeString()
+        end_time: new Date().toLocaleTimeString(),
+        nurse_notes: (callNotes || 'No additional notes') + `\n\nTelehealth session completed. Duration: ${Math.floor(callDuration / 60)} min. ${isRecording ? 'Session was recorded with patient consent.' : 'Session not recorded.'}`
       });
     }
 

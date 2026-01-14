@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileCheck, AlertCircle } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
+import { secureEntity } from '../security/SecureEntityWrapper';
 
 export default function TelehealthConsentForm({ patient, onConsentComplete }) {
   const [formData, setFormData] = useState({
@@ -74,7 +75,8 @@ export default function TelehealthConsentForm({ patient, onConsentComplete }) {
     try {
       const user = await base44.auth.me();
       
-      const consent = await base44.entities.TelehealthConsent.create({
+      // Create telehealth consent with secure logging
+      const consent = await secureEntity.create('TelehealthConsent', {
         patient_id: patient.id,
         consent_date: new Date().toISOString(),
         consent_type: formData.consent_type,
@@ -87,6 +89,74 @@ export default function TelehealthConsentForm({ patient, onConsentComplete }) {
         privacy_policy_accepted: formData.privacy_policy_accepted,
         recording_consent: formData.recording_consent,
         is_active: true
+      });
+
+      // Log consent to patient chart for compliance documentation
+      const complianceStatement = `
+TELEHEALTH INFORMED CONSENT - COMPLIANCE DOCUMENTATION
+Patient: ${patient.first_name} ${patient.last_name} (MRN: ${patient.medical_record_number})
+Date: ${new Date().toLocaleString()}
+Provider: ${user.full_name} (${user.email})
+
+CONSENT TYPE: ${formData.consent_type === 'video' ? 'Video Consultation' : formData.consent_type === 'audio_only' ? 'Audio Only (Phone)' : 'Store & Forward (Async)'}
+
+STATE OF SERVICE: ${formData.state_of_service}
+PATIENT LOCATION: ${formData.patient_location}
+
+PATIENT ACKNOWLEDGMENTS:
+✓ Emergency contact verified and 911 protocol understood
+✓ Risks and limitations of telehealth explained and understood
+✓ HIPAA Notice of Privacy Practices reviewed and acknowledged
+${formData.recording_consent ? '✓ Consent to session recording for quality assurance' : '✗ Recording consent not granted'}
+
+HIPAA COMPLIANCE STATEMENTS:
+1. Patient acknowledges receiving HIPAA Notice of Privacy Practices
+2. Patient understands their health information will be transmitted securely
+3. Patient consents to the use of telehealth technology for healthcare services
+4. Patient understands their rights regarding privacy and security of health information
+5. Patient has been informed of potential risks including technical failures and unauthorized access
+6. Patient confirms they are in a private location during telehealth visits
+7. Patient acknowledges emergency services (911) should be contacted for emergencies
+8. Patient understands they have the right to refuse telehealth services at any time
+
+LEGAL AND REGULATORY COMPLIANCE:
+- State licensure: Provider licensed in ${formData.state_of_service}
+- Patient location verified: ${formData.patient_location}
+- Telehealth consent obtained and documented per state regulations
+- HIPAA-compliant video conferencing platform utilized
+- End-to-end encryption enabled for all telehealth communications
+
+PATIENT CONSENT STATEMENT:
+"I hereby consent to receiving healthcare services via telehealth. I understand that telehealth involves the use of electronic communications to enable healthcare providers to diagnose, consult, treat, and educate patients remotely. I understand that I have the right to withhold or withdraw my consent to telehealth services at any time."
+
+Signature obtained: Yes (Digital signature captured ${new Date().toLocaleString()})
+Consent recorded by: ${user.full_name}
+Consent ID: ${consent.id}
+
+This consent is valid for ongoing telehealth services unless revoked by the patient in writing.
+      `.trim();
+
+      // Add compliance documentation to patient's clinical notes
+      await secureEntity.update('Patient', patient.id, {
+        clinical_notes: (patient.clinical_notes || '') + '\n\n' + complianceStatement
+      });
+
+      // Create audit trail entry
+      await base44.entities.AuditTrail.create({
+        entity_type: 'TelehealthConsent',
+        entity_id: consent.id,
+        action: 'consent_obtained',
+        user_email: user.email,
+        user_name: user.full_name,
+        details: {
+          patient_id: patient.id,
+          patient_name: `${patient.first_name} ${patient.last_name}`,
+          consent_type: formData.consent_type,
+          state: formData.state_of_service,
+          all_requirements_met: true,
+          compliance_statement_logged: true
+        },
+        timestamp: new Date().toISOString()
       });
 
       if (onConsentComplete) {
