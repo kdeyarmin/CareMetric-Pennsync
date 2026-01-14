@@ -84,7 +84,7 @@
       transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     }
     body {
-      @apply bg-background text-foreground;
+      @apply text-foreground;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
       background-size: 400% 400%;
       animation: gradient-shift 15s ease infinite;
