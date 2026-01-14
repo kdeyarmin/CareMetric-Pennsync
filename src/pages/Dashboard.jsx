@@ -16,11 +16,9 @@ import RealTimePatientAlerts from "../components/dashboard/RealTimePatientAlerts
 import NurseRegulatoryAlerts from "../components/compliance/NurseRegulatoryAlerts";
 import PDGMPredictiveAnalytics from "../components/pdgm/PDGMPredictiveAnalytics";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
-import AITrainingRecommendations from "../components/training/AITrainingRecommendations";
 
 import ComplianceAlertNotifications from "../components/alerts/ComplianceAlertNotifications";
 import ProactiveClinicalSupport from "../components/clinical/ProactiveClinicalSupport";
-import SkillGapAnalyzer from "../components/learning/SkillGapAnalyzer";
 import RegulatoryAlertsDashboard from "../components/regulatory/RegulatoryAlertsDashboard";
 import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
 import AnnouncementsWidget from "../components/dashboard/AnnouncementsWidget";
@@ -28,7 +26,6 @@ import { calculateNurseStats } from "@/components/utils/statsCalculator";
 import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
 import TaskNotifications from "../components/tasks/TaskNotifications";
 import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
-import PersonalizedCoachingDashboard from "../components/coaching/PersonalizedCoachingDashboard";
 import EmptyState from "../components/ui/EmptyState";
 import { motion } from "framer-motion";
 import PullToRefresh from "../components/mobile/PullToRefresh";
@@ -414,9 +411,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* AI Learning & Development */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 w-full max-w-full overflow-x-hidden">
-        <SkillGapAnalyzer userEmail={currentUser?.email} />
+      {/* Regulatory Alerts */}
+      <div className="mb-4 sm:mb-6">
         <RegulatoryAlertsDashboard />
       </div>
 
