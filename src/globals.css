@@ -6,6 +6,9 @@ css
 @tailwind utilities;
 
 @layer base {
+  html, body {
+    background: transparent !important;
+  }
   :root {
     --background: 0 0% 100%;
     --foreground: 220 12% 18%;
