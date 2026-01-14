@@ -7,12 +7,17 @@ import { FileText, Shield, AlertTriangle } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
-  const [agreed, setAgreed] = useState(false);
+  const [agreedTOS, setAgreedTOS] = useState(false);
+  const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  const [agreedBAA, setAgreedBAA] = useState(false);
+  const [agreedAI, setAgreedAI] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const allAgreed = agreedTOS && agreedPrivacy && agreedBAA && agreedAI;
+
   const handleAccept = async () => {
-    if (!agreed) {
-      alert("Please check the box to agree to the terms");
+    if (!allAgreed) {
+      alert("Please check all boxes to agree to the terms");
       return;
     }
 
@@ -168,21 +173,53 @@ export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
           </div>
         </ScrollArea>
 
-        {/* Agreement Checkbox */}
-        <div className="border-t pt-4">
+        {/* Agreement Checkboxes */}
+        <div className="border-t pt-4 space-y-3">
           <div className="flex items-start gap-3">
             <Checkbox
-              id="agree"
-              checked={agreed}
-              onCheckedChange={setAgreed}
+              id="agree-tos"
+              checked={agreedTOS}
+              onCheckedChange={setAgreedTOS}
               className="mt-1"
             />
-            <label htmlFor="agree" className="text-sm text-gray-900 leading-relaxed cursor-pointer">
-              I have read and agree to the Terms of Service, Privacy Policy, and Business Associate 
-              Agreement. I acknowledge that CareMetric AI uses machine-assisted probabilistic models 
-              that may produce inaccurate, incomplete, or outdated outputs. I understand that all 
-              AI-generated content must be reviewed and verified by a qualified healthcare professional, 
-              and that CareMetric AI does not provide medical advice or guarantee clinical outcomes.
+            <label htmlFor="agree-tos" className="text-sm text-gray-900 leading-relaxed cursor-pointer">
+              I agree to the CareMetric AI Terms of Service
+            </label>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="agree-privacy"
+              checked={agreedPrivacy}
+              onCheckedChange={setAgreedPrivacy}
+              className="mt-1"
+            />
+            <label htmlFor="agree-privacy" className="text-sm text-gray-900 leading-relaxed cursor-pointer">
+              I acknowledge the CareMetric AI Privacy Policy
+            </label>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="agree-baa"
+              checked={agreedBAA}
+              onCheckedChange={setAgreedBAA}
+              className="mt-1"
+            />
+            <label htmlFor="agree-baa" className="text-sm text-gray-900 leading-relaxed cursor-pointer">
+              I agree to the Business Associate Agreement (if applicable)
+            </label>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="agree-ai"
+              checked={agreedAI}
+              onCheckedChange={setAgreedAI}
+              className="mt-1"
+            />
+            <label htmlFor="agree-ai" className="text-sm text-gray-900 leading-relaxed cursor-pointer">
+              I understand CareMetric AI provides assistive AI tools and does not replace clinical judgment
             </label>
           </div>
         </div>
@@ -197,7 +234,7 @@ export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
           </Button>
           <Button
             onClick={handleAccept}
-            disabled={!agreed || isSubmitting}
+            disabled={!allAgreed || isSubmitting}
             className="bg-blue-600 hover:bg-blue-700"
           >
             {isSubmitting ? "Processing..." : "Accept & Continue"}
