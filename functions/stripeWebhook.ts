@@ -8,7 +8,20 @@ const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
 Deno.serve(async (req) => {
   try {
+    // Log webhook received
+    console.log('Stripe webhook received:', new Date().toISOString());
+    
     const signature = req.headers.get('stripe-signature');
+    if (!signature) {
+      console.error('No stripe-signature header found');
+      return Response.json({ error: 'No signature header' }, { status: 400 });
+    }
+
+    if (!webhookSecret) {
+      console.error('STRIPE_WEBHOOK_SECRET not configured');
+      return Response.json({ error: 'Webhook secret not configured' }, { status: 500 });
+    }
+    
     const body = await req.text();
     
     // Initialize base44 client BEFORE signature verification
@@ -18,6 +31,7 @@ Deno.serve(async (req) => {
     let event;
     try {
       event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+      console.log('Webhook signature verified, event type:', event.type);
     } catch (err) {
       console.error('Webhook signature verification failed:', err.message);
       return Response.json({ error: 'Invalid signature' }, { status: 400 });
@@ -192,10 +206,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ received: true });
+    console.log('Webhook processed successfully:', event.type);
+    return Response.json({ received: true }, { status: 200 });
     
   } catch (error) {
     console.error('Webhook processing error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    // Still return 200 to acknowledge receipt even if processing fails
+    return Response.json({ received: true, error: error.message }, { status: 200 });
   }
 });
