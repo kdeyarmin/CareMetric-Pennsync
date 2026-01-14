@@ -42,10 +42,10 @@ export default function DashboardHeader({ fullName, subscription, providerType, 
         <CardContent className="p-6 md:p-8">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <h1 className="text-3xl md:text-4xl font-bold mb-2">
-                {getGreeting()}, {fullName}! 👋
+              <h1 className="text-2xl sm:text-2xl md:text-4xl font-bold mb-2">
+                {getGreeting()}, {fullName}!
               </h1>
-              <p className="text-white/80 text-sm md:text-base">
+              <p className="text-white/80 text-xs sm:text-sm md:text-base">
                 {isValid(new Date()) ? formatEastern(new Date(), 'EEEE, MMMM d, yyyy').replace(' ET', '') : new Date().toLocaleDateString()}
               </p>
             </div>
