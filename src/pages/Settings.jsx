@@ -15,6 +15,7 @@ import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
 
 import ProviderTypeSelector from "../components/settings/ProviderTypeSelector";
 import ProviderPracticeInfoManager from "../components/settings/ProviderPracticeInfoManager";
+import ProviderSpecializationManager from "../components/settings/ProviderSpecializationManager";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -382,6 +383,11 @@ export default function Settings() {
 
         {/* Provider Profile */}
         <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
+
+        {/* Professional Specializations */}
+        {currentUser && (
+          <ProviderSpecializationManager currentUser={currentUser} />
+        )}
 
         {/* Practice Information */}
         {currentUser && !['RN', 'LPN'].includes(currentUser.credential_type) && (
