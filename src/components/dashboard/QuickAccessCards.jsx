@@ -45,13 +45,13 @@ export default function QuickAccessCards() {
         return (
           <Card
             key={card.label}
-            className="border border-slate-300 dark:border-slate-600 hover:shadow-md transition-all cursor-pointer bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
+            className="border border-slate-300 dark:border-slate-600 hover:shadow-md transition-all cursor-pointer bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700"
             onClick={() => navigate(createPageUrl(card.page))}
           >
             <CardContent className="p-4 text-center">
-              <Icon className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <h3 className="font-bold text-sm text-slate-100 mb-1">{card.label}</h3>
-              <p className="text-xs text-slate-400">{card.description}</p>
+              <Icon className="w-10 h-10 text-slate-900 dark:text-slate-300 mx-auto mb-2" />
+              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 mb-1">{card.label}</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400">{card.description}</p>
             </CardContent>
           </Card>
         );

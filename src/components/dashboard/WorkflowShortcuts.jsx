@@ -11,32 +11,32 @@ const SHORTCUTS = [
     label: 'New Visit',
     description: 'Create a visit',
     action: 'DocumentVisit',
-    color: 'bg-slate-600 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600',
-    textColor: 'text-slate-600 dark:text-slate-300'
+    color: 'bg-slate-300 hover:bg-slate-400 dark:bg-slate-700 dark:hover:bg-slate-600',
+    textColor: 'text-slate-900 dark:text-slate-300'
   },
   {
     icon: FileText,
     label: 'Smart Note',
     description: 'AI documentation',
     action: 'SmartNoteAssistant',
-    color: 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700',
-    textColor: 'text-slate-700 dark:text-slate-300'
+    color: 'bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700',
+    textColor: 'text-slate-900 dark:text-slate-300'
   },
   {
     icon: Clock,
     label: 'Schedule',
     description: 'View schedule',
     action: 'ProviderScheduling',
-    color: 'bg-slate-600 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600',
-    textColor: 'text-slate-600 dark:text-slate-300'
+    color: 'bg-slate-300 hover:bg-slate-400 dark:bg-slate-700 dark:hover:bg-slate-600',
+    textColor: 'text-slate-900 dark:text-slate-300'
   },
   {
     icon: Users,
     label: 'Patients',
     description: 'View patients',
     action: 'Patients',
-    color: 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700',
-    textColor: 'text-slate-700 dark:text-slate-300'
+    color: 'bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700',
+    textColor: 'text-slate-900 dark:text-slate-300'
   }
 ];
 

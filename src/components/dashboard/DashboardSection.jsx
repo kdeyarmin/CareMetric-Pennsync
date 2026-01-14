@@ -17,18 +17,18 @@ export default function DashboardSection({
       {collapsible ? (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between p-4 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg mb-3 transition-colors"
+          className="w-full flex items-center justify-between p-4 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg mb-3 transition-colors"
         >
           <div className="flex items-center gap-3">
-            {Icon && <Icon className="w-5 h-5 text-slate-300" />}
-            <h2 className="font-semibold text-slate-100">{title}</h2>
+            {Icon && <Icon className="w-5 h-5 text-slate-900 dark:text-slate-300" />}
+            <h2 className="font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
           </div>
-          {isOpen ? <ChevronUp className="w-5 h-5 text-slate-300" /> : <ChevronDown className="w-5 h-5 text-slate-300" />}
+          {isOpen ? <ChevronUp className="w-5 h-5 text-slate-900 dark:text-slate-300" /> : <ChevronDown className="w-5 h-5 text-slate-900 dark:text-slate-300" />}
         </button>
       ) : (
         <div className="flex items-center gap-3 p-4 mb-3">
-          {Icon && <Icon className="w-5 h-5 text-slate-300" />}
-          <h2 className="font-semibold text-slate-100">{title}</h2>
+          {Icon && <Icon className="w-5 h-5 text-slate-900 dark:text-slate-300" />}
+          <h2 className="font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
         </div>
       )}
 
