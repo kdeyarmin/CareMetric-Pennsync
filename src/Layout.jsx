@@ -178,7 +178,7 @@ export default function Layout({ children, currentPageName }) {
 
   return (
           <ThemeProvider>
-          <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative bg-transparent">
+          <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
           Scoped overrides:
           Force any internal Tailwind "fixed" inside FAB components to behave like normal content
@@ -433,7 +433,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Main Content ================= */}
       <main
-        className="flex-1 overflow-x-hidden w-full relative"
+        className="flex-1 overflow-x-hidden w-full relative bg-transparent"
         style={{
           // Always add padding on mobile to account for header/nav
           paddingTop: showNavigationUI ? mobileHeaderTotalHeight : 0,
@@ -441,7 +441,7 @@ export default function Layout({ children, currentPageName }) {
           minHeight: "100vh"
         }}
       >
-        <div className={showNavigationUI ? "w-full max-w-full min-w-0" : "w-full"}>
+        <div className={showNavigationUI ? "w-full max-w-full min-w-0 bg-transparent" : "w-full bg-transparent"}>
           {children}
         </div>
       </main>
