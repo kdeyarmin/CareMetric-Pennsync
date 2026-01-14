@@ -316,7 +316,7 @@ export default function Dashboard() {
                     onClick={() => navigate(createPageUrl('CarePlanManagement'))}>
                 <CardContent className="p-4 text-center">
                   <Target className="w-10 h-10 text-white mx-auto mb-2" />
-                  <h3 className="font-bold text-sm text-white mb-1">Auto Plans & Codes</h3>
+                  <h3 className="font-bold text-sm text-white mb-1">Care Plans</h3>
                   <p className="text-xs text-white/80">Care plans & billing</p>
                 </CardContent>
               </Card>
