@@ -507,32 +507,23 @@ export default function About() {
             </CardHeader>
             <CardContent className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <p className="text-sm text-gray-500 mb-4">
-                <strong>Effective Date:</strong> December 27, 2025
+                <strong>Version:</strong> v1.0 | <strong>Document ID:</strong> CM-BAA-001 | <strong>Effective Date:</strong> January 13, 2026
               </p>
               
               <div className="prose max-w-none text-gray-700 space-y-3">
-                <p>This Business Associate Agreement (BAA) is entered into between CareMetric AI, LLC and the Covered Entity.</p>
+                <p>This BAA is entered into pursuant to HIPAA.</p>
                 
-                <p>This BAA is intended to comply with HIPAA and HITECH requirements regarding the protection of Protected Health Information (PHI).</p>
+                <p className="font-semibold">Permitted Uses:</p>
+                <p className="ml-6">Business Associate may use PHI solely to provide services.</p>
                 
-                <p className="font-semibold">Key Commitments:</p>
-                <ul className="list-disc ml-6 space-y-2">
-                  <li>Business Associate agrees to use and disclose PHI only as permitted by this Agreement or as required by law</li>
-                  <li>Implement appropriate safeguards to prevent use or disclosure of PHI other than as permitted</li>
-                  <li>Report to Covered Entity any use or disclosure of PHI not provided for by this Agreement, including breaches of unsecured PHI</li>
-                  <li>Ensure that any subcontractors agree to the same restrictions and conditions</li>
-                  <li>Make PHI available for access and amendment as required by HIPAA</li>
-                  <li>Make internal practices available to the Secretary of HHS upon request</li>
-                  <li>Upon termination, return or destroy all PHI if feasible</li>
-                </ul>
+                <p className="font-semibold">Safeguards:</p>
+                <p className="ml-6">Administrative, technical, and physical safeguards shall be maintained.</p>
                 
-                <div className="bg-green-50 border-l-4 border-green-400 p-4 my-4">
-                  <p className="font-semibold text-green-800">HIPAA Compliance Commitment</p>
-                  <p className="text-green-900 mt-2">
-                    CareMetric AI is committed to maintaining the highest standards of data protection and HIPAA compliance. 
-                    We implement administrative, physical, and technical safeguards to protect all Protected Health Information.
-                  </p>
-                </div>
+                <p className="font-semibold">Breach Notification:</p>
+                <p className="ml-6">Notification without unreasonable delay and no later than 60 days.</p>
+                
+                <p className="font-semibold">Termination:</p>
+                <p className="ml-6">PHI shall be returned or destroyed upon termination.</p>
               </div>
               
               <div className="pt-4 border-t">
