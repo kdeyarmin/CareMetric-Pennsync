@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video, Shield, Target } from "lucide-react";
+import { Calendar, Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video, Shield, Target, Activity } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
