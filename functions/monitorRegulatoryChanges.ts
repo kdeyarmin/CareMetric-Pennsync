@@ -1,166 +1,100 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import OpenAI from 'npm:openai@4.28.0';
 
-const openai = new OpenAI({
-  apiKey: Deno.env.get('OPENAI_API_KEY'),
-});
-
-/**
- * Automated regulatory change monitoring
- * Checks for updates from CMS, HIPAA, and state medical boards
- * Can be called manually or scheduled
- */
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
-    // This function can run as service role for scheduled tasks
-    // or with user authentication for manual checks
-    let user = null;
-    try {
-      user = await base44.auth.me();
-    } catch (e) {
-      // Service role execution (scheduled task)
+    // This function runs as a scheduled task (admin-only trigger)
+    const user = await base44.auth.me();
+    if (user?.role !== 'admin') {
+      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    // If called by user, verify admin role
-    if (user && user.role !== 'admin') {
-      return Response.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    // Fetch latest regulatory changes using AI with web search
+    const monitoringPrompt = `Search for recent healthcare regulatory changes (last 30 days):
 
-    console.log('Starting regulatory change monitoring...');
+FOCUS AREAS:
+1. Medicare/CMS updates
+2. Home health regulations (42 CFR Part 484)
+3. Hospice regulations
+4. OASIS updates
+5. Documentation requirements
+6. Billing/coding changes
+7. State-specific healthcare regulations (focus on major states)
 
-    // Define regulatory sources to monitor
-    const regulatorySources = [
-      {
-        name: 'CMS Medicare Home Health',
-        category: 'medicare',
-        searchQuery: 'CMS Medicare home health conditions of participation updates 2026'
-      },
-      {
-        name: 'HIPAA Privacy & Security',
-        category: 'hipaa',
-        searchQuery: 'HIPAA privacy security rule updates healthcare 2026'
-      },
-      {
-        name: 'OASIS Updates',
-        category: 'oasis',
-        searchQuery: 'OASIS home health assessment updates changes 2026'
-      },
-      {
-        name: 'State Nursing Board Requirements',
-        category: 'state_regulation',
-        searchQuery: 'state nursing board home health regulations updates 2026'
-      }
-    ];
+For each significant change found, provide:
+- Title
+- Summary (2-3 sentences)
+- Detailed description
+- Effective date
+- Severity (critical/high/medium/low)
+- Provider types affected (RN, LPN, PT, OT, ST, MD, DO, NP, etc.)
+- Action required (if any)
+- Compliance deadline (if applicable)
+- Source/regulation reference
+- Reference URL
 
-    const detectedChanges = [];
+Return JSON array of updates.`;
 
-    // Monitor each regulatory source
-    for (const source of regulatorySources) {
-      console.log(`Checking ${source.name}...`);
-
-      const prompt = `Search for recent regulatory changes and updates related to: ${source.searchQuery}
-
-Focus on:
-1. New regulations or rule changes
-2. Effective dates of changes
-3. Impact on home health documentation
-4. Compliance requirements
-5. Changes to existing standards
-
-Return a structured analysis of any significant changes found in the last 3 months.`;
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "You are a healthcare regulatory compliance expert who monitors changes to healthcare regulations, particularly for home health agencies. Always return valid JSON."
-          },
-          {
-            role: "user",
-            content: prompt
+    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
+      prompt: monitoringPrompt,
+      add_context_from_internet: true,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          updates: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                detailed_description: { type: "string" },
+                effective_date: { type: "string" },
+                severity: { type: "string" },
+                affected_provider_types: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                action_required: { type: "string" },
+                compliance_deadline: { type: "string" },
+                regulation_source: { type: "string" },
+                reference_url: { type: "string" }
+              }
+            }
           }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2
-      });
-
-      const analysis = JSON.parse(completion.choices[0].message.content);
-
-      // Check if significant changes were found
-      if (analysis.changes_found && analysis.changes?.length > 0) {
-        for (const change of analysis.changes) {
-          detectedChanges.push({
-            source: source.name,
-            category: source.category,
-            ...change
-          });
-
-          // Create RegulatoryUpdate record
-          await base44.asServiceRole.entities.RegulatoryUpdate.create({
-            title: change.title || `${source.name} Update`,
-            source: source.category === 'medicare' ? 'CMS' : 
-                    source.category === 'hipaa' ? 'HIPAA' :
-                    source.category === 'oasis' ? 'CMS' : 'State',
-            category: mapCategory(source.category),
-            effective_date: change.effective_date || new Date().toISOString().split('T')[0],
-            summary: change.summary || change.description,
-            full_details: change.details || change.summary,
-            impact_level: change.impact_level || 'medium',
-            affected_areas: change.affected_areas || [source.category],
-            required_actions: change.required_actions || [],
-            status: 'pending_review',
-            reference_url: change.url || null
-          });
         }
       }
-    }
+    });
 
-    // If changes detected, create admin notifications
-    if (detectedChanges.length > 0) {
-      // Get all admin users
-      const adminUsers = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+    // Store new regulatory updates
+    const createdUpdates = [];
+    for (const update of result.updates || []) {
+      // Check if already exists (avoid duplicates)
+      const existing = await base44.asServiceRole.entities.RegulatoryUpdate.filter({
+        title: update.title
+      });
 
-      for (const admin of adminUsers) {
-        await base44.asServiceRole.entities.Task.create({
-          title: `Review ${detectedChanges.length} New Regulatory Update(s)`,
-          description: `Automated monitoring detected ${detectedChanges.length} regulatory change(s) requiring review:\n\n` +
-            detectedChanges.map(c => `- ${c.title} (${c.category})`).join('\n'),
-          type: 'document',
-          priority: 'high',
-          assigned_to: admin.email,
-          source: 'ai_generated',
-          due_timeframe: '48_hours'
+      if (existing.length === 0) {
+        const created = await base44.asServiceRole.entities.RegulatoryUpdate.create({
+          ...update,
+          source: 'automated_monitoring',
+          read_by: []
         });
+        createdUpdates.push(created);
       }
     }
+
+    console.log(`Regulatory monitoring complete: ${createdUpdates.length} new updates`);
 
     return Response.json({
       success: true,
-      changes_detected: detectedChanges.length,
-      changes: detectedChanges,
-      message: detectedChanges.length > 0 
-        ? `Detected ${detectedChanges.length} regulatory change(s). Admin users have been notified.`
-        : 'No significant regulatory changes detected.'
+      updatesFound: result.updates?.length || 0,
+      newUpdatesCreated: createdUpdates.length,
+      updates: createdUpdates
     });
-
   } catch (error) {
-    console.error('Regulatory monitoring error:', error);
-    return Response.json({ 
-      success: false, 
-      error: error.message 
-    }, { status: 500 });
+    console.error('Error monitoring regulatory changes:', error);
+    return Response.json({ error: error.message }, { status: 500 });
   }
 });
-
-function mapCategory(sourceCategory) {
-  const mapping = {
-    'medicare': 'documentation',
-    'hipaa': 'hipaa',
-    'oasis': 'oasis',
-    'state_regulation': 'staffing'
-  };
-  return mapping[sourceCategory] || 'documentation';
-}
