@@ -1,294 +1,153 @@
-import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Loader, CheckCircle2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
-import AIBillingCodeSuggester from './AIBillingCodeSuggester';
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
-const VISIT_TYPE_AMOUNTS = {
-  skilled_nursing: 150,
-  admission: 200,
-  routine_visit: 125,
-  recertification: 175,
-  discharge: 225,
-  prn: 100,
-};
+export default function InvoiceGenerator({ onInvoiceCreated }) {
+  const [selectedPatient, setSelectedPatient] = useState("");
+  const [selectedVisits, setSelectedVisits] = useState([]);
+  const [selectedInsurance, setSelectedInsurance] = useState("");
+  const [billingModel, setBillingModel] = useState("fee_for_service");
+  const [loading, setLoading] = useState(false);
 
-const BILLING_CODES = {
-  skilled_nursing: '99214',
-  admission: '99203',
-  routine_visit: '99213',
-  recertification: '99215',
-  discharge: '99217',
-  prn: '99212',
-};
-
-export default function InvoiceGenerator({ visitId = null, patientId = null, visitType = null, diagnosis = null, clinicalNote = null, onInvoiceCreated = null }) {
-  const [formData, setFormData] = useState({
-    visit_id: visitId || '',
-    patient_id: patientId || '',
-    visit_type: visitType || '',
-    diagnosis: diagnosis || '',
-    service_date: new Date().toISOString().split('T')[0],
-    invoice_date: new Date().toISOString().split('T')[0],
-    due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    payor: 'Medicare',
-    billing_code: '',
-    custom_amount: '',
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedAICodes, setSelectedAICodes] = useState(null);
-
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
+  const { data: patients } = useQuery({
+    queryKey: ["patients"],
+    queryFn: () => base44.entities.Patient.list(),
+    initialData: []
   });
 
-  const calculateAmount = () => {
-    if (formData.custom_amount) {
-      return parseFloat(formData.custom_amount);
-    }
-    return VISIT_TYPE_AMOUNTS[formData.visit_type] || 0;
-  };
+  const { data: visits } = useQuery({
+    queryKey: ["visits", selectedPatient],
+    queryFn: () => selectedPatient ? base44.entities.Visit.filter({ patient_id: selectedPatient }) : Promise.resolve([]),
+    enabled: !!selectedPatient,
+    initialData: []
+  });
 
-  const getBillingCode = () => {
-    if (formData.billing_code) {
-      return formData.billing_code;
-    }
-    return BILLING_CODES[formData.visit_type] || '';
-  };
+  const { data: insuranceProviders } = useQuery({
+    queryKey: ["insuranceProviders"],
+    queryFn: () => base44.entities.InsuranceProvider.list(),
+    initialData: []
+  });
 
-  const handleCodesSelected = (selectedCodes, allSuggestions) => {
-    if (selectedCodes.length > 0) {
-      const selectedCode = allSuggestions.find(c => c.code === selectedCodes[0]);
-      setFormData(prev => ({
-        ...prev,
-        billing_code: selectedCode.code,
-        custom_amount: selectedCode.amount.toString(),
-      }));
-      toast.success(`Selected billing code: ${selectedCode.code}`);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!formData.patient_id || !formData.visit_type || !formData.service_date) {
-      toast.error('Please fill in all required fields');
+  const handleGenerateInvoice = async () => {
+    if (!selectedPatient || selectedVisits.length === 0) {
+      alert('Please select a patient and at least one visit');
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     try {
-      const invoiceNumber = `INV-${Date.now()}`;
-      const amount = calculateAmount();
-
-      const invoice = await base44.entities.Invoice.create({
-        visit_id: formData.visit_id || null,
-        patient_id: formData.patient_id,
-        invoice_number: invoiceNumber,
-        visit_type: formData.visit_type,
-        diagnosis: formData.diagnosis,
-        service_date: formData.service_date,
-        invoice_date: formData.invoice_date,
-        due_date: formData.due_date,
-        amount: amount,
-        billing_code: getBillingCode(),
-        description: `${formData.visit_type.replace(/_/g, ' ')} - ${formData.diagnosis}`,
-        status: 'draft',
-        payor: formData.payor,
-        remaining_balance: amount,
-        amount_paid: 0,
-        ai_suggested: !!selectedAICodes,
+      const { data } = await base44.functions.invoke('generateInvoice', {
+        patientId: selectedPatient,
+        visitIds: selectedVisits,
+        insuranceProviderId: selectedInsurance || null,
+        billingModel: billingModel
       });
 
-      toast.success(`Invoice ${invoiceNumber} created successfully`);
-      onInvoiceCreated?.(invoice);
-
-      // Reset form
-      setFormData({
-        visit_id: visitId || '',
-        patient_id: patientId || '',
-        visit_type: visitType || '',
-        diagnosis: diagnosis || '',
-        service_date: new Date().toISOString().split('T')[0],
-        invoice_date: new Date().toISOString().split('T')[0],
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        payor: 'Medicare',
-        billing_code: '',
-        custom_amount: '',
-      });
-      setSelectedAICodes(null);
+      alert(`Invoice ${data.invoiceNumber} created successfully!`);
+      setSelectedPatient("");
+      setSelectedVisits([]);
+      setSelectedInsurance("");
+      onInvoiceCreated?.();
     } catch (error) {
-      toast.error(error.message || 'Failed to create invoice');
+      alert('Error generating invoice: ' + error.message);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const amount = calculateAmount();
-
   return (
-    <Card className="border-blue-200">
+    <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-blue-600" />
-          Generate Invoice
-        </CardTitle>
+        <CardTitle>Generate Invoice</CardTitle>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* AI Billing Code Suggester */}
-          <AIBillingCodeSuggester
-            visitType={formData.visit_type}
-            diagnosis={formData.diagnosis}
-            clinicalNote={clinicalNote}
-            onCodesSelected={handleCodesSelected}
-          />
+      <CardContent className="space-y-4">
+        <div>
+          <Label>Patient</Label>
+          <Select value={selectedPatient} onValueChange={setSelectedPatient}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a patient" />
+            </SelectTrigger>
+            <SelectContent>
+              {patients.map(patient => (
+                <SelectItem key={patient.id} value={patient.id}>
+                  {patient.first_name} {patient.last_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {selectedPatient && (
+          <>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Patient ID *
-              </label>
-              <Input
-                value={formData.patient_id}
-                onChange={(e) => setFormData({ ...formData, patient_id: e.target.value })}
-                placeholder="Select patient"
-                disabled={!!patientId}
-              />
+              <Label>Select Visits to Invoice</Label>
+              <div className="space-y-2 mt-2 max-h-64 overflow-y-auto border rounded p-3">
+                {visits.length > 0 ? (
+                  visits.map(visit => (
+                    <div key={visit.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={visit.id}
+                        checked={selectedVisits.includes(visit.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedVisits([...selectedVisits, visit.id]);
+                          } else {
+                            setSelectedVisits(selectedVisits.filter(id => id !== visit.id));
+                          }
+                        }}
+                      />
+                      <label className="text-sm cursor-pointer flex-1">
+                        {visit.visit_date} - {visit.visit_type}
+                      </label>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">No visits found for this patient</p>
+                )}
+              </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Visit Type *
-              </label>
-              <Select value={formData.visit_type} onValueChange={(value) => setFormData({ ...formData, visit_type: value })}>
+              <Label>Insurance Provider (Optional)</Label>
+              <Select value={selectedInsurance} onValueChange={setSelectedInsurance}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select visit type" />
+                  <SelectValue placeholder="Select insurance or leave blank for self-pay" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="skilled_nursing">Skilled Nursing</SelectItem>
-                  <SelectItem value="admission">Admission</SelectItem>
-                  <SelectItem value="routine_visit">Routine Visit</SelectItem>
-                  <SelectItem value="recertification">Recertification</SelectItem>
-                  <SelectItem value="discharge">Discharge</SelectItem>
-                  <SelectItem value="prn">PRN</SelectItem>
+                  <SelectItem value={null}>Self-Pay</SelectItem>
+                  {insuranceProviders.map(provider => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="md:col-span-2">
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Diagnosis
-              </label>
-              <Input
-                value={formData.diagnosis}
-                onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
-                placeholder="e.g., CHF, COPD"
-              />
-            </div>
-
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Service Date *
-              </label>
-              <Input
-                type="date"
-                value={formData.service_date}
-                onChange={(e) => setFormData({ ...formData, service_date: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Invoice Date
-              </label>
-              <Input
-                type="date"
-                value={formData.invoice_date}
-                onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Due Date
-              </label>
-              <Input
-                type="date"
-                value={formData.due_date}
-                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
-                Payor
-              </label>
-              <Select value={formData.payor} onValueChange={(value) => setFormData({ ...formData, payor: value })}>
+              <Label>Billing Model</Label>
+              <Select value={billingModel} onValueChange={setBillingModel}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select payor" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Medicare">Medicare</SelectItem>
-                  <SelectItem value="Medicaid">Medicaid</SelectItem>
-                  <SelectItem value="Commercial">Commercial Insurance</SelectItem>
-                  <SelectItem value="Self-Pay">Self-Pay</SelectItem>
+                  <SelectItem value="fee_for_service">Fee for Service</SelectItem>
+                  <SelectItem value="bundled">Bundled</SelectItem>
+                  <SelectItem value="capitated">Capitated</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          </div>
 
-          <div>
-             <label className="text-sm font-medium text-gray-700 block mb-1">
-               Custom Amount (Optional)
-             </label>
-             <Input
-               type="number"
-               step="0.01"
-               value={formData.custom_amount}
-               onChange={(e) => setFormData({ ...formData, custom_amount: e.target.value })}
-               placeholder="Leave empty to use default"
-             />
-           </div>
-
-          {amount > 0 && (
-           <div className="bg-blue-50 border border-blue-200 rounded p-3">
-             <div className="flex justify-between items-center">
-               <span className="text-sm font-medium text-gray-700">Estimated Amount:</span>
-               <span className="text-lg font-bold text-blue-600">${amount.toFixed(2)}</span>
-             </div>
-             <div className="flex justify-between items-center mt-2">
-               <span className="text-sm text-gray-600">Billing Code:</span>
-               <span className="font-semibold text-gray-900">{getBillingCode()}</span>
-             </div>
-             {selectedAICodes && (
-               <p className="text-xs text-purple-600 mt-1 flex items-center gap-1">
-                 ✨ AI-suggested code
-               </p>
-             )}
-           </div>
-          )}
-
-          <Button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700">
-            {isLoading ? (
-              <>
-                <Loader className="w-4 h-4 mr-2 animate-spin" />
-                Creating Invoice...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                Generate Invoice
-              </>
-            )}
-          </Button>
-        </form>
+            <Button onClick={handleGenerateInvoice} disabled={loading} className="w-full">
+              {loading ? "Generating..." : `Generate Invoice (${selectedVisits.length} visit${selectedVisits.length !== 1 ? 's' : ''})`}
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   );
