@@ -112,25 +112,26 @@ export default function SignupAgreementModal({ isOpen, onAccept, onDecline }) {
               </div>
             </div>
 
-            {/* AI Use Acknowledgment */}
+            {/* AI Use & Limitations Disclosure */}
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-semibold text-gray-900 mb-2">
-                    AI Use Acknowledgment
+                  <p className="text-sm font-semibold text-gray-900 mb-1">
+                    CAREMETRIC AI – AI USE & LIMITATIONS DISCLOSURE
+                  </p>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Version: v1.0 | Document ID: CM-AI-001 | Last Updated: January 13, 2026
                   </p>
                   <div className="text-sm text-gray-900 leading-relaxed space-y-2">
                     <p>
-                      CareMetric AI uses <strong>machine-assisted and probabilistic models</strong>.
+                      CareMetric AI uses probabilistic AI models.
                     </p>
                     <p>
-                      AI-generated outputs may be <strong>inaccurate, incomplete, or outdated</strong> and 
-                      must be reviewed and verified by a qualified professional prior to use.
+                      Outputs may be inaccurate or incomplete.
                     </p>
                     <p>
-                      CareMetric AI <strong>does not provide medical advice</strong>, make clinical decisions, 
-                      or guarantee compliance or reimbursement outcomes.
+                      Human review is required at all times.
                     </p>
                   </div>
                 </div>
