@@ -210,7 +210,7 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
         <aside
-             className={`hidden lg:flex flex-col bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-r border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-300 ${
+             className={`hidden lg:flex flex-col bg-white/70 dark:bg-slate-900/70 backdrop-blur-lg border-r border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-300 ${
                sidebarCollapsed ? "w-16" : "w-56"
              }`}
            >
@@ -338,7 +338,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm flex flex-col transition-colors duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-lg border-b border-slate-200 dark:border-slate-800 shadow-sm flex flex-col transition-colors duration-300 ${
           showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
         }`}
         style={{
@@ -524,7 +524,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 shadow-sm lg:hidden transition-colors duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-sm lg:hidden transition-colors duration-300 ${
           showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
         }`}
         style={{ 
