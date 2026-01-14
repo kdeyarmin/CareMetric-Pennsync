@@ -1060,22 +1060,22 @@ Generate the complete clinical narrative based on the audio and context:`;
           Back to Dashboard
         </Button>
 
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <Card className="bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600">
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-slate-600 dark:bg-slate-500 rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
                 <User className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
               </div>
               <div className="flex-1 min-w-0 overflow-hidden">
-                <h1 className="text-base sm:text-xl md:text-2xl font-bold text-gray-900 truncate">
+                <h1 className="text-base sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
                   {patient?.first_name} {patient?.last_name}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600 mt-1">
-                  <span className="truncate">MRN: {patient?.medical_record_number || 'N/A'}</span>
+                  <span className="truncate text-slate-700 dark:text-slate-300">MRN: {patient?.medical_record_number || 'N/A'}</span>
                   <span className="hidden sm:inline">•</span>
-                  <span className="truncate">{patient?.primary_diagnosis}</span>
-                  <span className="hidden sm:inline">•</span>
-                  <span className="capitalize">{patient?.care_type?.replace('_', ' ')}</span>
+                   <span className="truncate text-slate-700 dark:text-slate-300">{patient?.primary_diagnosis}</span>
+                   <span className="hidden sm:inline">•</span>
+                   <span className="capitalize text-slate-700 dark:text-slate-300">{patient?.care_type?.replace('_', ' ')}</span>
                 </div>
               </div>
             </div>
@@ -1084,9 +1084,9 @@ Generate the complete clinical narrative based on the audio and context:`;
       </div>
 
       {(isSaving || lastSaved) && (
-        <Alert className={`mb-4 ${isSaving ? 'bg-blue-50 border-blue-200' : hasUnsavedChanges ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
-          <Clock className={`w-4 h-4 ${isSaving ? 'text-blue-600' : hasUnsavedChanges ? 'text-orange-600' : 'text-green-600'}`} />
-          <AlertDescription className={`${isSaving ? 'text-blue-900' : hasUnsavedChanges ? 'text-orange-900' : 'text-green-900'}`}>
+        <Alert className={`mb-4 bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600`}>
+          <Clock className="w-4 h-4 text-slate-700 dark:text-slate-400" />
+          <AlertDescription className="text-slate-900 dark:text-slate-100">
             {isSaving ? 'Saving...' : `Last saved: ${lastSaved ? lastSaved.toLocaleTimeString() : 'N/A'}`}
             {hasUnsavedChanges && !isSaving && ' • Unsaved changes'}
           </AlertDescription>
@@ -1311,8 +1311,8 @@ Generate the complete clinical narrative based on the audio and context:`;
                   <TextExpander onExpand={handleTextExpand} />
 
                   {commandHistory.length > 0 && (
-                    <Alert className="bg-blue-50 border-blue-200">
-                      <AlertDescription className="text-sm">
+                    <Alert className="bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600">
+                      <AlertDescription className="text-sm text-slate-900 dark:text-slate-100">
                         <strong>Recent Commands:</strong>
                         <div className="mt-2 space-y-1">
                           {commandHistory.map((cmd, idx) => (
@@ -1402,9 +1402,9 @@ Generate the complete clinical narrative based on the audio and context:`;
             </TabsContent>
 
             <TabsContent value="workflow" className="space-y-4 sm:space-y-6">
-              <Alert className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-                <Sparkles className="w-5 h-5 text-blue-600" />
-                <AlertDescription className="text-blue-900">
+              <Alert className="bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600">
+                <Sparkles className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                <AlertDescription className="text-slate-900 dark:text-slate-100">
                   <strong>Recommended AI Workflow:</strong>
                   <ol className="list-decimal ml-5 mt-2 space-y-1">
                     <li>Enter vital signs first (helps AI generate better content)</li>
@@ -1456,8 +1456,8 @@ Generate the complete clinical narrative based on the audio and context:`;
                     onChange={setVitalSigns}
                   />
                   {Object.keys(vitalSigns).length > 0 && (
-                    <Alert className="mt-4 bg-green-50 border-green-200">
-                      <AlertDescription className="text-green-900">
+                   <Alert className="mt-4 bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600">
+                     <AlertDescription className="text-slate-900 dark:text-slate-100">
                         ✓ Vital signs entered. These will be automatically incorporated into your note.
                       </AlertDescription>
                     </Alert>
@@ -1487,8 +1487,8 @@ Generate the complete clinical narrative based on the audio and context:`;
                   />
 
                   {hasGeneratedTemplate && (
-                    <Alert className="bg-green-50 border-green-200">
-                      <AlertDescription className="text-green-900">
+                    <Alert className="bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600">
+                      <AlertDescription className="text-slate-900 dark:text-slate-100">
                         ✓ Template generated! Review it in the Documentation tab or proceed to add your observations.
                       </AlertDescription>
                     </Alert>
@@ -1538,9 +1538,9 @@ Generate the complete clinical narrative based on the audio and context:`;
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Alert className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-                    <Sparkles className="w-4 h-4 text-purple-600" />
-                    <AlertDescription className="text-purple-900">
+                  <Alert className="bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600">
+                     <Sparkles className="w-4 h-4 text-slate-700 dark:text-slate-400" />
+                     <AlertDescription className="text-slate-900 dark:text-slate-100">
                       <strong>🎤 Global Voice Commands are now active!</strong>
                       <p className="mt-2 mb-3">Speak commands like "insert cardiovascular" or "save documentation" anytime in the app to trigger actions.</p>
                       <div className="grid grid-cols-2 gap-2 text-xs">
@@ -1574,9 +1574,9 @@ Generate the complete clinical narrative based on the audio and context:`;
                   </Alert>
 
                   {recognizedCommand && (
-                    <Alert className="bg-green-50 border-green-200 animate-in fade-in">
-                      <CheckCircle2 className="w-4 h-4 text-green-600" />
-                      <AlertDescription className="text-green-900">
+                    <Alert className="bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600 animate-in fade-in">
+                      <CheckCircle2 className="w-4 h-4 text-slate-700 dark:text-slate-400" />
+                      <AlertDescription className="text-slate-900 dark:text-slate-100">
                         <strong>Command Recognized:</strong> {recognizedCommand}
                       </AlertDescription>
                     </Alert>

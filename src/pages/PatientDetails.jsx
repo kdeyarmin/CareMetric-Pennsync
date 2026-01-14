@@ -266,10 +266,10 @@ export default function PatientDetails() {
         <Card
           className={`mb-3 sm:mb-4 w-full max-w-full ${
             hasCriticalAlerts
-              ? "bg-gradient-to-r from-red-50 to-orange-50 border-red-300"
+              ? "bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600"
               : hasHighAlerts
-              ? "bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-300"
-              : "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200"
+              ? "bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600"
+              : "bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600"
           }`}
         >
           <CardContent className="p-3 sm:p-4 w-full max-w-full overflow-hidden">
@@ -277,10 +277,10 @@ export default function PatientDetails() {
               <div
                 className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-lg flex-shrink-0 relative ${
                   hasCriticalAlerts
-                    ? "bg-gradient-to-br from-red-500 to-orange-500"
+                    ? "bg-slate-600 dark:bg-slate-500"
                     : hasHighAlerts
-                    ? "bg-gradient-to-br from-orange-500 to-yellow-500"
-                    : "bg-gradient-to-br from-blue-500 to-indigo-500"
+                    ? "bg-slate-600 dark:bg-slate-500"
+                    : "bg-slate-600 dark:bg-slate-500"
                 }`}
               >
                 <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
@@ -293,7 +293,7 @@ export default function PatientDetails() {
 
               <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="flex items-start justify-between gap-2 mb-1.5 min-w-0">
-                  <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 break-words leading-tight min-w-0">
+                  <h1 className="text-base sm:text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100 break-words leading-tight min-w-0">
                     {sanitizeInput(patient.first_name)} {sanitizeInput(patient.last_name)}
                   </h1>
                   <div className="flex-shrink-0">
@@ -301,7 +301,7 @@ export default function PatientDetails() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-0.5 text-xs text-gray-600 mb-1.5 overflow-hidden">
+                <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-400 mb-1.5 overflow-hidden">
                   <span className="truncate">
                     MRN: {sanitizeInput(patient.medical_record_number) || "N/A"}
                   </span>
@@ -317,8 +317,8 @@ export default function PatientDetails() {
                   <Badge
                     className={`text-xs whitespace-nowrap ${
                       patient.care_type === "hospice"
-                        ? "bg-purple-100 text-purple-800 border-purple-200"
-                        : "bg-blue-100 text-blue-800 border-blue-200"
+                        ? "bg-slate-300 text-slate-900 border-slate-400 dark:bg-slate-700 dark:text-slate-100"
+                        : "bg-slate-300 text-slate-900 border-slate-400 dark:bg-slate-700 dark:text-slate-100"
                     }`}
                   >
                     {patient.care_type === "hospice" ? "Hospice" : "Home Health"}
@@ -326,26 +326,26 @@ export default function PatientDetails() {
 
                   {patient.primary_diagnosis && (
                     // MOBILE FIX: allow smaller max width on phones to avoid pushing layout
-                    <Badge className="bg-green-100 text-green-800 border-green-200 text-xs max-w-[72vw] sm:max-w-[200px] truncate">
+                    <Badge className="bg-slate-300 text-slate-900 border-slate-400 dark:bg-slate-700 dark:text-slate-100 text-xs max-w-[72vw] sm:max-w-[200px] truncate">
                       {sanitizeInput(patient.primary_diagnosis)}
                     </Badge>
                   )}
 
                   {patient.secondary_diagnoses && patient.secondary_diagnoses.length > 0 && (
-                    <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs whitespace-nowrap">
+                    <Badge variant="outline" className="bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 text-xs whitespace-nowrap">
                       +{patient.secondary_diagnoses.length} more
                     </Badge>
                   )}
 
                   {hasCriticalAlerts && (
-                    <Badge className="bg-red-600 text-white animate-pulse text-xs whitespace-nowrap">
+                    <Badge className="bg-slate-700 text-slate-100 dark:bg-slate-600 animate-pulse text-xs whitespace-nowrap">
                       <AlertTriangle className="w-3 h-3 mr-1" />
                       {criticalAlertCount} Critical
                     </Badge>
                   )}
 
                   {hasHighAlerts && !hasCriticalAlerts && (
-                    <Badge className="bg-orange-600 text-white text-xs whitespace-nowrap">
+                    <Badge className="bg-slate-700 text-slate-100 dark:bg-slate-600 text-xs whitespace-nowrap">
                       <AlertTriangle className="w-3 h-3 mr-1" />
                       {highAlertCount} High
                     </Badge>
@@ -590,8 +590,8 @@ export default function PatientDetails() {
 
         {/* Critical Alerts Banner */}
         {activeAlerts.length > 0 && (
-          <Alert className={`mb-3 sm:mb-4 ${hasCriticalAlerts ? "bg-red-50 border-red-300" : "bg-orange-50 border-orange-300"}`}>
-            <AlertTriangle className={`w-4 h-4 ${hasCriticalAlerts ? "text-red-600" : "text-orange-600"}`} />
+          <Alert className={`mb-3 sm:mb-4 ${hasCriticalAlerts ? "bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600" : "bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600"}`}>
+            <AlertTriangle className={`w-4 h-4 ${hasCriticalAlerts ? "text-slate-700 dark:text-slate-400" : "text-slate-700 dark:text-slate-400"}`} />
             <AlertDescription>
               <p className="font-semibold mb-1">Active Patient Alerts ({activeAlerts.length})</p>
               <div className="space-y-1">
@@ -601,7 +601,7 @@ export default function PatientDetails() {
                   </p>
                 ))}
                 {activeAlerts.length > 3 && (
-                  <p className="text-sm text-gray-600">+ {activeAlerts.length - 3} more alerts</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">+ {activeAlerts.length - 3} more alerts</p>
                 )}
               </div>
             </AlertDescription>
@@ -1206,7 +1206,7 @@ export default function PatientDetails() {
 
           <CardContent className="p-3 sm:p-4 overflow-hidden">
             {showVisitForm && (
-              <Card className="mb-3 sm:mb-4 bg-blue-50 border-blue-200 max-w-full overflow-hidden">
+              <Card className="mb-3 sm:mb-4 bg-slate-200 border-slate-400 dark:bg-slate-800 dark:border-slate-600 max-w-full overflow-hidden">
                 <CardContent className="p-3 space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
@@ -1247,7 +1247,7 @@ export default function PatientDetails() {
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    <Button onClick={handleCreateVisit} className="bg-blue-600 hover:bg-blue-700 w-full touch-target">
+                    <Button onClick={handleCreateVisit} className="bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white w-full touch-target">
                       Create Visit
                     </Button>
                     <Button variant="outline" onClick={() => setShowVisitForm(false)} className="w-full touch-target">
