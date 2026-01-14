@@ -141,17 +141,13 @@ export default function Layout({ children, currentPageName }) {
   // Get role-specific navigation items
   const allNavItems = [
     { name: "Dashboard", icon: Home, page: "Dashboard" },
-    { name: "My Patients", icon: Users, page: "Patients" },
+    { name: "Patients", icon: Users, page: "Patients" },
     { name: "Telehealth", icon: Video, page: "TelehealthDashboard" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
-    { name: "Mobile Workflow", icon: Phone, page: "MobileWorkflow" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-    { name: "My Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
-    { name: "AI Learning", icon: Sparkles, page: "MyAILearning" },
-    { name: "Training Hub", icon: GraduationCap, page: "ProviderTrainingHub" },
-    { name: "Offline Mode", icon: WifiOff, page: "OfflineMode" },
-    { name: "Documentation Settings", icon: Settings, page: "ProviderSettings" },
+    { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
+    { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
     { name: "Settings", icon: Settings, page: "Settings" }
   ];
 
@@ -261,44 +257,7 @@ export default function Layout({ children, currentPageName }) {
               </Link>
             ))}
 
-            <div className="h-px bg-slate-200 dark:bg-slate-800 my-3 mx-2"></div>
 
-            <Link
-              to={createPageUrl("About")}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
-                isActive("About") ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              {!sidebarCollapsed && "About"}
-            </Link>
-            <Link
-              to={createPageUrl("Features")}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
-                isActive("Features") ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              {!sidebarCollapsed && "Features"}
-            </Link>
-            <Link
-              to={createPageUrl("Pricing")}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
-                isActive("Pricing") ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              }`}
-            >
-              <CreditCard className="w-4 h-4" />
-              {!sidebarCollapsed && "Pricing"}
-            </Link>
-            <Link
-              to={createPageUrl("Billing")}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
-                isActive("Billing") ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 font-medium" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              }`}
-            >
-              <CreditCard className="w-4 h-4" />
-              {!sidebarCollapsed && "Billing"}
-            </Link>
 
             {adminNavItems.length > 0 && (
               <>
@@ -453,40 +412,7 @@ export default function Layout({ children, currentPageName }) {
                 </button>
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-2 mt-2">
-                <Link
-                  to={createPageUrl("About")}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  About
-                </Link>
-                <Link
-                  to={createPageUrl("Features")}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Features
-                </Link>
-                <Link
-                  to={createPageUrl("Pricing")}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  Pricing
-                </Link>
-                <Link
-                  to={createPageUrl("Billing")}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  Billing
-                </Link>
-              </div>
+
             </nav>
           </div>
         </div>
