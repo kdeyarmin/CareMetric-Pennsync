@@ -94,21 +94,21 @@ export default function ProviderTrainingHub() {
   const inProgressCerts = certifications.filter(c => c.status === 'in_progress');
 
   return (
-    <div className="p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-4 mb-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg">
-            <GraduationCap className="w-7 h-7 text-white" />
+        <div className="flex items-center gap-3 sm:gap-4 mb-4">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
+            <GraduationCap className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Provider Training Hub</h1>
-            <p className="text-gray-600">Master advanced features and earn certifications</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Provider Training Hub</h1>
+            <p className="text-xs sm:text-sm text-gray-600 truncate">Master advanced features and earn certifications</p>
           </div>
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-blue-600">{completions.length}</p>
@@ -136,8 +136,8 @@ export default function ProviderTrainingHub() {
         </div>
       </div>
 
-      <Tabs defaultValue="learning-path" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+      <Tabs defaultValue="learning-path" className="space-y-4 sm:space-y-6">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1">
           <TabsTrigger value="learning-path">Learning Path</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
           <TabsTrigger value="badges">Badges</TabsTrigger>

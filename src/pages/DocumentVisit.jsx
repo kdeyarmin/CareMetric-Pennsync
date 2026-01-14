@@ -1043,18 +1043,18 @@ Generate the complete clinical narrative based on the audio and context:`;
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       <VoiceCommandListener
         onCommand={handleVoiceCommand}
         commands={getCommandsForContext('documentation')}
         context="documentation"
       />
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <Button
           variant="outline"
           onClick={() => navigate(createPageUrl("Dashboard"))}
-          className="mb-4"
+          className="mb-3 sm:mb-4 min-h-[44px] w-full sm:w-auto"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Dashboard
@@ -1066,8 +1066,8 @@ Generate the complete clinical narrative based on the audio and context:`;
               <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
                 <User className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
               </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <h1 className="text-base sm:text-xl md:text-2xl font-bold text-gray-900 truncate">
                   {patient?.first_name} {patient?.last_name}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600 mt-1">

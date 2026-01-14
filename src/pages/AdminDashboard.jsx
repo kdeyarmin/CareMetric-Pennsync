@@ -436,17 +436,19 @@ export default function AdminDashboard() {
             <Download className="w-4 h-4 mr-2" />
             <span className="text-xs sm:text-sm">Export</span>
           </Button>
-          {[7, 30, 90].map(days => (
-            <Button
-              key={days}
-              size="sm"
-              variant={dateRange === days ? "default" : "outline"}
-              onClick={() => setDateRange(days)}
-              className="min-h-[44px] px-3 sm:px-4"
-            >
-              <span className="text-xs sm:text-sm">{days}d</span>
-            </Button>
-          ))}
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg flex-1 sm:flex-initial">
+            {[7, 30, 90].map(days => (
+              <Button
+                key={days}
+                size="sm"
+                variant={dateRange === days ? "primary" : "ghost"}
+                onClick={() => setDateRange(days)}
+                className="min-h-[36px] px-3 sm:px-4 flex-1 shadow-sm data-[state=active]:bg-white data-[state=active]:dark:bg-gray-900"
+              >
+                <span className="text-xs sm:text-sm">{days}d</span>
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -626,20 +628,22 @@ export default function AdminDashboard() {
       )}
 
       <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1 h-auto p-1">
-          <TabsTrigger value="overview" className="text-xs sm:text-sm py-2">Overview</TabsTrigger>
-          <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2">System Health</TabsTrigger>
-          <TabsTrigger value="advanced-reports" className="text-xs sm:text-sm py-2">Reports</TabsTrigger>
-          <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2">AI Models</TabsTrigger>
-          <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2">Revenue</TabsTrigger>
-          <TabsTrigger value="user-insights" className="text-xs sm:text-sm py-2">User Insights</TabsTrigger>
-          <TabsTrigger value="performance" className="text-xs sm:text-sm py-2">Performance</TabsTrigger>
-          <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2">Compliance</TabsTrigger>
-          <TabsTrigger value="training" className="text-xs sm:text-sm py-2">Training</TabsTrigger>
-          <TabsTrigger value="ai-feedback" className="text-xs sm:text-sm py-2">AI Feedback</TabsTrigger>
-          <TabsTrigger value="activity" className="text-xs sm:text-sm py-2">Activity</TabsTrigger>
-          <TabsTrigger value="export" className="text-xs sm:text-sm py-2">Export</TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto">
+          <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1">
+            <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">Overview</TabsTrigger>
+            <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">System Health</TabsTrigger>
+            <TabsTrigger value="advanced-reports" className="text-xs sm:text-sm py-2 whitespace-nowrap">Reports</TabsTrigger>
+            <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Models</TabsTrigger>
+            <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2 whitespace-nowrap">Revenue</TabsTrigger>
+            <TabsTrigger value="user-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">User Insights</TabsTrigger>
+            <TabsTrigger value="performance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Performance</TabsTrigger>
+            <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Compliance</TabsTrigger>
+            <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">Training</TabsTrigger>
+            <TabsTrigger value="ai-feedback" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Feedback</TabsTrigger>
+            <TabsTrigger value="activity" className="text-xs sm:text-sm py-2 whitespace-nowrap">Activity</TabsTrigger>
+            <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">Export</TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Revenue Tab */}
         <TabsContent value="revenue" className="space-y-6">
