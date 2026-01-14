@@ -49,9 +49,9 @@ export default function QuickAccessCards() {
             onClick={() => navigate(createPageUrl(card.page))}
           >
             <CardContent className="p-4 text-center">
-              <Icon className={`w-10 h-10 ${card.color} mx-auto mb-2`} />
-              <h3 className="font-bold text-sm text-gray-900 mb-1">{card.label}</h3>
-              <p className="text-xs text-gray-600">{card.description}</p>
+              <Icon className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <h3 className="font-bold text-sm text-slate-100 mb-1">{card.label}</h3>
+              <p className="text-xs text-slate-400">{card.description}</p>
             </CardContent>
           </Card>
         );
