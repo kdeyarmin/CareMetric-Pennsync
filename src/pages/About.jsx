@@ -540,6 +540,30 @@ export default function About() {
             </CardContent>
           </Card>
 
+          {/* Acceptable Use Policy */}
+          <Card className="border-2 border-gray-200">
+            <CardHeader className="bg-red-600 text-white p-4 sm:p-6">
+              <CardTitle className="text-xl sm:text-2xl flex items-center gap-2 sm:gap-3">
+                <AlertTriangle className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+                <span className="break-words">Acceptable Use Policy</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 space-y-3 sm:space-y-4">
+              <p className="text-sm text-gray-500 mb-4">
+                <strong>Version:</strong> v1.0 | <strong>Document ID:</strong> CM-AUP-001 | <strong>Last Updated:</strong> January 13, 2026
+              </p>
+              
+              <div className="prose max-w-none text-gray-700 space-y-3">
+                <p className="font-semibold">Prohibited Uses:</p>
+                <ul className="list-disc ml-6 space-y-2">
+                  <li>Unauthorized PHI upload</li>
+                  <li>Credential sharing</li>
+                  <li>Unlawful activity</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Privacy Policy */}
           <Card className="border-2 border-gray-200">
             <CardHeader className="bg-green-600 text-white p-4 sm:p-6">
