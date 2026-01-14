@@ -177,8 +177,8 @@ export default function Layout({ children, currentPageName }) {
   const mobileBottomNavTotalHeight = `calc(${BOTTOM_NAV_HEIGHT_REM}rem + max(env(safe-area-inset-bottom), 0px))`;
 
   return (
-    <ThemeProvider>
-    <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
+          <ThemeProvider>
+          <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative bg-transparent">
       {/* =========================
           Scoped overrides:
           Force any internal Tailwind "fixed" inside FAB components to behave like normal content
@@ -207,7 +207,7 @@ export default function Layout({ children, currentPageName }) {
       {/* ================= Desktop Sidebar ================= */}
       {showNavigationUI && (
         <aside
-             className={`hidden lg:flex flex-col bg-white/70 dark:bg-slate-900/70 backdrop-blur-lg border-r border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-300 ${
+             className={`hidden lg:flex flex-col bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-800/50 shadow-sm transition-all duration-300 ${
                sidebarCollapsed ? "w-16" : "w-56"
              }`}
            >
@@ -307,7 +307,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-lg border-b border-slate-200 dark:border-slate-800 shadow-sm flex flex-col transition-colors duration-300 ${
+        className={`lg:hidden fixed top-0 left-0 right-0 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 shadow-sm flex flex-col transition-colors duration-300 ${
           showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
         }`}
         style={{
@@ -463,7 +463,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-sm lg:hidden transition-colors duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border-t border-slate-200/50 dark:border-slate-800/50 shadow-sm lg:hidden transition-colors duration-300 ${
           showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
         }`}
         style={{ 
