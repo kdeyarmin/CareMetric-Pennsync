@@ -274,7 +274,7 @@ export default function Dashboard() {
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header with integrated banners */}
-      <DashboardHeader fullName={fullName} subscription={subscription} />
+      <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.provider_type || currentUser?.credential_type} />
 
       {/* Quick Stats */}
       <QuickStatsSummary stats={{
@@ -296,11 +296,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Provider-Specific Dashboard */}
+      {/* Provider-Specific Metrics Grid */}
       {currentUser && (!currentUser.dashboard_config || currentUser.dashboard_config?.providerMetrics) && (
-        <div className="mb-6">
+        <DashboardSection title={`${currentUser.provider_type || currentUser.credential_type || 'Provider'} Metrics`} icon={Activity} defaultOpen={true} collapsible={true}>
           <ProviderSpecificDashboard user={currentUser} />
-        </div>
+        </DashboardSection>
       )}
 
 
