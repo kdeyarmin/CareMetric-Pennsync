@@ -13,6 +13,9 @@ import TelehealthFileSharing from '../components/telehealth/TelehealthFileSharin
 import TelehealthPostCallSummary from '../components/telehealth/TelehealthPostCallSummary';
 import TelehealthMessaging from '../components/telehealth/TelehealthMessaging';
 import ScreenShareEducation from '../components/telehealth/ScreenShareEducation';
+import AIRealtimeTranscription from '../components/telehealth/AIRealtimeTranscription';
+import AISymptomChecker from '../components/telehealth/AISymptomChecker';
+import AIFollowUpGenerator from '../components/telehealth/AIFollowUpGenerator';
 import { createPageUrl } from '@/utils';
 
 export default function TelehealthVisit() {
@@ -34,6 +37,8 @@ export default function TelehealthVisit() {
   const [callNotes, setCallNotes] = useState('');
   const [callDuration, setCallDuration] = useState(0);
   const [patientWaiting, setPatientWaiting] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [symptomAssessment, setSymptomAssessment] = useState(null);
   
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -433,12 +438,27 @@ export default function TelehealthVisit() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
+            {/* AI Real-Time Transcription */}
+            <AIRealtimeTranscription 
+              visitId={visitId}
+              patientId={patientId}
+              isActive={step === 'connected'}
+            />
+
             {/* Secure Messaging */}
             <TelehealthMessaging
               visitId={visitId}
               patientId={patientId}
               providerEmail={currentUser?.email}
               isActive={true}
+            />
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* AI Symptom Checker */}
+            <AISymptomChecker 
+              patientId={patientId}
+              visitId={visitId}
             />
 
             {/* In-Call Notes */}
@@ -460,6 +480,14 @@ export default function TelehealthVisit() {
               </CardContent>
             </Card>
           </div>
+
+          {/* AI Follow-Up Instructions Generator */}
+          <AIFollowUpGenerator 
+            visitId={visitId}
+            patientId={patientId}
+            transcript={transcript}
+            assessment={symptomAssessment}
+          />
         </div>
       )}
 
