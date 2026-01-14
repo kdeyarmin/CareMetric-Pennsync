@@ -29,7 +29,7 @@ import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 import EmptyState from "../components/ui/EmptyState";
 import { motion } from "framer-motion";
 import PullToRefresh from "../components/mobile/PullToRefresh";
-import ProviderSpecificDashboard from "../components/dashboard/ProviderSpecificDashboard";
+
 import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
 import PersonalizedDashboardWidget from "../components/personalization/PersonalizedDashboardWidget";
 import SmartQuickActions from "../components/personalization/SmartQuickActions";
@@ -296,12 +296,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Provider-Specific Metrics Grid */}
-      {currentUser && (!currentUser.dashboard_config || currentUser.dashboard_config?.providerMetrics) && (
-        <DashboardSection title={`${currentUser.provider_type || currentUser.credential_type || 'Provider'} Metrics`} icon={Activity} defaultOpen={true} collapsible={true}>
-          <ProviderSpecificDashboard user={currentUser} />
-        </DashboardSection>
-      )}
+
 
 
 
