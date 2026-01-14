@@ -374,9 +374,9 @@ export default function Layout({ children, currentPageName }) {
             className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10">
+            <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">Menu</span>
+                <span className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">Menu</span>
               </div>
               <Button
                 size="icon"
@@ -403,7 +403,7 @@ export default function Layout({ children, currentPageName }) {
 
               {adminNavItems.length > 0 && (
                 <>
-                  <div className="h-px bg-amber-200 dark:bg-amber-900 my-3 mx-2"></div>
+                  <div className="h-px bg-slate-200 dark:bg-slate-700 my-3 mx-2"></div>
                   {adminNavItems.map((item) => (
                     <Link
                       key={item.page}
@@ -418,7 +418,7 @@ export default function Layout({ children, currentPageName }) {
                 </>
               )}
 
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-2 mt-2">
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
                 <div className="px-3 py-2">
                   <ShareAppButton />
                 </div>

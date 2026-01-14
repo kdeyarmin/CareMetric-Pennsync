@@ -6,6 +6,7 @@ import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import AppointmentBooking from './pages/AppointmentBooking';
 import AuditTrail from './pages/AuditTrail';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
 import Billing from './pages/Billing';
@@ -27,6 +28,7 @@ import EULA from './pages/EULA';
 import FAQ from './pages/FAQ';
 import Features from './pages/Features';
 import HIPAACompliance from './pages/HIPAACompliance';
+import HealthRecords from './pages/HealthRecords';
 import HowToGuide from './pages/HowToGuide';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
@@ -52,6 +54,7 @@ import OASISReview from './pages/OASISReview';
 import OfflineMode from './pages/OfflineMode';
 import Onboarding from './pages/Onboarding';
 import PatientAlerts from './pages/PatientAlerts';
+import PatientBilling from './pages/PatientBilling';
 import PatientDashboard from './pages/PatientDashboard';
 import PatientDataManagement from './pages/PatientDataManagement';
 import PatientDetails from './pages/PatientDetails';
@@ -72,6 +75,7 @@ import ProviderTrainingHub from './pages/ProviderTrainingHub';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
 import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
+import RegulatoryUpdates from './pages/RegulatoryUpdates';
 import SecurityAudit from './pages/SecurityAudit';
 import SecurityAuditReport from './pages/SecurityAuditReport';
 import SecurityCompliance from './pages/SecurityCompliance';
@@ -95,10 +99,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AppointmentBooking from './pages/AppointmentBooking';
-import PatientBilling from './pages/PatientBilling';
-import HealthRecords from './pages/HealthRecords';
-import RegulatoryUpdates from './pages/RegulatoryUpdates';
 import __Layout from './Layout.jsx';
 
 
@@ -111,6 +111,7 @@ export const PAGES = {
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
     "AnalyticsDashboard": AnalyticsDashboard,
+    "AppointmentBooking": AppointmentBooking,
     "AuditTrail": AuditTrail,
     "AutomaticCarePlans": AutomaticCarePlans,
     "Billing": Billing,
@@ -132,6 +133,7 @@ export const PAGES = {
     "FAQ": FAQ,
     "Features": Features,
     "HIPAACompliance": HIPAACompliance,
+    "HealthRecords": HealthRecords,
     "HowToGuide": HowToGuide,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
@@ -157,6 +159,7 @@ export const PAGES = {
     "OfflineMode": OfflineMode,
     "Onboarding": Onboarding,
     "PatientAlerts": PatientAlerts,
+    "PatientBilling": PatientBilling,
     "PatientDashboard": PatientDashboard,
     "PatientDataManagement": PatientDataManagement,
     "PatientDetails": PatientDetails,
@@ -177,6 +180,7 @@ export const PAGES = {
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
     "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
+    "RegulatoryUpdates": RegulatoryUpdates,
     "SecurityAudit": SecurityAudit,
     "SecurityAuditReport": SecurityAuditReport,
     "SecurityCompliance": SecurityCompliance,
@@ -200,10 +204,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "AppointmentBooking": AppointmentBooking,
-    "PatientBilling": PatientBilling,
-    "HealthRecords": HealthRecords,
-    "RegulatoryUpdates": RegulatoryUpdates,
 }
 
 export const pagesConfig = {
