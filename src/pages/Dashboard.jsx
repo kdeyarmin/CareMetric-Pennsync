@@ -300,25 +300,7 @@ export default function Dashboard() {
 
 
 
-      {/* AI-Powered Personalization Engine */}
-      {currentUser && (!currentUser.dashboard_config || currentUser.dashboard_config?.personalizationEngine) && (
-        <div className="mb-6">
-          <PersonalizationEngine 
-            userEmail={currentUser?.email}
-            providerType={currentUser?.provider_type || currentUser?.credential_type}
-          />
-        </div>
-      )}
 
-      {/* Personalized AI Recommendations */}
-      {currentUser && (!currentUser.dashboard_config || currentUser.dashboard_config?.personalizedWidget) && (
-        <div className="mb-6">
-          <PersonalizedDashboardWidget 
-            userEmail={currentUser?.email}
-            providerType={currentUser?.provider_type || currentUser?.credential_type}
-          />
-        </div>
-      )}
 
       {/* Telehealth Quick Launcher */}
       <QuickTelehealthLauncher
@@ -347,10 +329,7 @@ export default function Dashboard() {
         </div>
       </DashboardSection>
 
-      {/* Regulatory & Compliance Updates */}
-      <DashboardSection title="Regulatory Updates" icon={Shield} defaultOpen={false} collapsible={true}>
-        <RegulatoryAlertsDashboard />
-      </DashboardSection>
+
 
     </div>
     </PullToRefresh>
