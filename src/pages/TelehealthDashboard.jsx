@@ -56,7 +56,7 @@ export default function TelehealthDashboard() {
                 <p className="text-sm text-gray-600">Upcoming Visits</p>
                 <p className="text-3xl font-bold">{upcomingVisits.length}</p>
               </div>
-              <Calendar className="w-8 h-8 text-blue-500" />
+              <Calendar className="w-8 h-8 text-slate-700 dark:text-slate-400" />
             </div>
           </CardContent>
         </Card>
@@ -68,7 +68,7 @@ export default function TelehealthDashboard() {
                 <p className="text-sm text-gray-600">Telehealth Sessions</p>
                 <p className="text-3xl font-bold">{telehealthVisits.length}</p>
               </div>
-              <Video className="w-8 h-8 text-green-500" />
+              <Video className="w-8 h-8 text-slate-700 dark:text-slate-400" />
             </div>
           </CardContent>
         </Card>
@@ -80,7 +80,7 @@ export default function TelehealthDashboard() {
                 <p className="text-sm text-gray-600">Patients</p>
                 <p className="text-3xl font-bold">{patients.length}</p>
               </div>
-              <Users className="w-8 h-8 text-purple-500" />
+              <Users className="w-8 h-8 text-slate-700 dark:text-slate-400" />
             </div>
           </CardContent>
         </Card>

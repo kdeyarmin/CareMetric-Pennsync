@@ -289,7 +289,7 @@ export default function CarePlanManagement() {
 
         <div className="mb-4 sm:mb-6 w-full overflow-hidden">
           <div className="flex items-center gap-2 sm:gap-3 w-full">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 dark:bg-slate-500 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
               <Target className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <div className="flex-1 min-w-0 overflow-hidden">
@@ -304,50 +304,50 @@ export default function CarePlanManagement() {
 
         {/* Statistics */}
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6 w-full">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none shadow-lg overflow-hidden">
+        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-blue-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Total Plans</p>
+                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Total Plans</p>
                 <p className="text-2xl sm:text-3xl font-bold">{totalPlans}</p>
               </div>
-              <Target className="w-8 h-8 sm:w-10 sm:h-10 text-blue-200 flex-shrink-0" />
+              <Target className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-none shadow-lg overflow-hidden">
+        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-green-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Active</p>
+                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Active</p>
                 <p className="text-2xl sm:text-3xl font-bold">{activePlans}</p>
               </div>
-              <TrendingUp className="w-8 h-8 sm:w-10 sm:h-10 text-green-200 flex-shrink-0" />
+              <TrendingUp className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none shadow-lg overflow-hidden">
+        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-purple-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Goals Met</p>
+                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Goals Met</p>
                 <p className="text-2xl sm:text-3xl font-bold">{metGoals}</p>
               </div>
-              <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-purple-200 flex-shrink-0" />
+              <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-none shadow-lg overflow-hidden">
+        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-orange-100 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Patients</p>
+                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Patients</p>
                 <p className="text-2xl sm:text-3xl font-bold">{activePatients}</p>
               </div>
-              <User className="w-8 h-8 sm:w-10 sm:h-10 text-orange-200 flex-shrink-0" />
+              <User className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
@@ -511,7 +511,7 @@ export default function CarePlanManagement() {
 
             return (
               <div key={patientId} className="space-y-3 w-full overflow-hidden">
-                <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 bg-white rounded-lg border-2 border-blue-300 w-full">
+                <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 bg-slate-100 dark:bg-slate-800 rounded-lg border-2 border-slate-300 dark:border-slate-600 w-full">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
                     <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
@@ -530,7 +530,7 @@ export default function CarePlanManagement() {
                         setShowAITools(true);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className={`mt-2 w-full touch-target text-xs ${selectedPatient?.id === patientId ? "bg-purple-600 hover:bg-purple-700" : ""}`}
+                      className={`mt-2 w-full touch-target text-xs ${selectedPatient?.id === patientId ? "" : ""}`}
                     >
                       <Sparkles className="w-3 h-3 mr-1" />
                       AI Tools
@@ -549,11 +549,11 @@ export default function CarePlanManagement() {
             if (!patient) return null;
 
             return (
-              <Card key={patientId} className="border-l-4 border-l-blue-500 w-full overflow-hidden">
+              <Card key={patientId} className="border-l-4 border-l-slate-400 dark:border-l-slate-500 w-full overflow-hidden">
                 <CardHeader className="p-3 sm:p-4">
                   <div className="flex flex-col gap-3 w-full">
                     <div className="flex items-start gap-2 sm:gap-3 w-full">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 dark:bg-slate-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
                         <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                       </div>
                       <div className="flex-1 min-w-0 overflow-hidden">
@@ -574,7 +574,7 @@ export default function CarePlanManagement() {
                           setShowAITools(true);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className={`w-full sm:flex-1 touch-target text-xs ${selectedPatient?.id === patientId ? "bg-purple-600 hover:bg-purple-700" : ""}`}
+                        className={`w-full sm:flex-1 touch-target text-xs ${selectedPatient?.id === patientId ? "" : ""}`}
                       >
                         <Sparkles className="w-3 h-3 mr-1" />
                         AI Tools
@@ -593,7 +593,7 @@ export default function CarePlanManagement() {
                 <CardContent className="p-3 sm:p-4 overflow-hidden">
                   <div className="space-y-3 w-full">
                     {plans.map((plan) => (
-                      <Card key={plan.id} className="bg-gray-50 w-full overflow-hidden">
+                      <Card key={plan.id} className="bg-slate-100 dark:bg-slate-900 w-full overflow-hidden">
                         <CardContent className="p-3 sm:p-4 overflow-hidden">
                           <div className="flex flex-col gap-2 w-full">
                             <div className="flex-1 min-w-0 overflow-hidden">

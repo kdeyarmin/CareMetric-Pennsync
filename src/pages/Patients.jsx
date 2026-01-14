@@ -309,8 +309,8 @@ export default function Patients() {
         <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
           <div className="flex items-start gap-2 flex-1">
             <div className="flex-1">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">My Patients</h1>
-              <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">Your personal patient roster - detailed patient information helps AI provide better recommendations</p>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">My Patients</h1>
+              <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">Your personal patient roster - detailed patient information helps AI provide better recommendations</p>
             </div>
             <FavoriteButton type="page" id="Patients" name="Patients" />
           </div>
@@ -319,7 +319,7 @@ export default function Patients() {
               onClick={() => setShowReferralUpload(true)}
               variant="outline"
               size="sm"
-              className="border-blue-300 text-blue-700 hover:bg-blue-50 flex-1 sm:flex-none"
+              className="flex-1 sm:flex-none"
             >
               <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               <span className="text-xs sm:text-sm">Upload</span>
@@ -330,7 +330,7 @@ export default function Patients() {
                 setShowForm(true);
               }}
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-none"
+              className="flex-1 sm:flex-none"
             >
               <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               <span className="text-xs sm:text-sm">Add Patient</span>
@@ -374,7 +374,7 @@ export default function Patients() {
           {selectedPatients.length === 2 && (
             <Button
               onClick={handleMergeSelected}
-              className="mt-2 bg-purple-600 hover:bg-purple-700"
+              className="mt-2"
             >
               Merge Selected Patients
             </Button>
@@ -436,8 +436,9 @@ export default function Patients() {
             <Card 
               key={patient.id} 
               className={`hover:shadow-lg transition-all duration-200 border-l-4 ${
-                isSelected ? 'border-l-green-500 bg-green-50' : 'border-l-blue-500'
+                isSelected ? 'border-l-slate-500 bg-slate-200 dark:border-l-slate-400 dark:bg-slate-800' : 'border-l-slate-400 dark:border-l-slate-500'
               }`}
+            >
             >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -448,8 +449,8 @@ export default function Patients() {
                     className="mt-1 mr-3 w-4 h-4"
                   />
                   <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
-                      <User className="w-6 h-6 text-white" />
+                    <div className="w-12 h-12 bg-slate-600 dark:bg-slate-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
+                     <User className="w-6 h-6 text-slate-100" />
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-gray-900">
@@ -458,7 +459,7 @@ export default function Patients() {
                       <p className="text-sm text-gray-500">MRN: {patient.medical_record_number || 'N/A'}</p>
                     </div>
                   </div>
-                  <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                  <Badge className="bg-slate-300 text-slate-900 border-slate-400 dark:bg-slate-700 dark:text-slate-100">
                     Home Health
                   </Badge>
                 </div>
@@ -519,7 +520,7 @@ export default function Patients() {
                                           to={`${createPageUrl("PatientDetails")}?id=${patient.id}`}
                                           className="flex-1"
                                         >
-                                          <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                                          <Button size="sm" className="w-full">
                                             View Details
                                           </Button>
                                         </Link>
@@ -571,9 +572,9 @@ export default function Patients() {
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-600" />
-              Upload Patient Referral
-            </DialogTitle>
+                 <FileText className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                 Upload Patient Referral
+               </DialogTitle>
           </DialogHeader>
           <ReferralUploadProcessor
             onPatientDataExtracted={(data) => {
@@ -592,7 +593,7 @@ export default function Patients() {
                     <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                          <FileText className="w-5 h-5 text-indigo-600" />
+                             <FileText className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                           Patient Summary: {summaryPatient?.first_name} {summaryPatient?.last_name}
                         </DialogTitle>
                       </DialogHeader>
@@ -615,7 +616,7 @@ export default function Patients() {
                         <AlertDialogDescription>
                           <div className="space-y-3">
                             <p>Are you sure you want to permanently delete <strong>{patientToDelete?.first_name} {patientToDelete?.last_name}</strong>?</p>
-                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-900">
+                            <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-3 text-sm text-slate-900 dark:text-slate-100">
                               <p className="font-semibold mb-1">⚠️ This will permanently delete:</p>
                               <ul className="list-disc list-inside space-y-1 ml-2">
                                 <li>Patient profile and medical history</li>
@@ -634,7 +635,7 @@ export default function Patients() {
                         <AlertDialogAction
                           onClick={handleDeletePatient}
                           disabled={isDeleting}
-                          className="bg-red-600 hover:bg-red-700"
+                          className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 text-white"
                         >
                           {isDeleting ? "Deleting..." : "Delete Patient & All Data"}
                         </AlertDialogAction>
