@@ -57,8 +57,8 @@ export function RealTimeBreachMonitor() {
             }
           });
 
-          // Browser notification if permitted
-          if (Notification.permission === 'granted') {
+          // Browser notification if supported and permitted
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             new Notification('🚨 Security Alert', {
               body: alert.description,
               icon: '/security-alert-icon.png',
@@ -79,7 +79,7 @@ export function RealTimeBreachMonitor() {
 
   // Request notification permission on mount
   useEffect(() => {
-    if (isAdmin && Notification.permission === 'default') {
+    if (isAdmin && typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [isAdmin]);

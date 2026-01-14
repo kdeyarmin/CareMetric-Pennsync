@@ -81,20 +81,22 @@ class OfflineStorage {
     }
   }
 
-  // Get all pending updates
-  getPendingUpdates() {
+  // Get all pending updates with decryption
+  async getPendingUpdates() {
     try {
-      const data = localStorage.getItem(PENDING_UPDATES_KEY);
-      return data ? JSON.parse(data) : [];
+      const data = await secureOfflineStorage.getItem('pending_updates');
+      return data || [];
     } catch {
       return [];
     }
   }
 
   // Get count of pending items
-  getPendingCount() {
-    return this.getPendingVisits().filter(v => !v.synced).length +
-           this.getPendingUpdates().filter(u => !u.synced).length;
+  async getPendingCount() {
+    const visits = await this.getPendingVisits();
+    const updates = await this.getPendingUpdates();
+    return visits.filter(v => !v.synced).length +
+           updates.filter(u => !u.synced).length;
   }
 
   // Sync pending data when back online
@@ -104,60 +106,64 @@ class OfflineStorage {
     const { base44 } = await import('@/api/base44Client');
     
     // Sync pending visits
-    const pendingVisits = this.getPendingVisits().filter(v => !v.synced);
+    const allVisits = await this.getPendingVisits();
+    const pendingVisits = allVisits.filter(v => !v.synced);
     for (const visit of pendingVisits) {
       try {
         await base44.entities.Visit.create(visit.data);
-        this.markVisitSynced(visit.id);
+        await this.markVisitSynced(visit.id);
       } catch (error) {
         console.error('Error syncing visit:', error);
       }
     }
 
     // Sync pending updates
-    const pendingUpdates = this.getPendingUpdates().filter(u => !u.synced);
+    const allUpdates = await this.getPendingUpdates();
+    const pendingUpdates = allUpdates.filter(u => !u.synced);
     for (const update of pendingUpdates) {
       try {
         await base44.entities.Visit.update(update.visitId, update.data);
-        this.markUpdateSynced(update.visitId, update.timestamp);
+        await this.markUpdateSynced(update.visitId, update.timestamp);
       } catch (error) {
         console.error('Error syncing update:', error);
       }
     }
 
     // Clean up old synced items
-    this.cleanupSyncedItems();
+    await this.cleanupSyncedItems();
   }
 
-  markVisitSynced(visitId) {
-    const pending = this.getPendingVisits();
+  async markVisitSynced(visitId) {
+    const pending = await this.getPendingVisits();
     const updated = pending.map(v => 
       v.id === visitId ? { ...v, synced: true } : v
     );
-    localStorage.setItem(PENDING_VISITS_KEY, JSON.stringify(updated));
+    await secureOfflineStorage.setItem('pending_visits', updated);
   }
 
-  markUpdateSynced(visitId, timestamp) {
-    const pending = this.getPendingUpdates();
+  async markUpdateSynced(visitId, timestamp) {
+    const pending = await this.getPendingUpdates();
     const updated = pending.map(u => 
       u.visitId === visitId && u.timestamp === timestamp ? { ...u, synced: true } : u
     );
-    localStorage.setItem(PENDING_UPDATES_KEY, JSON.stringify(updated));
+    await secureOfflineStorage.setItem('pending_updates', updated);
   }
 
-  cleanupSyncedItems() {
+  async cleanupSyncedItems() {
     // Keep synced items for 24 hours, then remove
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
-    const visits = this.getPendingVisits().filter(v => 
+    const visits = await this.getPendingVisits();
+    const filtered = visits.filter(v => 
       !v.synced || v.timestamp > cutoff
     );
-    localStorage.setItem(PENDING_VISITS_KEY, JSON.stringify(visits));
+    await secureOfflineStorage.setItem('pending_visits', filtered);
 
-    const updates = this.getPendingUpdates().filter(u => 
+    const updates = await this.getPendingUpdates();
+    const filteredUpdates = updates.filter(u => 
       !u.synced || u.timestamp > cutoff
     );
-    localStorage.setItem(PENDING_UPDATES_KEY, JSON.stringify(updates));
+    await secureOfflineStorage.setItem('pending_updates', filteredUpdates);
   }
 
   // Clear all offline data securely
