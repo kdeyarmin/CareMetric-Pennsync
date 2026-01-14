@@ -93,27 +93,29 @@ export default function TelehealthDashboard() {
   };
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-              <Video className="w-6 h-6 text-white" />
+    <div className="p-2 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-x-hidden">
+      <div className="mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-2">
+          <div className="flex items-center gap-2 sm:gap-3 w-full">
+            <div className="p-2 sm:p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg sm:rounded-xl flex-shrink-0">
+              <Video className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Telehealth Center</h1>
-              <p className="text-sm text-gray-600">Virtual visits and remote care</p>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Telehealth Center</h1>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Virtual visits and remote care</p>
             </div>
           </div>
           <Button 
             onClick={() => setShowCreateDialog(true)}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto flex-shrink-0"
+            size="sm"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Schedule Visit
+            <span className="hidden sm:inline">Schedule Visit</span>
+            <span className="sm:hidden">Schedule</span>
           </Button>
-        </div>
-      </div>
+          </div>
+          </div>
 
       <CreateAppointmentDialog
         open={showCreateDialog}
@@ -140,53 +142,55 @@ export default function TelehealthDashboard() {
 
       {/* Today's Appointments - Priority View */}
       {todayAppointments.length > 0 && (
-        <Card className="mb-6 border-2 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
+        <Card className="mb-4 sm:mb-6 border-2 border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 overflow-hidden">
+          <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 py-3 sm:py-4">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2 flex-wrap">
               <Clock className="w-5 h-5 text-green-600" />
               Today's Virtual Visits ({todayAppointments.length})
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2 sm:space-y-3 px-3 sm:px-6 py-3 sm:py-4">
             {todayAppointments.map(apt => {
               const patient = getPatient(apt.patient_id);
               return (
-                <div key={apt.id} className="bg-white rounded-lg p-4 border border-green-200 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">
+                <div key={apt.id} className="bg-white rounded-lg p-3 sm:p-4 border border-green-200 hover:shadow-md transition-shadow">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 className="font-semibold text-gray-900 text-sm break-words">
                           {patient?.first_name} {patient?.last_name}
                         </h3>
                         {getStatusBadge(apt.status)}
                       </div>
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 flex-wrap">
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                          <Clock className="w-3 h-3 flex-shrink-0" />
                           {apt.start_time}
                         </span>
                         <span className="flex items-center gap-1">
-                          <FileText className="w-3 h-3" />
+                          <FileText className="w-3 h-3 flex-shrink-0" />
                           {apt.visit_type?.replace(/_/g, ' ')}
                         </span>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
+                      </div>
+                      <div className="flex gap-2 w-full sm:w-auto flex-shrink-0">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedAppointment(apt)}
+                        className="flex-1 sm:flex-initial text-xs sm:text-sm"
                       >
                         Details
                       </Button>
                       <Button
                         onClick={() => handleStartCall(apt)}
-                        className="bg-green-600 hover:bg-green-700"
+                        className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-initial text-xs sm:text-sm"
+                        size="sm"
                       >
-                        <Play className="w-4 h-4 mr-2" />
-                        Start Call
+                        <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                        <span className="hidden sm:inline">Start</span>
                       </Button>
-                    </div>
+                      </div>
                   </div>
                 </div>
               );

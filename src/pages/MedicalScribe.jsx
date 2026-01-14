@@ -93,36 +93,36 @@ export default function MedicalScribe() {
       onPatientCreated={handlePatientCreated}
     />
     <div className="w-full max-w-full overflow-hidden min-w-0">
-      <div className="p-2.5 sm:p-4 md:p-6 max-w-5xl mx-auto pb-24 sm:pb-8 w-full overflow-hidden">
-        {/* Header */}
-        <div className="mb-4 sm:mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2.5 bg-blue-100 rounded-full">
-              <Mic className="w-6 h-6 text-blue-600" />
+      <div className="p-2 sm:p-4 md:p-6 max-w-5xl mx-auto pb-24 sm:pb-8 w-full overflow-hidden">
+         {/* Header */}
+         <div className="mb-3 sm:mb-6">
+           <div className="flex items-center gap-2 sm:gap-3 mb-2">
+             <div className="p-2 sm:p-2.5 bg-blue-100 rounded-full flex-shrink-0">
+               <Mic className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Medical Scribe</h1>
-              <p className="text-sm text-gray-600 mt-1">Record or upload visit audio to auto-generate clinical notes</p>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Medical Scribe</h1>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1 hidden sm:block">Record or upload visit audio to auto-generate clinical notes</p>
             </div>
           </div>
         </div>
 
         {/* Info Card */}
-        <Alert className="mb-4 sm:mb-6 bg-blue-50 border-blue-200">
-          <Info className="w-4 h-4 text-blue-600" />
-          <AlertDescription className="text-sm text-blue-800">
+        <Alert className="mb-3 sm:mb-6 bg-blue-50 border-blue-200">
+          <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <AlertDescription className="text-xs sm:text-sm text-blue-800 ml-2">
             Record your patient visit conversation or upload an audio file. Our AI will transcribe it and generate a Medicare-compliant clinical note that you can review and refine.
           </AlertDescription>
         </Alert>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6 w-full overflow-hidden">
           {/* Setup Section */}
           <div className="lg:col-span-1">
-            <Card className="sticky top-4">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Setup</CardTitle>
+            <Card className="lg:sticky lg:top-4 overflow-hidden">
+              <CardHeader className="pb-2 sm:pb-3">
+                <CardTitle className="text-sm sm:text-base">Setup</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 sm:space-y-4">
                 <div>
                    <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
                    <Select value={selectedPatientId} onValueChange={(id) => {

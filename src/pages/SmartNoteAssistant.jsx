@@ -174,19 +174,19 @@ export default function SmartNoteAssistant() {
   );
 
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="min-h-screen p-2 sm:p-4 md:p-6 overflow-x-hidden">
+      <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8 w-full">
         {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold text-gray-900">Smart Note Assistant</h1>
-          <p className="text-lg text-gray-600">
+         <div className="space-y-2">
+           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Smart Note Assistant</h1>
+           <p className="text-sm sm:text-base md:text-lg text-gray-600">
             AI-powered clinical decision support for comprehensive patient analysis
           </p>
         </div>
 
         {/* Progress indicator */}
         {extractedData && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
             <Card className="border-green-200 bg-green-50">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2">
