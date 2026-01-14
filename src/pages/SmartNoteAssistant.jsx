@@ -161,11 +161,11 @@ export default function SmartNoteAssistant() {
   const SectionHeader = ({ icon: Icon, title, badge, section }) => (
     <button
       onClick={() => toggleSection(section)}
-      className="flex items-center justify-between w-full p-4 hover:bg-gray-50 rounded-t-lg"
-    >
+      className="flex items-center justify-between w-full p-4 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-t-lg"
+      >
       <div className="flex items-center gap-3">
-        <Icon className="w-5 h-5" />
-        <span className="font-semibold text-gray-900">{title}</span>
+        <Icon className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+        <span className="font-semibold text-slate-900 dark:text-slate-100">{title}</span>
         {badge && <Badge variant="secondary">{badge}</Badge>}
       </div>
       {collapsedSections[section] ? (
@@ -181,8 +181,8 @@ export default function SmartNoteAssistant() {
       <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8 w-full">
         {/* Header */}
          <div className="space-y-2">
-           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Smart Note Assistant</h1>
-           <p className="text-sm sm:text-base md:text-lg text-gray-600">
+           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-100">Smart Note Assistant</h1>
+             <p className="text-sm sm:text-base md:text-lg text-slate-600 dark:text-slate-400">
             AI-powered clinical decision support for comprehensive patient analysis
           </p>
         </div>
@@ -190,46 +190,46 @@ export default function SmartNoteAssistant() {
         {/* Progress indicator */}
         {extractedData && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-            <Card className="border-green-200 bg-green-50">
+            <Card className="border-slate-300 bg-slate-200 dark:bg-slate-800 dark:border-slate-600">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <CheckCircle2 className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                   <div>
-                    <p className="text-xs text-gray-600">Step 1</p>
-                    <p className="font-semibold text-green-700">Data Extracted</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Step 1</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Data Extracted</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-blue-200 bg-blue-50">
+            <Card className="border-slate-300 bg-slate-200 dark:bg-slate-800 dark:border-slate-600">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-blue-600" />
+                  <Brain className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                   <div>
-                    <p className="text-xs text-gray-600">Step 2</p>
-                    <p className="font-semibold text-blue-700">Diagnoses</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Step 2</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Diagnoses</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-orange-200 bg-orange-50">
+            <Card className="border-slate-300 bg-slate-200 dark:bg-slate-800 dark:border-slate-600">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2">
-                  <Pill className="w-5 h-5 text-orange-600" />
+                  <Pill className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                   <div>
-                    <p className="text-xs text-gray-600">Step 3</p>
-                    <p className="font-semibold text-orange-700">Medications</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Step 3</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Medications</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-red-200 bg-red-50">
+            <Card className="border-slate-300 bg-slate-200 dark:bg-slate-800 dark:border-slate-600">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-red-600" />
+                  <Heart className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                   <div>
-                    <p className="text-xs text-gray-600">Step 4</p>
-                    <p className="font-semibold text-red-700">Risks</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Step 4</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Risks</p>
                   </div>
                 </div>
               </CardContent>
@@ -286,21 +286,21 @@ export default function SmartNoteAssistant() {
                           setSelectedPatient(patient);
                           setActiveTab("extraction");
                         }}
-                        className={`w-full text-left p-3 border-b hover:bg-gray-50 transition ${
+                        className={`w-full text-left p-3 border-b hover:bg-slate-100 dark:hover:bg-slate-700 transition ${
                           selectedPatient?.id === patient.id
-                            ? "bg-blue-50 border-l-4 border-l-blue-600"
+                            ? "bg-slate-200 dark:bg-slate-700 border-l-4 border-l-slate-600"
                             : ""
                         }`}
                       >
-                        <p className="font-semibold text-gray-900">
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">
                           {patient.first_name} {patient.last_name}
                         </p>
-                        <p className="text-xs text-gray-600">
-                          MRN: {patient.medical_record_number} | DOB:{" "}
-                          {patient.date_of_birth}
-                        </p>
-                        {patient.primary_diagnosis && (
-                          <p className="text-xs text-gray-500 mt-1">
+                         <p className="text-xs text-slate-600 dark:text-slate-400">
+                           MRN: {patient.medical_record_number} | DOB:{" "}
+                           {patient.date_of_birth}
+                         </p>
+                         {patient.primary_diagnosis && (
+                           <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                             Primary: {patient.primary_diagnosis}
                           </p>
                         )}
@@ -319,14 +319,14 @@ export default function SmartNoteAssistant() {
                 </Button>
 
                 {selectedPatient && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-900">
-                          Selected: {selectedPatient.first_name}{" "}
-                          {selectedPatient.last_name}
-                        </p>
-                        <p className="text-sm text-gray-600">
+                  <div className="bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg p-4">
+                     <div className="flex items-start justify-between">
+                       <div>
+                         <p className="font-semibold text-slate-900 dark:text-slate-100">
+                           Selected: {selectedPatient.first_name}{" "}
+                           {selectedPatient.last_name}
+                         </p>
+                         <p className="text-sm text-slate-600 dark:text-slate-400">
                           MRN: {selectedPatient.medical_record_number}
                         </p>
                       </div>
@@ -480,9 +480,9 @@ export default function SmartNoteAssistant() {
           {/* Extraction Tab */}
           <TabsContent value="extraction" className="space-y-6">
             {selectedPatient ? (
-              <Card className="bg-blue-50 border-blue-200">
+              <Card className="bg-slate-200 border-slate-300 dark:bg-slate-800 dark:border-slate-600">
                 <CardContent className="pt-6">
-                  <p className="text-sm text-gray-700">
+                  <p className="text-sm text-slate-900 dark:text-slate-100">
                     <strong>Patient:</strong> {selectedPatient.first_name}{" "}
                     {selectedPatient.last_name} • MRN:{" "}
                     {selectedPatient.medical_record_number}
@@ -490,13 +490,13 @@ export default function SmartNoteAssistant() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="bg-amber-50 border-amber-200">
+              <Card className="bg-slate-200 border-slate-300 dark:bg-slate-800 dark:border-slate-600">
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <AlertTriangle className="w-5 h-5 text-slate-700 dark:text-slate-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm text-amber-900 font-semibold mb-1">Anonymous Mode</p>
-                      <p className="text-sm text-amber-800">
+                      <p className="text-sm text-slate-900 dark:text-slate-100 font-semibold mb-1">Anonymous Mode</p>
+                      <p className="text-sm text-slate-800 dark:text-slate-200">
                         No patient information will be saved. The note can be checked for compliance and enhanced, but won't be stored in patient records.
                       </p>
                     </div>
@@ -515,9 +515,9 @@ export default function SmartNoteAssistant() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-2">
-                    Visit Type *
-                  </label>
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-100 block mb-2">
+                     Visit Type *
+                   </label>
                   <select
                     value={visitType}
                     onChange={(e) => setVisitType(e.target.value)}
@@ -534,12 +534,12 @@ export default function SmartNoteAssistant() {
 
                 {/* Vitals Input */}
                 <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-2">
-                    Vital Signs (at least one required) *
-                  </label>
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-100 block mb-2">
+                     Vital Signs (at least one required) *
+                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-600">Temperature (°F)</label>
+                      <label className="text-xs text-slate-600 dark:text-slate-400">Temperature (°F)</label>
                       <input
                         type="number"
                         step="0.1"
@@ -550,7 +550,7 @@ export default function SmartNoteAssistant() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Heart Rate (bpm)</label>
+                      <label className="text-xs text-slate-600 dark:text-slate-400">Heart Rate (bpm)</label>
                       <input
                         type="number"
                         value={vitals.heart_rate}
@@ -560,7 +560,7 @@ export default function SmartNoteAssistant() {
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Blood Pressure (mmHg)</label>
+                      <label className="text-xs text-slate-600 dark:text-slate-400">Blood Pressure (mmHg)</label>
                       <div className="flex gap-2">
                         <input
                           type="number"
@@ -580,7 +580,7 @@ export default function SmartNoteAssistant() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Respiratory Rate</label>
+                      <label className="text-xs text-slate-600 dark:text-slate-400">Respiratory Rate</label>
                       <input
                         type="number"
                         value={vitals.respiratory_rate}
@@ -590,7 +590,7 @@ export default function SmartNoteAssistant() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">O2 Saturation (%)</label>
+                      <label className="text-xs text-slate-600 dark:text-slate-400">O2 Saturation (%)</label>
                       <input
                         type="number"
                         value={vitals.oxygen_saturation}
@@ -632,7 +632,7 @@ export default function SmartNoteAssistant() {
                       </p>
                       <ul className="space-y-1">
                         {getMissingRequirements().map((req, idx) => (
-                          <li key={idx} className="text-sm text-amber-800">
+                          <li key={idx} className="text-sm text-slate-800 dark:text-slate-200">
                             • {req}
                           </li>
                         ))}
@@ -646,15 +646,15 @@ export default function SmartNoteAssistant() {
                 {extractedData && (
                   <>
                     {/* Diagnoses Confirmation Section */}
-                <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+                <Card className="bg-slate-200 border-slate-300 dark:bg-slate-800 dark:border-slate-600">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Brain className="w-5 h-5 text-purple-600" />
+                      <Brain className="w-5 h-5 text-slate-700 dark:text-slate-400" />
                       Confirm Diagnoses
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-slate-900 dark:text-slate-100">
                       Select the diagnoses applicable to this patient:
                     </p>
                     <div className="space-y-2">
@@ -793,14 +793,14 @@ export default function SmartNoteAssistant() {
                 </Card>
 
                 {/* Summary Section */}
-                <Card className="bg-gradient-to-r from-indigo-50 to-blue-50">
+                <Card className="bg-slate-200 border-slate-300 dark:bg-slate-800 dark:border-slate-600">
                   <CardHeader>
-                    <CardTitle className="text-lg">Clinical Summary</CardTitle>
+                    <CardTitle className="text-lg text-slate-900 dark:text-slate-100">Clinical Summary</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid md:grid-cols-2 gap-6">
                       <div>
-                        <h4 className="font-semibold text-gray-900 mb-2">
+                        <h4 className="font-semibold text-slate-900 dark:text-slate-100 mb-2">
                           Primary Diagnoses
                         </h4>
                         <div className="space-y-1">
@@ -809,7 +809,7 @@ export default function SmartNoteAssistant() {
                               key={idx}
                               className="text-sm text-gray-700 flex items-center gap-2"
                             >
-                              <CheckCircle2 className="w-4 h-4 text-green-600" />
+                              <CheckCircle2 className="w-4 h-4 text-slate-700 dark:text-slate-400" />
                               {dx}
                             </div>
                           ))}
@@ -825,7 +825,7 @@ export default function SmartNoteAssistant() {
                               key={idx}
                               className="text-sm text-gray-700 flex items-center gap-2"
                             >
-                              <Pill className="w-4 h-4 text-blue-600" />
+                              <Pill className="w-4 h-4 text-slate-700 dark:text-slate-400" />
                               {med}
                             </div>
                           ))}
@@ -835,7 +835,7 @@ export default function SmartNoteAssistant() {
                     <div className="border-t pt-4 mt-4">
                       <Button
                         onClick={() => setShowInvoiceGenerator(!showInvoiceGenerator)}
-                        className="w-full bg-green-600 hover:bg-green-700"
+                        className="w-full bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white"
                       >
                         {showInvoiceGenerator ? 'Hide Invoice Generator' : 'Generate Invoice'}
                       </Button>

@@ -154,10 +154,10 @@ export default function Tasks() {
 
   const getPriorityColor = (priority) => {
     const colors = {
-      critical: "bg-red-600 text-white",
-      high: "bg-orange-500 text-white",
-      medium: "bg-yellow-500 text-white",
-      low: "bg-blue-500 text-white"
+      critical: "bg-slate-700 text-slate-100 dark:bg-slate-600",
+      high: "bg-slate-600 text-slate-100 dark:bg-slate-700",
+      medium: "bg-slate-500 text-slate-100 dark:bg-slate-600",
+      low: "bg-slate-400 text-slate-900 dark:bg-slate-700 dark:text-slate-100"
     };
     return colors[priority] || colors.medium;
   };
@@ -175,7 +175,7 @@ export default function Tasks() {
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
     >
-      <Card className={`${category === 'overdue' ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'dark:bg-gray-800'} hover-lift w-full max-w-full overflow-hidden`}>
+      <Card className={`${category === 'overdue' ? 'border-slate-400 bg-slate-200 dark:bg-slate-800' : 'dark:bg-slate-800'} hover-lift w-full max-w-full overflow-hidden`}>
         <CardContent className="p-3 sm:p-4 overflow-hidden">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -192,11 +192,11 @@ export default function Tasks() {
               )}
               <Badge variant="outline">{task.type}</Badge>
             </div>
-            <h3 className="font-semibold text-gray-900 mb-1">{task.title}</h3>
-            {task.description && (
-              <p className="text-sm text-gray-600 mb-2">{task.description}</p>
-            )}
-            <div className="flex items-center gap-4 text-xs text-gray-500">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">{task.title}</h3>
+             {task.description && (
+               <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{task.description}</p>
+             )}
+             <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-400">
               {task.due_date && (
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
@@ -253,27 +253,27 @@ export default function Tasks() {
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">My Tasks</h1>
-        <Button
-          onClick={() => {
-            setShowForm(true);
-            setEditingTask(null);
-            setNewTask({
-              title: "",
-              description: "",
-              type: "other",
-              priority: "medium",
-              status: "pending",
-              due_date: todayEastern(),
-              due_time: "",
-              notification_preferences: {
-                enabled: true,
-                notify_before_hours: 24,
-                notify_on_overdue: true
-              }
-            });
-          }}
-          className="bg-indigo-600 hover:bg-indigo-700 w-full sm:w-auto touch-target"
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">My Tasks</h1>
+         <Button
+           onClick={() => {
+             setShowForm(true);
+             setEditingTask(null);
+             setNewTask({
+               title: "",
+               description: "",
+               type: "other",
+               priority: "medium",
+               status: "pending",
+               due_date: todayEastern(),
+               due_time: "",
+               notification_preferences: {
+                 enabled: true,
+                 notify_before_hours: 24,
+                 notify_on_overdue: true
+               }
+             });
+           }}
+           className="bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white w-full sm:w-auto touch-target"
         >
           <Plus className="w-4 h-4 mr-2" />
           New Task
@@ -283,10 +283,10 @@ export default function Tasks() {
       <TaskNotifications userEmail={currentUser?.email} compact={true} />
 
       {(showForm || showRecurringSettings) && (
-        <Card className="mb-6 border-indigo-300 bg-indigo-50">
-          <CardHeader>
-            <CardTitle>{editingTask ? 'Edit Task' : 'Create New Task'}</CardTitle>
-          </CardHeader>
+        <Card className="mb-6 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800">
+             <CardHeader>
+               <CardTitle className="text-slate-900 dark:text-slate-100">{editingTask ? 'Edit Task' : 'Create New Task'}</CardTitle>
+             </CardHeader>
           <CardContent className="space-y-4">
             {!showRecurringSettings ? (
               <>
@@ -393,7 +393,7 @@ export default function Tasks() {
                     <Button variant="outline" onClick={() => setShowForm(false)}>
                       Cancel
                     </Button>
-                    <Button onClick={handleSubmit} className="bg-indigo-600 hover:bg-indigo-700">
+                    <Button onClick={handleSubmit} className="bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white">
                       {editingTask ? 'Update' : 'Create'} Task
                     </Button>
                   </div>
@@ -413,12 +413,12 @@ export default function Tasks() {
       <div className="mb-6 flex flex-col md:flex-row gap-4">
         <div className="flex-1">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
             <Input
               placeholder="Search tasks..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 bg-white dark:bg-slate-900"
             />
           </div>
         </div>
@@ -455,7 +455,7 @@ export default function Tasks() {
             <TabsTrigger value="overdue" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
             Overdue
             {categorizedTasks.overdue.length > 0 && (
-              <Badge className="ml-2 bg-red-600 text-white">{categorizedTasks.overdue.length}</Badge>
+              <Badge className="ml-2 bg-slate-600 dark:bg-slate-500 text-slate-100">{categorizedTasks.overdue.length}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="today" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
@@ -508,7 +508,7 @@ export default function Tasks() {
         <TabsContent value="upcoming" className="space-y-3">
           {categorizedTasks.upcoming.length === 0 ? (
             <Card>
-              <CardContent className="p-12 text-center text-gray-500">
+              <CardContent className="p-12 text-center text-slate-500 dark:text-slate-400">
                 No upcoming tasks
               </CardContent>
             </Card>
@@ -522,7 +522,7 @@ export default function Tasks() {
         <TabsContent value="noDueDate" className="space-y-3">
           {categorizedTasks.noDueDate.length === 0 ? (
             <Card>
-              <CardContent className="p-12 text-center text-gray-500">
+              <CardContent className="p-12 text-center text-slate-500 dark:text-slate-400">
                 No tasks without due dates
               </CardContent>
             </Card>
@@ -536,7 +536,7 @@ export default function Tasks() {
         <TabsContent value="completed" className="space-y-3">
           {categorizedTasks.completed.length === 0 ? (
             <Card>
-              <CardContent className="p-12 text-center text-gray-500">
+              <CardContent className="p-12 text-center text-slate-500 dark:text-slate-400">
                 No completed tasks
               </CardContent>
             </Card>

@@ -100,8 +100,8 @@ export default function Settings() {
   return (
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
       <div className="mb-4 sm:mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-        <p className="text-sm sm:text-base text-gray-600">Manage your account and data preferences</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">Settings</h1>
+         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage your account and data preferences</p>
       </div>
 
       <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
@@ -109,8 +109,8 @@ export default function Settings() {
         <Card className="w-full max-w-full overflow-hidden">
           <CardHeader>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <User className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-slate-900 dark:text-slate-100">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
                 Profile Information
               </CardTitle>
               {!isEditing ? (
@@ -238,8 +238,8 @@ export default function Settings() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-gray-500">Email (Cannot be changed)</Label>
-                  <p className="text-gray-900 mt-1">{currentUser?.email}</p>
+                  <Label className="text-slate-600 dark:text-slate-400">Email (Cannot be changed)</Label>
+                  <p className="text-slate-900 dark:text-slate-100 mt-1">{currentUser?.email}</p>
                 </div>
                 {currentUser?.role === 'admin' && (
                   <div>
@@ -282,7 +282,7 @@ export default function Settings() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Two-Factor Authentication</Label>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                       {currentUser?.data_retention_preference === 'save' 
                         ? 'Automatically enabled when saving patient data' 
                         : 'Require SMS code on login'}
@@ -298,20 +298,20 @@ export default function Settings() {
             ) : (
               <>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Name</p>
-                  <p className="text-gray-900">{currentUser?.full_name}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Email</p>
-                  <p className="text-gray-900">{currentUser?.email}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Credential Type</p>
-                  <p className="text-gray-900">{currentUser?.credential_type || 'RN'}</p>
-                </div>
-                <div>
-                   <p className="text-sm font-medium text-gray-500">Service Type</p>
-                   <p className="text-gray-900">
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Name</p>
+                   <p className="text-slate-900 dark:text-slate-100">{currentUser?.full_name}</p>
+                  </div>
+                  <div>
+                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Email</p>
+                   <p className="text-slate-900 dark:text-slate-100">{currentUser?.email}</p>
+                  </div>
+                  <div>
+                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Credential Type</p>
+                   <p className="text-slate-900 dark:text-slate-100">{currentUser?.credential_type || 'RN'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Service Type</p>
+                    <p className="text-slate-900 dark:text-slate-100">
                      {currentUser?.service_type === 'hospice' ? '🕊️ Hospice' :
                       currentUser?.service_type === 'hospital' ? '🏥 Hospital' :
                       currentUser?.service_type === 'clinic' ? '🏢 Clinic / Outpatient' :
@@ -325,8 +325,8 @@ export default function Settings() {
                    </p>
                  </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Preferred Language</p>
-                  <p className="text-gray-900">
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Preferred Language</p>
+                  <p className="text-slate-900 dark:text-slate-100">
                     {currentUser?.preferred_language === 'es-ES' ? '🇪🇸 Español' :
                      currentUser?.preferred_language === 'fr-FR' ? '🇫🇷 Français' :
                      currentUser?.preferred_language === 'de-DE' ? '🇩🇪 Deutsch' :
@@ -339,8 +339,8 @@ export default function Settings() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Phone Number</p>
-                  <p className="text-gray-900">{currentUser?.phone_number || 'Not set'}</p>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Phone Number</p>
+                  <p className="text-slate-900 dark:text-slate-100">{currentUser?.phone_number || 'Not set'}</p>
                 </div>
               </>
             )}
@@ -350,27 +350,27 @@ export default function Settings() {
         {/* Two-Factor Authentication */}
         <Card className="w-full max-w-full overflow-hidden">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-green-600" />
+            <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400" />
               Two-Factor Authentication
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <p className="text-gray-600">
+              <p className="text-slate-600 dark:text-slate-400">
                 Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
               </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-4">
                 <div className="flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-blue-900">Status: {currentUser?.two_factor_enabled ? 'Enabled' : 'Disabled'}</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Status: {currentUser?.two_factor_enabled ? 'Enabled' : 'Disabled'}</p>
                     {currentUser?.two_factor_enabled ? (
-                      <p className="text-sm text-blue-700 mt-1">
+                      <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
                         You'll receive a verification code at {currentUser?.phone_number} when logging in.
                       </p>
                     ) : (
-                      <p className="text-sm text-blue-700 mt-1">
+                     <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
                         Enable 2FA by adding your phone number and toggling the switch above.
                       </p>
                     )}
@@ -401,9 +401,9 @@ export default function Settings() {
         <ReferralCodeDisplay user={currentUser} />
 
         {/* Danger Zone */}
-        <Card className="border-red-200 w-full max-w-full overflow-hidden">
-          <CardHeader className="bg-red-50">
-            <CardTitle className="flex items-center gap-2 text-red-700 text-base sm:text-lg">
+        <Card className="border-slate-300 dark:border-slate-600 w-full max-w-full overflow-hidden">
+           <CardHeader className="bg-slate-200 dark:bg-slate-800">
+             <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100 text-base sm:text-lg">
               <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
               Danger Zone
             </CardTitle>
@@ -411,8 +411,8 @@ export default function Settings() {
           <CardContent className="pt-4 sm:pt-6">
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <h3 className="font-semibold text-red-900 mb-2 text-sm sm:text-base">Delete Account</h3>
-                <p className="text-sm text-gray-600 mb-4">
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-2 text-sm sm:text-base">Delete Account</h3>
+                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
                   Permanently delete your account and all associated data. This action cannot be undone.
                   All patient records, visits, notes, and other data will be permanently removed.
                 </p>
@@ -422,17 +422,17 @@ export default function Settings() {
                 <Button
                   variant="destructive"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="bg-red-600 hover:bg-red-700 min-h-[44px] w-full sm:w-auto"
+                  className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] w-full sm:w-auto text-white"
                 >
                   <AlertTriangle className="w-4 h-4 mr-2" />
                   Delete My Account
                 </Button>
               ) : (
                 <div className="border-2 border-red-200 rounded-lg p-3 sm:p-4 bg-red-50">
-                  <p className="text-sm font-semibold text-red-900 mb-3">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
                     Are you absolutely sure? This action is permanent and irreversible.
                   </p>
-                  <p className="text-sm text-gray-700 mb-3">
+                  <p className="text-sm text-slate-700 dark:text-slate-300 mb-3">
                     Type <span className="font-mono font-bold">DELETE</span> to confirm:
                   </p>
                   <Input
@@ -446,7 +446,7 @@ export default function Settings() {
                       variant="destructive"
                       onClick={handleDeleteAccount}
                       disabled={deleteConfirmText !== 'DELETE' || isDeleting}
-                      className="bg-red-600 hover:bg-red-700 min-h-[44px]"
+                      className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] text-white"
                     >
                       {isDeleting ? 'Deleting...' : 'Permanently Delete Account'}
                     </Button>
