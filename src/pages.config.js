@@ -6,7 +6,6 @@ import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
-import AppointmentBooking from './pages/AppointmentBooking';
 import AuditTrail from './pages/AuditTrail';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
 import Billing from './pages/Billing';
@@ -110,7 +109,6 @@ export const PAGES = {
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
     "AnalyticsDashboard": AnalyticsDashboard,
-    "AppointmentBooking": AppointmentBooking,
     "AuditTrail": AuditTrail,
     "AutomaticCarePlans": AutomaticCarePlans,
     "Billing": Billing,
