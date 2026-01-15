@@ -1,416 +1,91 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Sparkles, Apple, RefreshCw } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { isApplePlatform } from "@/components/utils/platformDetection";
-import { useAppleIAP, APPLE_PRODUCTS } from "@/components/subscription/AppleIAPManager";
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { CheckCircle2, Loader2 } from 'lucide-react';
+import { loadStripe } from '@stripe/stripe-js';
 
+// IMPORTANT: Replace with your actual Stripe publishable key
+const stripePromise = loadStripe('pk_test_YOUR_PUBLISHABLE_KEY'); 
 
 export default function SubscriptionPlans() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('monthly');
-  const isApple = isApplePlatform();
-  const { purchaseSubscription, restorePurchases, isProcessing } = useAppleIAP();
+  const [loadingPriceId, setLoadingPriceId] = useState(null);
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  const { data: subscription } = useQuery({
-    queryKey: ['userSubscription', currentUser?.email],
-    queryFn: () => base44.entities.Subscription.filter({ user_email: currentUser.email }),
-    enabled: !!currentUser?.email,
-    select: (data) => data[0]
-  });
-
-  const { data: settings } = useQuery({
+  const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['subscriptionSettings'],
     queryFn: async () => {
       const result = await base44.entities.SubscriptionSettings.list();
-      return result[0];
+      return result.length > 0 ? result[0] : null;
     }
   });
-
-  const checkoutMutation = useMutation({
-    mutationFn: async (priceId) => {
-      console.log('Invoking createStripeCheckout with priceId:', priceId);
-      const response = await base44.functions.invoke('createStripeCheckout', { priceId });
-      console.log('Checkout response:', response);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      console.log('Checkout successful, redirecting to:', data.url);
-      if (data.url) {
-        // Use window.top to break out of iframe (Base44 preview window)
-        if (window.top) {
-          window.top.location.href = data.url;
-        } else {
-          window.location.href = data.url;
-        }
-      } else {
-        console.error('No URL in response');
-        alert('Failed to get checkout URL');
-        setIsLoading(false);
-      }
-    },
-    onError: (error) => {
-      console.error('Checkout error:', error);
-      alert('Failed to start checkout: ' + (error.message || 'Unknown error'));
-      setIsLoading(false);
-    }
-  });
-
-  const handleSubscribe = async (plan) => {
-    setIsLoading(true);
-    setSelectedPlan(plan);
-    
-    // Handle Apple IAP for iOS
-    if (isApple) {
-      try {
-        const productMap = {
-          'monthly': APPLE_PRODUCTS.monthly,
-          'quarterly': APPLE_PRODUCTS.quarterly,
-          'biannual': APPLE_PRODUCTS.semiannual,
-          'yearly': APPLE_PRODUCTS.annual
-        };
-
-        const productId = productMap[plan];
-        if (!productId) {
-          alert('Invalid subscription plan');
-          setIsLoading(false);
-          return;
-        }
-
-        const result = await purchaseSubscription(productId, currentUser?.email);
-
-        // Verify with backend
-        const verifyResponse = await base44.functions.invoke('verifyAppleReceipt', {
-          receiptData: result.receiptData,
-          productId: productId,
-          transactionId: result.transactionId,
-          purchaseDate: result.purchaseDate,
-          expiryDate: result.expiryDate
-        });
-
-        console.log('Verification response:', verifyResponse);
-
-        if (verifyResponse?.data?.success) {
-          alert('Subscription activated! Welcome to Premium! 🎉');
-
-          // Full reload to ensure all components recognize premium status
-          window.location.href = createPageUrl('Dashboard');
-        } else {
-          setIsLoading(false);
-          alert('Purchase completed but verification failed. Please contact support with transaction ID: ' + result.transactionId);
-        }
-      } catch (error) {
-        console.error('Apple IAP error:', error);
-        setIsLoading(false);
-        alert('Purchase failed: ' + error.message);
-      }
-    } else {
-      // Use Stripe for web/Android
-      const planObj = plans.find(p => p.id === plan);
-      if (!planObj || !planObj.priceId) {
-        alert('Invalid plan selected');
-        setIsLoading(false);
-        return;
-      }
-      checkoutMutation.mutate(planObj.priceId);
-    }
-  };
-
-  const hasActiveSubscription = subscription && (subscription.status === 'active' || subscription.status === 'trialing' || subscription.status === 'lifetime_free');
-  const trialDays = settings?.trial_days || 14;
-
-  const handleRestorePurchases = async () => {
-    setIsRestoring(true);
-    try {
-      // First check if user already has a subscription in backend
-      const response = await base44.functions.invoke('getMySubscription', {});
-      const existingSub = response?.data?.subscription || response?.subscription;
-      
-      if (existingSub && (existingSub.status === 'active' || existingSub.status === 'trialing' || existingSub.status === 'lifetime_free')) {
-        alert('Your subscription has been restored! Refreshing app...');
-        // Clear cache and reload to unlock pages
-        queryClient.clear();
-        window.location.href = createPageUrl('Dashboard');
-        return;
-      }
-      
-      // If on Apple platform, try iOS restore
-      if (isApple) {
-        const result = await restorePurchases(currentUser?.email);
-        if (result.transactions?.length > 0) {
-          alert(`Restored ${result.transactions.length} purchase(s)! Refreshing app...`);
-          // Clear cache and reload to unlock pages
-          queryClient.clear();
-          setTimeout(() => {
-            window.location.href = createPageUrl('Dashboard');
-          }, 1000);
-        } else {
-          alert('No purchases found to restore. If you subscribed with a different account, please sign in with that account.');
-        }
-      } else {
-        // For non-Apple platforms, just check the backend
-        alert('No active subscription found. Please contact support if you believe this is an error.');
-      }
-    } catch (error) {
-      console.error('Restore purchases error:', error);
-      alert('Failed to restore purchases: ' + error.message);
-    } finally {
-      setIsRestoring(false);
-    }
-  };
-  const features = settings?.features || [
-    'Unlimited patients',
-    'AI-powered documentation',
-    'Real-time compliance monitoring',
-    'Voice dictation',
-    'Predictive analytics',
-    'Care plan automation',
-    'OASIS integration',
-    'Priority support',
-    'All premium features'
-  ];
 
   const plans = [
-    {
-      id: 'monthly',
-      name: 'Monthly',
-      price: settings?.monthly_price || 39.99,
-      interval: '/month',
-      popular: false,
-      savings: null,
-      priceId: 'price_1SioNUCEZXcVOdjd7EzodOpc'
-    },
-    {
-      id: 'quarterly',
-      name: '3-Month',
-      price: settings?.quarterly_price || 114.99,
-      interval: '/3 months',
-      popular: false,
-      savings: 'Save 4%',
-      priceId: 'price_1SioSoCEZXcVOdjdPYzUvQiX'
-    },
-    {
-      id: 'biannual',
-      name: '6-Month',
-      price: settings?.biannual_price || 209.99,
-      interval: '/6 months',
-      popular: true,
-      savings: 'Save 13%',
-      monthlyEquiv: '$35/mo',
-      priceId: 'price_1SioOnCEZXcVOdjdM5Ou6Wqj'
-    },
-    {
-      id: 'yearly',
-      name: 'Annual',
-      price: settings?.yearly_price || 349.99,
-      interval: '/year',
-      popular: false,
-      savings: 'Save 27%',
-      monthlyEquiv: '$29/mo',
-      priceId: 'price_1SioPVCEZXcVOdjdLjX5A9AR'
-    }
+    { name: 'Monthly', price: settings?.monthly_price, priceId: settings?.stripe_monthly_price_id, period: '/ month' },
+    { name: 'Quarterly', price: settings?.quarterly_price, priceId: settings?.stripe_quarterly_price_id, period: '/ 3 months' },
+    { name: 'Biannual', price: settings?.biannual_price, priceId: settings?.stripe_biannual_price_id, period: '/ 6 months' },
+    { name: 'Yearly', price: settings?.yearly_price, priceId: settings?.stripe_yearly_price_id, period: '/ year' },
   ];
 
-  return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">Choose Your Plan</h1>
-        <p className="text-xl text-gray-600">Flexible pricing for every practice</p>
-        {isApple && (
-          <Badge className="mt-2 bg-gray-900 text-white text-sm px-3 py-1 flex items-center gap-1 justify-center w-fit mx-auto">
-            <Apple className="w-4 h-4" />
-            Apple In-App Purchase
-          </Badge>
-        )}
-        {hasActiveSubscription && (
-          <Badge className="mt-4 bg-green-600 text-lg px-4 py-2">
-            ✓ Currently Subscribed
-          </Badge>
-        )}
-      </div>
+  const handleCheckout = async (priceId) => {
+    if (!priceId) {
+      alert("Stripe price ID is not configured for this plan.");
+      return;
+    }
+    setLoadingPriceId(priceId);
+    try {
+      const { data } = await base44.functions.invoke('createStripeCheckout', { priceId });
+      const stripe = await stripePromise;
+      const { error } = await stripe.redirectToCheckout({ sessionId: data.sessionId });
+      if (error) {
+        console.error("Stripe checkout error:", error);
+        setLoadingPriceId(null);
+      }
+    } catch (error) {
+      console.error("Failed to create checkout session:", error);
+      setLoadingPriceId(null);
+    }
+  };
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+  if (settingsLoading) {
+    return <div className="p-8 text-center">Loading plans...</div>;
+  }
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto">
+      <h1 className="text-4xl font-bold text-center mb-4">Our Plans</h1>
+      <p className="text-center text-gray-600 mb-12">Choose the plan that's right for you.</p>
+
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
         {plans.map((plan) => (
-          <Card key={plan.id} className={`relative ${plan.popular ? 'border-4 border-indigo-500 shadow-2xl' : 'border-2'}`}>
-            {plan.popular && (
-              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                <Badge className="bg-indigo-600 text-white px-4 py-1">Most Popular</Badge>
-              </div>
-            )}
-            <CardHeader className={plan.popular ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white' : ''}>
-              <CardTitle className="text-center">
-                <div className={`text-2xl font-bold mb-2 ${plan.popular ? 'text-white' : 'text-gray-900'}`}>{plan.name}</div>
-                <div className={`text-4xl font-bold mb-1 ${plan.popular ? 'text-white' : 'text-gray-900'}`}>${plan.price}</div>
-                <div className={`text-sm ${plan.popular ? 'text-white/90' : 'text-gray-600'}`}>{plan.interval}</div>
-                {plan.monthlyEquiv && (
-                  <div className={`text-sm mt-1 ${plan.popular ? 'text-white/80' : 'text-gray-500'}`}>({plan.monthlyEquiv})</div>
-                )}
-                {plan.savings && (
-                  <Badge className={`mt-2 ${plan.popular ? 'bg-yellow-400 text-yellow-900' : 'bg-green-100 text-green-800'}`}>
-                    {plan.savings}
-                  </Badge>
-                )}
-              </CardTitle>
+          <Card key={plan.name} className="flex flex-col">
+            <CardHeader>
+              <CardTitle className="text-2xl">{plan.name}</CardTitle>
             </CardHeader>
-            <CardContent className="p-6">
-              <div className="mb-4 space-y-2 text-sm text-gray-700">
-                <p className="font-semibold text-gray-900">Includes:</p>
-                <ul className="space-y-1">
-                  <li className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span>AI-powered clinical documentation</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span>Unlimited patient records</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span>Real-time compliance monitoring</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span>Voice dictation & transcription</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span>Care plan automation</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span>Priority support</span>
-                  </li>
-                </ul>
-              </div>
+            <CardContent className="flex-grow flex flex-col">
+              <p className="text-4xl font-bold mb-2">
+                ${plan.price}
+                <span className="text-lg font-normal text-gray-500">{plan.period}</span>
+              </p>
+              <ul className="space-y-2 text-gray-600 my-6 flex-grow">
+                {(settings?.features || []).map(feature => (
+                   <li key={feature} className="flex items-center gap-2">
+                     <CheckCircle2 className="w-5 h-5 text-green-500" />
+                     {feature}
+                   </li>
+                ))}
+              </ul>
               <Button
-                onClick={() => handleSubscribe(plan.id)}
-                disabled={hasActiveSubscription || (isLoading && selectedPlan === plan.id) || (isApple && isProcessing) || isRestoring}
-                className={`w-full ${
-                  plan.popular 
-                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700' 
-                    : 'bg-gray-900 hover:bg-gray-800'
-                }`}
+                onClick={() => handleCheckout(plan.priceId)}
+                disabled={!plan.priceId || loadingPriceId === plan.priceId}
+                className="w-full mt-auto"
               >
-                {isLoading && selectedPlan === plan.id ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {isApple ? 'Processing...' : 'Loading...'}
-                  </>
-                ) : hasActiveSubscription ? (
-                  'Current Plan'
-                ) : isApple ? (
-                  <>
-                    <Apple className="w-4 h-4 mr-2" />
-                    Subscribe
-                  </>
-                ) : (
-                  'Select Plan'
-                )}
-              </Button>
-              
-              {/* Restore Purchase Button */}
-              <Button
-                onClick={handleRestorePurchases}
-                disabled={isRestoring || isLoading || (isApple && isProcessing)}
-                variant="ghost"
-                className="w-full mt-2 text-gray-600 hover:text-gray-900"
-                size="sm"
-              >
-                {isRestoring ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Restoring...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Restore Purchase
-                  </>
-                )}
+                {loadingPriceId === plan.priceId ? <Loader2 className="animate-spin" /> : 'Choose Plan'}
               </Button>
             </CardContent>
           </Card>
         ))}
       </div>
-
-      <Card className="border-2 border-gray-200">
-        <CardHeader>
-          <CardTitle className="text-center flex items-center justify-center gap-2">
-            <Sparkles className="w-6 h-6 text-indigo-600" />
-            All Plans Include
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-8">
-          <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {features.map((feature, idx) => (
-              <li key={idx} className="flex items-start gap-2">
-                <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700">{feature}</span>
-              </li>
-            ))}
-          </ul>
-          
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mt-6">
-            <h4 className="font-semibold text-blue-900 mb-2">What You Get:</h4>
-            <ul className="space-y-1 text-sm text-blue-800">
-              <li>• Start with a {trialDays}-day free trial</li>
-              <li>• Cancel anytime, no commitments</li>
-              <li>• Full access to all features during trial</li>
-              <li>• Automatically converts to paid subscription after trial</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
-
-      {hasActiveSubscription && (
-        <div className="text-center mt-8">
-          <Card className="inline-block bg-gray-50 border-2 border-dashed">
-            <CardContent className="p-6">
-              <p className="text-gray-700 mb-4">
-                Manage your subscription and billing in settings
-              </p>
-              <Button 
-                variant="outline"
-                onClick={() => navigate(createPageUrl("Billing"))}
-              >
-                Go to Billing
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Legal Links */}
-      <Card className="mt-8">
-        <CardContent className="p-6">
-          <div className="flex flex-wrap justify-center gap-4 text-sm text-gray-600">
-            <a href={createPageUrl("TermsOfUse")} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">
-              Terms of Use
-            </a>
-            <span className="text-gray-400">•</span>
-            <a href={createPageUrl("PrivacyPolicy")} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">
-              Privacy Policy
-            </a>
-            <span className="text-gray-400">•</span>
-            <a href={createPageUrl("EULA")} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">
-              EULA
-            </a>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
