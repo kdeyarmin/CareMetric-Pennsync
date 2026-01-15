@@ -94,14 +94,15 @@ export default function Features() {
     setIsGeneratingGuide(true);
     try {
       const response = await base44.functions.invoke('generateUserGuidePDF', {});
-      if (response?.data?.file_url) {
-        const link = document.createElement('a');
-        link.href = response.data.file_url;
-        link.download = 'CareMetric-AI-User-Guide.pdf';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'CareMetric-AI-User-Guide.pdf';
+      document.body.appendChild(link);
+      link.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(link);
     } catch (error) {
       console.error('Error generating guide:', error);
       alert('Failed to generate user guide');
