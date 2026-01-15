@@ -297,30 +297,69 @@ Deno.serve(async (req) => {
     const contentWidth = pageWidth - 2 * margin;
     let yPosition = margin;
 
-    // Title Page
-    doc.setFontSize(28);
-    doc.setFont(undefined, 'bold');
-    doc.text('CareMetric AI', margin, yPosition);
+    // Title Page - Add background
+    doc.setFillColor(41, 98, 255);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
     
+    // White content area
+    doc.setFillColor(255, 255, 255);
+    doc.rect(margin - 5, margin, contentWidth + 10, pageHeight - 2 * margin, 'F');
+
+    // Logo area (placeholder - white space for logo)
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.1);
+    doc.rect(margin, margin + 5, 40, 20);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text('CareMetric Logo', margin + 2, margin + 18);
+
+    // Main title
+    yPosition = margin + 35;
+    doc.setFontSize(36);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(41, 98, 255);
+    doc.text('CareMetric AI', margin + 5, yPosition);
+    
+    // Subtitle
     yPosition += 15;
-    doc.setFontSize(18);
+    doc.setFontSize(20);
     doc.setFont(undefined, 'normal');
-    doc.setTextColor(100, 100, 100);
-    doc.text('Comprehensive User Guide', margin, yPosition);
+    doc.setTextColor(80, 80, 80);
+    doc.text('Comprehensive User Guide', margin + 5, yPosition);
 
-    yPosition += 20;
+    // Tagline
+    yPosition += 18;
     doc.setFontSize(11);
-    doc.setTextColor(0, 0, 0);
-    doc.text('Streamline Documentation • Enhance Compliance • Improve Patient Outcomes', margin, yPosition);
+    doc.setTextColor(120, 120, 120);
+    const taglineLines = doc.splitTextToSize('Streamline Documentation • Enhance Compliance • Improve Patient Outcomes', contentWidth - 10);
+    doc.text(taglineLines, margin + 5, yPosition);
 
-    yPosition += 25;
+    // Divider line
+    yPosition += taglineLines.length * 5 + 12;
+    doc.setDrawColor(41, 98, 255);
+    doc.setLineWidth(0.5);
+    doc.line(margin + 5, yPosition, margin + contentWidth - 5, yPosition);
+
+    // Document info
+    yPosition += 15;
     doc.setFontSize(10);
     doc.setFont(undefined, 'normal');
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Document Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
-    doc.text(`For: Healthcare Documentation & Compliance Solutions`, margin, yPosition + 6);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin + 5, yPosition);
+    yPosition += 8;
+    doc.text('Healthcare Documentation & Compliance Solutions', margin + 5, yPosition);
 
-    yPosition += 30;
+    // Footer
+    yPosition = pageHeight - margin - 20;
+    doc.setFontSize(9);
+    doc.setTextColor(150, 150, 150);
+    const footerText = 'Designed to maximize efficiency, ensure compliance, and improve patient outcomes through intelligent healthcare documentation.';
+    const footerLines = doc.splitTextToSize(footerText, contentWidth - 10);
+    doc.text(footerLines, margin + 5, yPosition);
+
+    yPosition = pageHeight - margin - 5;
+    doc.setFontSize(8);
+    doc.text('www.caremetricai.com', margin + 5, yPosition);
 
     // Add each feature section
     for (const feature of FEATURES_GUIDE) {
