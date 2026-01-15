@@ -153,7 +153,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
   { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
   { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
-  { name: "My Learning", icon: Target, page: "PersonalizedLearningPath" },
+  { name: "My Training", icon: Target, page: "MyTraining" },
   { name: "Tasks", icon: ListTodo, page: "Tasks" },
   { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" },
   { name: "Settings", icon: Settings, page: "Settings" }];
