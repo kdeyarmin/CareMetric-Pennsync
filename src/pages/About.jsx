@@ -2,7 +2,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Shield, FileText, Video, Target, Sparkles, CheckCircle2, Brain
+  Shield, FileText, Target, Sparkles, CheckCircle2, Brain
 } from "lucide-react";
 
 export const publicPage = true;

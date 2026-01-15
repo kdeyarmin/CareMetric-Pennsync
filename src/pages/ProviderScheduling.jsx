@@ -9,7 +9,7 @@ export default function ProviderScheduling() {
       <h1 className="text-4xl font-bold">Schedule Management</h1>
 
       <Tabs defaultValue="calendar" className="space-y-4">
-        <TabsList className="grid grid-cols-2 w-full">
+        <TabsList className="grid grid-cols-1 sm:grid-cols-2 w-full max-w-xs mx-auto">
           <TabsTrigger value="calendar">Calendar</TabsTrigger>
           <TabsTrigger value="availability">My Availability</TabsTrigger>
         </TabsList>
