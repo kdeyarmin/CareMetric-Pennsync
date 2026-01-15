@@ -68,8 +68,6 @@ export default function ProviderSpecializationManager({ currentUser }) {
       specialty_name: '',
       specialty_code: '',
       description: '',
-      expertise_level: 'intermediate',
-      years_of_experience: 0,
       is_primary: specializations.length === 0
     });
     setIsAdding(true);
@@ -154,35 +152,6 @@ export default function ProviderSpecializationManager({ currentUser }) {
             </div>
 
             <div>
-              <Label>Expertise Level</Label>
-              <Select
-                value={formData?.expertise_level || 'intermediate'}
-                onValueChange={(value) => setFormData({ ...formData, expertise_level: value })}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="beginner">Beginner</SelectItem>
-                  <SelectItem value="intermediate">Intermediate</SelectItem>
-                  <SelectItem value="advanced">Advanced</SelectItem>
-                  <SelectItem value="expert">Expert</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Years of Experience</Label>
-              <Input
-                type="number"
-                value={formData?.years_of_experience || 0}
-                onChange={(e) => setFormData({ ...formData, years_of_experience: parseInt(e.target.value) })}
-                placeholder="Years"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
               <Label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -228,16 +197,6 @@ export default function ProviderSpecializationManager({ currentUser }) {
                       {spec.is_primary && <Badge className="bg-blue-600">Primary</Badge>}
                     </div>
                     <p className="text-sm text-gray-600 mb-2">{spec.description}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {spec.expertise_level}
-                      </Badge>
-                      {spec.years_of_experience > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          {spec.years_of_experience} yrs
-                        </Badge>
-                      )}
-                    </div>
                   </div>
                   <div className="flex gap-2 ml-2">
                     <Button
