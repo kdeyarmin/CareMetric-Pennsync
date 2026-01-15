@@ -293,32 +293,36 @@ export default function Dashboard() {
 
 
 
-      {/* Telehealth Quick Launcher */}
-      <QuickTelehealthLauncher
-        todayAppointments={todayTelehealthAppointments}
-        onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))}
-      />
+      {/* Telehealth Quick Launcher - only for providers with telehealth access */}
+      {canAccessWidget('telehealth') && (
+        <QuickTelehealthLauncher
+          todayAppointments={todayTelehealthAppointments}
+          onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))}
+        />
+      )}
 
 
-      {/* Critical Alerts & Compliance Section */}
-      <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden">
-          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
-            <ComplianceAlertNotifications 
-              nurseEmail={currentUser?.email}
-              showAll={false}
-              maxAlerts={5}
-              compact={true}
-            />
-          )}
-          {(!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits.length > 0 && visits[0]?.patient_id && (
-            <ProactiveClinicalSupport 
-              patientId={visits[0].patient_id}
-              compact={true}
-            />
-          )}
-        </div>
-      </DashboardSection>
+      {/* Critical Alerts & Compliance Section - only for providers with access */}
+      {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) && (
+        <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden">
+            {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
+              <ComplianceAlertNotifications 
+                nurseEmail={currentUser?.email}
+                showAll={false}
+                maxAlerts={5}
+                compact={true}
+              />
+            )}
+            {canAccessWidget('clinicalSupport') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits.length > 0 && visits[0]?.patient_id && (
+              <ProactiveClinicalSupport 
+                patientId={visits[0].patient_id}
+                compact={true}
+              />
+            )}
+          </div>
+        </DashboardSection>
+      )}
 
 
 
