@@ -1,4 +1,5 @@
 import About from './pages/About';
+import Admin from './pages/Admin';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
@@ -11,12 +12,13 @@ import Billing from './pages/Billing';
 import BillingInvoicing from './pages/BillingInvoicing';
 import BillingModule from './pages/BillingModule';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
-import Onboarding from './pages/Onboarding';
+import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import ComplianceRegulatory from './pages/ComplianceRegulatory';
+import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentGenerator from './pages/DocumentGenerator';
 import DocumentVisit from './pages/DocumentVisit';
@@ -30,6 +32,7 @@ import HealthRecords from './pages/HealthRecords';
 import HowToGuide from './pages/HowToGuide';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
+import MedicalScribe from './pages/MedicalScribe';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
 import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
 import MobileWorkflow from './pages/MobileWorkflow';
@@ -49,6 +52,7 @@ import OASISDocumentationReview from './pages/OASISDocumentationReview';
 import OASISRevenueAnalysis from './pages/OASISRevenueAnalysis';
 import OASISReview from './pages/OASISReview';
 import OfflineMode from './pages/OfflineMode';
+import Onboarding from './pages/Onboarding';
 import PatientAlerts from './pages/PatientAlerts';
 import PatientBilling from './pages/PatientBilling';
 import PatientDashboard from './pages/PatientDashboard';
@@ -60,6 +64,7 @@ import PatientEducationHub from './pages/PatientEducationHub';
 import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import PatientMessaging from './pages/PatientMessaging';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
+import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
@@ -75,6 +80,7 @@ import SecurityAudit from './pages/SecurityAudit';
 import SecurityAuditReport from './pages/SecurityAuditReport';
 import SecurityCompliance from './pages/SecurityCompliance';
 import SecurityPolicy from './pages/SecurityPolicy';
+import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import StaffTraining from './pages/StaffTraining';
 import StaffTrainingHub from './pages/StaffTrainingHub';
@@ -91,18 +97,12 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AdminUserManagement from './pages/AdminUserManagement';
-import CarePlanManagement from './pages/CarePlanManagement';
-import Patients from './pages/Patients';
-import Settings from './pages/Settings';
-import Dashboard from './pages/Dashboard';
-import Admin from './pages/Admin';
-import MedicalScribe from './pages/MedicalScribe';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "About": About,
+    "Admin": Admin,
     "AdminDashboard": AdminDashboard,
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
     "AdminTrainingAnalytics": AdminTrainingAnalytics,
@@ -115,12 +115,13 @@ export const PAGES = {
     "BillingInvoicing": BillingInvoicing,
     "BillingModule": BillingModule,
     "CareCoordinationDashboard": CareCoordinationDashboard,
-    "Onboarding": Onboarding,
+    "CarePlanManagement": CarePlanManagement,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
     "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
     "ComplianceRegulatory": ComplianceRegulatory,
+    "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
     "DocumentGenerator": DocumentGenerator,
     "DocumentVisit": DocumentVisit,
@@ -134,6 +135,7 @@ export const PAGES = {
     "HowToGuide": HowToGuide,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
+    "MedicalScribe": MedicalScribe,
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
     "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
     "MobileWorkflow": MobileWorkflow,
@@ -153,6 +155,7 @@ export const PAGES = {
     "OASISRevenueAnalysis": OASISRevenueAnalysis,
     "OASISReview": OASISReview,
     "OfflineMode": OfflineMode,
+    "Onboarding": Onboarding,
     "PatientAlerts": PatientAlerts,
     "PatientBilling": PatientBilling,
     "PatientDashboard": PatientDashboard,
@@ -164,6 +167,7 @@ export const PAGES = {
     "PatientEducationLibrary": PatientEducationLibrary,
     "PatientMessaging": PatientMessaging,
     "PatientRecordDashboard": PatientRecordDashboard,
+    "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
     "PersonalizedLearningPath": PersonalizedLearningPath,
     "PredictiveAnalytics": PredictiveAnalytics,
@@ -179,6 +183,7 @@ export const PAGES = {
     "SecurityAuditReport": SecurityAuditReport,
     "SecurityCompliance": SecurityCompliance,
     "SecurityPolicy": SecurityPolicy,
+    "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
     "StaffTraining": StaffTraining,
     "StaffTrainingHub": StaffTrainingHub,
@@ -195,13 +200,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "AdminUserManagement": AdminUserManagement,
-    "CarePlanManagement": CarePlanManagement,
-    "Patients": Patients,
-    "Settings": Settings,
-    "Dashboard": Dashboard,
-    "Admin": Admin,
-    "MedicalScribe": MedicalScribe,
 }
 
 export const pagesConfig = {
