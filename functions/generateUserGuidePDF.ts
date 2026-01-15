@@ -112,20 +112,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "OASIS & Compliance",
-    description: "Automated OASIS validation and Medicare compliance checking.",
+    description: "Ensure Medicare OASIS compliance through automated validation against CMS requirements, reducing audit risk and improving revenue cycle management.",
     howToUse: [
-      "1. Navigate to OASIS page",
-      "2. Enter or upload OASIS data",
-      "3. System automatically validates against CMS rules",
-      "4. Review any flagged items",
-      "5. Make corrections and submit with confidence"
+      "1. Navigate to OASIS section from main menu",
+      "2. Enter or upload OASIS data in designated fields",
+      "3. System automatically validates data against current CMS requirements and rules",
+      "4. Review any flagged items with clinical or administrative concerns",
+      "5. Make necessary corrections and submit assessment with supervisory approval"
     ],
     bestPractices: [
-      "Complete OASIS timely in patient care workflow",
-      "Cross-reference clinical documentation with OASIS",
-      "Use AI suggestions for missing or conflicting data",
-      "Have supervisor review before final submission",
-      "Document rationale for any override decisions"
+      "Complete OASIS assessment contemporaneously within care delivery workflow",
+      "Cross-reference all OASIS responses with supporting clinical documentation",
+      "Leverage AI-provided suggestions to identify missing or conflicting data elements",
+      "Obtain supervisory or administrative review prior to final OASIS submission",
+      "Document clinical rationale for any manual overrides or exceptional decisions"
     ]
   },
   {
