@@ -155,8 +155,8 @@ export default function Layout({ children, currentPageName }) {
     { name: "Settings", icon: Settings, page: "Settings" }
   ];
 
-  const accessiblePages = currentUser?.provider_type 
-    ? getAccessiblePages(currentUser.provider_type)
+  const accessiblePages = currentUser?.credential_type 
+    ? getAccessiblePages(currentUser.credential_type)
     : [];
 
   const userNavItems = allNavItems.filter(item => 
