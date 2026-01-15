@@ -98,7 +98,6 @@ import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import CarePlanManagement from './pages/CarePlanManagement';
 import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
-import ProviderScheduling from './pages/ProviderScheduling';
 import __Layout from './Layout.jsx';
 
 
@@ -203,7 +202,6 @@ export const PAGES = {
     "WorkflowAutomation": WorkflowAutomation,
     "CarePlanManagement": CarePlanManagement,
     "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
-    "ProviderScheduling": ProviderScheduling,
 }
 
 export const pagesConfig = {
