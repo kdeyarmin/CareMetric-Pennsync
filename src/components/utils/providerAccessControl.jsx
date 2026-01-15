@@ -228,7 +228,9 @@ export const PROVIDER_PAGE_ACCESS = {
     'StaffTrainingHub',
     'MyAILearning',
     'Settings',
-    'ProviderSettings'
+    'ProviderSettings',
+    'OASIS',
+    'Compliance'
   ],
   LPN: [
     'Dashboard',
@@ -243,7 +245,9 @@ export const PROVIDER_PAGE_ACCESS = {
     'TelehealthDashboard',
     'TelehealthVisit',
     'Settings',
-    'ProviderSettings'
+    'ProviderSettings',
+    'OASIS',
+    'Compliance'
   ],
   NP: [
     'Dashboard',
@@ -297,7 +301,9 @@ export const PROVIDER_PAGE_ACCESS = {
     'TelehealthVisit',
     'ProviderScheduling',
     'Settings',
-    'ProviderSettings'
+    'ProviderSettings',
+    'OASIS',
+    'Compliance'
   ],
   MSW: [
     'Dashboard',

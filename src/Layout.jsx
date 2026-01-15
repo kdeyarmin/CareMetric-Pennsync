@@ -5,29 +5,30 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-                        Home,
-                        Users,
-                        User,
-                        WifiOff,
-                        GraduationCap,
-                        BarChart3,
-                        Settings,
-                        Menu,
-                        X,
-                        Brain,
-                        Target,
-                        Bell,
-                        LogOut,
-                        ChevronLeft,
-                        ChevronRight,
-                        Sparkles,
-                        Activity,
-                        CreditCard,
-                        Mic,
-                        Phone,
-                        Video,
-                        UserPlus
-                      } from "lucide-react";
+                              Home,
+                              Users,
+                              User,
+                              WifiOff,
+                              GraduationCap,
+                              BarChart3,
+                              Settings,
+                              Menu,
+                              X,
+                              Brain,
+                              Target,
+                              Bell,
+                              LogOut,
+                              ChevronLeft,
+                              ChevronRight,
+                              Sparkles,
+                              Activity,
+                              CreditCard,
+                              Mic,
+                              Phone,
+                              Video,
+                              UserPlus,
+                              ShieldAlert
+                            } from "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -143,6 +144,8 @@ export default function Layout({ children, currentPageName }) {
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+    { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
+    { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
     { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
     { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
     { name: "Settings", icon: Settings, page: "Settings" }
