@@ -294,29 +294,6 @@ If you have any questions, please contact your administrator.`,
             <TabsTrigger value="data" className="text-xs sm:text-sm py-2 whitespace-nowrap">Data</TabsTrigger>
           </TabsList>
         </div>
-          <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 sm:py-3">Overview</TabsTrigger>
-          <TabsTrigger value="users" className="text-xs sm:text-sm py-2 sm:py-3">Users</TabsTrigger>
-          <TabsTrigger value="training" className="text-xs sm:text-sm py-2 sm:py-3">Training</TabsTrigger>
-          <TabsTrigger value="providers" className="text-xs sm:text-sm py-2 sm:py-3">Providers</TabsTrigger>
-          <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2 sm:py-3">
-            <span className="hidden md:inline">AI Models</span>
-            <span className="md:hidden">AI</span>
-          </TabsTrigger>
-          <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 sm:py-3">
-            <span className="hidden md:inline">Compliance Rules</span>
-            <span className="md:hidden">Rules</span>
-          </TabsTrigger>
-          <TabsTrigger value="audit" className="text-xs sm:text-sm py-2 sm:py-3">Audit</TabsTrigger>
-          <TabsTrigger value="security" className="text-xs sm:text-sm py-2 sm:py-3">
-            <span className="hidden md:inline">Security Logs</span>
-            <span className="md:hidden">Security</span>
-          </TabsTrigger>
-          <TabsTrigger value="encryption" className="text-xs sm:text-sm py-2 sm:py-3">
-            <span className="hidden lg:inline">Encryption</span>
-            <span className="lg:hidden">Encrypt</span>
-          </TabsTrigger>
-          <TabsTrigger value="data" className="text-xs sm:text-sm py-2 sm:py-3">Data</TabsTrigger>
-        </TabsList>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
