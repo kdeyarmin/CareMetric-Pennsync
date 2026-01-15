@@ -10,7 +10,7 @@ import {
   GraduationCap, AlertTriangle, Activity, Clock, 
   CheckCircle2, BarChart3, Calendar, Zap, Brain,
   UserCheck, Award, Target, Search, ChevronLeft, ChevronRight,
-  RefreshCw, BookOpen, Download, CreditCard, TrendingDown
+  RefreshCw, BookOpen, Download, CreditCard, TrendingDown, XCircle
 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Link } from "react-router-dom";

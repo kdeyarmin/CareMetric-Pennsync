@@ -12,6 +12,7 @@ import {
   UploadCloud, Brain, FileText, CheckCircle2, AlertCircle, Loader2, X } from
 "lucide-react";
 import PullToRefresh from "../components/mobile/PullToRefresh";
+import AutoPopulateDataFields from "../components/smartNote/AutoPopulateDataFields";
 
 export default function OASIS() {
   const [oasisFile, setOasisFile] = useState(null);
