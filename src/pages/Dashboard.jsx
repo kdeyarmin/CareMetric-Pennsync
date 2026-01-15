@@ -40,7 +40,6 @@ import SkillGapWidget from "../components/dashboard/SkillGapWidget";
 import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
 import ProactiveInsights from "../components/insights/ProactiveInsights";
 import { ErrorBoundary } from "../components/utils/ErrorBoundary";
-import AIInsightsPanel from "../components/admin/AIInsightsPanel";
 
 export default function Dashboard() {
   const navigate = useNavigate();
