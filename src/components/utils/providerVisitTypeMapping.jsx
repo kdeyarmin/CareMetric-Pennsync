@@ -114,25 +114,8 @@ export const PROVIDER_VISIT_TYPES = {
     canPrescribe: true
   },
 
-  MD: {
-    label: "Physician (MD)",
-    canAccessSettings: [
-      CARE_SETTINGS.HOME_HEALTH,
-      CARE_SETTINGS.TELEHEALTH,
-      CARE_SETTINGS.CLINIC_OUTPATIENT,
-      CARE_SETTINGS.HOSPITAL_INPATIENT,
-      CARE_SETTINGS.SKILLED_NURSING,
-      CARE_SETTINGS.HOSPICE
-    ],
-    requiresAssessment: true,
-    requiresCarePlanReview: true,
-    canEstablishCarePlan: true,
-    canOversee: true,
-    canPrescribe: true
-  },
-
-  DO: {
-    label: "Osteopathic Doctor (DO)",
+  PHYSICIAN: {
+    label: "Physician (MD/DO)",
     canAccessSettings: [
       CARE_SETTINGS.HOME_HEALTH,
       CARE_SETTINGS.TELEHEALTH,
