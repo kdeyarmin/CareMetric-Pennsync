@@ -23,6 +23,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { format, addDays } from "date-fns";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
@@ -168,14 +169,14 @@ export default function CarePlanManagement() {
   };
 
   const handleDelete = (planId) => {
-    if (window.confirm('Are you sure you want to delete this care plan?')) {
+    if (window.confirm("Are you sure you want to delete this care plan?")) {
       deleteCarePlanMutation.mutate(planId);
     }
   };
 
   const createNewPatient = async () => {
     if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
-      alert("First and last name are required");
+      toast.error("First and last name are required");
       return;
     }
 
@@ -196,10 +197,10 @@ export default function CarePlanManagement() {
         date_of_birth: "",
         medical_record_number: "",
       });
-      alert("Patient created successfully");
+      toast.success("Patient created successfully");
       setShowAITools(true);
     } catch (error) {
-      alert("Failed to create patient");
+      toast.error("Failed to create patient");
       console.error(error);
     } finally {
       setCreatingPatient(false);
@@ -207,7 +208,10 @@ export default function CarePlanManagement() {
   };
 
   const handleAcceptRecommendation = async (recommendation) => {
-    if (!selectedPatient) return;
+    if (!selectedPatient) {
+      toast.info("Please select a patient first.");
+      return;
+    }
 
     try {
       const targetDate = format(addDays(new Date(), recommendation.target_days || 60), 'yyyy-MM-dd');
@@ -252,7 +256,7 @@ export default function CarePlanManagement() {
         page: 'CarePlanManagement'
       });
       
-      alert('Care plan created successfully with education materials!');
+      toast.success('Care plan created successfully with education materials!');
     } catch (error) {
       alert('Failed to create care plan. Please try again.');
     }
@@ -280,7 +284,7 @@ export default function CarePlanManagement() {
       featureDescription="Create, manage, and optimize patient care plans with AI-powered recommendations. This premium feature includes automated task generation and personalized education planning."
       allowTrial={true}
     >
-    <div className="w-full overflow-x-hidden">
+    <div className="w-full max-w-full overflow-x-hidden">
       <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 overflow-hidden">
         <Button
           variant="outline"
@@ -298,11 +302,11 @@ export default function CarePlanManagement() {
               <Target className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <div className="flex-1 min-w-0 overflow-hidden">
-              <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">Care Plan Management</h1>
-              <p className="text-xs text-gray-600 hidden sm:block truncate">Manage and track patient care plans</p>
+              <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">Care Plans</h1>
+              <p className="text-xs text-gray-600 hidden sm:block truncate">Manage patient care plans</p>
             </div>
             <div className="flex-shrink-0">
-              <FavoriteButton type="page" id="CarePlanManagement" name="Care Plan Management" />
+              <FavoriteButton type="page" id="CarePlanManagement" name="Care Plans" />
             </div>
           </div>
         </div>
@@ -372,32 +376,14 @@ export default function CarePlanManagement() {
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-40 h-11 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-sm">All Status</SelectItem>
-                  <SelectItem value="active" className="text-sm">Active</SelectItem>
-                  <SelectItem value="met" className="text-sm">Goal Met</SelectItem>
-                  <SelectItem value="not_met" className="text-sm">Not Met</SelectItem>
-                  <SelectItem value="revised" className="text-sm">Revised</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full sm:w-auto border-dashed"
-                onClick={() => setShowCreatePatient(true)}
-              >
-                + Add Patient
-              </Button>
+              
+              
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   variant={viewMode === "list" ? "default" : "outline"}
                   onClick={() => setViewMode("list")}
                   size="sm"
-                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "list" ? "bg-blue-600" : ""}`}
+                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "list" ? "bg-slate-600" : ""}`
                 >
                   List
                 </Button>
@@ -405,7 +391,7 @@ export default function CarePlanManagement() {
                   variant={viewMode === "timeline" ? "default" : "outline"}
                   onClick={() => setViewMode("timeline")}
                   size="sm"
-                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "timeline" ? "bg-blue-600" : ""}`}
+                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "timeline" ? "bg-slate-600" : ""}`
                 >
                   Timeline
                 </Button>
@@ -447,7 +433,7 @@ export default function CarePlanManagement() {
                 queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
                 toast.success("Care plan created from template");
               } catch (error) {
-                toast.error("Failed to create care plan");
+                toast.error("Failed to create care plan from template");
               }
             }}
           />
@@ -509,7 +495,7 @@ export default function CarePlanManagement() {
               carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
               onTasksGenerated={() => {
                 queryClient.invalidateQueries({ queryKey: ['patientEducation'] });
-                alert('Tasks created successfully!');
+                toast.success('Tasks created successfully!');
               }}
             />
           </div>
@@ -568,7 +554,7 @@ export default function CarePlanManagement() {
                         setShowAITools(true);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className={`mt-2 w-full touch-target text-xs ${selectedPatient?.id === patientId ? "" : ""}`}
+                      className={`mt-2 w-full touch-target text-xs ${selectedPatient?.id === patientId ? "bg-slate-600 text-white" : ""}`
                     >
                       <Sparkles className="w-3 h-3 mr-1" />
                       AI Tools
@@ -612,14 +598,15 @@ export default function CarePlanManagement() {
                           setShowAITools(true);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className={`w-full sm:flex-1 touch-target text-xs ${selectedPatient?.id === patientId ? "" : ""}`}
+                        className={`w-full sm:flex-1 touch-target text-xs ${selectedPatient?.id === patientId ? "bg-slate-600 text-white" : ""}`
                       >
                         <Sparkles className="w-3 h-3 mr-1" />
                         AI Tools
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => navigate(`${createPageUrl("PatientDetails")}?patientId=${patientId}`)}
+                        onClick={() => navigate(createPageUrl(`PatientDetails?id=${patientId}`))}
+
                         variant="outline"
                         className="w-full sm:flex-1 touch-target text-xs"
                       >
@@ -719,7 +706,7 @@ export default function CarePlanManagement() {
                   variant="ghost"
                   onClick={() => setShowCreatePatient(false)}
                 >
-                  ✕
+                  <XCircle className="w-6 h-6" />
                 </Button>
               </div>
             </CardHeader>
@@ -728,8 +715,7 @@ export default function CarePlanManagement() {
                 <label className="text-sm font-medium text-gray-700 block mb-1">
                   First Name *
                 </label>
-                <input
-                  type="text"
+                <Input
                   value={newPatientData.first_name}
                   onChange={(e) =>
                     setNewPatientData({
@@ -738,15 +724,13 @@ export default function CarePlanManagement() {
                     })
                   }
                   placeholder="John"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
                 />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">
                   Last Name *
                 </label>
-                <input
-                  type="text"
+                <Input
                   value={newPatientData.last_name}
                   onChange={(e) =>
                     setNewPatientData({
@@ -755,14 +739,13 @@ export default function CarePlanManagement() {
                     })
                   }
                   placeholder="Doe"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
                 />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">
                   Date of Birth
                 </label>
-                <input
+                <Input
                   type="date"
                   value={newPatientData.date_of_birth}
                   onChange={(e) =>
@@ -771,15 +754,13 @@ export default function CarePlanManagement() {
                       date_of_birth: e.target.value,
                     })
                   }
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
                 />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">
                   Medical Record Number
                 </label>
-                <input
-                  type="text"
+                <Input
                   value={newPatientData.medical_record_number}
                   onChange={(e) =>
                     setNewPatientData({
@@ -788,7 +769,6 @@ export default function CarePlanManagement() {
                     })
                   }
                   placeholder="MRN-12345"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
                 />
               </div>
               <div className="flex gap-2 pt-2">
@@ -804,7 +784,7 @@ export default function CarePlanManagement() {
                   onClick={createNewPatient}
                   disabled={creatingPatient}
                 >
-                  {creatingPatient ? "Creating..." : "Create Patient"}
+                  {creatingPatient ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</> : "Create Patient"}
                 </Button>
               </div>
             </CardContent>
