@@ -20,42 +20,50 @@ export const CARE_SETTING_LABELS = {
   [CARE_SETTINGS.HOSPICE]: 'Hospice'
 };
 
-// Visit types available by care setting
+// Visit types available by care setting - standardized IDs across all settings
 export const VISIT_TYPES_BY_SETTING = {
   [CARE_SETTINGS.HOME_HEALTH]: [
     { id: 'admission', label: 'Admission', description: 'Initial comprehensive assessment' },
-    { id: 'routine_visit', label: 'Routine Visit', description: 'Regular skilled visit' },
+    { id: 'routine', label: 'Routine', description: 'Regular skilled visit' },
     { id: 'recertification', label: 'Recertification', description: '60-day recertification assessment' },
     { id: 'discharge', label: 'Discharge', description: 'Final visit and discharge summary' },
-    { id: 'prn', label: 'PRN Visit', description: 'Urgent/as-needed visit' }
+    { id: 'prn', label: 'PRN', description: 'Urgent/as-needed visit' },
+    { id: 'initial_evaluation', label: 'Initial Evaluation', description: 'New patient evaluation' },
+    { id: 'urgent_care', label: 'Urgent Care', description: 'Urgent visit' },
+    { id: 'preventive', label: 'Preventive', description: 'Preventive care/wellness visit' },
+    { id: 'daily_rounds', label: 'Daily Rounds', description: 'Daily assessment' },
+    { id: 'discharge_planning', label: 'Discharge Planning', description: 'Discharge planning visit' }
   ],
   [CARE_SETTINGS.TELEHEALTH]: [
     { id: 'synchronous', label: 'Synchronous Visit', description: 'Real-time video/audio consultation' },
     { id: 'asynchronous', label: 'Asynchronous Visit', description: 'Store-and-forward telehealth' },
     { id: 'rpm', label: 'Remote Patient Monitoring', description: 'Automated monitoring and assessment' },
-    { id: 'follow_up', label: 'Follow-up Consultation', description: 'Virtual follow-up visit' }
+    { id: 'follow_up_consultation', label: 'Follow-up Consultation', description: 'Virtual follow-up visit' }
   ],
   [CARE_SETTINGS.CLINIC_OUTPATIENT]: [
-    { id: 'initial_eval', label: 'Initial Evaluation', description: 'New patient evaluation' },
+    { id: 'initial_evaluation', label: 'Initial Evaluation', description: 'New patient evaluation' },
     { id: 'follow_up', label: 'Follow-up Visit', description: 'Established patient follow-up' },
     { id: 'urgent_care', label: 'Urgent Care', description: 'Urgent outpatient visit' },
-    { id: 'preventive', label: 'Preventive Visit', description: 'Preventive care/wellness visit' }
+    { id: 'preventive', label: 'Preventive', description: 'Preventive care/wellness visit' }
   ],
   [CARE_SETTINGS.HOSPITAL_INPATIENT]: [
     { id: 'admission', label: 'Admission Assessment', description: 'Hospital admission evaluation' },
     { id: 'daily_rounds', label: 'Daily Rounds', description: 'Inpatient daily assessment' },
-    { id: 'discharge', label: 'Discharge Planning', description: 'Hospital discharge assessment' },
+    { id: 'discharge_planning', label: 'Discharge Planning', description: 'Hospital discharge assessment' },
     { id: 'consultation', label: 'Consultation', description: 'Specialist consultation' }
   ],
   [CARE_SETTINGS.SKILLED_NURSING]: [
     { id: 'admission', label: 'Admission', description: 'SNF admission assessment' },
-    { id: 'routine_visit', label: 'Routine Visit', description: 'SNF routine skilled visit' },
+    { id: 'routine', label: 'Routine', description: 'SNF routine skilled visit' },
     { id: 'recertification', label: 'Recertification', description: 'Recertification assessment' },
-    { id: 'discharge', label: 'Discharge', description: 'SNF discharge summary' }
+    { id: 'discharge', label: 'Discharge', description: 'SNF discharge summary' },
+    { id: 'prn', label: 'PRN', description: 'As-needed visit' }
   ],
   [CARE_SETTINGS.HOSPICE]: [
     { id: 'admission', label: 'Admission', description: 'Hospice admission assessment' },
-    { id: 'routine_visit', label: 'Routine Visit', description: 'Routine hospice visit' },
+    { id: 'routine', label: 'Routine', description: 'Routine hospice visit' },
+    { id: 'discharge', label: 'Discharge', description: 'Hospice discharge' },
+    { id: 'prn', label: 'PRN', description: 'As-needed visit' },
     { id: 'end_of_life', label: 'End of Life Care', description: 'End of life support visit' },
     { id: 'family_support', label: 'Family Support', description: 'Family counseling/support' }
   ]
@@ -83,7 +91,8 @@ export const PROVIDER_VISIT_TYPES = {
       CARE_SETTINGS.HOME_HEALTH,
       CARE_SETTINGS.CLINIC_OUTPATIENT,
       CARE_SETTINGS.HOSPITAL_INPATIENT,
-      CARE_SETTINGS.SKILLED_NURSING
+      CARE_SETTINGS.SKILLED_NURSING,
+      CARE_SETTINGS.HOSPICE
     ],
     requiresAssessment: false,
     requiresCarePlanReview: true,
