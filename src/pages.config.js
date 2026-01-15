@@ -91,13 +91,13 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import AdminUserManagement from './pages/AdminUserManagement';
 import CarePlanManagement from './pages/CarePlanManagement';
 import Patients from './pages/Patients';
 import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import MedicalScribe from './pages/MedicalScribe';
-import AdminUserManagement from './pages/AdminUserManagement';
 import __Layout from './Layout.jsx';
 
 
@@ -195,13 +195,13 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
+    "AdminUserManagement": AdminUserManagement,
     "CarePlanManagement": CarePlanManagement,
     "Patients": Patients,
     "Settings": Settings,
     "Dashboard": Dashboard,
     "Admin": Admin,
     "MedicalScribe": MedicalScribe,
-    "AdminUserManagement": AdminUserManagement,
 }
 
 export const pagesConfig = {

@@ -150,6 +150,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
   { name: "My Learning", icon: Target, page: "PersonalizedLearningPath" },
   { name: "Tasks", icon: ListTodo, page: "Tasks" },
+  { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" },
   { name: "Settings", icon: Settings, page: "Settings" }];
 
 
