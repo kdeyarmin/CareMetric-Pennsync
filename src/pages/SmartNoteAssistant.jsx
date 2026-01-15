@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
+import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -42,6 +43,7 @@ export default function SmartNoteAssistant() {
     medical_record_number: "",
   });
   const [creatingPatient, setCreatingPatient] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -324,6 +326,18 @@ Return your analysis in the following JSON format:
                     </Select>
                   </div>
                 </div>
+
+                {/* Template Selector */}
+                {visitType && currentUser?.provider_type && (
+                  <NoteTemplateSelector
+                    visitType={visitType}
+                    providerType={currentUser.provider_type}
+                    onSelectTemplate={(formattedNote, template) => {
+                      setRoughNotes(formattedNote);
+                      setSelectedTemplate(template);
+                    }}
+                  />
+                )}
 
                 {/* Vital Signs */}
                 <div>
