@@ -236,7 +236,7 @@ export default function AIChatAssistant() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center">
-                Ask about features, navigation, or best practices
+                Ask anything about features, workflows, or compliance
               </p>
             </div>
           </CardContent>
