@@ -22,20 +22,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Medical Scribe",
-    description: "Voice-to-text medical scribe that transcribes patient interactions.",
+    description: "Utilize voice-to-text transcription technology to capture patient interactions and automatically convert them to structured clinical documentation.",
     howToUse: [
-      "1. Click the microphone icon to start recording",
-      "2. Speak naturally during patient interaction",
-      "3. The system transcribes speech to text in real-time",
-      "4. Review the transcription for accuracy",
-      "5. AI converts transcription to structured clinical note"
+      "1. Click the microphone icon to initiate voice recording",
+      "2. Speak naturally and conversationally during patient interaction",
+      "3. The system transcribes speech to text with real-time processing",
+      "4. Review transcription accuracy and edit as necessary",
+      "5. Allow AI to convert transcription into formally structured clinical note"
     ],
     bestPractices: [
-      "Speak clearly and at normal pace",
-      "Minimize background noise during recording",
-      "Include relevant clinical observations in narrative",
-      "Use standard medical terminology",
-      "Save transcriptions immediately after recording"
+      "Maintain clear, deliberate speech at natural pace",
+      "Minimize ambient noise for improved transcription accuracy",
+      "Integrate relevant clinical observations into narrative format",
+      "Apply standard medical terminology consistently throughout recording",
+      "Secure transcriptions immediately following patient interaction"
     ]
   },
   {
