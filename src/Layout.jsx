@@ -41,13 +41,9 @@ import PushNotificationManager from "../components/notifications/PushNotificatio
 import { getAccessiblePages } from "../components/utils/providerAccessControl";
 
 /* =========================
-   iOS / Layout Constants
-========================= */
-const HEADER_BAR_HEIGHT_REM = 3.5; // visible blue bar height (rem)
-const BOTTOM_NAV_HEIGHT_REM = 4.25; // visible bottom nav height (rem)
-
-// For FAB row placement: above bottom nav + safe area
-const FAB_BOTTOM_OFFSET = `calc(${BOTTOM_NAV_HEIGHT_REM}rem + env(safe-area-inset-bottom) + 0.75rem)`;
+         iOS / Layout Constants
+      ========================= */
+      const HEADER_BAR_HEIGHT_REM = 3.5; // visible blue bar height (rem)
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -174,7 +170,6 @@ export default function Layout({ children, currentPageName }) {
 
   // iOS-safe computed paddings - use max() to ensure minimum height even without safe area
   const mobileHeaderTotalHeight = `calc(${HEADER_BAR_HEIGHT_REM}rem + max(env(safe-area-inset-top), 0px))`;
-  const mobileBottomNavTotalHeight = `calc(${BOTTOM_NAV_HEIGHT_REM}rem + max(env(safe-area-inset-bottom), 0px))`;
 
   return (
                 <ThemeProvider>
@@ -444,9 +439,8 @@ export default function Layout({ children, currentPageName }) {
       <main
         className="flex-1 overflow-x-hidden w-full relative bg-transparent"
         style={{
-          // Always add padding on mobile to account for header/nav
+          // Always add padding on mobile to account for header
           paddingTop: showNavigationUI ? mobileHeaderTotalHeight : 0,
-          paddingBottom: showNavigationUI ? mobileBottomNavTotalHeight : 0,
           minHeight: "100vh"
         }}
       >
@@ -457,7 +451,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Floating Buttons (HORIZONTAL) ================= */}
       {showNavigationUI && (
-        <div className="fixed right-3 z-[9997] lg:hidden" style={{ bottom: FAB_BOTTOM_OFFSET }}>
+        <div className="fixed right-3 bottom-3 z-[9997] lg:hidden">
           <div className="flex flex-row items-center gap-3">
             {/* IMPORTANT: scope override so internal fixed FABs become normal-flow */}
             <div className="cm-fab-scope flex items-center justify-center">
@@ -469,74 +463,6 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </div>
       )}
-
-      {/* ================= Bottom Navigation (TALLER + SAFE AREA) ================= */}
-      <nav
-        className={`fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white/90 via-slate-50/80 to-white/80 dark:from-slate-900/90 dark:via-gray-900/80 dark:to-slate-900/80 backdrop-blur-xl border-t border-slate-200/50 dark:border-slate-700/30 shadow-lg lg:hidden transition-colors duration-300 ${
-          showNavigationUI ? 'z-[9998] visible' : 'z-[-1] invisible'
-        }`}
-        style={{ 
-          height: mobileBottomNavTotalHeight, 
-          paddingBottom: "env(safe-area-inset-bottom)",
-          width: "100vw",
-          maxWidth: "100vw",
-          position: "fixed"
-        }}
-      >
-        {showNavigationUI && (
-          <div className="flex items-center justify-around px-1" style={{ height: `${BOTTOM_NAV_HEIGHT_REM}rem` }}>
-            <Link
-              to={createPageUrl("Dashboard")}
-              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("Dashboard") ? "text-primary dark:text-slate-100 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              <Home className="w-5 h-5" />
-              <span className="text-[11px]">Home</span>
-            </Link>
-
-            <Link
-              to={createPageUrl("MobileWorkflow")}
-              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("MobileWorkflow") ? "text-primary dark:text-slate-100 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              <Phone className="w-5 h-5" />
-              <span className="text-[11px]">Mobile</span>
-            </Link>
-
-            <Link
-              to={createPageUrl("CarePlanManagement")}
-              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("CarePlanManagement") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              <Target className="w-5 h-5" />
-              <span className="text-[11px]">Plans</span>
-            </Link>
-
-            <Link
-              to={createPageUrl("PatientAlerts")}
-              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("PatientAlerts") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              <Bell className="w-5 h-5" />
-              <span className="text-[11px]">Alerts</span>
-            </Link>
-
-            <Link
-              to={createPageUrl("Settings")}
-              className={`flex flex-col items-center justify-center gap-0.5 transition-all duration-200 ${
-                isActive("Settings") ? "text-blue-600 dark:text-blue-400 font-medium" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              <User className="w-5 h-5" />
-              <span className="text-[11px]">Settings</span>
-            </Link>
-          </div>
-        )}
-      </nav>
 
       {showNavigationUI && <OfflineIndicator />}
       <RealTimeBreachMonitor />
