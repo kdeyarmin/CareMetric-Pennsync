@@ -49,7 +49,8 @@ const FEATURES_GUIDE = [
       "Integrate relevant clinical observations into narrative format",
       "Apply standard medical terminology consistently throughout recording",
       "Secure transcriptions immediately following patient interaction"
-    ]
+    ],
+    importance: "Saves 1-2 hours per shift in documentation time, increases focus on patient care during visits, reduces documentation workload, and captures real-time observations without post-visit documentation delays"
   },
   {
     title: "Patient Management",
