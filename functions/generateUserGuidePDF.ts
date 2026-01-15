@@ -202,20 +202,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Patient Risk Alerts",
-    description: "AI-powered early warning for at-risk patients.",
+    description: "Leverage AI-powered predictive analytics to identify high-risk patients early, enabling proactive interventions to prevent adverse events and readmissions.",
     howToUse: [
-      "1. View Risk Alerts on Dashboard",
-      "2. Review alert severity and recommendations",
-      "3. Click alert to see contributing factors",
-      "4. Implement recommended interventions",
-      "5. Document actions taken in patient record"
+      "1. View and prioritize Risk Alerts displayed on main dashboard",
+      "2. Review alert severity classification and system-generated recommendations",
+      "3. Click on specific alert to examine contributing risk factors and clinical indicators",
+      "4. Implement recommended clinical interventions in coordination with care team",
+      "5. Document all clinical actions taken and patient response in health record"
     ],
     bestPractices: [
-      "Act promptly on critical alerts",
-      "Coordinate with care team on interventions",
-      "Document clinical reasoning for decisions",
-      "Monitor patient closely after intervention",
-      "Follow up within recommended timeframe"
+      "Respond with urgency and clinical focus to critical and high-severity alerts",
+      "Coordinate evidence-based interventions with interdisciplinary care team members",
+      "Document clinical reasoning and clinical decision-making for all alert responses",
+      "Implement close monitoring and frequent reassessment following interventions",
+      "Conduct timely follow-up within recommended intervals to assess intervention effectiveness"
     ]
   }
 ];
