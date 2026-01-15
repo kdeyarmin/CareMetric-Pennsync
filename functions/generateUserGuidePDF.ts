@@ -106,7 +106,8 @@ const FEATURES_GUIDE = [
       "Provide clear explanations in plain language with clinical context",
       "Include comprehensive discharge instructions with follow-up contact information",
       "Utilize secure patient portal for document transmission to ensure HIPAA compliance"
-    ]
+    ],
+    importance: "Reduces document creation time from hours to minutes, ensures consistency across communications, improves patient understanding and compliance with discharge instructions, and maintains HIPAA-compliant communication standards"
   },
   {
     title: "Provider Scheduling",
