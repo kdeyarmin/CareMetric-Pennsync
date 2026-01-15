@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { FileText, Upload, Pencil, Type, Save, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
-export default function ProviderPracticeInfoManager({ userEmail }) {
+export default function ProviderPracticeInfoManager({ userEmail, credentialType = 'NP' }) {
   const queryClient = useQueryClient();
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -22,7 +22,7 @@ export default function ProviderPracticeInfoManager({ userEmail }) {
     license_number: "",
     license_state: "",
     npi_number: "",
-    specialty: "",
+    specialty: credentialType === 'PHYSICIAN' ? "" : undefined,
     practice_address: "",
     practice_phone: "",
     practice_fax: "",
@@ -32,6 +32,10 @@ export default function ProviderPracticeInfoManager({ userEmail }) {
     include_header: true,
     include_signature: true
   });
+
+  // Determine which fields to show based on provider type
+  const isPhysician = credentialType === 'PHYSICIAN';
+  const isTherapist = credentialType === 'Therapist';
 
   const { data: practiceInfo, isLoading } = useQuery({
     queryKey: ['providerPracticeInfo', userEmail],
