@@ -487,7 +487,7 @@ Deno.serve(async (req) => {
             doc.addPage();
             yPosition = margin;
           }
-          const factorLines = doc.splitTextToSize('• ' + factor, contentWidth - 8);
+          const factorLines = doc.splitTextToSize('\u2022 ' + factor, contentWidth - 8);
           doc.text(factorLines, margin + 5, yPosition);
           yPosition += factorLines.length * 3.5 + 1;
         }
