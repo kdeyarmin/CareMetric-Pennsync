@@ -13,7 +13,7 @@ export default function QuickTelehealthLauncher({ todayAppointments, onScheduleN
   if (!todayAppointments || todayAppointments.length === 0) {
     return (
       <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
-        <CardContent className="p-4">
+        <CardContent className="bg-slate-100 p-4">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-blue-100 rounded-lg">
               <Video className="w-5 h-5 text-blue-600" />
