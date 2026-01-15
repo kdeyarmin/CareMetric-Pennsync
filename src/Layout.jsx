@@ -138,7 +138,9 @@ export default function Layout({ children, currentPageName }) {
   const showNavigationUI = currentUser;
 
   // Get role-specific navigation items
+  // User items first, then admin items
   const allNavItems = [
+  // User items
   { name: "Dashboard", icon: Home, page: "Dashboard" },
   { name: "Patients", icon: Users, page: "Patients" },
   { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
@@ -154,8 +156,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "My Learning", icon: Target, page: "PersonalizedLearningPath" },
   { name: "Tasks", icon: ListTodo, page: "Tasks" },
   { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" },
-  { name: "Settings", icon: Settings, page: "Settings" },
-  { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" }];
+  { name: "Settings", icon: Settings, page: "Settings" }];
 
 
   const accessiblePages = currentUser?.credential_type ?
