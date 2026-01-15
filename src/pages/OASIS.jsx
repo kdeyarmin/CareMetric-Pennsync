@@ -114,6 +114,17 @@ export default function OASIS() {
           </CardContent>
         </Card>
 
+        {/* AI Auto-Populate OASIS Fields */}
+        {narrative && (
+          <AutoPopulateDataFields
+            narrative={narrative}
+            dataType="oasis_m1800"
+            onDataExtracted={(data) => {
+              console.log('Extracted OASIS data:', data);
+            }}
+          />
+        )}
+
         {analysisResult && (
           <Card className="mt-6">
             <CardHeader>
