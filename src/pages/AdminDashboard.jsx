@@ -28,11 +28,15 @@ import RealTimeSystemHealth from "../components/admin/RealTimeSystemHealth";
 import AIModelManagement from "../components/admin/AIModelManagement";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import { motion } from "framer-motion";
+import UserManagement from "../components/admin/UserManagement";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
   const [activitySearch, setActivitySearch] = useState("");
   const [activityPage, setActivityPage] = useState(1);
+  const [filterProvider, setFilterProvider] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
   const activityPerPage = 10;
   const queryClient = useQueryClient();
 
@@ -101,6 +105,16 @@ export default function AdminDashboard() {
     queryKey: ['allPayments'],
     queryFn: () => base44.entities.Payment.list('-payment_date'),
     enabled: currentUser?.role === 'admin'
+  });
+
+  const { data: allAppointments = [] } = useQuery({
+    queryKey: ['allAppointments'],
+    queryFn: () => base44.entities.Appointment.list('-appointment_date'),
+  });
+
+  const { data: allCarePlans = [] } = useQuery({
+    queryKey: ['allCarePlans'],
+    queryFn: () => base44.entities.CarePlan.list(),
   });
 
   const autoFetchGuidelinesMutation = useMutation({
@@ -178,12 +192,29 @@ export default function AdminDashboard() {
       activeAlerts: allAlerts.filter(a => a.status === 'active').length,
       criticalAlerts: allAlerts.filter(a => a.status === 'active' && a.severity === 'critical').length,
       
+      // Appointment metrics
+      totalAppointments: allAppointments.filter(a => new Date(a.created_date) >= cutoffDate).length,
+      upcomingAppointments: allAppointments.filter(a => 
+        a.status === 'scheduled' && 
+        new Date(a.appointment_date) >= new Date()
+      ).length,
+      completedAppointments: allAppointments.filter(a => 
+        a.status === 'completed' && new Date(a.created_date) >= cutoffDate
+      ).length,
+      canceledAppointments: allAppointments.filter(a => 
+        a.status === 'canceled' && new Date(a.created_date) >= cutoffDate
+      ).length,
+      
+      // Care Plan metrics
+      activeCarePlans: allCarePlans.filter(cp => cp.status === 'active').length,
+      completedGoals: allCarePlans.filter(cp => cp.status === 'met').length,
+      
       // AI adoption
       aiAdoptionRate: allUsers.length > 0
         ? ((inRangeConversions.map(c => c.nurse_email).filter((v, i, a) => a.indexOf(v) === i).length / allUsers.filter(u => u.is_approved).length) * 100).toFixed(0)
         : 0
     };
-  }, [allUsers, allPatients, allVisits, allNoteConversions, allComplianceAudits, allTrainingCompletions, allIncidents, allTasks, allAlerts, dateRange]);
+  }, [allUsers, allPatients, allVisits, allNoteConversions, allComplianceAudits, allTrainingCompletions, allIncidents, allTasks, allAlerts, allAppointments, allCarePlans, dateRange]);
 
   // Subscription & Revenue Metrics
   const subscriptionStats = useMemo(() => {
@@ -426,26 +457,41 @@ export default function AdminDashboard() {
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white truncate">Admin Dashboard</h1>
           <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 truncate">Comprehensive analytics and system overview</p>
         </div>
-        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+        <div className="flex gap-2 flex-wrap w-full sm:w-auto items-center">
+          <Select value={filterProvider} onValueChange={setFilterProvider}>
+            <SelectTrigger className="w-32 h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="RN">RN</SelectItem>
+              <SelectItem value="LPN">LPN</SelectItem>
+              <SelectItem value="NP">NP</SelectItem>
+              <SelectItem value="MD">MD</SelectItem>
+              <SelectItem value="PT">PT</SelectItem>
+              <SelectItem value="OT">OT</SelectItem>
+            </SelectContent>
+          </Select>
+          
           <Button
             onClick={exportData}
             variant="outline"
             size="sm"
-            className="flex-1 sm:flex-initial min-h-[44px]"
+            className="min-h-[36px]"
           >
             <Download className="w-4 h-4 mr-2" />
-            <span className="text-xs sm:text-sm">Export</span>
+            <span className="text-xs">Export</span>
           </Button>
-          <div className="flex gap-1 bg-slate-200 dark:bg-slate-800 p-1 rounded-lg flex-1 sm:flex-initial">
+          <div className="flex gap-1 bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
             {[7, 30, 90].map(days => (
               <Button
                 key={days}
                 size="sm"
                 variant={dateRange === days ? "default" : "ghost"}
                 onClick={() => setDateRange(days)}
-                className="min-h-[36px] px-3 sm:px-4 flex-1 shadow-sm data-[state=active]:bg-white data-[state=active]:dark:bg-gray-900"
+                className="min-h-[36px] px-3 shadow-sm"
               >
-                <span className="text-xs sm:text-sm">{days}d</span>
+                <span className="text-xs">{days}d</span>
               </Button>
             ))}
           </div>
@@ -453,65 +499,66 @@ export default function AdminDashboard() {
       </div>
 
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between mb-2">
               <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.activeUsers}/{stats.totalUsers}</Badge>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.activeUsers}</p>
-            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Active Nurses</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.activeUsers}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">Active Users</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <UserCheck className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.activePatients}</Badge>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalPatients}</p>
-            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Total Patients</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalPatients}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">Total Patients</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
-            </div>
-            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.completedVisits}</p>
-            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Visits ({dateRange}d)</p>
+          <CardContent className="p-3">
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.upcomingAppointments}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">Upcoming Appts</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
+          <CardContent className="p-3">
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.completedVisits}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">Visits ({dateRange}d)</p>
+          </CardContent>
+        </Card>
+        </motion.div>
+
+        <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between mb-2">
               <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.aiAdoptionRate}%</Badge>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalEnhancements}</p>
-            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">AI Enhancements</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalEnhancements}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">AI Enhancements</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400" />
-            </div>
-            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalTimeSaved}</p>
-            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Minutes Saved</p>
+          <CardContent className="p-3">
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalTimeSaved}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">Minutes Saved</p>
           </CardContent>
         </Card>
         </motion.div>
@@ -631,6 +678,8 @@ export default function AdminDashboard() {
         <div className="w-full overflow-x-auto">
           <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1">
             <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">Overview</TabsTrigger>
+            <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">Users</TabsTrigger>
+            <TabsTrigger value="appointments" className="text-xs sm:text-sm py-2 whitespace-nowrap">Appointments</TabsTrigger>
             <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">System Health</TabsTrigger>
             <TabsTrigger value="advanced-reports" className="text-xs sm:text-sm py-2 whitespace-nowrap">Reports</TabsTrigger>
             <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Models</TabsTrigger>
@@ -969,8 +1018,183 @@ export default function AdminDashboard() {
           />
         </TabsContent>
 
+        {/* Users Tab */}
+        <TabsContent value="users" className="space-y-6">
+          <UserManagement users={allUsers} currentUser={currentUser} />
+        </TabsContent>
+
+        {/* Appointments Tab */}
+        <TabsContent value="appointments" className="space-y-6">
+          {/* Appointment Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <Calendar className="w-8 h-8 text-slate-700 dark:text-slate-400" />
+                </div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.totalAppointments}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Total Appointments</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <Clock className="w-8 h-8 text-blue-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{stats.upcomingAppointments}</p>
+                <p className="text-xs text-gray-600">Upcoming</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{stats.completedAppointments}</p>
+                <p className="text-xs text-gray-600">Completed ({dateRange}d)</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <XCircle className="w-8 h-8 text-gray-600" />
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{stats.canceledAppointments}</p>
+                <p className="text-xs text-gray-600">Canceled ({dateRange}d)</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Appointments List */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                  Recent Appointments
+                </CardTitle>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="canceled">Canceled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-300 dark:border-slate-700">
+                      <th className="text-left p-2">Date</th>
+                      <th className="text-left p-2">Patient</th>
+                      <th className="text-left p-2">Provider</th>
+                      <th className="text-left p-2">Type</th>
+                      <th className="text-center p-2">Status</th>
+                      <th className="text-left p-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allAppointments
+                      .filter(apt => filterStatus === 'all' || apt.status === filterStatus)
+                      .slice(0, 20)
+                      .map((apt, idx) => {
+                        const patient = allPatients.find(p => p.id === apt.patient_id);
+                        return (
+                          <tr key={idx} className="border-b hover:bg-gray-50 dark:hover:bg-slate-800">
+                            <td className="p-2">
+                              {apt.appointment_date ? formatEastern(apt.appointment_date, 'MMM d, yyyy') : 'N/A'}
+                            </td>
+                            <td className="p-2">
+                              {patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown'}
+                            </td>
+                            <td className="p-2 text-xs">{apt.provider_email || 'N/A'}</td>
+                            <td className="p-2">
+                              <Badge variant="outline" className="text-xs">
+                                {apt.appointment_type || 'Standard'}
+                              </Badge>
+                            </td>
+                            <td className="text-center p-2">
+                              <Badge className={
+                                apt.status === 'completed' ? 'bg-green-600' :
+                                apt.status === 'scheduled' ? 'bg-blue-600' :
+                                apt.status === 'canceled' ? 'bg-gray-600' :
+                                'bg-yellow-600'
+                              }>
+                                {apt.status}
+                              </Badge>
+                            </td>
+                            <td className="p-2 text-xs">{apt.start_time || 'N/A'}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+                {allAppointments.filter(apt => filterStatus === 'all' || apt.status === filterStatus).length === 0 && (
+                  <p className="text-center text-slate-500 dark:text-slate-400 py-8">No appointments found</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {/* System Overview Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Care Plans</p>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.activeCarePlans}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">{stats.completedGoals} goals met</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Active Alerts</p>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.activeAlerts}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">{stats.criticalAlerts} critical</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle2 className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Tasks</p>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.pendingTasks}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">{stats.overdueTasks} overdue</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Activity className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Visits/Day</p>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.avgVisitsPerDay}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Last {dateRange} days</p>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Subscription Metrics Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
