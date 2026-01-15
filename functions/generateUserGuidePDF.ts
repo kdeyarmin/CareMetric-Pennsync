@@ -125,7 +125,8 @@ const FEATURES_GUIDE = [
       "Allocate adequate travel time between visits for remote home health care delivery",
       "Implement AI-generated route optimization recommendations to reduce travel time",
       "Confirm all scheduled visits with patients at least 24 hours prior to appointment"
-    ]
+    ],
+    importance: "Saves 5-10 hours per week through optimized routing and reduces travel time, improves scheduling efficiency, increases patient capacity without additional staff, and reduces fuel costs and environmental impact"
   },
   {
     title: "OASIS & Compliance",
