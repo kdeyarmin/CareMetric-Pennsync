@@ -167,7 +167,7 @@ export default function Settings() {
                   />
                 </div>
                 <div>
-                   <Label htmlFor="credential_type">Credential Type</Label>
+                   <Label htmlFor="credential_type">Provider Type</Label>
                    <Select
                      value={formData.credential_type}
                      onValueChange={(value) => setFormData({ ...formData, credential_type: value })}
@@ -306,7 +306,7 @@ export default function Settings() {
                    <p className="text-slate-900 dark:text-slate-100">{currentUser?.email}</p>
                   </div>
                   <div>
-                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Credential Type</p>
+                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Provider Type</p>
                    <p className="text-slate-900 dark:text-slate-100">{currentUser?.credential_type || 'RN'}</p>
                   </div>
                   <div>
