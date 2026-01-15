@@ -381,14 +381,14 @@ export default function Settings() {
         {/* Provider Profile */}
         <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
 
-        {/* Professional Specializations */}
-        {currentUser &&
+        {/* Professional Specializations - Only for Physicians */}
+        {currentUser && currentUser.credential_type === 'PHYSICIAN' &&
         <ProviderSpecializationManager currentUser={currentUser} />
         }
 
         {/* Practice Information */}
         {currentUser && !['RN', 'LPN'].includes(currentUser.credential_type) &&
-        <ProviderPracticeInfoManager userEmail={currentUser.email} />
+        <ProviderPracticeInfoManager userEmail={currentUser.email} credentialType={currentUser.credential_type} />
         }
 
         {/* Data Retention Settings */}
