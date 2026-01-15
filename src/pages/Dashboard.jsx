@@ -256,11 +256,6 @@ export default function Dashboard() {
       {/* Header with integrated banners */}
       <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
 
-      {/* Proactive Insights */}
-      <ErrorBoundary>
-        <ProactiveInsights userEmail={currentUser?.email} />
-      </ErrorBoundary>
-
       {/* Quick Stats */}
       <QuickStatsSummary stats={{
           activePatients: patients.length,
