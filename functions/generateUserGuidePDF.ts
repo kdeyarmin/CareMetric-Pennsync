@@ -130,20 +130,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Analytics Dashboard",
-    description: "Real-time performance metrics and clinical outcome analytics.",
+    description: "Access real-time performance metrics and clinical outcome analytics to identify trends, benchmark against organizational standards, and drive continuous improvement.",
     howToUse: [
-      "1. Navigate to Analytics Dashboard",
-      "2. Review key performance metrics",
-      "3. Use filters to drill into specific data",
-      "4. Compare your performance to agency benchmarks",
-      "5. Export reports for meetings or reviews"
+      "1. Access Analytics Dashboard from main menu navigation",
+      "2. Review key performance indicators (KPIs) and quality metrics",
+      "3. Apply filters to drill down into specific data sets or time periods",
+      "4. Evaluate individual performance against agency benchmarks and best practices",
+      "5. Generate and export comprehensive reports for quality meetings and reviews"
     ],
     bestPractices: [
-      "Review metrics weekly for trends",
-      "Use data to identify improvement areas",
-      "Share successes with team",
-      "Address performance gaps proactively",
-      "Track improvements over time"
+      "Conduct systematic metric review on a weekly basis to identify emerging trends",
+      "Use analytics data to prioritize areas for individual or organizational improvement",
+      "Present performance successes to team to foster collaborative engagement",
+      "Address performance gaps through proactive coaching or process improvement",
+      "Monitor trends longitudinally to demonstrate sustained improvement and accountability"
     ]
   },
   {
