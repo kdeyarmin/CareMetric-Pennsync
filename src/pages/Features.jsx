@@ -1,567 +1,168 @@
 import React, { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Brain, Sparkles, Mic, Users, FileText, Target, 
-  Bell, Shield, GraduationCap, Activity, Search,
-  CheckCircle2, Zap, TrendingUp, Clock, BookOpen,
-  AlertTriangle, MessageCircle, Lightbulb
-} from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import ProviderUserGuide from "@/components/guides/ProviderUserGuide";
+import { Download, Zap, Users, FileText, Brain, Mic, Target, Calendar, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle } from "lucide-react";
+import { base44 } from "@/api/base44Client";
 
-export const publicPage = true;
+const FEATURES = [
+  {
+    icon: Brain,
+    title: "Smart Notes Assistant",
+    description: "AI-powered documentation assistant that enhances clinical notes in real-time, ensuring compliance and reducing documentation time.",
+    category: "Documentation"
+  },
+  {
+    icon: Mic,
+    title: "Medical Scribe",
+    description: "Voice-to-text medical scribe that transcribes patient interactions and generates structured clinical documentation.",
+    category: "Documentation"
+  },
+  {
+    icon: Users,
+    title: "Patient Management",
+    description: "Centralized patient database with comprehensive health records, demographics, and care history.",
+    category: "Patients"
+  },
+  {
+    icon: Target,
+    title: "Care Plan Management",
+    description: "Automated care plan creation, tracking, and adjustments based on patient progress and clinical indicators.",
+    category: "Care"
+  },
+  {
+    icon: FileText,
+    title: "Document Generation",
+    description: "Generate customizable patient education materials, discharge summaries, and referral letters with AI assistance.",
+    category: "Documents"
+  },
+  {
+    icon: Calendar,
+    title: "Provider Scheduling",
+    description: "Intelligent scheduling system that optimizes visit timing and route planning for maximum efficiency.",
+    category: "Operations"
+  },
+  {
+    icon: Shield,
+    title: "OASIS & Compliance",
+    description: "Automated OASIS validation and compliance checking to ensure Medicare requirements are met.",
+    category: "Compliance"
+  },
+  {
+    icon: BarChart3,
+    title: "Analytics Dashboard",
+    description: "Real-time performance metrics, compliance reports, and clinical outcome analytics.",
+    category: "Analytics"
+  },
+  {
+    icon: GraduationCap,
+    title: "Training & Development",
+    description: "Personalized training modules with AI-generated recommendations based on compliance gaps and skill assessments.",
+    category: "Training"
+  },
+  {
+    icon: ListTodo,
+    title: "Task Management",
+    description: "Intelligent task creation and assignment with automatic reminders and priority management.",
+    category: "Operations"
+  },
+  {
+    icon: Lock,
+    title: "HIPAA Compliance & Security",
+    description: "Enterprise-grade encryption, audit trails, and access controls meeting all healthcare security standards.",
+    category: "Security"
+  },
+  {
+    icon: AlertCircle,
+    title: "Patient Risk Alerts",
+    description: "AI-powered early warning system that identifies patients at risk for readmission or adverse events.",
+    category: "Clinical"
+  }
+];
+
+const CATEGORIES = ["All", ...new Set(FEATURES.map(f => f.category))];
 
 export default function Features() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showUserGuide, setShowUserGuide] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
 
-  if (showUserGuide) {
-    return (
-      <div className="min-h-screen p-6">
-        <div className="max-w-7xl mx-auto">
-          <Button
-            variant="outline"
-            onClick={() => setShowUserGuide(false)}
-            className="mb-4"
-          >
-            ← Back to Features
-          </Button>
-          <ProviderUserGuide />
-        </div>
-      </div>
-    );
-  }
+  const filteredFeatures = selectedCategory === "All" 
+    ? FEATURES 
+    : FEATURES.filter(f => f.category === selectedCategory);
 
-  const features = [
-    {
-      category: "AI Compliance Review",
-      icon: Shield,
-      color: "blue",
-      items: [
-        {
-          name: "Smart Note Assistant",
-          icon: Sparkles,
-          description: "AI reviews any healthcare documentation for compliance with Medicare, Medicaid, and payer requirements",
-          howTo: [
-            "1. Paste or type your clinical note",
-            "2. Click 'Review for Compliance'",
-            "3. AI analyzes against Medicare/Medicaid requirements",
-            "4. View compliance score and missing elements",
-            "5. Apply one-click fixes or enhance full note",
-            "6. Copy compliant note back to your EHR"
-          ],
-          bestPractices: [
-            "Works for any provider type - RN, MD, PT, OT, ST, etc.",
-            "Paste notes from any EHR for instant review",
-            "Use for audit preparation and quality assurance",
-            "Learn compliance requirements through AI feedback",
-            "Apply one-click fixes to meet payer standards"
-          ],
-          page: "SmartNoteAssistant"
-        },
-        {
-          name: "Medical Scribe (Full Interaction Recording)",
-          icon: Mic,
-          description: "Records entire patient interaction and converts it into a fully compliant clinical note",
-          howTo: [
-            "1. Start recording before patient interaction",
-            "2. Conduct your visit naturally - talk to patient normally",
-            "3. AI transcribes entire conversation in real-time",
-            "4. Click 'Generate Note' when done",
-            "5. AI creates SOAP note from full interaction",
-            "6. Review and copy to EHR"
-          ],
-          bestPractices: [
-            "Perfect for telehealth and in-person visits",
-            "Captures everything - no need to remember details",
-            "Works for any provider specialty",
-            "Auto-formats into proper clinical structure",
-            "Includes only clinically relevant information"
-          ],
-          page: "SmartNoteAssistant"
-        },
-        {
-          name: "Custom Quick Phrases",
-          icon: Zap,
-          description: "Create reusable phrases for common assessments and save time on repetitive documentation",
-          howTo: [
-            "1. Go to Smart Notes sidebar → Knowledge tab",
-            "2. Click 'Add Phrase' in Custom Phrases section",
-            "3. Enter trigger word (e.g., 'lungs')",
-            "4. Type full phrase to insert",
-            "5. Click saved phrase anytime to insert"
-          ],
-          bestPractices: [
-            "Create phrases for common findings",
-            "Use short, memorable triggers",
-            "Include full assessment language",
-            "Update phrases based on feedback",
-            "Share useful phrases with team"
-          ],
-          page: "SmartNoteAssistant"
-        },
-        {
-          name: "One-Click Compliance Fixes",
-          icon: CheckCircle2,
-          description: "AI identifies missing Medicare elements and suggests ready-to-insert text",
-          howTo: [
-            "1. After enhancing your note, review compliance warnings",
-            "2. Click 'Add' on individual suggestions",
-            "3. Or click 'Fix All' to apply all at once",
-            "4. Review added content for accuracy",
-            "5. Proceed with confidence"
-          ],
-          bestPractices: [
-            "Review each suggestion before applying",
-            "Customize added text if needed",
-            "Learn which elements you commonly miss",
-            "Use as teaching tool for compliance",
-            "Don't over-rely - ensure accuracy"
-          ],
-          page: "SmartNoteAssistant"
-        },
-        {
-          name: "Real-Time Compliance Warnings",
-          icon: AlertTriangle,
-          description: "Get proactive alerts while typing if critical elements are missing",
-          howTo: [
-            "1. Start typing your rough note",
-            "2. After 50 characters, AI monitors for gaps",
-            "3. Yellow/red alerts appear for missing elements",
-            "4. Click 'Add' to insert suggested text",
-            "5. Dismiss if not applicable"
-          ],
-          bestPractices: [
-            "Address critical warnings immediately",
-            "Use as real-time learning tool",
-            "Understand why each element is required",
-            "Don't wait until enhancement to fix gaps",
-            "Build compliance habits over time"
-          ],
-          page: "SmartNoteAssistant"
-        },
-        {
-          name: "Anonymous Mode",
-          icon: Shield,
-          description: "Enhance notes without saving patient data - perfect for practice or confidential scenarios",
-          howTo: [
-            "1. Select 'Anonymous' as patient option",
-            "2. Enter visit details and notes normally",
-            "3. Click 'Enhance with AI' for transformation",
-            "4. Copy enhanced note to use elsewhere",
-            "5. No patient data is saved or stored"
-          ],
-          bestPractices: [
-            "Use for practice and training",
-            "Perfect for sensitive scenarios",
-            "Great for testing new features",
-            "Review capabilities before real use",
-            "Safe environment for learning"
-          ],
-          page: "SmartNoteAssistant"
-        }
-      ]
-    },
-    {
-      category: "Telehealth",
-      icon: Video,
-      color: "green",
-      items: [
-        {
-          name: "HIPAA-Compliant Video Visits",
-          icon: Video,
-          description: "Built-in secure telehealth with AI transcription and automated visit notes",
-          howTo: [
-            "1. Schedule appointment from Telehealth Dashboard",
-            "2. Send secure link to patient",
-            "3. Start video call at appointment time",
-            "4. AI transcribes conversation automatically",
-            "5. Generate visit note after call",
-            "6. Review and save to patient chart"
-          ],
-          bestPractices: [
-            "Works for all provider types",
-            "AI captures clinical conversation",
-            "No need to document during visit",
-            "Screen share for patient education",
-            "Auto-generates compliant visit summary"
-          ],
-          page: "TelehealthDashboard"
-        }
-      ]
-    },
-    {
-      category: "Automated Care Planning & Billing",
-      icon: Target,
-      color: "purple",
-      items: [
-        {
-          name: "Auto Care Plan Generation (Nurses)",
-          icon: Target,
-          description: "AI generates evidence-based care plans from your notes for RNs, LPNs, and care coordinators",
-          howTo: [
-            "1. Complete patient assessment/visit note",
-            "2. Click 'Generate Care Plans'",
-            "3. AI analyzes diagnoses and conditions",
-            "4. Review suggested problems, goals, interventions",
-            "5. Customize and save to patient chart",
-            "6. Update care plans after each visit"
-          ],
-          bestPractices: [
-            "Works for home health, hospice, and long-term care",
-            "Evidence-based interventions from clinical guidelines",
-            "Meets Medicare and Joint Commission standards",
-            "Auto-updates based on patient progress",
-            "Perfect for OASIS documentation"
-          ],
-          page: "CarePlanManagement"
-        },
-        {
-          name: "Billing Code Suggestions (Providers)",
-          icon: FileText,
-          description: "AI suggests appropriate CPT, ICD-10, and HCPCS codes based on documentation for MDs, DOs, NPs, PAs",
-          howTo: [
-            "1. Complete clinical documentation",
-            "2. Click 'Suggest Billing Codes'",
-            "3. AI analyzes visit complexity and diagnoses",
-            "4. Review suggested CPT codes with justification",
-            "5. View ICD-10 diagnosis codes",
-            "6. Copy codes to billing system"
-          ],
-          bestPractices: [
-            "Works for all medical specialties",
-            "Maximizes compliant reimbursement",
-            "Explains code selection rationale",
-            "Flags potential compliance issues",
-            "Helps avoid downcoding and denials"
-          ],
-          page: "SmartNoteAssistant"
-        }
-      ]
-    },
-    {
-      category: "Patient Management",
-      icon: Users,
-      color: "orange",
-      items: [
-        {
-          name: "Patient Dashboard",
-          icon: Users,
-          description: "Centralized view of all patient information, history, and AI-powered insights",
-          howTo: [
-            "1. Click on any patient from the list",
-            "2. View comprehensive medical history",
-            "3. Review AI-generated summaries and alerts",
-            "4. Access care plans, visits, and documents",
-            "5. Use quick actions for common tasks"
-          ],
-          bestPractices: [
-            "Keep patient info up-to-date",
-            "Review AI alerts before each visit",
-            "Document allergies prominently",
-            "Update medications after each visit",
-            "Use favorite feature for frequent patients"
-          ],
-          page: "Patients"
-        },
-        {
-          name: "AI Patient Analyzer",
-          icon: Brain,
-          description: "Comprehensive AI analysis of patient risks, trends, and care recommendations",
-          howTo: [
-            "1. Open patient details page",
-            "2. Scroll to AI Patient Analyzer section",
-            "3. Click 'Analyze' for instant insights",
-            "4. Review risk scores and predictions",
-            "5. Act on high-priority recommendations"
-          ],
-          bestPractices: [
-            "Run analysis after significant changes",
-            "Review before recertification visits",
-            "Share insights with care team",
-            "Use to justify continued care needs",
-            "Track trend changes over time"
-          ],
-          page: "PatientDetails"
-        },
-        {
-          name: "Patient Alerts & Risk Detection",
-          icon: Bell,
-          description: "AI-powered early warning system for deterioration, readmission risk, and safety concerns",
-          howTo: [
-            "1. AI automatically generates alerts from visit data",
-            "2. View alerts on patient dashboard",
-            "3. Click alert to see details and recommendations",
-            "4. Acknowledge or create tasks from alerts",
-            "5. Track resolution progress"
-          ],
-          bestPractices: [
-            "Review alerts daily before visits",
-            "Don't dismiss critical alerts without action",
-            "Document alert findings in visit notes",
-            "Escalate high-risk situations promptly",
-            "Use alerts to inform care plan updates"
-          ],
-          page: "PatientAlerts"
-        }
-      ]
-    },
-
-    {
-      category: "Additional Tools",
-      icon: Zap,
-      color: "red",
-      items: [
-        {
-          name: "Medicare Compliance Checker",
-          icon: Shield,
-          description: "Real-time compliance scoring with specific element tracking and improvement suggestions",
-          howTo: [
-            "1. Available automatically after note enhancement",
-            "2. View compliance score and breakdown",
-            "3. Review flagged missing elements",
-            "4. Apply suggested fixes with one click",
-            "5. Track compliance trends over time"
-          ],
-          bestPractices: [
-            "Aim for 90%+ compliance scores",
-            "Learn from flagged elements",
-            "Review compliance before submitting",
-            "Use as training tool for improvement",
-            "Document all required elements first time"
-          ],
-          page: "MedicareComplianceDashboard"
-        },
-        {
-          name: "Clinical Note Reviewer",
-          icon: FileText,
-          description: "AI audits notes for completeness, accuracy, billing optimization, and clarity",
-          howTo: [
-            "1. After enhancing note, expand Note Review section",
-            "2. Click 'Review Note' for detailed analysis",
-            "3. Review scores by category",
-            "4. Apply improvement suggestions",
-            "5. Re-review if major changes made"
-          ],
-          bestPractices: [
-            "Review high-value visits thoroughly",
-            "Focus on billing optimization tips",
-            "Learn from accuracy feedback",
-            "Use clarity suggestions for readability",
-            "Track improvement in review scores"
-          ],
-          page: "SmartNoteAssistant"
-        }
-      ]
-    },
-
-  ];
-
-  const allFeatures = features.flatMap(cat => 
-    cat.items.map(item => ({ ...item, category: cat.category, categoryColor: cat.color }))
-  );
-
-  const filteredFeatures = searchTerm
-    ? allFeatures.filter(f => 
-        f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        f.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        f.category.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : null;
+  const handleDownloadGuide = async () => {
+    setIsGeneratingGuide(true);
+    try {
+      const response = await base44.functions.invoke('generateUserGuidePDF', {});
+      if (response?.data?.file_url) {
+        const link = document.createElement('a');
+        link.href = response.data.file_url;
+        link.download = 'CareMetric-AI-User-Guide.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error('Error generating guide:', error);
+      alert('Failed to generate user guide');
+    } finally {
+      setIsGeneratingGuide(false);
+    }
+  };
 
   return (
-    <div className="p-3 sm:p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Features Guide</h1>
-        <p className="text-sm sm:text-base text-gray-600 mb-4">Learn how to use CareMetric AI to streamline your nursing practice</p>
-        <Button
-          onClick={() => setShowUserGuide(true)}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          <BookOpen className="w-4 h-4 mr-2" />
-          View User Guide by Provider Type
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="mb-12">
+        <h1 className="text-4xl font-bold mb-4">CareMetric AI Features</h1>
+        <p className="text-lg text-slate-600 dark:text-slate-400 mb-6">
+          Comprehensive tools designed to streamline healthcare documentation, enhance compliance, and improve patient outcomes.
+        </p>
+        
+        <Button 
+          onClick={handleDownloadGuide}
+          disabled={isGeneratingGuide}
+          className="bg-blue-600 hover:bg-blue-700">
+          <Download className="w-4 h-4 mr-2" />
+          {isGeneratingGuide ? 'Generating Guide...' : 'Download User Guide PDF'}
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="mb-4 sm:mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-          <Input
-            placeholder="Search features..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 sm:pl-10 h-11 sm:h-12 text-sm sm:text-base"
-          />
-        </div>
+      {/* Category Filter */}
+      <div className="mb-8 flex flex-wrap gap-2">
+        {CATEGORIES.map(category => (
+          <Badge
+            key={category}
+            variant={selectedCategory === category ? "default" : "outline"}
+            className="cursor-pointer px-3 py-1.5"
+            onClick={() => setSelectedCategory(category)}>
+            {category}
+          </Badge>
+        ))}
       </div>
 
-      {/* Search Results */}
-      {filteredFeatures && (
-        <div className="space-y-4 mb-6">
-          <p className="text-sm text-gray-600">{filteredFeatures.length} feature{filteredFeatures.length !== 1 ? 's' : ''} found</p>
-          {filteredFeatures.map((feature, idx) => (
-            <FeatureCard key={idx} feature={feature} />
-          ))}
-        </div>
-      )}
-
-      {/* Feature Categories */}
-      {!filteredFeatures && (
-        <Tabs defaultValue={features[0].category} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 h-auto gap-1 sm:gap-2">
-            {features.map((cat) => (
-              <TabsTrigger key={cat.category} value={cat.category} className="gap-1 sm:gap-2 py-2 sm:py-3 text-xs sm:text-sm">
-                <cat.icon className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden md:inline">{cat.category}</span>
-                <span className="md:hidden truncate">{cat.category.split(' ')[0]}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {features.map((category) => (
-            <TabsContent key={category.category} value={category.category} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                {category.items.map((feature, idx) => (
-                  <FeatureCard key={idx} feature={{ ...feature, categoryColor: category.color }} />
-                ))}
-              </div>
-            </TabsContent>
-          ))}
-        </Tabs>
-      )}
-
-      {/* Quick Tips Card */}
-      <Card className="mt-6 sm:mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200">
-        <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
-            Quick Tips for Success
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 sm:p-6 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            <div className="space-y-2">
-              <h4 className="font-semibold text-sm text-indigo-900">🎯 For Best AI Results:</h4>
-              <ul className="text-sm text-gray-700 space-y-1">
-                <li>• Save detailed patient information</li>
-                <li>• Include specific observations, not vague terms</li>
-                <li>• Document skilled interventions clearly</li>
-                <li>• Note patient responses to teaching</li>
-                <li>• Be consistent with your documentation style</li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-semibold text-sm text-indigo-900">⚡ Time-Saving Shortcuts:</h4>
-              <ul className="text-sm text-gray-700 space-y-1">
-                <li>• Use voice dictation for hands-free notes</li>
-                <li>• Create custom phrases for common findings</li>
-                <li>• Favorite frequently visited pages/patients</li>
-                <li>• Enable offline mode for field documentation</li>
-                <li>• Use one-click compliance fixes</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Features Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredFeatures.map((feature, idx) => {
+          const Icon = feature.icon;
+          return (
+            <Card key={idx} className="hover:shadow-lg transition-shadow hover-lift">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <Icon className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                  <Badge variant="secondary" className="text-xs">{feature.category}</Badge>
+                </div>
+                <CardTitle className="mt-3">{feature.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  {feature.description}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div>
-  );
-}
-
-function FeatureCard({ feature }) {
-  const [expanded, setExpanded] = useState(false);
-  
-  const colorMap = {
-    blue: "from-blue-50 to-blue-100 border-blue-300",
-    green: "from-green-50 to-green-100 border-green-300",
-    purple: "from-purple-50 to-purple-100 border-purple-300",
-    red: "from-red-50 to-red-100 border-red-300",
-    orange: "from-orange-50 to-orange-100 border-orange-300",
-    indigo: "from-indigo-50 to-indigo-100 border-indigo-300"
-  };
-
-  const iconColorMap = {
-    blue: "text-blue-600",
-    green: "text-green-600",
-    purple: "text-purple-600",
-    red: "text-red-600",
-    orange: "text-orange-600",
-    indigo: "text-indigo-600"
-  };
-
-  return (
-    <Card className={`border-2 bg-gradient-to-r ${colorMap[feature.categoryColor] || colorMap.blue}`}>
-      <CardHeader className="pb-3 p-3 sm:p-6">
-        <div className="flex flex-col sm:flex-row items-start gap-3">
-          <div className="flex items-start gap-2 sm:gap-3 flex-1 w-full min-w-0">
-            <div className={`p-1.5 sm:p-2 bg-white rounded-lg shadow flex-shrink-0`}>
-              <feature.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${iconColorMap[feature.categoryColor] || iconColorMap.blue}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-base sm:text-lg mb-1 break-words">{feature.name}</CardTitle>
-              <p className="text-xs sm:text-sm text-gray-700">{feature.description}</p>
-              {feature.category && (
-                <Badge variant="outline" className="mt-2 text-xs">
-                  {feature.category}
-                </Badge>
-              )}
-            </div>
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto sm:flex-shrink-0">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setExpanded(!expanded)}
-              className="flex-1 sm:flex-none min-h-[36px] text-xs sm:text-sm"
-            >
-              {expanded ? 'Hide' : 'Learn More'}
-            </Button>
-            {feature.page && (
-              <Link to={createPageUrl(feature.page)} className="flex-1 sm:flex-none">
-                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 w-full min-h-[36px] text-xs sm:text-sm">
-                  Try It
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      
-      {expanded && (
-        <CardContent className="pt-0 p-3 sm:p-6 space-y-3 sm:space-y-4 border-t bg-white/50">
-          <div>
-            <h4 className="font-semibold text-xs sm:text-sm flex items-center gap-2 mb-2 text-gray-900">
-              <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
-              How to Use
-            </h4>
-            <ol className="space-y-1">
-              {feature.howTo.map((step, idx) => (
-                <li key={idx} className="text-xs sm:text-sm text-gray-700 pl-2">{step}</li>
-              ))}
-            </ol>
-          </div>
-          
-          <div>
-            <h4 className="font-semibold text-xs sm:text-sm flex items-center gap-2 mb-2 text-gray-900">
-              <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600 flex-shrink-0" />
-              Best Practices
-            </h4>
-            <ul className="space-y-1">
-              {feature.bestPractices.map((practice, idx) => (
-                <li key={idx} className="text-xs sm:text-sm text-gray-700 flex items-start gap-2">
-                  <span className="text-purple-600 font-bold flex-shrink-0">•</span>
-                  <span>{practice}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </CardContent>
-      )}
-    </Card>
   );
 }
