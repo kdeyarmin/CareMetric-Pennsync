@@ -13,7 +13,6 @@ import Billing from './pages/Billing';
 import BillingInvoicing from './pages/BillingInvoicing';
 import BillingModule from './pages/BillingModule';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
-import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import Compliance from './pages/Compliance';
@@ -38,7 +37,6 @@ import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
 import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
 import MobileWorkflow from './pages/MobileWorkflow';
 import MyAILearning from './pages/MyAILearning';
-import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
 import NurseEducationVideos from './pages/NurseEducationVideos';
 import NursePerformanceDashboard from './pages/NursePerformanceDashboard';
 import NurseTraining from './pages/NurseTraining';
@@ -71,7 +69,6 @@ import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
 import Pricing from './pages/Pricing';
 import PrivacyPolicy from './pages/PrivacyPolicy';
-import ProviderScheduling from './pages/ProviderScheduling';
 import ProviderSettings from './pages/ProviderSettings';
 import ProviderTrainingHub from './pages/ProviderTrainingHub';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
@@ -99,6 +96,9 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import CarePlanManagement from './pages/CarePlanManagement';
+import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
+import ProviderScheduling from './pages/ProviderScheduling';
 import __Layout from './Layout.jsx';
 
 
@@ -118,7 +118,6 @@ export const PAGES = {
     "BillingInvoicing": BillingInvoicing,
     "BillingModule": BillingModule,
     "CareCoordinationDashboard": CareCoordinationDashboard,
-    "CarePlanManagement": CarePlanManagement,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
     "Compliance": Compliance,
@@ -143,7 +142,6 @@ export const PAGES = {
     "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
     "MobileWorkflow": MobileWorkflow,
     "MyAILearning": MyAILearning,
-    "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
     "NurseEducationVideos": NurseEducationVideos,
     "NursePerformanceDashboard": NursePerformanceDashboard,
     "NurseTraining": NurseTraining,
@@ -176,7 +174,6 @@ export const PAGES = {
     "PredictiveAnalytics": PredictiveAnalytics,
     "Pricing": Pricing,
     "PrivacyPolicy": PrivacyPolicy,
-    "ProviderScheduling": ProviderScheduling,
     "ProviderSettings": ProviderSettings,
     "ProviderTrainingHub": ProviderTrainingHub,
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
@@ -204,6 +201,9 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
+    "CarePlanManagement": CarePlanManagement,
+    "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
+    "ProviderScheduling": ProviderScheduling,
 }
 
 export const pagesConfig = {

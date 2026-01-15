@@ -16,8 +16,8 @@ import {
   Plus,
   ShieldAlert,
   ListTodo,
-  Clock } from
-"lucide-react";
+  Clock
+  } from "lucide-react";
 import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
 import { getProviderCompliancePrompt } from "@/components/utils/providerSpecificConfig";

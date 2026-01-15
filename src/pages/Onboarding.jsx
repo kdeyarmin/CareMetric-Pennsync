@@ -131,7 +131,7 @@ export default function Onboarding() {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">Home Health</p>
-                         <p className="text-sm text-slate-600 dark:text-slate-400">Skilled nursing care in patients' homes</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">Skilled nursing care in patients' homes</p>
                       </div>
                     </div>
                     {serviceType === 'home_health' && (
@@ -153,7 +153,7 @@ export default function Onboarding() {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">Hospice</p>
-                         <p className="text-sm text-slate-600 dark:text-slate-400">End-of-life comfort care</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">End-of-life comfort care</p>
                       </div>
                     </div>
                     {serviceType === 'hospice' && (
@@ -205,7 +205,7 @@ export default function Onboarding() {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">RN</p>
-                         <p className="text-sm text-slate-600 dark:text-slate-400">Registered Nurse</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">Registered Nurse</p>
                       </div>
                     </div>
                     {credentialType === 'RN' && (
@@ -227,7 +227,7 @@ export default function Onboarding() {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">LPN</p>
-                         <p className="text-sm text-slate-600 dark:text-slate-400">Licensed Practical Nurse</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">Licensed Practical Nurse</p>
                       </div>
                     </div>
                     {credentialType === 'LPN' && (
@@ -249,7 +249,7 @@ export default function Onboarding() {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">Admin Staff</p>
-                         <p className="text-sm text-slate-600 dark:text-slate-400">Administrative personnel</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">Administrative personnel</p>
                       </div>
                     </div>
                     {credentialType === 'Admin Staff' && (
