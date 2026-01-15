@@ -23,6 +23,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { format, addDays } from "date-fns";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -38,6 +39,10 @@ import EducationTracker from "../components/carePlan/EducationTracker";
 import AICarePlanGenerator from "../components/carePlan/AICarePlanGenerator";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import FavoriteButton from "../components/navigation/FavoriteButton";
+import CarePlanTemplateSelector from "../components/carePlan/CarePlanTemplateSelector";
+import ProgressTracker from "../components/carePlan/ProgressTracker";
+import ReviewReminders from "../components/carePlan/ReviewReminders";
+import CollaborationPanel from "../components/carePlan/CollaborationPanel";
 
 export default function CarePlanManagement() {
   const navigate = useNavigate();
@@ -410,9 +415,42 @@ export default function CarePlanManagement() {
         </CardContent>
       </Card>
 
+      {/* Review Reminders Widget */}
+      {carePlans.length > 0 && (
+        <div className="mb-3 sm:mb-4 w-full">
+          <ReviewReminders carePlans={carePlans} />
+        </div>
+      )}
+
       {/* AI Tools Section */}
       {selectedPatient && showAITools && (
         <div className="space-y-3 sm:space-y-4 mb-3 sm:mb-4 w-full overflow-hidden">
+          {/* Template Selector */}
+          <CarePlanTemplateSelector
+            diagnosis={selectedPatient.primary_diagnosis}
+            providerType={currentUser?.credential_type}
+            onSelectTemplate={async (template) => {
+              try {
+                const targetDate = addDays(new Date(), template.target_days || 60);
+                await base44.entities.CarePlan.create({
+                  patient_id: selectedPatient.id,
+                  template_id: template.id,
+                  problem: template.problem,
+                  goal: template.goal,
+                  interventions: template.interventions,
+                  baseline_measurement: template.baseline_measurements?.[0] || "",
+                  frequency: template.frequency_options?.[0] || "Weekly",
+                  target_date: format(targetDate, 'yyyy-MM-dd'),
+                  status: 'active',
+                  next_review_date: format(addDays(new Date(), 30), 'yyyy-MM-dd')
+                });
+                queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
+                toast.success("Care plan created from template");
+              } catch (error) {
+                toast.error("Failed to create care plan");
+              }
+            }}
+          />
           {/* AI Suggestion Engine */}
           <AICarePlanSuggestionEngine
             patientId={selectedPatient.id}
@@ -594,7 +632,7 @@ export default function CarePlanManagement() {
                   <div className="space-y-3 w-full">
                     {plans.map((plan) => (
                       <Card key={plan.id} className="bg-slate-100 dark:bg-slate-900 w-full overflow-hidden">
-                        <CardContent className="p-3 sm:p-4 overflow-hidden">
+                        <CardContent className="p-3 sm:p-4 overflow-hidden space-y-3">
                           <div className="flex flex-col gap-2 w-full">
                             <div className="flex-1 min-w-0 overflow-hidden">
                               <div className="flex items-start gap-2 mb-1 flex-wrap">
@@ -626,6 +664,12 @@ export default function CarePlanManagement() {
                               </div>
                             </div>
                           </div>
+
+                          {/* Progress Tracker */}
+                          <ProgressTracker carePlan={plan} patientId={plan.patient_id} />
+
+                          {/* Collaboration Panel */}
+                          <CollaborationPanel carePlan={plan} patientId={plan.patient_id} />
 
                           <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t w-full">
                             <Select
