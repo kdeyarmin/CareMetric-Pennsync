@@ -120,7 +120,7 @@ export default function PersonalizedLearningPath() {
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="bg-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Active Gaps</p>
@@ -132,7 +132,7 @@ export default function PersonalizedLearningPath() {
           </Card>
 
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="bg-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Critical/High</p>
@@ -146,7 +146,7 @@ export default function PersonalizedLearningPath() {
           </Card>
 
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="bg-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">In Progress</p>
@@ -160,7 +160,7 @@ export default function PersonalizedLearningPath() {
           </Card>
 
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="bg-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Addressed</p>
@@ -283,7 +283,7 @@ export default function PersonalizedLearningPath() {
         </div> :
 
       <Card className="mb-8">
-          <CardContent className="p-12 text-center">
+          <CardContent className="bg-slate-100 p-12 text-center">
             <CheckCircle2 className="w-16 h-16 text-green-600 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
               No Active Skill Gaps Identified
