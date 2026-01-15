@@ -10,15 +10,15 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  DialogFooter } from
+"@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  SelectValue } from
+"@/components/ui/select";
 import {
   Users,
   AlertTriangle,
@@ -28,8 +28,8 @@ import {
   X,
   Eye,
   Loader2,
-  RefreshCw
-} from "lucide-react";
+  RefreshCw } from
+"lucide-react";
 
 export default function DuplicatePatientManager() {
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -37,12 +37,12 @@ export default function DuplicatePatientManager() {
   const [primaryPatientId, setPrimaryPatientId] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [dismissedGroups, setDismissedGroups] = useState(new Set());
-  
+
   const queryClient = useQueryClient();
 
   const { data: patients = [], isLoading, refetch } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list()
   });
 
   const deleteMutation = useMutation({
@@ -64,14 +64,14 @@ export default function DuplicatePatientManager() {
 
       const duplicates = patients.filter((other, j) => {
         if (i === j || processed.has(other.id)) return false;
-        
+
         // Calculate match score
         let score = 0;
         let matchReasons = [];
 
         // Exact MRN match (strongest indicator)
         if (patient.medical_record_number && other.medical_record_number &&
-            patient.medical_record_number === other.medical_record_number) {
+        patient.medical_record_number === other.medical_record_number) {
           score += 50;
           matchReasons.push("Same MRN");
         }
@@ -83,7 +83,7 @@ export default function DuplicatePatientManager() {
         const lastName2 = other.last_name?.toLowerCase().trim() || '';
         const name1 = `${firstName1} ${lastName1}`;
         const name2 = `${firstName2} ${lastName2}`;
-        
+
         // Exact full name match
         if (name1 === name2 && name1 !== ' ') {
           score += 30;
@@ -131,14 +131,14 @@ export default function DuplicatePatientManager() {
 
         // Exact DOB match
         if (patient.date_of_birth && other.date_of_birth &&
-            patient.date_of_birth === other.date_of_birth) {
+        patient.date_of_birth === other.date_of_birth) {
           score += 25;
           matchReasons.push("Same DOB");
         }
 
         // Same address
         if (patient.address && other.address &&
-            patient.address.toLowerCase().trim() === other.address.toLowerCase().trim()) {
+        patient.address.toLowerCase().trim() === other.address.toLowerCase().trim()) {
           score += 10;
           matchReasons.push("Same address");
         }
@@ -152,21 +152,21 @@ export default function DuplicatePatientManager() {
         }
 
         return score >= 40 ? { patient: other, score, matchReasons } : null;
-      }).filter(d => d && d.patient);
+      }).filter((d) => d && d.patient);
 
       if (duplicates.length > 0) {
         const group = {
           id: `group-${patient.id}`,
           patients: [
-            { patient, score: 100, matchReasons: ["Primary"] },
-            ...duplicates
-          ],
-          highestScore: Math.max(...duplicates.map(d => d.score)),
-          matchReasons: [...new Set(duplicates.flatMap(d => d.matchReasons))]
+          { patient, score: 100, matchReasons: ["Primary"] },
+          ...duplicates],
+
+          highestScore: Math.max(...duplicates.map((d) => d.score)),
+          matchReasons: [...new Set(duplicates.flatMap((d) => d.matchReasons))]
         };
-        
+
         groups.push(group);
-        duplicates.forEach(d => {
+        duplicates.forEach((d) => {
           if (d && d.patient && d.patient.id) {
             processed.add(d.patient.id);
           }
@@ -175,7 +175,7 @@ export default function DuplicatePatientManager() {
       }
     });
 
-    return groups.filter(g => !dismissedGroups.has(g.id));
+    return groups.filter((g) => !dismissedGroups.has(g.id));
   }, [patients, dismissedGroups]);
 
   const handleDeleteDuplicate = async (patientId) => {
@@ -190,15 +190,15 @@ export default function DuplicatePatientManager() {
 
   const handleMergePatients = async () => {
     if (!selectedGroup || !primaryPatientId) return;
-    
+
     setIsProcessing(true);
     try {
       // Get the primary patient's data
-      const primaryPatient = selectedGroup.patients.find(p => p.patient.id === primaryPatientId)?.patient;
+      const primaryPatient = selectedGroup.patients.find((p) => p.patient.id === primaryPatientId)?.patient;
       if (!primaryPatient) return;
 
       // Delete all other patients in the group
-      const otherPatients = selectedGroup.patients.filter(p => p.patient.id !== primaryPatientId);
+      const otherPatients = selectedGroup.patients.filter((p) => p.patient.id !== primaryPatientId);
       for (const { patient } of otherPatients) {
         await deleteMutation.mutateAsync(patient.id);
       }
@@ -213,7 +213,7 @@ export default function DuplicatePatientManager() {
   };
 
   const handleDismissGroup = (groupId) => {
-    setDismissedGroups(prev => new Set([...prev, groupId]));
+    setDismissedGroups((prev) => new Set([...prev, groupId]));
   };
 
   const getConfidenceLevel = (score) => {
@@ -228,8 +228,8 @@ export default function DuplicatePatientManager() {
         <CardContent className="py-8 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
         </CardContent>
-      </Card>
-    );
+      </Card>);
+
   }
 
   return (
@@ -241,9 +241,9 @@ export default function DuplicatePatientManager() {
             Duplicate Patient Detection
           </div>
           <div className="flex items-center gap-2">
-            {duplicateGroups.length > 0 && (
-              <Badge variant="destructive">{duplicateGroups.length} potential duplicate{duplicateGroups.length !== 1 ? 's' : ''}</Badge>
-            )}
+            {duplicateGroups.length > 0 &&
+            <Badge variant="destructive">{duplicateGroups.length} potential duplicate{duplicateGroups.length !== 1 ? 's' : ''}</Badge>
+            }
             <Button variant="ghost" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
@@ -251,20 +251,20 @@ export default function DuplicatePatientManager() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {duplicateGroups.length === 0 ? (
-          <Alert className="bg-green-50 border-green-200">
+        {duplicateGroups.length === 0 ?
+        <Alert className="bg-slate-100 text-foreground px-4 py-3 text-sm rounded-lg relative w-full border [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7 border-green-200">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
             <AlertDescription className="text-green-800">
               No duplicate patients detected. All records appear unique.
             </AlertDescription>
-          </Alert>
-        ) : (
-          <div className="space-y-3">
+          </Alert> :
+
+        <div className="space-y-3">
             {duplicateGroups.map((group) => {
-              const confidence = getConfidenceLevel(group.highestScore);
-              
-              return (
-                <div key={group.id} className="border rounded-lg p-3 bg-orange-50 border-orange-200">
+            const confidence = getConfidenceLevel(group.highestScore);
+
+            return (
+              <div key={group.id} className="border rounded-lg p-3 bg-orange-50 border-orange-200">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-orange-600" />
@@ -275,41 +275,41 @@ export default function DuplicatePatientManager() {
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          setSelectedGroup(group);
-                          setPrimaryPatientId(group.patients[0].patient.id);
-                          setMergeDialogOpen(true);
-                        }}
-                      >
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setSelectedGroup(group);
+                        setPrimaryPatientId(group.patients[0].patient.id);
+                        setMergeDialogOpen(true);
+                      }}>
+
                         <Merge className="w-3 h-3 mr-1" />
                         Review & Merge
                       </Button>
                       <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-gray-400"
-                        onClick={() => handleDismissGroup(group.id)}
-                        title="Dismiss - not duplicates"
-                      >
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-gray-400"
+                      onClick={() => handleDismissGroup(group.id)}
+                      title="Dismiss - not duplicates">
+
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-1 mb-2">
-                    {group.matchReasons.map((reason, idx) => (
-                      <Badge key={idx} variant="outline" className="text-xs bg-white">
+                    {group.matchReasons.map((reason, idx) =>
+                  <Badge key={idx} variant="outline" className="text-xs bg-white">
                         {reason}
                       </Badge>
-                    ))}
+                  )}
                   </div>
 
                   <div className="space-y-1">
-                    {group.patients.map(({ patient, score }) => (
-                      <div key={patient.id} className="flex items-center justify-between bg-white p-2 rounded text-sm">
+                    {group.patients.map(({ patient, score }) =>
+                  <div key={patient.id} className="flex items-center justify-between bg-white p-2 rounded text-sm">
                         <div className="flex items-center gap-3">
                           <span className="font-medium">
                             {patient.first_name} {patient.last_name}
@@ -327,25 +327,25 @@ export default function DuplicatePatientManager() {
                           </Badge>
                         </div>
                       </div>
-                    ))}
+                  )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                </div>);
 
-        {dismissedGroups.size > 0 && (
-          <div className="text-xs text-gray-500 text-center">
+          })}
+          </div>
+        }
+
+        {dismissedGroups.size > 0 &&
+        <div className="text-xs text-gray-500 text-center">
             {dismissedGroups.size} group{dismissedGroups.size !== 1 ? 's' : ''} dismissed •{" "}
-            <button 
-              className="text-blue-600 hover:underline"
-              onClick={() => setDismissedGroups(new Set())}
-            >
+            <button
+            className="text-blue-600 hover:underline"
+            onClick={() => setDismissedGroups(new Set())}>
+
               Show all
             </button>
           </div>
-        )}
+        }
       </CardContent>
 
       {/* Merge Dialog */}
@@ -355,8 +355,8 @@ export default function DuplicatePatientManager() {
             <DialogTitle>Review & Merge Duplicate Records</DialogTitle>
           </DialogHeader>
           
-          {selectedGroup && (
-            <div className="space-y-4">
+          {selectedGroup &&
+          <div className="space-y-4">
               <Alert className="bg-yellow-50 border-yellow-200">
                 <AlertTriangle className="w-4 h-4 text-yellow-600" />
                 <AlertDescription className="text-yellow-800">
@@ -374,11 +374,11 @@ export default function DuplicatePatientManager() {
                     <SelectValue placeholder="Select primary record" />
                   </SelectTrigger>
                   <SelectContent>
-                    {selectedGroup.patients.map(({ patient }) => (
-                      <SelectItem key={patient.id} value={patient.id}>
+                    {selectedGroup.patients.map(({ patient }) =>
+                  <SelectItem key={patient.id} value={patient.id}>
                         {patient.first_name} {patient.last_name} - MRN: {patient.medical_record_number || 'N/A'}
                       </SelectItem>
-                    ))}
+                  )}
                   </SelectContent>
                 </Select>
               </div>
@@ -386,24 +386,24 @@ export default function DuplicatePatientManager() {
               <div className="space-y-2">
                 <p className="text-sm font-medium">Records Comparison:</p>
                 <div className="max-h-64 overflow-y-auto space-y-2">
-                  {selectedGroup.patients.map(({ patient }) => (
-                    <div 
-                      key={patient.id} 
-                      className={`p-3 rounded-lg border ${
-                        patient.id === primaryPatientId 
-                          ? 'bg-green-50 border-green-300' 
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
-                    >
+                  {selectedGroup.patients.map(({ patient }) =>
+                <div
+                  key={patient.id}
+                  className={`p-3 rounded-lg border ${
+                  patient.id === primaryPatientId ?
+                  'bg-green-50 border-green-300' :
+                  'bg-gray-50 border-gray-200'}`
+                  }>
+
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium">
                           {patient.first_name} {patient.last_name}
-                          {patient.id === primaryPatientId && (
-                            <Badge className="ml-2 bg-green-100 text-green-800">Primary - Will Keep</Badge>
-                          )}
-                          {patient.id !== primaryPatientId && (
-                            <Badge className="ml-2 bg-red-100 text-red-800">Will Delete</Badge>
-                          )}
+                          {patient.id === primaryPatientId &&
+                      <Badge className="ml-2 bg-green-100 text-green-800">Primary - Will Keep</Badge>
+                      }
+                          {patient.id !== primaryPatientId &&
+                      <Badge className="ml-2 bg-red-100 text-red-800">Will Delete</Badge>
+                      }
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
@@ -415,11 +415,11 @@ export default function DuplicatePatientManager() {
                         <div className="col-span-2"><strong>Diagnosis:</strong> {patient.primary_diagnosis || 'N/A'}</div>
                       </div>
                     </div>
-                  ))}
+                )}
                 </div>
               </div>
             </div>
-          )}
+          }
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setMergeDialogOpen(false)}>
@@ -428,18 +428,18 @@ export default function DuplicatePatientManager() {
             <Button
               onClick={handleMergePatients}
               disabled={!primaryPatientId || isProcessing}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {isProcessing ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4 mr-2" />
-              )}
+              className="bg-red-600 hover:bg-red-700">
+
+              {isProcessing ?
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" /> :
+
+              <Trash2 className="w-4 h-4 mr-2" />
+              }
               Delete Duplicates & Keep Primary
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
-  );
+    </Card>);
+
 }
