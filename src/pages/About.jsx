@@ -15,12 +15,7 @@ export default function About() {
       description: "Paste any healthcare note and get instant compliance review against Medicare, Medicaid, and payer requirements. Works for all provider types.",
       color: "from-blue-500 to-cyan-500"
     },
-    {
-      icon: Video,
-      title: "Telehealth with AI Transcription",
-      description: "HIPAA-compliant video visits with automatic AI transcription and visit note generation. Perfect for providers seeing patients remotely.",
-      color: "from-green-500 to-emerald-500"
-    },
+
     {
       icon: FileText,
       title: "Medical Scribe",
