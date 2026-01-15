@@ -300,12 +300,18 @@ Return your analysis in the following JSON format:
                       <SelectTrigger>
                         <SelectValue placeholder="Select visit type..." />
                       </SelectTrigger>
-                      <SelectContent>
-                        {availableVisitTypes.map((vt) => (
-                          <SelectItem key={vt.id} value={vt.id}>
-                            {vt.label}
+                      <SelectContent className="max-h-60">
+                        {availableVisitTypes.length > 0 ? (
+                          availableVisitTypes.map((vt) => (
+                            <SelectItem key={vt.id} value={vt.id}>
+                              {vt.label}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no_types" disabled>
+                            No visit types available for your provider type
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
