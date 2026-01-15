@@ -110,25 +110,6 @@ const FEATURES_GUIDE = [
     importance: "Reduces document creation time from hours to minutes, ensures consistency across communications, improves patient understanding and compliance with discharge instructions, and maintains HIPAA-compliant communication standards"
   },
   {
-    title: "Provider Scheduling",
-    description: "Optimize visit schedules and care routes using intelligent algorithms that maximize efficiency while maintaining clinical continuity and patient accessibility.",
-    howToUse: [
-      "1. Access Schedule page from dashboard navigation",
-      "2. Review current weekly or daily visit schedule",
-      "3. Add new visits while leveraging intelligent scheduling suggestions",
-      "4. Allow system to optimize geographic routing and visit sequencing automatically",
-      "5. Manually adjust schedule to accommodate specific patient or clinical needs"
-    ],
-    bestPractices: [
-      "Cluster similar visit types and geographic locations for operational efficiency",
-      "Account for patient preferences, availability, and medical urgency in scheduling",
-      "Allocate adequate travel time between visits for remote home health care delivery",
-      "Implement AI-generated route optimization recommendations to reduce travel time",
-      "Confirm all scheduled visits with patients at least 24 hours prior to appointment"
-    ],
-    importance: "Saves 5-10 hours per week through optimized routing and reduces travel time, improves scheduling efficiency, increases patient capacity without additional staff, and reduces fuel costs and environmental impact"
-  },
-  {
     title: "OASIS & Compliance",
     description: "Ensure Medicare OASIS compliance through automated validation against CMS requirements, reducing audit risk and improving revenue cycle management.",
     howToUse: [
