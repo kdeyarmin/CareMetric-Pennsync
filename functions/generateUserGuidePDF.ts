@@ -277,36 +277,45 @@ Deno.serve(async (req) => {
         yPosition = margin;
       }
 
-      // Feature title
-      doc.setFontSize(14);
+      // Feature title with background
+      doc.setFillColor(41, 98, 255);
+      doc.rect(margin - 2, yPosition - 6, contentWidth + 4, 8, 'F');
+      
+      doc.setFontSize(13);
       doc.setFont(undefined, 'bold');
-      doc.text(feature.title, margin, yPosition);
-      yPosition += 8;
+      doc.setTextColor(255, 255, 255);
+      doc.text(feature.title, margin + 2, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 10;
 
       // Description
       doc.setFontSize(10);
       doc.setFont(undefined, 'normal');
       const descriptionLines = doc.splitTextToSize(feature.description, contentWidth);
       doc.text(descriptionLines, margin, yPosition);
-      yPosition += descriptionLines.length * 5 + 3;
+      yPosition += descriptionLines.length * 5 + 5;
 
       // How to Use section
       doc.setFont(undefined, 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(41, 98, 255);
       doc.text('How to Use:', margin, yPosition);
-      yPosition += 5;
+      doc.setTextColor(0, 0, 0);
+      yPosition += 6;
 
       doc.setFont(undefined, 'normal');
+      doc.setFontSize(9.5);
       for (const step of feature.howToUse) {
-        if (yPosition > pageHeight - 20) {
+        if (yPosition > pageHeight - 25) {
           doc.addPage();
           yPosition = margin;
         }
         const stepLines = doc.splitTextToSize(step, contentWidth - 5);
-        doc.text(stepLines, margin + 3, yPosition);
-        yPosition += stepLines.length * 4 + 1;
+        doc.text(stepLines, margin + 5, yPosition);
+        yPosition += stepLines.length * 4 + 2;
       }
 
-      yPosition += 3;
+      yPosition += 4;
 
       // Best Practices section
       if (yPosition > pageHeight - 40) {
@@ -315,21 +324,25 @@ Deno.serve(async (req) => {
       }
 
       doc.setFont(undefined, 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(41, 98, 255);
       doc.text('Best Practices:', margin, yPosition);
-      yPosition += 5;
+      doc.setTextColor(0, 0, 0);
+      yPosition += 6;
 
       doc.setFont(undefined, 'normal');
+      doc.setFontSize(9.5);
       for (const practice of feature.bestPractices) {
         if (yPosition > pageHeight - 20) {
           doc.addPage();
           yPosition = margin;
         }
         const practiceLines = doc.splitTextToSize(practice, contentWidth - 5);
-        doc.text(practiceLines, margin + 3, yPosition);
-        yPosition += practiceLines.length * 4 + 1;
+        doc.text(practiceLines, margin + 5, yPosition);
+        yPosition += practiceLines.length * 4 + 2;
       }
 
-      yPosition += 8;
+      yPosition += 10;
     }
 
     const pdfBytes = doc.output('arraybuffer');
