@@ -100,6 +100,7 @@ import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import Compliance from './pages/Compliance';
+import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
 import __Layout from './Layout.jsx';
 
 
@@ -206,6 +207,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
     "Compliance": Compliance,
+    "PersonalizedLearningPath": PersonalizedLearningPath,
 }
 
 export const pagesConfig = {
