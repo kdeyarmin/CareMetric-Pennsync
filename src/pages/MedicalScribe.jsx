@@ -18,16 +18,16 @@ import LanguageSelector from "../components/scribe/LanguageSelector";
 import TerminologyGlossaryManager from "../components/scribe/TerminologyGlossaryManager";
 
 const commonDiagnoses = [
-  "CHF (Congestive Heart Failure)",
-  "COPD (Chronic Obstructive Pulmonary Disease)",
-  "Diabetes Mellitus Type 2",
-  "Hypertension",
-  "Post-operative care",
-  "Wound care",
-  "Stroke/CVA",
-  "Dementia/Alzheimer's",
-  "Custom (type below)"
-];
+"CHF (Congestive Heart Failure)",
+"COPD (Chronic Obstructive Pulmonary Disease)",
+"Diabetes Mellitus Type 2",
+"Hypertension",
+"Post-operative care",
+"Wound care",
+"Stroke/CVA",
+"Dementia/Alzheimer's",
+"Custom (type below)"];
+
 
 export default function MedicalScribe() {
   const queryClient = useQueryClient();
@@ -49,13 +49,13 @@ export default function MedicalScribe() {
         base44.auth.redirectToLogin();
         return null;
       }
-    },
+    }
   });
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
     queryFn: () => base44.entities.Patient.list(),
-    initialData: [],
+    initialData: []
   });
 
   const finalDiagnosis = diagnosis === "Custom (type below)" ? customDiagnosis : diagnosis;
@@ -88,10 +88,10 @@ export default function MedicalScribe() {
   return (
     <>
     <QuickPatientAddDialog
-      open={showAddPatientDialog}
-      onOpenChange={setShowAddPatientDialog}
-      onPatientCreated={handlePatientCreated}
-    />
+        open={showAddPatientDialog}
+        onOpenChange={setShowAddPatientDialog}
+        onPatientCreated={handlePatientCreated} />
+
     <div className="w-full max-w-full overflow-hidden min-w-0">
       <div className="p-2 sm:p-4 md:p-6 max-w-5xl mx-auto pb-24 sm:pb-8 w-full overflow-hidden">
          {/* Header */}
@@ -119,19 +119,19 @@ export default function MedicalScribe() {
           {/* Setup Section */}
           <div className="lg:col-span-1">
             <Card className="lg:sticky lg:top-4 overflow-hidden">
-              <CardHeader className="pb-2 sm:pb-3">
+              <CardHeader className="bg-slate-200 pb-2 p-6 flex flex-col space-y-1.5 sm:pb-3">
                 <CardTitle className="text-sm sm:text-base">Setup</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 sm:space-y-4">
+              <CardContent className="bg-slate-100 pt-0 p-6 space-y-3 sm:space-y-4">
                 <div>
                    <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
                    <Select value={selectedPatientId} onValueChange={(id) => {
-                     if (id === '__add_new__') {
-                       setShowAddPatientDialog(true);
-                       return;
-                     }
-                     setSelectedPatientId(id);
-                   }}>
+                      if (id === '__add_new__') {
+                        setShowAddPatientDialog(true);
+                        return;
+                      }
+                      setSelectedPatientId(id);
+                    }}>
                      <SelectTrigger className="h-10 text-sm">
                        <SelectValue placeholder="Select patient..." />
                      </SelectTrigger>
@@ -142,11 +142,11 @@ export default function MedicalScribe() {
                        <SelectItem value="anonymous" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                          🔒 Anonymous (No data saved)
                        </SelectItem>
-                       {patients.map(p => (
-                         <SelectItem key={p.id} value={p.id} className="text-sm">
+                       {patients.map((p) =>
+                        <SelectItem key={p.id} value={p.id} className="text-sm">
                            {p.first_name} {p.last_name}
                          </SelectItem>
-                       ))}
+                        )}
                      </SelectContent>
                    </Select>
                  </div>
@@ -158,11 +158,11 @@ export default function MedicalScribe() {
                        <SelectValue />
                      </SelectTrigger>
                      <SelectContent>
-                       {getVisitTypesForProvider(currentUser?.credential_type || 'RN').map(vt => (
-                         <SelectItem key={vt.id} value={vt.id} className="text-sm" title={vt.description}>
+                       {getVisitTypesForProvider(currentUser?.credential_type || 'RN').map((vt) =>
+                        <SelectItem key={vt.id} value={vt.id} className="text-sm" title={vt.description}>
                            {vt.label}
                          </SelectItem>
-                       ))}
+                        )}
                      </SelectContent>
                    </Select>
                  </div>
@@ -174,68 +174,68 @@ export default function MedicalScribe() {
                       <SelectValue placeholder="Select..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {commonDiagnoses.map((dx) => (
+                      {commonDiagnoses.map((dx) =>
                         <SelectItem key={dx} value={dx} className="text-sm">
                           {dx}
                         </SelectItem>
-                      ))}
+                        )}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {diagnosis === "Custom (type below)" && (
+                {diagnosis === "Custom (type below)" &&
                   <input
                     type="text"
                     placeholder="Enter custom diagnosis"
                     value={customDiagnosis}
                     onChange={(e) => setCustomDiagnosis(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border rounded-md"
-                  />
-                )}
+                    className="w-full px-3 py-2 text-sm border rounded-md" />
+
+                  }
 
                 <LanguageSelector
-                  value={selectedLanguage}
-                  onChange={setSelectedLanguage}
-                />
+                    value={selectedLanguage}
+                    onChange={setSelectedLanguage} />
 
-                {!isReady && (
+
+                {!isReady &&
                   <Alert className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600">
                     <AlertDescription className="text-xs text-slate-900 dark:text-slate-100">
                       Select visit type and diagnosis to get started. Patient is optional.
                     </AlertDescription>
                   </Alert>
-                )}
+                  }
               </CardContent>
             </Card>
 
-            {currentUser && (
+            {currentUser &&
               <TerminologyGlossaryManager
                 userEmail={currentUser.email}
-                selectedLanguage={selectedLanguage}
-              />
-            )}
+                selectedLanguage={selectedLanguage} />
+
+              }
           </div>
 
           {/* Recording Section */}
           <div className="lg:col-span-2">
-            {isReady ? (
+            {isReady ?
               <div className="space-y-4">
                 <NoteTemplateSelector
                   visitType={visitType}
                   providerType={currentUser?.credential_type || 'RN'}
                   onTemplateSelect={setSelectedTemplate}
-                  onTemplateApply={setSelectedTemplate}
-                />
+                  onTemplateApply={setSelectedTemplate} />
+
                 <MedicalScribeWithReview
                   diagnosis={finalDiagnosis}
                   visitType={visitType}
                   patientId={selectedPatientId}
                   selectedTemplate={selectedTemplate}
                   selectedLanguage={selectedLanguage}
-                  onNoteGenerated={handleNoteGenerated}
-                />
-              </div>
-            ) : (
+                  onNoteGenerated={handleNoteGenerated} />
+
+              </div> :
+
               <Card className="border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900 h-96 flex items-center justify-center">
                 <CardContent className="text-center space-y-3">
                   <div className="p-4 bg-slate-300 dark:bg-slate-700 rounded-full w-fit mx-auto">
@@ -247,11 +247,11 @@ export default function MedicalScribe() {
                   </div>
                 </CardContent>
               </Card>
-            )}
+              }
           </div>
         </div>
       </div>
     </div>
-    </>
-  );
+    </>);
+
 }
