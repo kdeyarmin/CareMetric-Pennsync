@@ -5,46 +5,46 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  BookOpen, 
-  Award, 
-  TrendingUp, 
-  CheckCircle2, 
+import {
+  BookOpen,
+  Award,
+  TrendingUp,
+  CheckCircle2,
   ArrowRight,
   GraduationCap,
-  Sparkles
-} from "lucide-react";
+  Sparkles } from
+"lucide-react";
 import PersonalizedLearningPathPlanner from "../components/training/PersonalizedLearningPathPlanner";
 import BadgeDisplay from "../components/training/BadgeDisplay";
 import TrainingProgressDashboard from "../components/training/TrainingProgressDashboard";
 
 const ALL_MODULES = {
   RN: [
-    { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-    { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
-    { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
-    { id: "oasis-compliance-pro", title: "OASIS Compliance Pro", description: "Ensure perfect Medicare compliance with AI assistance", category: "Compliance", duration: 30, difficulty: "Advanced" }
-  ],
+  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
+  { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
+  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
+  { id: "oasis-compliance-pro", title: "OASIS Compliance Pro", description: "Ensure perfect Medicare compliance with AI assistance", category: "Compliance", duration: 30, difficulty: "Advanced" }],
+
   LPN: [
-    { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-    { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
-    { id: "documentation-best-practices", title: "Documentation Best Practices", description: "Essential documentation skills for LPN providers", category: "Documentation", duration: 20, difficulty: "Beginner" }
-  ],
+  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
+  { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
+  { id: "documentation-best-practices", title: "Documentation Best Practices", description: "Essential documentation skills for LPN providers", category: "Documentation", duration: 20, difficulty: "Beginner" }],
+
   PT: [
-    { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-    { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
-    { id: "telehealth-guidance", title: "Telehealth Best Practices", description: "Conduct effective virtual therapy sessions", category: "Telehealth", duration: 20, difficulty: "Beginner" }
-  ],
+  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
+  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
+  { id: "telehealth-guidance", title: "Telehealth Best Practices", description: "Conduct effective virtual therapy sessions", category: "Telehealth", duration: 20, difficulty: "Beginner" }],
+
   OT: [
-    { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-    { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
-    { id: "telehealth-guidance", title: "Telehealth Best Practices", description: "Conduct effective virtual therapy sessions", category: "Telehealth", duration: 20, difficulty: "Beginner" }
-  ],
+  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
+  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
+  { id: "telehealth-guidance", title: "Telehealth Best Practices", description: "Conduct effective virtual therapy sessions", category: "Telehealth", duration: 20, difficulty: "Beginner" }],
+
   MD: [
-    { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-    { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
-    { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" }
-  ]
+  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
+  { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
+  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" }]
+
 };
 
 export default function ProviderTrainingHub() {
@@ -64,8 +64,8 @@ export default function ProviderTrainingHub() {
 
   const { data: completions = [] } = useQuery({
     queryKey: ['trainingCompletions', currentUser?.email],
-    queryFn: () => base44.entities.TrainingCompletion.filter({ 
-      nurse_email: currentUser?.email 
+    queryFn: () => base44.entities.TrainingCompletion.filter({
+      nurse_email: currentUser?.email
     }),
     enabled: !!currentUser?.email,
     initialData: []
@@ -73,8 +73,8 @@ export default function ProviderTrainingHub() {
 
   const { data: badges = [] } = useQuery({
     queryKey: ['providerBadges', currentUser?.email],
-    queryFn: () => base44.entities.ProviderBadge.filter({ 
-      provider_email: currentUser?.email 
+    queryFn: () => base44.entities.ProviderBadge.filter({
+      provider_email: currentUser?.email
     }),
     enabled: !!currentUser?.email,
     initialData: []
@@ -82,16 +82,16 @@ export default function ProviderTrainingHub() {
 
   const { data: certifications = [] } = useQuery({
     queryKey: ['certifications', currentUser?.email],
-    queryFn: () => base44.entities.ProviderCertification.filter({ 
-      provider_email: currentUser?.email 
+    queryFn: () => base44.entities.ProviderCertification.filter({
+      provider_email: currentUser?.email
     }),
     enabled: !!currentUser?.email,
     initialData: []
   });
 
-  const completedModuleIds = completions.map(c => c.training_module_id);
-  const earnedCerts = certifications.filter(c => c.status === 'earned');
-  const inProgressCerts = certifications.filter(c => c.status === 'in_progress');
+  const completedModuleIds = completions.map((c) => c.training_module_id);
+  const earnedCerts = certifications.filter((c) => c.status === 'earned');
+  const inProgressCerts = certifications.filter((c) => c.status === 'in_progress');
 
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
@@ -110,25 +110,25 @@ export default function ProviderTrainingHub() {
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="bg-slate-200 p-4 text-center">
               <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{completions.length}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Modules Completed</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="bg-slate-200 p-4 text-center">
               <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{badges.length}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Badges Earned</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="bg-slate-200 p-4 text-center">
               <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{earnedCerts.length}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Certifications</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="bg-slate-200 p-4 text-center">
               <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{inProgressCerts.length}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">In Progress</p>
             </CardContent>
@@ -137,7 +137,7 @@ export default function ProviderTrainingHub() {
       </div>
 
       <Tabs defaultValue="learning-path" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1">
+        <TabsList className="bg-slate-100 text-muted-foreground p-1 rounded-lg items-center justify-center grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
           <TabsTrigger value="learning-path">Learning Path</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
           <TabsTrigger value="badges">Badges</TabsTrigger>
@@ -146,20 +146,20 @@ export default function ProviderTrainingHub() {
 
         {/* Learning Path Tab */}
         <TabsContent value="learning-path" className="space-y-4">
-          {currentUser && (
-            <PersonalizedLearningPathPlanner 
-              providerEmail={currentUser.email}
-              providerType={currentUser.provider_type}
-            />
-          )}
+          {currentUser &&
+          <PersonalizedLearningPathPlanner
+            providerEmail={currentUser.email}
+            providerType={currentUser.provider_type} />
+
+          }
         </TabsContent>
 
         {/* Modules Tab */}
         <TabsContent value="modules" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {((currentUser && ALL_MODULES[currentUser.provider_type]) || ALL_MODULES.RN).map((module) => {
+            {(currentUser && ALL_MODULES[currentUser.provider_type] || ALL_MODULES.RN).map((module) => {
               const isCompleted = completedModuleIds.includes(module.id);
-              
+
               return (
                 <Card key={module.id} className={isCompleted ? "border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800" : ""}>
                   <CardHeader>
@@ -170,9 +170,9 @@ export default function ProviderTrainingHub() {
                           {module.category}
                         </Badge>
                       </div>
-                      {isCompleted && (
-                        <CheckCircle2 className="w-5 h-5 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-1" />
-                      )}
+                      {isCompleted &&
+                      <CheckCircle2 className="w-5 h-5 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-1" />
+                      }
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -185,23 +185,23 @@ export default function ProviderTrainingHub() {
 
                     <Button
                       className="w-full"
-                      variant={isCompleted ? "outline" : "default"}
-                    >
-                      {isCompleted ? (
-                        <>
+                      variant={isCompleted ? "outline" : "default"}>
+
+                      {isCompleted ?
+                      <>
                           <CheckCircle2 className="w-4 h-4 mr-2" />
                           Completed
-                        </>
-                      ) : (
-                        <>
+                        </> :
+
+                      <>
                           <Sparkles className="w-4 h-4 mr-2" />
                           Start Module
                         </>
-                      )}
+                      }
                     </Button>
                   </CardContent>
-                </Card>
-              );
+                </Card>);
+
             })}
           </div>
         </TabsContent>
@@ -223,12 +223,12 @@ export default function ProviderTrainingHub() {
 
         {/* Progress Tab */}
         <TabsContent value="progress" className="space-y-4">
-          <TrainingProgressDashboard 
+          <TrainingProgressDashboard
             completions={completions}
-            certifications={certifications}
-          />
+            certifications={certifications} />
+
         </TabsContent>
       </Tabs>
-    </div>
-  );
+    </div>);
+
 }
