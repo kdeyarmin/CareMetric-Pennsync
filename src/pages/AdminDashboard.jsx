@@ -1664,6 +1664,11 @@ export default function AdminDashboard() {
           <SubscriptionPricingManager />
         </TabsContent>
 
+        {/* AI Insights Tab */}
+        <TabsContent value="ai-insights" className="space-y-6">
+          <AIInsightsPanel />
+        </TabsContent>
+
         {/* AI Feedback Tab */}
         <TabsContent value="ai-feedback" className="space-y-6">
           <AIFeedbackAnalytics />
