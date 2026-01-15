@@ -13,8 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  DialogFooter } from
+"@/components/ui/dialog";
 
 export default function DataRetentionSettings() {
   const queryClient = useQueryClient();
@@ -24,7 +24,7 @@ export default function DataRetentionSettings() {
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: () => base44.auth.me()
   });
 
   const currentPreference = currentUser?.data_retention_preference || 'delete_on_logout';
@@ -45,12 +45,12 @@ export default function DataRetentionSettings() {
       const updates = {
         data_retention_preference: preference
       };
-      
+
       // If switching to delete_on_logout, disable 2FA
       if (preference === 'delete_on_logout') {
         updates.two_factor_enabled = false;
       }
-      
+
       await base44.auth.updateMe(updates);
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
     } catch (error) {
@@ -82,13 +82,13 @@ export default function DataRetentionSettings() {
   return (
     <>
       <Card className="border-2 border-blue-200">
-        <CardHeader>
+        <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
           <CardTitle className="flex items-center gap-2">
             <Database className="w-5 h-5 text-blue-600" />
             Patient Data Retention
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="bg-slate-100 pt-0 p-6 space-y-4">
           <Alert className="bg-blue-50 border-blue-200">
             <Shield className="w-4 h-4 text-blue-600" />
             <AlertDescription className="text-sm text-blue-900">
@@ -129,8 +129,8 @@ export default function DataRetentionSettings() {
             </div>
           </RadioGroup>
 
-          {currentPreference === 'save' && hasHIPAAConsent && (
-            <Alert className="bg-green-50 border-green-300">
+          {currentPreference === 'save' && hasHIPAAConsent &&
+          <Alert className="bg-green-50 border-green-300">
               <CheckCircle2 className="w-4 h-4 text-green-600" />
               <AlertDescription className="text-sm text-green-900">
                 <div>
@@ -140,10 +140,10 @@ export default function DataRetentionSettings() {
                 </div>
               </AlertDescription>
             </Alert>
-          )}
+          }
 
-          {currentPreference === 'delete_on_logout' && (
-            <Alert className="bg-orange-50 border-orange-300">
+          {currentPreference === 'delete_on_logout' &&
+          <Alert className="bg-orange-50 border-orange-300">
               <AlertTriangle className="w-4 h-4 text-orange-600" />
               <AlertDescription className="text-sm text-orange-900">
                 <div>
@@ -152,7 +152,7 @@ export default function DataRetentionSettings() {
                 </div>
               </AlertDescription>
             </Alert>
-          )}
+          }
         </CardContent>
       </Card>
 
@@ -278,20 +278,20 @@ export default function DataRetentionSettings() {
                 setShowHIPAADialog(false);
                 setTempPreference(null);
               }}
-              disabled={isSaving}
-            >
+              disabled={isSaving}>
+
               Cancel
             </Button>
             <Button
               onClick={handleAcceptHIPAA}
               disabled={isSaving}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
+              className="bg-blue-600 hover:bg-blue-700">
+
               {isSaving ? "Saving..." : "I Accept - Save Patient Data"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
-  );
+    </>);
+
 }
