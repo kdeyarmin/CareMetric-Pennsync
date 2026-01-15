@@ -403,11 +403,6 @@ export default function Dashboard() {
           </DashboardSection>
           }
 
-          {/* AI Insights */}
-          <ErrorBoundary>
-          <AIInsightsPanel />
-          </ErrorBoundary>
-
           </div>
           </PullToRefresh>);
 
