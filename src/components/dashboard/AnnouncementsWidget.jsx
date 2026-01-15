@@ -31,8 +31,8 @@ export default function AnnouncementsWidget() {
         <CardContent>
           <p className="text-sm text-gray-500">Loading...</p>
         </CardContent>
-      </Card>
-    );
+      </Card>);
+
   }
 
   console.log('Announcements to display:', announcements);
@@ -40,11 +40,11 @@ export default function AnnouncementsWidget() {
   if (announcements.length === 0) {
     return (
       <Card className="mb-6">
-        <CardContent className="p-4">
+        <CardContent className="bg-slate-100 text-gray-950 p-4">
           <p className="text-sm text-gray-500 text-center">No announcements at this time.</p>
         </CardContent>
-      </Card>
-    );
+      </Card>);
+
   }
 
   return (
@@ -58,16 +58,16 @@ export default function AnnouncementsWidget() {
       <CardContent className="pt-4">
         <ScrollArea className="h-[200px] pr-3">
           <div className="space-y-3">
-            {announcements.map((announcement) => (
-              <div
-                key={announcement.id}
-                className={`p-3 rounded-lg border-l-4 ${
-                  announcement.type === 'urgent' ? 'border-l-red-500 bg-red-50' :
-                  announcement.type === 'success' ? 'border-l-green-500 bg-green-50' :
-                  announcement.type === 'warning' ? 'border-l-yellow-500 bg-yellow-50' :
-                  'border-l-blue-500 bg-blue-50'
-                }`}
-              >
+            {announcements.map((announcement) =>
+            <div
+              key={announcement.id}
+              className={`p-3 rounded-lg border-l-4 ${
+              announcement.type === 'urgent' ? 'border-l-red-500 bg-red-50' :
+              announcement.type === 'success' ? 'border-l-green-500 bg-green-50' :
+              announcement.type === 'warning' ? 'border-l-yellow-500 bg-yellow-50' :
+              'border-l-blue-500 bg-blue-50'}`
+              }>
+
                 <div className="flex items-start gap-2">
                   <div className="flex-1">
                     <h4 className="font-semibold text-gray-900 text-sm">{announcement.title}</h4>
@@ -78,10 +78,10 @@ export default function AnnouncementsWidget() {
                   </div>
                 </div>
               </div>
-            ))}
+            )}
           </div>
         </ScrollArea>
       </CardContent>
-    </Card>
-  );
+    </Card>);
+
 }
