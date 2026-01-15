@@ -4,20 +4,20 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 const FEATURES_GUIDE = [
   {
     title: "Smart Notes Assistant",
-    description: "AI-powered documentation assistant that enhances clinical notes in real-time.",
+    description: "Leverage AI-powered documentation assistance to enhance clinical notes in real-time, ensuring Medicare compliance while reducing administrative burden.",
     howToUse: [
-      "1. Open a visit or patient record",
-      "2. Begin dictating or typing clinical findings",
-      "3. The AI will suggest enhancements and compliance improvements in real-time",
-      "4. Review and accept suggestions or edit as needed",
-      "5. Generate final note for approval and submission"
+      "1. Open a visit or patient record from your active caseload",
+      "2. Begin dictating or typing clinical findings and observations",
+      "3. Review AI-generated suggestions for enhancements and compliance improvements as you work",
+      "4. Accept recommendations or edit content to match your documentation style",
+      "5. Submit final note for supervisory review and approval"
     ],
     bestPractices: [
-      "Be specific with clinical details for better AI suggestions",
-      "Review all AI recommendations before submitting",
-      "Use medical terminology for improved accuracy",
-      "Provide baseline information for better documentation",
-      "Regularly update patient history for context"
+      "Provide specific clinical details to optimize AI suggestions",
+      "Always review AI recommendations for clinical accuracy before submission",
+      "Use standardized medical terminology for improved documentation quality",
+      "Include baseline assessment information for comprehensive patient context",
+      "Maintain current patient history records for better AI contextualization"
     ]
   },
   {
