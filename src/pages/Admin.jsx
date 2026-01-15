@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,10 +122,10 @@ export default function Admin() {
     mutationFn: ({ userId, role }) => base44.entities.User.update(userId, { role }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['allUsers'] });
-      alert('User role updated successfully');
+      toast.success('User role updated successfully');
     },
     onError: (error) => {
-      alert('Failed to update user role. Please try again.');
+      toast.error('Failed to update user role. Please try again.');
     }
   });
 
@@ -164,7 +165,7 @@ export default function Admin() {
 
   const handleInviteUser = async () => {
     if (!inviteEmail) {
-      alert('Please enter an email address');
+      toast.error('Please enter an email address');
       return;
     }
     
@@ -182,10 +183,10 @@ If you have any questions, please contact your administrator.`,
         from_name: 'CareMetric AI'
       });
       
-      alert('Invitation sent successfully!');
+      toast.success('Invitation sent successfully!');
       setInviteEmail('');
     } catch (error) {
-      alert('Failed to send invitation. Please try again.');
+      toast.error('Failed to send invitation. Please try again.');
     }
   };
 

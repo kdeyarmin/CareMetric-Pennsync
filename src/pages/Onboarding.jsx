@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Stethoscope, Heart, UserCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
@@ -49,13 +50,13 @@ export default function Onboarding() {
       navigate(createPageUrl("Dashboard"));
     },
     onError: (error) => {
-      alert('Failed to save your preferences. Please try again.');
+      toast.error('Failed to save your preferences. Please try again.');
     }
   });
 
   const handleComplete = () => {
     if (!serviceType || !credentialType) {
-      alert('Please complete all selections');
+      toast.error('Please complete all selections');
       return;
     }
     completeOnboardingMutation.mutate({ serviceType, credentialType });

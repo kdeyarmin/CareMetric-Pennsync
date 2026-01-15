@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Mic, ArrowRight, Info, CheckCircle2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import { todayEastern } from "../components/utils/timezone";
 import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
@@ -77,11 +78,12 @@ export default function MedicalScribe() {
     setSelectedPatientId(newPatient.id);
   };
 
+  const navigate = useNavigate();
   const handleUseNote = () => {
     if (generatedNote) {
-      const noteText = generatedNote;
-      const patientParam = selectedPatientId && selectedPatientId !== 'anonymous' ? `&patientId=${selectedPatientId}` : '';
-      window.location.href = `/app?redirect=SmartNoteAssistant${patientParam}&preFilledNote=${encodeURIComponent(noteText)}`;
+      sessionStorage.setItem('preFilledNote', generatedNote);
+      const patientParam = selectedPatientId && selectedPatientId !== 'anonymous' ? `?patientId=${selectedPatientId}` : '';
+      navigate(`${createPageUrl("SmartNoteAssistant")}${patientParam}`);
     }
   };
 
