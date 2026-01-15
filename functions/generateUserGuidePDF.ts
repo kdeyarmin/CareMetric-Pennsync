@@ -76,20 +76,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Document Generation",
-    description: "Generate patient education and clinical documents with AI assistance.",
+    description: "Create professional patient education materials and clinical documentation rapidly using intelligent templates, ensuring accuracy and consistency across all communications.",
     howToUse: [
-      "1. Navigate to Documents page",
-      "2. Select document type (education, discharge, referral)",
-      "3. Choose or customize template",
-      "4. AI populates with patient data",
-      "5. Edit, review, and send to patient or provider"
+      "1. Navigate to Documents section from main menu",
+      "2. Select appropriate document type (patient education, discharge summary, referral letter)",
+      "3. Choose pre-designed template or customize for specific clinical needs",
+      "4. Allow system to auto-populate fields with relevant patient data",
+      "5. Review, edit for clinical accuracy, and transmit via secure channels"
     ],
     bestPractices: [
-      "Customize templates for patient education level",
-      "Always review generated content for accuracy",
-      "Include plain language explanations",
-      "Provide clear discharge instructions",
-      "Send documents via secure portal when possible"
+      "Tailor language and complexity to match patient education level and health literacy",
+      "Perform thorough clinical review of all AI-generated content before distribution",
+      "Provide clear explanations in plain language with clinical context",
+      "Include comprehensive discharge instructions with follow-up contact information",
+      "Utilize secure patient portal for document transmission to ensure HIPAA compliance"
     ]
   },
   {
