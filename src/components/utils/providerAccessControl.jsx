@@ -97,8 +97,8 @@ export const PROVIDER_DASHBOARD_ACCESS = {
     }
   },
 
-  MD: {
-    label: 'Physician (MD)',
+  Physician: {
+    label: 'Physician (MD/DO)',
     dashboardWidgets: [
       'smartNotes',
       'patientAlerts',
@@ -126,89 +126,8 @@ export const PROVIDER_DASHBOARD_ACCESS = {
     }
   },
 
-  DO: {
-    label: 'Osteopathic Doctor (DO)',
-    dashboardWidgets: [
-      'smartNotes',
-      'patientAlerts',
-      'recentVisits',
-      'carePlans',
-      'tasks',
-      'incidents',
-      'clinicalSupport',
-      'telehealth',
-      'medicationManagement'
-    ],
-    features: {
-      smartNotes: true,
-      medicalScribe: true,
-      telehealth: true,
-      scheduling: true,
-      carePlanManagement: true,
-      incidentReporting: true,
-      oasisAccess: false,
-      pdgmAnalytics: false,
-      complianceChecking: false,
-      patientEducation: true,
-      taskManagement: true,
-      prescribing: true
-    }
-  },
-
-  PT: {
-    label: 'Physical Therapist',
-    dashboardWidgets: [
-      'smartNotes',
-      'recentVisits',
-      'carePlans',
-      'tasks',
-      'clinicalSupport',
-      'telehealth'
-    ],
-    features: {
-      smartNotes: true,
-      medicalScribe: true,
-      telehealth: true,
-      scheduling: true,
-      carePlanManagement: true,
-      incidentReporting: false,
-      oasisAccess: false,
-      pdgmAnalytics: false,
-      complianceChecking: false,
-      patientEducation: true,
-      taskManagement: true,
-      prescribing: false
-    }
-  },
-
-  OT: {
-    label: 'Occupational Therapist',
-    dashboardWidgets: [
-      'smartNotes',
-      'recentVisits',
-      'carePlans',
-      'tasks',
-      'clinicalSupport',
-      'telehealth'
-    ],
-    features: {
-      smartNotes: true,
-      medicalScribe: true,
-      telehealth: true,
-      scheduling: true,
-      carePlanManagement: true,
-      incidentReporting: false,
-      oasisAccess: false,
-      pdgmAnalytics: false,
-      complianceChecking: false,
-      patientEducation: true,
-      taskManagement: true,
-      prescribing: false
-    }
-  },
-
-  ST: {
-    label: 'Speech-Language Pathologist',
+  Therapist: {
+    label: 'Therapist (PT/OT/ST)',
     dashboardWidgets: [
       'smartNotes',
       'recentVisits',
@@ -344,7 +263,7 @@ export const PROVIDER_PAGE_ACCESS = {
     'Settings',
     'ProviderSettings'
   ],
-  MD: [
+  Physician: [
     'Dashboard',
     'Patients',
     'SmartNoteAssistant',
@@ -359,54 +278,7 @@ export const PROVIDER_PAGE_ACCESS = {
     'Settings',
     'ProviderSettings'
   ],
-  DO: [
-    'Dashboard',
-    'Patients',
-    'SmartNoteAssistant',
-    'MedicalScribe',
-    'DocumentVisit',
-    'MobileWorkflow',
-    'PatientAlerts',
-    'PatientDetails',
-    'TelehealthDashboard',
-    'TelehealthVisit',
-    'ProviderScheduling',
-    'Settings',
-    'ProviderSettings'
-  ],
-  PT: [
-    'Dashboard',
-    'Patients',
-    'SmartNoteAssistant',
-    'MedicalScribe',
-    'DocumentVisit',
-    'MobileWorkflow',
-    'CarePlanManagement',
-    'PatientAlerts',
-    'PatientDetails',
-    'TelehealthDashboard',
-    'TelehealthVisit',
-    'ProviderScheduling',
-    'Settings',
-    'ProviderSettings'
-  ],
-  OT: [
-    'Dashboard',
-    'Patients',
-    'SmartNoteAssistant',
-    'MedicalScribe',
-    'DocumentVisit',
-    'MobileWorkflow',
-    'CarePlanManagement',
-    'PatientAlerts',
-    'PatientDetails',
-    'TelehealthDashboard',
-    'TelehealthVisit',
-    'ProviderScheduling',
-    'Settings',
-    'ProviderSettings'
-  ],
-  ST: [
+  Therapist: [
     'Dashboard',
     'Patients',
     'SmartNoteAssistant',
