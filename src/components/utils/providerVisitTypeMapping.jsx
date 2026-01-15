@@ -131,8 +131,8 @@ export const PROVIDER_VISIT_TYPES = {
     canPrescribe: true
   },
 
-  PT: {
-    label: "Physical Therapist",
+  THERAPIST: {
+    label: "Therapist (PT/OT/ST)",
     canAccessSettings: [
       CARE_SETTINGS.HOME_HEALTH,
       CARE_SETTINGS.TELEHEALTH,
@@ -144,50 +144,10 @@ export const PROVIDER_VISIT_TYPES = {
     requiresCarePlanReview: false,
     canEstablishCarePlan: true,
     noteRequirements: [
-      'Functional status assessment',
-      'Interventions performed',
-      'Patient tolerance',
-      'Progress toward goals'
-    ]
-  },
-
-  OT: {
-    label: "Occupational Therapist",
-    canAccessSettings: [
-      CARE_SETTINGS.HOME_HEALTH,
-      CARE_SETTINGS.TELEHEALTH,
-      CARE_SETTINGS.CLINIC_OUTPATIENT,
-      CARE_SETTINGS.HOSPITAL_INPATIENT,
-      CARE_SETTINGS.SKILLED_NURSING
-    ],
-    requiresAssessment: true,
-    requiresCarePlanReview: false,
-    canEstablishCarePlan: true,
-    noteRequirements: [
-      'ADL/IADL functional status',
-      'Interventions and adaptations',
-      'Patient response',
-      'Progress toward goals'
-    ]
-  },
-
-  ST: {
-    label: "Speech-Language Pathologist",
-    canAccessSettings: [
-      CARE_SETTINGS.HOME_HEALTH,
-      CARE_SETTINGS.TELEHEALTH,
-      CARE_SETTINGS.CLINIC_OUTPATIENT,
-      CARE_SETTINGS.HOSPITAL_INPATIENT,
-      CARE_SETTINGS.SKILLED_NURSING
-    ],
-    requiresAssessment: true,
-    requiresCarePlanReview: false,
-    canEstablishCarePlan: true,
-    noteRequirements: [
-      'Speech/language assessment',
-      'Swallowing evaluation if applicable',
-      'Interventions performed',
-      'Patient progress'
+      'Functional/specialty assessment',
+      'Interventions and adaptations performed',
+      'Patient tolerance and response',
+      'Progress toward therapy goals'
     ]
   },
 
