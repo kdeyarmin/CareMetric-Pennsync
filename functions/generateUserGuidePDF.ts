@@ -184,20 +184,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "HIPAA Compliance & Security",
-    description: "Enterprise-grade encryption and access controls.",
+    description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, and strict access controls.",
     howToUse: [
-      "1. Use secure login with multi-factor authentication",
-      "2. Access only records you need for patient care",
-      "3. Log out when stepping away from computer",
-      "4. Report any security concerns immediately",
-      "5. Follow all data protection policies"
+      "1. Access system using secure login with required multi-factor authentication",
+      "2. Access only patient records necessary for direct clinical care provision",
+      "3. Logout immediately upon completion of work or when stepping away from device",
+      "4. Report any suspected security breaches or unauthorized access immediately to IT",
+      "5. Adhere strictly to all organizational data protection policies and HIPAA regulations"
     ],
     bestPractices: [
-      "Never share login credentials",
-      "Use VPN when accessing remotely",
-      "Secure all devices with passwords",
-      "Don't discuss PHI in public areas",
-      "Report suspected breaches to IT immediately"
+      "Never disclose login credentials or access tokens to any individual",
+      "Utilize VPN for all remote access to protected systems",
+      "Implement password protection on all devices with access to patient data",
+      "Refrain from discussing Protected Health Information in public or unsecured areas",
+      "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
     ]
   },
   {
