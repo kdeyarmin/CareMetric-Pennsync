@@ -244,21 +244,30 @@ Deno.serve(async (req) => {
     const contentWidth = pageWidth - 2 * margin;
     let yPosition = margin;
 
-    // Title
-    doc.setFontSize(24);
+    // Title Page
+    doc.setFontSize(28);
     doc.setFont(undefined, 'bold');
     doc.text('CareMetric AI', margin, yPosition);
     
-    yPosition += 10;
-    doc.setFontSize(16);
-    doc.text('User Guide', margin, yPosition);
-
     yPosition += 15;
-    doc.setFontSize(10);
+    doc.setFontSize(18);
     doc.setFont(undefined, 'normal');
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Comprehensive User Guide', margin, yPosition);
 
     yPosition += 20;
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Streamline Documentation • Enhance Compliance • Improve Patient Outcomes', margin, yPosition);
+
+    yPosition += 25;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(120, 120, 120);
+    doc.text(`Document Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
+    doc.text(`For: Healthcare Documentation & Compliance Solutions`, margin, yPosition + 6);
+
+    yPosition += 30;
 
     // Add each feature section
     for (const feature of FEATURES_GUIDE) {
