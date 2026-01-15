@@ -395,6 +395,33 @@ Deno.serve(async (req) => {
         yPosition += practiceLines.length * 4 + 2;
       }
 
+      // Smart Note Checks section
+      if (feature.smartNoteChecks && feature.smartNoteChecks.length > 0) {
+        if (yPosition > pageHeight - 50) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(41, 98, 255);
+        doc.text('Documentation Validation Checks:', margin, yPosition);
+        doc.setTextColor(0, 0, 0);
+        yPosition += 6;
+
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(8.5);
+        for (const check of feature.smartNoteChecks) {
+          if (yPosition > pageHeight - 15) {
+            doc.addPage();
+            yPosition = margin;
+          }
+          const checkLines = doc.splitTextToSize('• ' + check, contentWidth - 8);
+          doc.text(checkLines, margin + 5, yPosition);
+          yPosition += checkLines.length * 3.5 + 1;
+        }
+      }
+
       // Risk Factors section (for Patient Risk Alerts feature only)
       if (feature.riskFactorsIncluded && feature.riskFactorsIncluded.length > 0) {
         if (yPosition > pageHeight - 50) {
@@ -420,6 +447,27 @@ Deno.serve(async (req) => {
           doc.text(factorLines, margin + 5, yPosition);
           yPosition += factorLines.length * 3.5 + 1;
         }
+      }
+
+      // Importance section
+      if (feature.importance) {
+        if (yPosition > pageHeight - 25) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(41, 98, 255);
+        doc.text('Why This Matters:', margin, yPosition);
+        doc.setTextColor(0, 0, 0);
+        yPosition += 6;
+
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(9.5);
+        const importanceLines = doc.splitTextToSize(feature.importance, contentWidth - 5);
+        doc.text(importanceLines, margin + 5, yPosition);
+        yPosition += importanceLines.length * 4 + 5;
       }
 
       yPosition += 10;
