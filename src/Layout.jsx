@@ -151,7 +151,8 @@ export default function Layout({ children, currentPageName }) {
   { name: "My Learning", icon: Target, page: "PersonalizedLearningPath" },
   { name: "Tasks", icon: ListTodo, page: "Tasks" },
   { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" },
-  { name: "Settings", icon: Settings, page: "Settings" }];
+  { name: "Settings", icon: Settings, page: "Settings" },
+  { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" }];
 
 
   const accessiblePages = currentUser?.credential_type ?
