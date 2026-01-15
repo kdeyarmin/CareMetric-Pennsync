@@ -372,6 +372,33 @@ Deno.serve(async (req) => {
         yPosition += practiceLines.length * 4 + 2;
       }
 
+      // Risk Factors section (for Patient Risk Alerts feature only)
+      if (feature.riskFactorsIncluded && feature.riskFactorsIncluded.length > 0) {
+        if (yPosition > pageHeight - 50) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(41, 98, 255);
+        doc.text('Assessed Risk Factors:', margin, yPosition);
+        doc.setTextColor(0, 0, 0);
+        yPosition += 6;
+
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(9);
+        for (const factor of feature.riskFactorsIncluded) {
+          if (yPosition > pageHeight - 15) {
+            doc.addPage();
+            yPosition = margin;
+          }
+          const factorLines = doc.splitTextToSize('• ' + factor, contentWidth - 8);
+          doc.text(factorLines, margin + 5, yPosition);
+          yPosition += factorLines.length * 3.5 + 1;
+        }
+      }
+
       yPosition += 10;
     }
 
