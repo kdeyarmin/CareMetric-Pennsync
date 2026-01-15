@@ -217,6 +217,36 @@ const FEATURES_GUIDE = [
       "Implement close monitoring and frequent reassessment following interventions",
       "Conduct timely follow-up within recommended intervals to assess intervention effectiveness"
     ]
+  },
+  {
+    title: "Risk Factors Assessment",
+    description: "The system automatically evaluates multiple clinical and demographic risk factors to predict patient deterioration, hospitalization risk, and readmission probability.",
+    howToUse: [
+      "1. Review the Risk Factors section within patient alert or dashboard widget",
+      "2. Review vital signs for abnormal trends: blood pressure, heart rate, respiratory rate, oxygen saturation, temperature",
+      "3. Check medication adherence and reconciliation status for completeness",
+      "4. Assess functional and cognitive status changes from baseline",
+      "5. Monitor social determinants: living situation, caregiver support, transportation access"
+    ],
+    bestPractices: [
+      "Conduct comprehensive assessment of vital sign trends over time, not isolated measurements",
+      "Document all relevant clinical observations that correlate with identified risk factors",
+      "Ensure medication list is current and accurate, including over-the-counter medications",
+      "Evaluate patient and caregiver understanding of condition and treatment plan",
+      "Identify and address modifiable risk factors through targeted clinical interventions"
+    ],
+    riskFactorsIncluded: [
+      "Vital Sign Changes: Abnormal blood pressure, elevated or low heart rate, respiratory distress, oxygen desaturation, fever",
+      "Hospitalization History: Recent hospital admission, multiple admissions in past year, extended length of stay",
+      "Fall Risk: History of falls, impaired mobility, balance problems, cognitive impairment, medication effects",
+      "Infection Risk: Signs of infection, immunosuppression, wound concerns, urinary symptoms, respiratory symptoms",
+      "Readmission Risk: Complex diagnoses, polypharmacy, poor medication adherence, social isolation, caregiver stress",
+      "Functional Decline: Decreased ambulation, increased dependency for activities of daily living, cognitive changes",
+      "Medication Issues: High-risk medications, drug interactions, non-adherence, side effects",
+      "Mental Health: Depression screening positive, anxiety, behavioral changes, suicidal ideation",
+      "Chronic Condition Management: Uncontrolled diabetes, heart failure decompensation, COPD exacerbation risk",
+      "Social Factors: Living alone, limited caregiver availability, financial constraints, transportation barriers"
+    ]
   }
 ];
 
