@@ -749,6 +749,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
             }
 
               {/* AI Auto-Populate & Follow-Up Tasks */}
+              {patientData?.care_type !== 'home_health' && patientData?.care_type !== 'hospice' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 <AutoPopulateDataFields
                 narrative={enhancedNote || roughNotes}
@@ -767,6 +768,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 vitalSigns={extractedData?.vitals} />
 
               </div>
+              )}
 
               {/* Care Plan Suggestions */}
               {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') &&
