@@ -141,10 +141,11 @@ export default function Layout({ children, currentPageName }) {
   const allNavItems = [
     { name: "Dashboard", icon: Home, page: "Dashboard" },
     { name: "Patients", icon: Users, page: "Patients" },
-    { name: "Telehealth", icon: Video, page: "TelehealthDashboard" },
     { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
     { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+    { name: "Schedule", icon: Phone, page: "ProviderScheduling" },
+    { name: "Telehealth", icon: Video, page: "TelehealthDashboard" },
     { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
     { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
     { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
