@@ -148,20 +148,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Training & Development",
-    description: "Personalized training with AI-generated recommendations.",
+    description: "Complete personalized training modules with AI-identified recommendations based on skill gaps, ensuring compliance with agency requirements and professional development.",
     howToUse: [
-      "1. Navigate to Training page",
-      "2. View assigned and recommended modules",
-      "3. Complete training modules at your pace",
-      "4. Take assessment quizzes to verify learning",
-      "5. Earn certifications and track progress"
+      "1. Navigate to Training & Development section",
+      "2. Review assigned mandatory training and AI-recommended modules",
+      "3. Complete training modules at self-directed pace within assigned timeframes",
+      "4. Take comprehensive assessment quizzes to demonstrate learning and competency",
+      "5. Obtain certifications and monitor progress through learning dashboard"
     ],
     bestPractices: [
-      "Complete mandatory training on schedule",
-      "Take recommended modules based on your gaps",
-      "Review compliance training regularly",
-      "Discuss learning with supervisor",
-      "Apply new knowledge to daily practice"
+      "Complete all mandatory training within assigned deadline parameters",
+      "Prioritize AI-recommended modules that address identified skill gaps",
+      "Conduct systematic review of compliance training at designated intervals",
+      "Discuss learning outcomes and application strategies with direct supervisor",
+      "Integrate new knowledge and techniques into daily clinical practice"
     ]
   },
   {
