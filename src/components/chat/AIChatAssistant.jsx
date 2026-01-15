@@ -56,7 +56,7 @@ export default function AIChatAssistant() {
       setConversation([
         {
           role: "assistant",
-          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your CareMetric AI Assistant.\n\nI can help you with:\n• How to use features\n• Navigate the app\n• Troubleshoot issues\n• Best practices\n• Training resources\n\nWhat would you like to know?`,
+          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your CareMetric AI Support Assistant.\n\nI can help you with:\n• Feature guidance and tutorials\n• Troubleshooting issues\n• Best practices and workflows\n• Documentation standards\n• Compliance questions\n\nWhat do you need help with?`,
           timestamp: new Date(),
           showSuggestions: true
         }
