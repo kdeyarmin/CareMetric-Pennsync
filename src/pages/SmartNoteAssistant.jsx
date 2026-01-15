@@ -41,6 +41,8 @@ export default function SmartNoteAssistant() {
   const [searchPatient, setSearchPatient] = useState("");
   const [extractedData, setExtractedData] = useState(null);
   const [selectedDiagnoses, setSelectedDiagnoses] = useState([]);
+  const [selectedDiagnosis, setSelectedDiagnosis] = useState("");
+  const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [collapsedSections, setCollapsedSections] = useState({});
   const [activeTab, setActiveTab] = useState("patient");
   const [showCreatePatient, setShowCreatePatient] = useState(false);
@@ -157,6 +159,36 @@ export default function SmartNoteAssistant() {
   const availableVisitTypes = currentUser?.provider_type 
     ? getVisitTypesForProvider(currentUser.provider_type)
     : [];
+
+  // Common diagnoses list
+  const commonDiagnoses = [
+    "Congestive Heart Failure (CHF)",
+    "Chronic Obstructive Pulmonary Disease (COPD)",
+    "Diabetes Mellitus Type 2",
+    "Hypertension",
+    "Pneumonia",
+    "Urinary Tract Infection (UTI)",
+    "Wound Care - Pressure Ulcer",
+    "Post-Surgical Care",
+    "Chronic Kidney Disease",
+    "Dementia/Alzheimer's Disease",
+    "Stroke/CVA Recovery",
+    "Cancer Care",
+    "Palliative Care",
+    "Chronic Pain Management",
+    "Sepsis",
+    "Cellulitis",
+    "Dehydration",
+    "Fall Risk/Fall Injury",
+    "Malnutrition",
+    "Depression"
+  ];
+
+  const filteredDiagnoses = diagnosisSearch.trim()
+    ? commonDiagnoses.filter(d => 
+        d.toLowerCase().includes(diagnosisSearch.toLowerCase())
+      )
+    : commonDiagnoses;
 
   const SectionHeader = ({ icon: Icon, title, badge, section }) => (
     <button
@@ -514,22 +546,68 @@ export default function SmartNoteAssistant() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-100 block mb-2">
-                     Visit Type *
-                   </label>
-                  <select
-                    value={visitType}
-                    onChange={(e) => setVisitType(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="">Select visit type...</option>
-                    {availableVisitTypes.map((vt) => (
-                      <option key={vt.id} value={vt.id}>
-                        {vt.label}
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-900 dark:text-slate-100 block mb-2">
+                       Visit Type *
+                     </label>
+                    <select
+                      value={visitType}
+                      onChange={(e) => setVisitType(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                    >
+                      <option value="">Select visit type...</option>
+                      {availableVisitTypes.map((vt) => (
+                        <option key={vt.id} value={vt.id}>
+                          {vt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-900 dark:text-slate-100 block mb-2">
+                      Primary Diagnosis *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Search diagnoses..."
+                      value={diagnosisSearch}
+                      onChange={(e) => setDiagnosisSearch(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm mb-2"
+                    />
+                    {diagnosisSearch && (
+                      <div className="max-h-48 overflow-y-auto border rounded-lg bg-white dark:bg-slate-900">
+                        {filteredDiagnoses.map((diagnosis, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setSelectedDiagnosis(diagnosis);
+                              setDiagnosisSearch("");
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm border-b last:border-b-0"
+                          >
+                            {diagnosis}
+                          </button>
+                        ))}
+                        {filteredDiagnoses.length === 0 && (
+                          <div className="px-3 py-2 text-sm text-slate-500">No matches found</div>
+                        )}
+                      </div>
+                    )}
+                    {selectedDiagnosis && (
+                      <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 mt-2">
+                        <span className="text-sm text-slate-900 dark:text-slate-100">{selectedDiagnosis}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedDiagnosis("")}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Vitals Input */}
