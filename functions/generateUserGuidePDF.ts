@@ -166,20 +166,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Task Management",
-    description: "Intelligent task creation with automatic reminders.",
+    description: "Centralize task assignment and tracking with intelligent prioritization and automated reminders to ensure timely completion of critical action items.",
     howToUse: [
-      "1. Navigate to Tasks page",
-      "2. View assigned and pending tasks",
-      "3. Prioritize by due date and urgency",
-      "4. Update task status as you complete items",
-      "5. System sends reminders for overdue tasks"
+      "1. Navigate to Task Management section from dashboard",
+      "2. View all assigned tasks and pending action items",
+      "3. Sort and prioritize tasks by due date, urgency level, and clinical importance",
+      "4. Update task status and document completion notes upon task completion",
+      "5. Respond promptly to system-generated reminders for overdue or upcoming tasks"
     ],
     bestPractices: [
-      "Check tasks daily",
-      "Prioritize critical and high-priority items",
-      "Document completion notes",
-      "Coordinate with team on shared tasks",
-      "Delegate appropriately within role"
+      "Review task list daily as part of workflow management",
+      "Address critical and high-priority items with appropriate urgency",
+      "Document detailed completion notes for accountability and continuity",
+      "Coordinate with interdisciplinary team members on shared or dependent tasks",
+      "Delegate tasks appropriately within scope of practice and role boundaries"
     ]
   },
   {
