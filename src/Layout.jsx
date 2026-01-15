@@ -25,7 +25,6 @@ import {
                                     CreditCard,
                                     Mic,
                                     Phone,
-                                    Video,
                                     UserPlus,
                                     ShieldAlert,
                                     ListTodo
@@ -145,7 +144,6 @@ export default function Layout({ children, currentPageName }) {
     { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
     { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
     { name: "Schedule", icon: Phone, page: "ProviderScheduling" },
-    { name: "Telehealth", icon: Video, page: "TelehealthDashboard" },
     { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
     { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
     { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
@@ -397,10 +395,10 @@ export default function Layout({ children, currentPageName }) {
                   to={createPageUrl(item.page)}
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
-                >
+                  >
                   <item.icon className="w-4 h-4" />
                   {item.name}
-                </Link>
+                  </Link>
               ))}
 
               {adminNavItems.length > 0 && (

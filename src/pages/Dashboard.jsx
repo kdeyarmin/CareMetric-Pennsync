@@ -30,7 +30,6 @@ import { motion } from "framer-motion";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 
 import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
-import QuickTelehealthLauncher from "../components/telehealth/QuickTelehealthLauncher";
 import { getAccessibleWidgets } from "../components/utils/providerAccessControl";
 import DashboardHeader from "../components/dashboard/DashboardHeader";
 import QuickAccessCards from "../components/dashboard/QuickAccessCards";
@@ -157,27 +156,6 @@ export default function Dashboard() {
     select: (data) => data[0]
   });
 
-  const { data: todayTelehealthAppointments = [] } = useQuery({
-    queryKey: ['todayTelehealthAppointments', currentUser?.email],
-    queryFn: async () => {
-      const today = todayEastern();
-      const appointments = await base44.entities.Appointment.filter({
-        provider_email: currentUser.email,
-        appointment_type: 'telehealth',
-        appointment_date: today
-      }, 'start_time');
-
-      return appointments.map((apt) => {
-        const patient = patients.find((p) => p.id === apt.patient_id);
-        return {
-          ...apt,
-          patient_name: patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown'
-        };
-      });
-    },
-    enabled: !!currentUser?.email && patients.length > 0
-  });
-
   // Handle errors gracefully (logged server-side)
 
   const getPatient = (patientId) => {
@@ -279,7 +257,7 @@ export default function Dashboard() {
           activePatients: patients.length,
           completedVisits: visits.length,
           pendingAlerts: 0,
-          upcomingVisits: todayTelehealthAppointments.length
+          upcomingVisits: 0
         }} />
 
       {/* Workflow Shortcuts */}
@@ -393,15 +371,6 @@ export default function Dashboard() {
 
 
 
-
-
-      {/* Telehealth Quick Launcher - only for providers with telehealth access */}
-      {canAccessWidget('telehealth') &&
-        <QuickTelehealthLauncher
-          todayAppointments={todayTelehealthAppointments}
-          onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))} />
-
-        }
 
 
       {/* Critical Alerts & Compliance Section - only for providers with access */}
