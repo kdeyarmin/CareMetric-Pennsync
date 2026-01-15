@@ -19,12 +19,6 @@ const FEATURES = [
   category: "Documentation"
 },
 {
-  icon: Users,
-  title: "Patient Management",
-  description: "Centralized patient database with comprehensive health records, demographics, and care history.",
-  category: "Patients"
-},
-{
   icon: Target,
   title: "Care Plan Management",
   description: "Automated care plan creation, tracking, and adjustments based on patient progress and clinical indicators.",
