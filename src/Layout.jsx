@@ -166,15 +166,7 @@ export default function Layout({ children, currentPageName }) {
   accessiblePages.includes(item.page)
   );
 
-  const adminNavItems =
-  currentUser?.role === "admin" ?
-  [
-  { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
-  { name: "User & Training Mgmt", icon: Users, page: "Admin" },
-  { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
-  { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }] :
-
-  [];
+  const adminNavItems = [];
 
   // iOS-safe computed paddings - use max() to ensure minimum height even without safe area
   const mobileHeaderTotalHeight = `calc(${HEADER_BAR_HEIGHT_REM}rem + max(env(safe-area-inset-top), 0px))`;
