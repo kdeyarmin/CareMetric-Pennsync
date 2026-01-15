@@ -137,6 +137,11 @@ export default function ProviderTrainingHub() {
           }
         </TabsContent>
 
+        {/* AI Recommendations Tab */}
+        <TabsContent value="recommendations" className="space-y-4">
+          <PersonalizedRecommendationsWidget />
+        </TabsContent>
+
         {/* Modules Tab */}
         <TabsContent value="modules" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
