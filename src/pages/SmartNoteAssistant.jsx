@@ -26,6 +26,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
 import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
+import RealTimeQualityFeedback from "@/components/smartNote/RealTimeQualityFeedback";
+import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
+import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -430,6 +433,21 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   />
                 </div>
 
+                {/* Real-Time Quality Feedback */}
+                {roughNotes && roughNotes.length > 50 && visitType && selectedDiagnosis && (
+                  <RealTimeQualityFeedback
+                    noteContent={roughNotes}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                    onApplySuggestion={(improvedText, originalExcerpt) => {
+                      if (originalExcerpt) {
+                        setRoughNotes(roughNotes.replace(originalExcerpt, improvedText));
+                      }
+                    }}
+                  />
+                )}
+
                 {/* Enhance Button */}
                 <Button
                   onClick={enhanceNote}
@@ -719,6 +737,26 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   </CardContent>
                 </Card>
               )}
+
+              {/* AI Auto-Populate & Follow-Up Tasks */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                <AutoPopulateDataFields
+                  narrative={enhancedNote || roughNotes}
+                  dataType="vital_signs"
+                  patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                  visitType={visitType}
+                  onDataExtracted={(data) => {
+                    console.log('Extracted vital signs:', data);
+                  }}
+                />
+                <AIFollowUpTasksGenerator
+                  visitId={null}
+                  patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                  patientName={patientData ? `${patientData.first_name} ${patientData.last_name}` : 'Patient'}
+                  visitNotes={enhancedNote}
+                  vitalSigns={extractedData?.vitals}
+                />
+              </div>
 
               {/* Care Plan Suggestions */}
               {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') && (
