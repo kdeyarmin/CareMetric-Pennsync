@@ -22,27 +22,27 @@ export default function QuickTelehealthLauncher({ todayAppointments, onScheduleN
               <h3 className="font-semibold text-sm mb-1">Telehealth Ready</h3>
               <p className="text-xs text-gray-600 mb-3">No virtual visits scheduled for today</p>
               <div className="flex gap-2">
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={onScheduleNew}
-                  className="text-xs"
-                >
+                  className="text-xs">
+
                   Schedule Visit
                 </Button>
-                <Button 
+                <Button
                   size="sm"
-                  onClick={() => navigate(createPageUrl("TelehealthDashboard"))}
-                  className="bg-blue-600 hover:bg-blue-700 text-xs"
-                >
+                  onClick={() => navigate(createPageUrl("TelehealthDashboard"))} className="bg-zinc-200 text-slate-900 px-3 text-xs font-medium rounded-md inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm dark:bg-slate-600 dark:hover:bg-slate-700 h-8 hover:bg-blue-700">
+
+
                   Go to Telehealth
                 </Button>
               </div>
             </div>
           </div>
         </CardContent>
-      </Card>
-    );
+      </Card>);
+
   }
 
   return (
@@ -57,14 +57,14 @@ export default function QuickTelehealthLauncher({ todayAppointments, onScheduleN
         </div>
 
         <div className="space-y-2">
-          {todayAppointments.slice(0, 3).map((apt, idx) => (
-            <motion.div
-              key={apt.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              className="bg-white rounded-lg p-3 border border-green-200"
-            >
+          {todayAppointments.slice(0, 3).map((apt, idx) =>
+          <motion.div
+            key={apt.id}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: idx * 0.1 }}
+            className="bg-white rounded-lg p-3 border border-green-200">
+
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <p className="font-medium text-sm">{apt.patient_name}</p>
@@ -74,26 +74,26 @@ export default function QuickTelehealthLauncher({ todayAppointments, onScheduleN
                   </p>
                 </div>
                 <Button
-                  size="sm"
-                  onClick={() => navigate(createPageUrl("TelehealthVisit") + `?appointmentId=${apt.id}`)}
-                  className="bg-green-600 hover:bg-green-700"
-                >
+                size="sm"
+                onClick={() => navigate(createPageUrl("TelehealthVisit") + `?appointmentId=${apt.id}`)}
+                className="bg-green-600 hover:bg-green-700">
+
                   Join
                 </Button>
               </div>
             </motion.div>
-          ))}
+          )}
         </div>
 
         <Button
           variant="outline"
           size="sm"
           onClick={() => navigate(createPageUrl("TelehealthDashboard"))}
-          className="w-full mt-3"
-        >
+          className="w-full mt-3">
+
           View All Virtual Visits
         </Button>
       </CardContent>
-    </Card>
-  );
+    </Card>);
+
 }
