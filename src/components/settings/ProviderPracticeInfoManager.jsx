@@ -165,7 +165,7 @@ export default function ProviderPracticeInfoManager({ userEmail, credentialType 
             <div>
               <Label>Provider Name (with credentials) *</Label>
               <Input
-                placeholder="Dr. John Smith, MD"
+                placeholder={isPhysician ? "Dr. John Smith, MD" : "John Smith, PT"}
                 value={formData.provider_name}
                 onChange={(e) => setFormData({ ...formData, provider_name: e.target.value })}
               />
@@ -173,7 +173,7 @@ export default function ProviderPracticeInfoManager({ userEmail, credentialType 
             <div>
               <Label>Practice Name</Label>
               <Input
-                placeholder="Smith Medical Clinic"
+                placeholder={isPhysician ? "Smith Medical Clinic" : "Smith Therapy Center"}
                 value={formData.practice_name}
                 onChange={(e) => setFormData({ ...formData, practice_name: e.target.value })}
               />
@@ -194,6 +194,7 @@ export default function ProviderPracticeInfoManager({ userEmail, credentialType 
                 onChange={(e) => setFormData({ ...formData, license_state: e.target.value })}
               />
             </div>
+            {isPhysician && (
             <div>
               <Label>NPI Number</Label>
               <Input
@@ -202,14 +203,17 @@ export default function ProviderPracticeInfoManager({ userEmail, credentialType 
                 onChange={(e) => setFormData({ ...formData, npi_number: e.target.value })}
               />
             </div>
+            )}
+            {isPhysician && (
             <div>
               <Label>Specialty</Label>
               <Input
                 placeholder="Internal Medicine"
-                value={formData.specialty}
+                value={formData.specialty || ''}
                 onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
               />
             </div>
+            )}
           </div>
 
           <div>
