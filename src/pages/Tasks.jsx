@@ -9,10 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Plus, CheckCircle2, Clock, AlertTriangle, Filter, 
-  Repeat, Bell, Search, Calendar, X
-} from "lucide-react";
+import {
+  Plus, CheckCircle2, Clock, AlertTriangle, Filter,
+  Repeat, Bell, Search, Calendar, X } from
+"lucide-react";
 import { format, parseISO, isPast, isToday, isFuture } from "date-fns";
 import { todayEastern } from "../components/utils/timezone";
 import TaskNotifications from "../components/tasks/TaskNotifications";
@@ -47,18 +47,18 @@ export default function Tasks() {
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: () => base44.auth.me()
   });
 
   const { data: tasks = [] } = useQuery({
     queryKey: ['allTasks', currentUser?.email],
     queryFn: () => base44.entities.Task.filter({ assigned_to: currentUser?.email }, '-created_date'),
-    enabled: !!currentUser?.email,
+    enabled: !!currentUser?.email
   });
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 100),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 100)
   });
 
   const createTaskMutation = useMutation({
@@ -83,7 +83,7 @@ export default function Tasks() {
           notify_on_overdue: true
         }
       });
-    },
+    }
   });
 
   const updateTaskMutation = useMutation({
@@ -92,14 +92,14 @@ export default function Tasks() {
       queryClient.invalidateQueries({ queryKey: ['allTasks'] });
       setEditingTask(null);
       setShowForm(false);
-    },
+    }
   });
 
   const deleteTaskMutation = useMutation({
     mutationFn: (id) => base44.entities.Task.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['allTasks'] });
-    },
+    }
   });
 
   const handleSubmit = () => {
@@ -117,9 +117,9 @@ export default function Tasks() {
   };
 
   const handleComplete = (task) => {
-    updateTaskMutation.mutate({ 
-      id: task.id, 
-      data: { 
+    updateTaskMutation.mutate({
+      id: task.id,
+      data: {
         status: 'completed',
         completion_notes: 'Marked complete'
       }
@@ -136,20 +136,20 @@ export default function Tasks() {
     setShowRecurringSettings(false);
   };
 
-  const filteredTasks = tasks.filter(task => {
+  const filteredTasks = tasks.filter((task) => {
     const matchesSearch = task.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    task.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
     const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
     return matchesSearch && matchesPriority && matchesStatus;
   });
 
   const categorizedTasks = {
-    overdue: filteredTasks.filter(t => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
-    today: filteredTasks.filter(t => t.due_date && isToday(parseISO(t.due_date)) && t.status === 'pending'),
-    upcoming: filteredTasks.filter(t => t.due_date && isFuture(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
-    noDueDate: filteredTasks.filter(t => !t.due_date && t.status === 'pending'),
-    completed: filteredTasks.filter(t => t.status === 'completed'),
+    overdue: filteredTasks.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
+    today: filteredTasks.filter((t) => t.due_date && isToday(parseISO(t.due_date)) && t.status === 'pending'),
+    upcoming: filteredTasks.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
+    noDueDate: filteredTasks.filter((t) => !t.due_date && t.status === 'pending'),
+    completed: filteredTasks.filter((t) => t.status === 'completed')
   };
 
   const getPriorityColor = (priority) => {
@@ -169,12 +169,12 @@ export default function Tasks() {
     return <Clock className="w-4 h-4" />;
   };
 
-  const TaskCard = ({ task, category }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -2 }}
-    >
+  const TaskCard = ({ task, category }) =>
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    whileHover={{ y: -2 }}>
+
       <Card className={`${category === 'overdue' ? 'border-slate-400 bg-slate-200 dark:bg-slate-800' : 'dark:bg-slate-800'} hover-lift w-full max-w-full overflow-hidden`}>
         <CardContent className="p-3 sm:p-4 overflow-hidden">
         <div className="flex items-start justify-between gap-3">
@@ -184,68 +184,68 @@ export default function Tasks() {
                 {getPriorityIcon(task.priority)}
                 <span className="ml-1">{task.priority}</span>
               </Badge>
-              {task.is_recurring && (
-                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
+              {task.is_recurring &&
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
                   <Repeat className="w-3 h-3 mr-1" />
                   {task.recurrence_type}
                 </Badge>
-              )}
+              }
               <Badge variant="outline">{task.type}</Badge>
             </div>
             <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">{task.title}</h3>
-             {task.description && (
-               <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{task.description}</p>
-             )}
+             {task.description &&
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{task.description}</p>
+            }
              <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-400">
-              {task.due_date && (
-                <span className="flex items-center gap-1">
+              {task.due_date &&
+              <span className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
                   {format(parseISO(task.due_date), 'MMM d, yyyy')}
                   {task.due_time && ` at ${task.due_time}`}
                 </span>
-              )}
-              {task.notification_preferences?.enabled && (
-                <span className="flex items-center gap-1">
+              }
+              {task.notification_preferences?.enabled &&
+              <span className="flex items-center gap-1">
                   <Bell className="w-3 h-3" />
                   Notifications on
                 </span>
-              )}
+              }
             </div>
           </div>
           <div className="flex flex-col gap-2 flex-shrink-0">
-            {task.status === 'pending' && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleComplete(task)}
-                className="h-8"
-              >
+            {task.status === 'pending' &&
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleComplete(task)}
+              className="h-8">
+
                 <CheckCircle2 className="w-4 h-4 mr-1" />
                 Complete
               </Button>
-            )}
+            }
             <Button
               size="sm"
               variant="ghost"
               onClick={() => handleEdit(task)}
-              className="h-8"
-            >
+              className="h-8">
+
               Edit
             </Button>
             <Button
               size="sm"
               variant="ghost"
               onClick={() => deleteTaskMutation.mutate(task.id)}
-              className="h-8 text-red-600 hover:text-red-700"
-            >
+              className="h-8 text-red-600 hover:text-red-700">
+
               <X className="w-4 h-4" />
             </Button>
           </div>
         </div>
       </CardContent>
     </Card>
-    </motion.div>
-  );
+    </motion.div>;
+
 
   return (
     <PullToRefresh onRefresh={async () => {
@@ -255,26 +255,26 @@ export default function Tasks() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">My Tasks</h1>
          <Button
-           onClick={() => {
-             setShowForm(true);
-             setEditingTask(null);
-             setNewTask({
-               title: "",
-               description: "",
-               type: "other",
-               priority: "medium",
-               status: "pending",
-               due_date: todayEastern(),
-               due_time: "",
-               notification_preferences: {
-                 enabled: true,
-                 notify_before_hours: 24,
-                 notify_on_overdue: true
-               }
-             });
-           }}
-           className="bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white w-full sm:w-auto touch-target"
-        >
+            onClick={() => {
+              setShowForm(true);
+              setEditingTask(null);
+              setNewTask({
+                title: "",
+                description: "",
+                type: "other",
+                priority: "medium",
+                status: "pending",
+                due_date: todayEastern(),
+                due_time: "",
+                notification_preferences: {
+                  enabled: true,
+                  notify_before_hours: 24,
+                  notify_on_overdue: true
+                }
+              });
+            }}
+            className="bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white w-full sm:w-auto touch-target">
+
           <Plus className="w-4 h-4 mr-2" />
           New Task
         </Button>
@@ -282,37 +282,37 @@ export default function Tasks() {
 
       <TaskNotifications userEmail={currentUser?.email} compact={true} />
 
-      {(showForm || showRecurringSettings) && (
+      {(showForm || showRecurringSettings) &&
         <Card className="mb-6 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800">
              <CardHeader>
                <CardTitle className="text-slate-900 dark:text-slate-100">{editingTask ? 'Edit Task' : 'Create New Task'}</CardTitle>
              </CardHeader>
           <CardContent className="space-y-4">
-            {!showRecurringSettings ? (
-              <>
+            {!showRecurringSettings ?
+            <>
                 <div>
                   <Label>Title *</Label>
                   <Input
-                    value={newTask.title}
-                    onChange={(e) => setNewTask({...newTask, title: e.target.value})}
-                    placeholder="Task title"
-                  />
+                  value={newTask.title}
+                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                  placeholder="Task title" />
+
                 </div>
                 <div>
                   <Label>Description</Label>
                   <Textarea
-                    value={newTask.description}
-                    onChange={(e) => setNewTask({...newTask, description: e.target.value})}
-                    placeholder="Task details"
-                  />
+                  value={newTask.description}
+                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                  placeholder="Task details" />
+
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Priority *</Label>
                     <Select
-                      value={newTask.priority}
-                      onValueChange={(value) => setNewTask({...newTask, priority: value})}
-                    >
+                    value={newTask.priority}
+                    onValueChange={(value) => setNewTask({ ...newTask, priority: value })}>
+
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -327,9 +327,9 @@ export default function Tasks() {
                   <div>
                     <Label>Type</Label>
                     <Select
-                      value={newTask.type}
-                      onValueChange={(value) => setNewTask({...newTask, type: value})}
-                    >
+                    value={newTask.type}
+                    onValueChange={(value) => setNewTask({ ...newTask, type: value })}>
+
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -348,44 +348,44 @@ export default function Tasks() {
                   <div>
                     <Label>Due Date</Label>
                     <Input
-                      type="date"
-                      value={newTask.due_date}
-                      onChange={(e) => setNewTask({...newTask, due_date: e.target.value})}
-                    />
+                    type="date"
+                    value={newTask.due_date}
+                    onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })} />
+
                   </div>
                   <div>
                     <Label>Due Time</Label>
                     <Input
-                      type="time"
-                      value={newTask.due_time}
-                      onChange={(e) => setNewTask({...newTask, due_time: e.target.value})}
-                    />
+                    type="time"
+                    value={newTask.due_time}
+                    onChange={(e) => setNewTask({ ...newTask, due_time: e.target.value })} />
+
                   </div>
                 </div>
                 <div>
                   <Label>Patient (optional)</Label>
                   <Select
-                    value={newTask.patient_id || ""}
-                    onValueChange={(value) => setNewTask({...newTask, patient_id: value})}
-                  >
+                  value={newTask.patient_id || ""}
+                  onValueChange={(value) => setNewTask({ ...newTask, patient_id: value })}>
+
                     <SelectTrigger>
                       <SelectValue placeholder="Select patient" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={null}>No patient</SelectItem>
-                      {patients.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
+                      {patients.map((p) =>
+                    <SelectItem key={p.id} value={p.id}>
                           {p.first_name} {p.last_name}
                         </SelectItem>
-                      ))}
+                    )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex justify-between pt-4">
                   <Button
-                    variant="outline"
-                    onClick={() => setShowRecurringSettings(true)}
-                  >
+                  variant="outline"
+                  onClick={() => setShowRecurringSettings(true)}>
+
                     <Repeat className="w-4 h-4 mr-2" />
                     Recurring Settings
                   </Button>
@@ -398,28 +398,28 @@ export default function Tasks() {
                     </Button>
                   </div>
                 </div>
-              </>
-            ) : (
-              <RecurringTaskManager
-                task={newTask}
-                onSave={handleRecurringSave}
-                onCancel={() => setShowRecurringSettings(false)}
-              />
-            )}
+              </> :
+
+            <RecurringTaskManager
+              task={newTask}
+              onSave={handleRecurringSave}
+              onCancel={() => setShowRecurringSettings(false)} />
+
+            }
           </CardContent>
         </Card>
-      )}
+        }
 
       <div className="mb-6 flex flex-col md:flex-row gap-4">
         <div className="flex-1">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
             <Input
-              placeholder="Search tasks..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-white dark:bg-slate-900"
-            />
+                placeholder="Search tasks..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)} className="bg-slate-100 pl-10 px-3 py-1 text-base rounded-md flex h-9 w-full border border-input shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-slate-900" />
+
+
           </div>
         </div>
         <div className="flex gap-2">
@@ -454,21 +454,21 @@ export default function Tasks() {
           <TabsList className="flex w-max min-w-full gap-1 p-1">
             <TabsTrigger value="overdue" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
             Overdue
-            {categorizedTasks.overdue.length > 0 && (
-              <Badge className="ml-2 bg-slate-600 dark:bg-slate-500 text-slate-100">{categorizedTasks.overdue.length}</Badge>
-            )}
+            {categorizedTasks.overdue.length > 0 &&
+                <Badge className="ml-2 bg-slate-600 dark:bg-slate-500 text-slate-100">{categorizedTasks.overdue.length}</Badge>
+                }
           </TabsTrigger>
           <TabsTrigger value="today" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
             Today
-            {categorizedTasks.today.length > 0 && (
-              <Badge className="ml-2">{categorizedTasks.today.length}</Badge>
-            )}
+            {categorizedTasks.today.length > 0 &&
+                <Badge className="ml-2">{categorizedTasks.today.length}</Badge>
+                }
           </TabsTrigger>
           <TabsTrigger value="upcoming" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
             Upcoming
-            {categorizedTasks.upcoming.length > 0 && (
-              <Badge className="ml-2">{categorizedTasks.upcoming.length}</Badge>
-            )}
+            {categorizedTasks.upcoming.length > 0 &&
+                <Badge className="ml-2">{categorizedTasks.upcoming.length}</Badge>
+                }
           </TabsTrigger>
           <TabsTrigger value="noDueDate" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">No Due Date</TabsTrigger>
           <TabsTrigger value="completed" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">Completed</TabsTrigger>
@@ -476,78 +476,78 @@ export default function Tasks() {
         </div>
 
         <TabsContent value="overdue" className="space-y-3">
-          {categorizedTasks.overdue.length === 0 ? (
+          {categorizedTasks.overdue.length === 0 ?
             <EmptyState
               icon={CheckCircle2}
               iconColor="text-green-300"
               title="No Overdue Tasks"
-              description="Great work! All your tasks are on schedule or completed."
-            />
-          ) : (
-            categorizedTasks.overdue.map(task => (
-              <TaskCard key={task.id} task={task} category="overdue" />
-            ))
-          )}
+              description="Great work! All your tasks are on schedule or completed." /> :
+
+
+            categorizedTasks.overdue.map((task) =>
+            <TaskCard key={task.id} task={task} category="overdue" />
+            )
+            }
         </TabsContent>
 
         <TabsContent value="today" className="space-y-3">
-          {categorizedTasks.today.length === 0 ? (
+          {categorizedTasks.today.length === 0 ?
             <EmptyState
               icon={Calendar}
               iconColor="text-blue-300"
               title="No Tasks Due Today"
-              description="You're all caught up for today! Enjoy a lighter workload."
-            />
-          ) : (
-            categorizedTasks.today.map(task => (
-              <TaskCard key={task.id} task={task} category="today" />
-            ))
-          )}
+              description="You're all caught up for today! Enjoy a lighter workload." /> :
+
+
+            categorizedTasks.today.map((task) =>
+            <TaskCard key={task.id} task={task} category="today" />
+            )
+            }
         </TabsContent>
 
         <TabsContent value="upcoming" className="space-y-3">
-          {categorizedTasks.upcoming.length === 0 ? (
+          {categorizedTasks.upcoming.length === 0 ?
             <Card>
               <CardContent className="p-12 text-center text-slate-500 dark:text-slate-400">
                 No upcoming tasks
               </CardContent>
-            </Card>
-          ) : (
-            categorizedTasks.upcoming.map(task => (
-              <TaskCard key={task.id} task={task} category="upcoming" />
-            ))
-          )}
+            </Card> :
+
+            categorizedTasks.upcoming.map((task) =>
+            <TaskCard key={task.id} task={task} category="upcoming" />
+            )
+            }
         </TabsContent>
 
         <TabsContent value="noDueDate" className="space-y-3">
-          {categorizedTasks.noDueDate.length === 0 ? (
+          {categorizedTasks.noDueDate.length === 0 ?
             <Card>
               <CardContent className="p-12 text-center text-slate-500 dark:text-slate-400">
                 No tasks without due dates
               </CardContent>
-            </Card>
-          ) : (
-            categorizedTasks.noDueDate.map(task => (
-              <TaskCard key={task.id} task={task} category="noDueDate" />
-            ))
-          )}
+            </Card> :
+
+            categorizedTasks.noDueDate.map((task) =>
+            <TaskCard key={task.id} task={task} category="noDueDate" />
+            )
+            }
         </TabsContent>
 
         <TabsContent value="completed" className="space-y-3">
-          {categorizedTasks.completed.length === 0 ? (
+          {categorizedTasks.completed.length === 0 ?
             <Card>
               <CardContent className="p-12 text-center text-slate-500 dark:text-slate-400">
                 No completed tasks
               </CardContent>
-            </Card>
-          ) : (
-            categorizedTasks.completed.map(task => (
-              <TaskCard key={task.id} task={task} category="completed" />
-            ))
-          )}
+            </Card> :
+
+            categorizedTasks.completed.map((task) =>
+            <TaskCard key={task.id} task={task} category="completed" />
+            )
+            }
         </TabsContent>
       </Tabs>
     </div>
-    </PullToRefresh>
-  );
+    </PullToRefresh>);
+
 }
