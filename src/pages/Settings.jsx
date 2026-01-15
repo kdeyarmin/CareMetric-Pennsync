@@ -44,7 +44,7 @@ export default function Settings() {
         base44.auth.redirectToLogin();
         return null;
       }
-    },
+    }
   });
 
   React.useEffect(() => {
@@ -113,65 +113,65 @@ export default function Settings() {
                 <User className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
                 Profile Information
               </CardTitle>
-              {!isEditing ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditing(true)}
-                  className="gap-2 min-h-[44px] w-full sm:w-auto"
-                >
+              {!isEditing ?
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+                className="gap-2 min-h-[44px] w-full sm:w-auto">
+
                   <Edit3 className="w-4 h-4" />
                   Edit Profile
-                </Button>
-              ) : (
-                <div className="flex gap-2 w-full sm:w-auto">
+                </Button> :
+
+              <div className="flex gap-2 w-full sm:w-auto">
                   <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setIsEditing(false);
-                      setFormData({
-                        full_name: currentUser?.full_name || '',
-                        credential_type: currentUser?.credential_type || 'RN',
-                        preferred_language: currentUser?.preferred_language || 'en-US'
-                      });
-                    }}
-                    disabled={isSaving}
-                  >
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setFormData({
+                      full_name: currentUser?.full_name || '',
+                      credential_type: currentUser?.credential_type || 'RN',
+                      preferred_language: currentUser?.preferred_language || 'en-US'
+                    });
+                  }}
+                  disabled={isSaving}>
+
                     <X className="w-4 h-4" />
                   </Button>
                   <Button
-                    size="sm"
-                    onClick={handleSaveProfile}
-                    disabled={isSaving}
-                    className="gap-2 bg-blue-600 hover:bg-blue-700"
-                  >
+                  size="sm"
+                  onClick={handleSaveProfile}
+                  disabled={isSaving} className="bg-slate-200 text-slate-900 px-3 text-xs font-medium rounded-md inline-flex items-center justify-center whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm dark:bg-slate-600 dark:hover:bg-slate-700 h-8 gap-2 hover:bg-blue-700">
+
+
                     <Save className="w-4 h-4" />
                     {isSaving ? 'Saving...' : 'Save'}
                   </Button>
                 </div>
-              )}
+              }
             </div>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4">
-            {isEditing ? (
-              <>
+            {isEditing ?
+            <>
                 <div>
                   <Label htmlFor="full_name" className="text-sm sm:text-base">Full Name</Label>
                   <Input
-                    id="full_name"
-                    value={formData.full_name}
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                    placeholder="Enter your full name"
-                    className="mt-1 h-11 sm:h-12 text-base"
-                  />
+                  id="full_name"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  placeholder="Enter your full name"
+                  className="mt-1 h-11 sm:h-12 text-base" />
+
                 </div>
                 <div>
                    <Label htmlFor="credential_type">Provider Type</Label>
                    <Select
-                     value={formData.credential_type}
-                     onValueChange={(value) => setFormData({ ...formData, credential_type: value })}
-                   >
+                  value={formData.credential_type}
+                  onValueChange={(value) => setFormData({ ...formData, credential_type: value })}>
+
                      <SelectTrigger className="mt-1">
                        <SelectValue />
                      </SelectTrigger>
@@ -189,9 +189,9 @@ export default function Settings() {
                 <div>
                    <Label htmlFor="service_type">Service Type / Work Setting</Label>
                    <Select
-                     value={formData.service_type}
-                     onValueChange={(value) => setFormData({ ...formData, service_type: value })}
-                   >
+                  value={formData.service_type}
+                  onValueChange={(value) => setFormData({ ...formData, service_type: value })}>
+
                      <SelectTrigger className="mt-1">
                        <SelectValue />
                      </SelectTrigger>
@@ -215,9 +215,9 @@ export default function Settings() {
                 <div>
                   <Label htmlFor="preferred_language">Preferred Language</Label>
                   <Select
-                    value={formData.preferred_language}
-                    onValueChange={(value) => setFormData({ ...formData, preferred_language: value })}
-                  >
+                  value={formData.preferred_language}
+                  onValueChange={(value) => setFormData({ ...formData, preferred_language: value })}>
+
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
@@ -238,21 +238,21 @@ export default function Settings() {
                   <Label className="text-slate-600 dark:text-slate-400">Email (Cannot be changed)</Label>
                   <p className="text-slate-900 dark:text-slate-100 mt-1">{currentUser?.email}</p>
                 </div>
-                {currentUser?.role === 'admin' && (
-                  <div>
+                {currentUser?.role === 'admin' &&
+              <div>
                     <Label htmlFor="role">Role (Admin Testing Only)</Label>
                     <Select
-                      value={currentUser?.role}
-                      onValueChange={async (value) => {
-                        try {
-                          await base44.auth.updateMe({ role: value });
-                          queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-                          window.location.reload();
-                        } catch (error) {
-                          alert('Failed to update role');
-                        }
-                      }}
-                    >
+                  value={currentUser?.role}
+                  onValueChange={async (value) => {
+                    try {
+                      await base44.auth.updateMe({ role: value });
+                      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+                      window.location.reload();
+                    } catch (error) {
+                      alert('Failed to update role');
+                    }
+                  }}>
+
                       <SelectTrigger className="mt-1">
                         <SelectValue />
                       </SelectTrigger>
@@ -263,37 +263,37 @@ export default function Settings() {
                     </Select>
                     <p className="text-xs text-amber-600 mt-1">⚠️ Admin testing: Switch roles to test different permissions</p>
                   </div>
-                )}
+              }
                 <div>
                   <Label htmlFor="phone_number">Phone Number (for 2FA)</Label>
                   <Input
-                    id="phone_number"
-                    type="tel"
-                    value={formData.phone_number}
-                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                    placeholder="+1234567890"
-                    className="mt-1"
-                  />
+                  id="phone_number"
+                  type="tel"
+                  value={formData.phone_number}
+                  onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                  placeholder="+1234567890"
+                  className="mt-1" />
+
                   <p className="text-xs text-gray-500 mt-1">Include country code (e.g., +1 for US)</p>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Two-Factor Authentication</Label>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      {currentUser?.data_retention_preference === 'save' 
-                        ? 'Automatically enabled when saving patient data' 
-                        : 'Require SMS code on login'}
+                      {currentUser?.data_retention_preference === 'save' ?
+                    'Automatically enabled when saving patient data' :
+                    'Require SMS code on login'}
                     </p>
                   </div>
                   <Switch
-                    checked={formData.two_factor_enabled}
-                    onCheckedChange={(checked) => setFormData({ ...formData, two_factor_enabled: checked })}
-                    disabled={!formData.phone_number || currentUser?.data_retention_preference === 'save'}
-                  />
+                  checked={formData.two_factor_enabled}
+                  onCheckedChange={(checked) => setFormData({ ...formData, two_factor_enabled: checked })}
+                  disabled={!formData.phone_number || currentUser?.data_retention_preference === 'save'} />
+
                 </div>
-              </>
-            ) : (
-              <>
+              </> :
+
+            <>
                 <div>
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Name</p>
                    <p className="text-slate-900 dark:text-slate-100">{currentUser?.full_name}</p>
@@ -310,29 +310,29 @@ export default function Settings() {
                     <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Service Type</p>
                     <p className="text-slate-900 dark:text-slate-100">
                      {currentUser?.service_type === 'hospice' ? '🕊️ Hospice' :
-                      currentUser?.service_type === 'hospital' ? '🏥 Hospital' :
-                      currentUser?.service_type === 'clinic' ? '🏢 Clinic / Outpatient' :
-                      currentUser?.service_type === 'rehab' ? '🔄 Rehabilitation Facility' :
-                      currentUser?.service_type === 'ltc' ? '🏛️ Long-Term Care / Skilled Nursing' :
-                      currentUser?.service_type === 'assisted_living' ? '🏘️ Assisted Living' :
-                      currentUser?.service_type === 'behavioral_health' ? '🧠 Behavioral Health / Mental Health' :
-                      currentUser?.service_type === 'school_based' ? '🎓 School-Based Services' :
-                      currentUser?.service_type === 'other' ? '📍 Other' :
-                      '🏠 Home Health'}
+                  currentUser?.service_type === 'hospital' ? '🏥 Hospital' :
+                  currentUser?.service_type === 'clinic' ? '🏢 Clinic / Outpatient' :
+                  currentUser?.service_type === 'rehab' ? '🔄 Rehabilitation Facility' :
+                  currentUser?.service_type === 'ltc' ? '🏛️ Long-Term Care / Skilled Nursing' :
+                  currentUser?.service_type === 'assisted_living' ? '🏘️ Assisted Living' :
+                  currentUser?.service_type === 'behavioral_health' ? '🧠 Behavioral Health / Mental Health' :
+                  currentUser?.service_type === 'school_based' ? '🎓 School-Based Services' :
+                  currentUser?.service_type === 'other' ? '📍 Other' :
+                  '🏠 Home Health'}
                    </p>
                  </div>
                 <div>
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Preferred Language</p>
                   <p className="text-slate-900 dark:text-slate-100">
                     {currentUser?.preferred_language === 'es-ES' ? '🇪🇸 Español' :
-                     currentUser?.preferred_language === 'fr-FR' ? '🇫🇷 Français' :
-                     currentUser?.preferred_language === 'de-DE' ? '🇩🇪 Deutsch' :
-                     currentUser?.preferred_language === 'it-IT' ? '🇮🇹 Italiano' :
-                     currentUser?.preferred_language === 'pt-BR' ? '🇧🇷 Português' :
-                     currentUser?.preferred_language === 'zh-CN' ? '🇨🇳 中文' :
-                     currentUser?.preferred_language === 'ja-JP' ? '🇯🇵 日本語' :
-                     currentUser?.preferred_language === 'ko-KR' ? '🇰🇷 한국어' :
-                     '🇺🇸 English (US)'}
+                  currentUser?.preferred_language === 'fr-FR' ? '🇫🇷 Français' :
+                  currentUser?.preferred_language === 'de-DE' ? '🇩🇪 Deutsch' :
+                  currentUser?.preferred_language === 'it-IT' ? '🇮🇹 Italiano' :
+                  currentUser?.preferred_language === 'pt-BR' ? '🇧🇷 Português' :
+                  currentUser?.preferred_language === 'zh-CN' ? '🇨🇳 中文' :
+                  currentUser?.preferred_language === 'ja-JP' ? '🇯🇵 日本語' :
+                  currentUser?.preferred_language === 'ko-KR' ? '🇰🇷 한국어' :
+                  '🇺🇸 English (US)'}
                   </p>
                 </div>
                 <div>
@@ -340,7 +340,7 @@ export default function Settings() {
                   <p className="text-slate-900 dark:text-slate-100">{currentUser?.phone_number || 'Not set'}</p>
                 </div>
               </>
-            )}
+            }
           </CardContent>
         </Card>
 
@@ -362,15 +362,15 @@ export default function Settings() {
                   <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-900 dark:text-slate-100">Status: {currentUser?.two_factor_enabled ? 'Enabled' : 'Disabled'}</p>
-                    {currentUser?.two_factor_enabled ? (
-                      <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
+                    {currentUser?.two_factor_enabled ?
+                    <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
                         You'll receive a verification code at {currentUser?.phone_number} when logging in.
-                      </p>
-                    ) : (
-                     <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
+                      </p> :
+
+                    <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
                         Enable 2FA by adding your phone number and toggling the switch above.
                       </p>
-                    )}
+                    }
                   </div>
                 </div>
               </div>
@@ -382,14 +382,14 @@ export default function Settings() {
         <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
 
         {/* Professional Specializations */}
-        {currentUser && (
-          <ProviderSpecializationManager currentUser={currentUser} />
-        )}
+        {currentUser &&
+        <ProviderSpecializationManager currentUser={currentUser} />
+        }
 
         {/* Practice Information */}
-        {currentUser && !['RN', 'LPN'].includes(currentUser.credential_type) && (
-          <ProviderPracticeInfoManager userEmail={currentUser.email} />
-        )}
+        {currentUser && !['RN', 'LPN'].includes(currentUser.credential_type) &&
+        <ProviderPracticeInfoManager userEmail={currentUser.email} />
+        }
 
         {/* Data Retention Settings */}
         <DataRetentionSettings />
@@ -415,17 +415,17 @@ export default function Settings() {
                 </p>
               </div>
               
-              {!showDeleteConfirm ? (
-                <Button
-                  variant="destructive"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] w-full sm:w-auto text-white"
-                >
+              {!showDeleteConfirm ?
+              <Button
+                variant="destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] w-full sm:w-auto text-white">
+
                   <AlertTriangle className="w-4 h-4 mr-2" />
                   Delete My Account
-                </Button>
-              ) : (
-                <div className="border-2 border-red-200 rounded-lg p-3 sm:p-4 bg-red-50">
+                </Button> :
+
+              <div className="border-2 border-red-200 rounded-lg p-3 sm:p-4 bg-red-50">
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
                     Are you absolutely sure? This action is permanent and irreversible.
                   </p>
@@ -433,38 +433,38 @@ export default function Settings() {
                     Type <span className="font-mono font-bold">DELETE</span> to confirm:
                   </p>
                   <Input
-                    value={deleteConfirmText}
-                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                    placeholder="Type DELETE"
-                    className="mb-3"
-                  />
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="Type DELETE"
+                  className="mb-3" />
+
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button
-                      variant="destructive"
-                      onClick={handleDeleteAccount}
-                      disabled={deleteConfirmText !== 'DELETE' || isDeleting}
-                      className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] text-white"
-                    >
+                    variant="destructive"
+                    onClick={handleDeleteAccount}
+                    disabled={deleteConfirmText !== 'DELETE' || isDeleting}
+                    className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] text-white">
+
                       {isDeleting ? 'Deleting...' : 'Permanently Delete Account'}
                     </Button>
                     <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowDeleteConfirm(false);
-                        setDeleteConfirmText('');
-                      }}
-                      disabled={isDeleting}
-                      className="min-h-[44px]"
-                    >
+                    variant="outline"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteConfirmText('');
+                    }}
+                    disabled={isDeleting}
+                    className="min-h-[44px]">
+
                       Cancel
                     </Button>
                   </div>
                 </div>
-              )}
+              }
             </div>
           </CardContent>
         </Card>
       </div>
-    </div>
-  );
+    </div>);
+
 }
