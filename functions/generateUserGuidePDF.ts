@@ -40,20 +40,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Patient Management",
-    description: "Centralized database with comprehensive patient health records.",
+    description: "Maintain a comprehensive, centralized patient repository with complete health records, enabling seamless access to historical data and current clinical information.",
     howToUse: [
-      "1. Navigate to Patients page",
-      "2. Use search or filter to find patient",
-      "3. Click patient name to view full profile",
-      "4. Update patient information as needed",
-      "5. Access complete care history and documents"
+      "1. Navigate to the Patients section from main dashboard",
+      "2. Use advanced search or filtering tools to locate specific patient records",
+      "3. Select patient name to access complete demographic and clinical profile",
+      "4. Update and maintain current patient information throughout episodes of care",
+      "5. Review complete care timeline, visit history, and associated documents"
     ],
     bestPractices: [
-      "Keep demographic information current",
-      "Document all diagnoses and allergies",
-      "Maintain emergency contact information",
-      "Regular medication reconciliation",
-      "Document care team members involved"
+      "Ensure demographic data is reviewed and updated at each interaction",
+      "Document all active diagnoses, comorbidities, and allergies",
+      "Maintain current emergency contact and designee information",
+      "Perform systematic medication reconciliation at each care episode",
+      "Clearly identify all interdisciplinary care team members and their roles"
     ]
   },
   {
