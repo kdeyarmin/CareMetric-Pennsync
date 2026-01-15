@@ -60,7 +60,7 @@ export default function Compliance() {
       <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
         <h1 className="text-3xl font-bold mb-6 text-slate-900 dark:text-slate-100">Regulatory Compliance Center</h1>
         <p className="text-slate-600 dark:text-slate-400 mb-8">
-          Stay informed about the latest healthcare regulatory changes from various sources. These updates are automatically fetched and categorized to help you maintain compliance.
+          Stay informed about the latest healthcare regulatory changes from various sources. These updates are automatically fetched and categorized to help you stay compliant with evolving standards.
         </p>
 
         {regulatoryUpdates.length === 0 ? (

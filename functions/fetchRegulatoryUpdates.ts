@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
     }
 
-    const searchPrompt = `Find recent (last 7 days) significant regulatory updates for home health and hospice care from CMS or Medicare. Focus on changes to documentation, billing, quality reporting, or patient care standards. Provide JSON format with array "regulatory_updates" containing: title, source (CMS/Medicare/etc), category (documentation/oasis/billing/etc), effective_date (YYYY-MM-DD), summary, full_details, impact_level (critical/high/medium/low), affected_areas (array), required_actions (array), reference_url.`;
+    const searchPrompt = `Find recent (last 7 days) significant regulatory updates for healthcare providers including home health, hospice, outpatient, and clinical practice from CMS or Medicare. Focus on changes to documentation, billing, quality reporting, or patient care standards. Provide JSON format with array "regulatory_updates" containing: title, source (CMS/Medicare/etc), category (documentation/oasis/billing/etc), effective_date (YYYY-MM-DD), summary, full_details, impact_level (critical/high/medium/low), affected_areas (array), required_actions (array), reference_url.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",

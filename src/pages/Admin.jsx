@@ -171,15 +171,15 @@ export default function Admin() {
     try {
       await base44.integrations.Core.SendEmail({
         to: inviteEmail,
-        subject: 'Invitation to Join PennCares',
-        body: `You have been invited to join PennCares as a ${inviteRole === 'admin' ? 'Administrator' : 'User'}.
+        subject: 'Invitation to Join CareMetric AI',
+        body: `You have been invited to join CareMetric AI as a ${inviteRole === 'admin' ? 'Administrator' : 'User'}.
         
-Please visit the app to create your account and start documenting patient visits.
+Please visit the app to create your account and start using AI-powered healthcare documentation tools.
 
 Role: ${inviteRole === 'admin' ? 'Administrator' : 'User'}
 
 If you have any questions, please contact your administrator.`,
-        from_name: 'PennCares Admin'
+        from_name: 'CareMetric AI'
       });
       
       alert('Invitation sent successfully!');
@@ -219,8 +219,8 @@ If you have any questions, please contact your administrator.`,
   return (
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-6 sm:mb-8">
-         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">Admin Dashboard</h1>
-         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage users, monitor system, and view security logs</p>
+         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">User & Training Management</h1>
+         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage users, training modules, and system settings</p>
       </div>
 
       {/* Overview Stats */}

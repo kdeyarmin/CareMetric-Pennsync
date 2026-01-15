@@ -101,14 +101,14 @@ export default function About() {
                 </ul>
               </div>
               <div className="text-center space-y-3">
-                <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto" />
-                <h3 className="text-xl font-bold">Other Disciplines</h3>
-                <ul className="text-sm text-gray-700 space-y-1">
-                  <li>• Medical Social Workers (MSW)</li>
-                  <li>• Home Health Agencies</li>
-                  <li>• Hospice Providers</li>
-                  <li>• Long-Term Care Facilities</li>
-                </ul>
+               <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto" />
+               <h3 className="text-xl font-bold">Other Disciplines</h3>
+               <ul className="text-sm text-gray-700 space-y-1">
+                 <li>• Medical Social Workers (MSW)</li>
+                 <li>• Home Health Providers</li>
+                 <li>• Hospice Providers</li>
+                 <li>• Private Practice Clinicians</li>
+               </ul>
               </div>
             </div>
           </CardContent>

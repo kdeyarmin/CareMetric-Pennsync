@@ -455,7 +455,7 @@ export default function AdminDashboard() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white truncate">Admin Dashboard</h1>
-          <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 truncate">Comprehensive analytics and system overview</p>
+          <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 truncate">System analytics and user management</p>
         </div>
         <div className="flex gap-2 flex-wrap w-full sm:w-auto items-center">
           <Select value={filterProvider} onValueChange={setFilterProvider}>
@@ -1243,7 +1243,7 @@ export default function AdminDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-slate-700 dark:text-slate-400" />
-                Top Performing Nurses
+                Top Performing Users
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1477,10 +1477,10 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            {/* Nurse Rankings */}
+            {/* User Rankings */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Nurse Rankings</CardTitle>
+                <CardTitle className="text-lg">User Performance Rankings</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
