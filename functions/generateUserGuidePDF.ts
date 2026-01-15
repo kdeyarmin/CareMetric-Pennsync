@@ -163,7 +163,8 @@ const FEATURES_GUIDE = [
       "Present performance successes to team to foster collaborative engagement",
       "Address performance gaps through proactive coaching or process improvement",
       "Monitor trends longitudinally to demonstrate sustained improvement and accountability"
-    ]
+    ],
+    importance: "Eliminates manual report creation time, enables data-driven decision making, identifies compliance issues proactively, and demonstrates measurable quality improvement outcomes for accreditation and funding"
   },
   {
     title: "Training & Development",
