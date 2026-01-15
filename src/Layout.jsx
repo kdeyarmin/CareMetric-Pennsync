@@ -5,30 +5,30 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-                                    Home,
-                                    Users,
-                                    User,
-                                    WifiOff,
-                                    GraduationCap,
-                                    BarChart3,
-                                    Settings,
-                                    Menu,
-                                    X,
-                                    Brain,
-                                    Target,
-                                    Bell,
-                                    LogOut,
-                                    ChevronLeft,
-                                    ChevronRight,
-                                    Sparkles,
-                                    Activity,
-                                    CreditCard,
-                                    Mic,
-                                    Phone,
-                                    UserPlus,
-                                    ShieldAlert,
-                                    ListTodo
-                                  } from "lucide-react";
+  Home,
+  Users,
+  User,
+  WifiOff,
+  GraduationCap,
+  BarChart3,
+  Settings,
+  Menu,
+  X,
+  Brain,
+  Target,
+  Bell,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  Activity,
+  CreditCard,
+  Mic,
+  Phone,
+  UserPlus,
+  ShieldAlert,
+  ListTodo } from
+"lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -44,7 +44,7 @@ import { getAccessiblePages } from "../components/utils/providerAccessControl";
 /* =========================
          iOS / Layout Constants
       ========================= */
-      const HEADER_BAR_HEIGHT_REM = 3.5; // visible blue bar height (rem)
+const HEADER_BAR_HEIGHT_REM = 3.5; // visible blue bar height (rem)
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -82,11 +82,11 @@ export default function Layout({ children, currentPageName }) {
     enabled: !!currentUser?.email
   });
 
-  const isPremium = subscription && 
-    (subscription.status === 'active' || 
-     subscription.status === 'trialing' || 
-     subscription.status === 'lifetime_free' ||
-     currentUser?.role === 'admin');
+  const isPremium = subscription && (
+  subscription.status === 'active' ||
+  subscription.status === 'trialing' ||
+  subscription.status === 'lifetime_free' ||
+  currentUser?.role === 'admin');
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -138,46 +138,46 @@ export default function Layout({ children, currentPageName }) {
 
   // Get role-specific navigation items
   const allNavItems = [
-    { name: "Dashboard", icon: Home, page: "Dashboard" },
-    { name: "Patients", icon: Users, page: "Patients" },
-    { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
-    { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
-    { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-    { name: "Schedule", icon: Phone, page: "ProviderScheduling" },
-    { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
-    { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
-    { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
-    { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
-    { name: "My Learning", icon: Target, page: "PersonalizedLearningPath" },
-    { name: "Tasks", icon: ListTodo, page: "Tasks" },
-    { name: "Settings", icon: Settings, page: "Settings" }
-  ];
+  { name: "Dashboard", icon: Home, page: "Dashboard" },
+  { name: "Patients", icon: Users, page: "Patients" },
+  { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
+  { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
+  { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+  { name: "Schedule", icon: Phone, page: "ProviderScheduling" },
+  { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
+  { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
+  { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
+  { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
+  { name: "My Learning", icon: Target, page: "PersonalizedLearningPath" },
+  { name: "Tasks", icon: ListTodo, page: "Tasks" },
+  { name: "Settings", icon: Settings, page: "Settings" }];
 
-  const accessiblePages = currentUser?.credential_type 
-    ? getAccessiblePages(currentUser.credential_type)
-    : [];
 
-  const userNavItems = allNavItems.filter(item => 
-    item.page === "Dashboard" || 
-    item.page === "Settings" || 
-    accessiblePages.includes(item.page)
+  const accessiblePages = currentUser?.credential_type ?
+  getAccessiblePages(currentUser.credential_type) :
+  [];
+
+  const userNavItems = allNavItems.filter((item) =>
+  item.page === "Dashboard" ||
+  item.page === "Settings" ||
+  accessiblePages.includes(item.page)
   );
 
   const adminNavItems =
-    currentUser?.role === "admin"
-      ? [
-          { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
-          { name: "User & Training Mgmt", icon: Users, page: "Admin" },
-          { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
-          { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }
-        ]
-      : [];
+  currentUser?.role === "admin" ?
+  [
+  { name: "Dashboard & Analytics", icon: BarChart3, page: "AdminDashboard" },
+  { name: "User & Training Mgmt", icon: Users, page: "Admin" },
+  { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
+  { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptionManagement" }] :
+
+  [];
 
   // iOS-safe computed paddings - use max() to ensure minimum height even without safe area
   const mobileHeaderTotalHeight = `calc(${HEADER_BAR_HEIGHT_REM}rem + max(env(safe-area-inset-top), 0px))`;
 
   return (
-                <ThemeProvider>
+    <ThemeProvider>
                 <div className="fixed inset-0 -z-10">
                   {/* Main gradient background - light grey to darker grey */}
                   <div className="absolute inset-0 bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-900 dark:via-gray-800 dark:to-gray-700" />
@@ -189,10 +189,10 @@ export default function Layout({ children, currentPageName }) {
                 </div>
                 <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
-          Scoped overrides:
-          Force any internal Tailwind "fixed" inside FAB components to behave like normal content
-          so our horizontal row works (prevents overlapping).
-      ========================= */}
+             Scoped overrides:
+             Force any internal Tailwind "fixed" inside FAB components to behave like normal content
+             so our horizontal row works (prevents overlapping).
+          ========================= */}
       <style>{`
         /* Only affects the two FAB widgets when rendered inside our row */
         .cm-fab-scope .fixed {
@@ -214,35 +214,35 @@ export default function Layout({ children, currentPageName }) {
       `}</style>
 
       {/* ================= Desktop Sidebar ================= */}
-      {showNavigationUI && (
+      {showNavigationUI &&
         <aside
-               className={`hidden lg:flex flex-col bg-gradient-to-b from-white/90 to-slate-50/80 dark:from-slate-900/90 dark:to-gray-900/80 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-700/30 shadow-lg transition-all duration-300 ${
-                 sidebarCollapsed ? "w-16" : "w-56"
-               }`}
-             >
+          className={`hidden lg:flex flex-col bg-gradient-to-b from-white/90 to-slate-50/80 dark:from-slate-900/90 dark:to-gray-900/80 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-700/30 shadow-lg transition-all duration-300 ${
+          sidebarCollapsed ? "w-16" : "w-56"}`
+          }>
+
           <div className="h-16 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0 group">
               <div className="relative flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
                     <img
-                      src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
-                      className="w-8 h-8 object-contain"
-                      alt="CareMetric AI Logo"
-                    />
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
+                  className="w-8 h-8 object-contain"
+                  alt="CareMetric AI Logo" />
+
                   </div>
-                  {!sidebarCollapsed && (
-                    <span className="font-bold truncate flex items-center gap-1 text-slate-800 dark:text-slate-100">
+                  {!sidebarCollapsed &&
+              <span className="font-bold truncate flex items-center gap-1 text-slate-800 dark:text-slate-100">
                       CareMetric AI
                     </span>
-                  )}
+              }
             </Link>
             <div className="flex items-center gap-1">
               <Button
-                 size="icon"
-                 variant="ghost"
-                 onClick={handleLogout}
-                 title="Logout"
-                 className="text-slate-600 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-               >
+                size="icon"
+                variant="ghost"
+                onClick={handleLogout}
+                title="Logout"
+                className="text-slate-600 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
+
                 <LogOut className="w-4 h-4" />
               </Button>
               <Button size="icon" variant="ghost" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
@@ -252,92 +252,92 @@ export default function Layout({ children, currentPageName }) {
           </div>
 
           <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
-            {userNavItems.map((item) => (
+            {userNavItems.map((item) =>
+            <Link
+              key={item.page}
+              to={createPageUrl(item.page)}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+              isActive(item.page) ?
+              "bg-slate-100 dark:bg-slate-800 text-primary font-medium" :
+              "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`
+              }>
+
+                <item.icon className="w-4 h-4" />
+                {!sidebarCollapsed && item.name}
+              </Link>
+            )}
+
+
+
+            {adminNavItems.length > 0 &&
+            <>
+                <div className="h-px bg-amber-200 dark:bg-amber-900 my-3 mx-2"></div>
+                {adminNavItems.map((item) =>
               <Link
                 key={item.page}
                 to={createPageUrl(item.page)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                  isActive(item.page) 
-                    ? "bg-slate-100 dark:bg-slate-800 text-primary font-medium" 
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                }`}
-              >
-                <item.icon className="w-4 h-4" />
-                {!sidebarCollapsed && item.name}
-              </Link>
-            ))}
+                isActive(item.page) ?
+                "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-200 font-medium" :
+                "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`
+                }>
 
-
-
-            {adminNavItems.length > 0 && (
-              <>
-                <div className="h-px bg-amber-200 dark:bg-amber-900 my-3 mx-2"></div>
-                {adminNavItems.map((item) => (
-                  <Link
-                    key={item.page}
-                    to={createPageUrl(item.page)}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                      isActive(item.page) 
-                        ? "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-200 font-medium" 
-                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    }`}
-                  >
                     <item.icon className="w-4 h-4" />
                     {!sidebarCollapsed && item.name}
                   </Link>
-                ))}
+              )}
               </>
-            )}
+            }
           </nav>
 
           <div className="border-t border-slate-200 dark:border-slate-800 p-3 space-y-2">
-            {!sidebarCollapsed ? (
-              <ShareAppButton />
-            ) : (
-              <button
-                className="flex items-center justify-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 w-full"
-                onClick={() => window.open('https://caremetricai.com/refer', '_blank')}
-              >
+            {!sidebarCollapsed ?
+            <ShareAppButton /> :
+
+            <button
+              className="flex items-center justify-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 w-full"
+              onClick={() => window.open('https://caremetricai.com/refer', '_blank')}>
+
                 <UserPlus className="w-4 h-4" />
               </button>
-            )}
+            }
             <button
               onClick={handleLogout}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 w-full ${
-                sidebarCollapsed ? "justify-center" : ""
-              }`}
-            >
+              sidebarCollapsed ? "justify-center" : ""}`
+              }>
+
               <LogOut className="w-4 h-4" />
               {!sidebarCollapsed && "Logout"}
             </button>
           </div>
         </aside>
-      )}
+        }
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-        className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/90 via-slate-50/80 to-white/90 dark:from-slate-900/90 dark:via-gray-900/80 dark:to-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/30 shadow-lg flex flex-col transition-colors duration-300 ${
-          showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'
-        }`}
-        style={{
-          paddingTop: "env(safe-area-inset-top, 0px)",
-          width: "100vw",
-          maxWidth: "100vw",
-          position: "fixed"
-        }}
-      >
-        {showNavigationUI && (
-          <div
-            className="flex items-center justify-between px-2 sm:px-3 w-full bg-transparent"
-            style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}
-          >
+          className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/90 via-slate-50/80 to-white/90 dark:from-slate-900/90 dark:via-gray-900/80 dark:to-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/30 shadow-lg flex flex-col transition-colors duration-300 ${
+          showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'}`
+          }
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            width: "100vw",
+            maxWidth: "100vw",
+            position: "fixed"
+          }}>
+
+        {showNavigationUI &&
+          <div className="bg-gray-400 px-2 flex items-center justify-between sm:px-3 w-full"
+
+          style={{ height: `${HEADER_BAR_HEIGHT_REM}rem` }}>
+
             <Link to={createPageUrl("Dashboard")} className="flex items-center gap-1 min-w-0 flex-shrink">
               <div className="relative flex-shrink-0">
                 <img
                   src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/b4b46082f_CareMetric-removebg-preview.png"
                   className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
-                  alt="CareMetric AI Logo"
-                />
+                  alt="CareMetric AI Logo" />
+
               </div>
               <span className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm truncate">CareMetric AI</span>
             </Link>
@@ -350,30 +350,30 @@ export default function Layout({ children, currentPageName }) {
                 variant="ghost"
                 className="text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0"
                 onClick={handleLogout}
-                title="Logout"
-              >
+                title="Logout">
+
                 <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </Button>
               <Button
                 size="icon"
                 variant="ghost"
                 className="text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0"
-                onClick={() => setMobileMenuOpen(true)}
-              >
+                onClick={() => setMobileMenuOpen(true)}>
+
                 <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             </div>
           </div>
-        )}
+          }
       </header>
 
       {/* ================= Mobile Menu Overlay ================= */}
-      {showNavigationUI && mobileMenuOpen && (
+      {showNavigationUI && mobileMenuOpen &&
         <div className="fixed inset-0 bg-black/50 z-[290]" onClick={() => setMobileMenuOpen(false)}>
           <div
             className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xl overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+            onClick={(e) => e.stopPropagation()}>
+
             <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">Menu</span>
@@ -382,41 +382,41 @@ export default function Layout({ children, currentPageName }) {
                 size="icon"
                 variant="ghost"
                 onClick={() => setMobileMenuOpen(false)}
-                className="h-8 w-8 sm:h-9 sm:w-9 text-slate-600 dark:text-slate-400"
-              >
+                className="h-8 w-8 sm:h-9 sm:w-9 text-slate-600 dark:text-slate-400">
+
                 <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </Button>
             </div>
 
             <nav className="p-3 sm:p-4 space-y-1">
-              {userNavItems.map((item) => (
+              {userNavItems.map((item) =>
+              <Link
+                key={item.page}
+                to={createPageUrl(item.page)}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-900 dark:text-slate-100">
+
+                  <item.icon className="w-4 h-4" />
+                  {item.name}
+                  </Link>
+              )}
+
+              {adminNavItems.length > 0 &&
+              <>
+                  <div className="h-px bg-slate-200 dark:bg-slate-700 my-3 mx-2"></div>
+                  {adminNavItems.map((item) =>
                 <Link
                   key={item.page}
                   to={createPageUrl(item.page)}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
-                  >
-                  <item.icon className="w-4 h-4" />
-                  {item.name}
-                  </Link>
-              ))}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 text-sm text-slate-900 dark:text-slate-100">
 
-              {adminNavItems.length > 0 && (
-                <>
-                  <div className="h-px bg-slate-200 dark:bg-slate-700 my-3 mx-2"></div>
-                  {adminNavItems.map((item) => (
-                    <Link
-                      key={item.page}
-                      to={createPageUrl(item.page)}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950 text-sm text-slate-900 dark:text-slate-100"
-                    >
                       <item.icon className="w-4 h-4" />
                       {item.name}
                     </Link>
-                  ))}
+                )}
                 </>
-              )}
+              }
 
               <div className="border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
                 <div className="px-3 py-2">
@@ -427,8 +427,8 @@ export default function Layout({ children, currentPageName }) {
                     setMobileMenuOpen(false);
                     handleLogout();
                   }}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-600 dark:text-slate-400 w-full"
-                >
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-600 dark:text-slate-400 w-full">
+
                   <LogOut className="w-4 h-4" />
                   Logout
                 </button>
@@ -438,24 +438,24 @@ export default function Layout({ children, currentPageName }) {
             </nav>
           </div>
         </div>
-      )}
+        }
 
       {/* ================= Main Content ================= */}
       <main
-        className="flex-1 overflow-x-hidden w-full relative bg-transparent"
-        style={{
-          // Always add padding on mobile to account for header
-          paddingTop: showNavigationUI ? mobileHeaderTotalHeight : 0,
-          minHeight: "100vh"
-        }}
-      >
+          className="flex-1 overflow-x-hidden w-full relative bg-transparent"
+          style={{
+            // Always add padding on mobile to account for header
+            paddingTop: showNavigationUI ? mobileHeaderTotalHeight : 0,
+            minHeight: "100vh"
+          }}>
+
         <div className={showNavigationUI ? "w-full max-w-full min-w-0 bg-transparent" : "w-full bg-transparent"}>
           {children}
         </div>
       </main>
 
       {/* ================= Mobile Floating Buttons (HORIZONTAL) ================= */}
-      {showNavigationUI && (
+      {showNavigationUI &&
         <div className="fixed right-3 bottom-3 z-[9997] lg:hidden">
           <div className="flex flex-row items-center gap-3">
             {/* IMPORTANT: scope override so internal fixed FABs become normal-flow */}
@@ -467,11 +467,11 @@ export default function Layout({ children, currentPageName }) {
             </div>
           </div>
         </div>
-      )}
+        }
 
       {showNavigationUI && <OfflineIndicator />}
       <RealTimeBreachMonitor />
       </div>
-      </ThemeProvider>
-      );
-      }
+      </ThemeProvider>);
+
+}
