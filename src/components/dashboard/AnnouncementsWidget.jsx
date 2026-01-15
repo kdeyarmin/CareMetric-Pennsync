@@ -40,7 +40,7 @@ export default function AnnouncementsWidget() {
   if (announcements.length === 0) {
     return (
       <Card className="mb-6">
-        <CardContent className="bg-slate-100 text-gray-950 p-4">
+        <CardContent className="bg-gray-200 text-neutral-950 p-4">
           <p className="text-sm text-gray-500 text-center">No announcements at this time.</p>
         </CardContent>
       </Card>);
