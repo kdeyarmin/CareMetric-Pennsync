@@ -33,7 +33,7 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
   });
 
   const [formData, setFormData] = React.useState({
-    provider_type: 'RN',
+    credential_type: 'RN',
     license_number: '',
     credentials: '',
     specialty: '',
@@ -44,7 +44,7 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
     const activeUser = currentUser || user;
     if (activeUser) {
       setFormData({
-        provider_type: activeUser.provider_type || 'RN',
+        credential_type: activeUser.credential_type || 'RN',
         license_number: activeUser.license_number || '',
         credentials: activeUser.credentials || '',
         specialty: activeUser.specialty || '',
@@ -72,7 +72,7 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
   ];
 
   const selectedProviderSetting = providerSettings.find(
-    ps => ps.provider_type === formData.provider_type && ps.is_active
+    ps => ps.provider_type === formData.credential_type && ps.is_active
   );
 
   return (
@@ -102,8 +102,8 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
             <Label>Provider Type</Label>
             <select
               className="w-full p-2 border rounded mt-1"
-              value={formData.provider_type}
-              onChange={(e) => setFormData({ ...formData, provider_type: e.target.value })}
+              value={formData.credential_type}
+              onChange={(e) => setFormData({ ...formData, credential_type: e.target.value })}
             >
               {providerTypes.map(pt => (
                 <option key={pt.value} value={pt.value}>{pt.label}</option>
