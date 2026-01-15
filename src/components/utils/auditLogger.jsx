@@ -1,4 +1,3 @@
-
 import { base44 } from '@/api/base44Client';
 
 /**
@@ -187,5 +186,8 @@ export const auditLogger = {
       description: `OASIS action: ${action}`
     })
 };
+
+// Export logOASISAction as standalone function for backwards compatibility
+export const logOASISAction = auditLogger.oasisAction;
 
 export default auditLogger;
