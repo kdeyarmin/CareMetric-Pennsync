@@ -53,25 +53,6 @@ const FEATURES_GUIDE = [
     importance: "Saves 1-2 hours per shift in documentation time, increases focus on patient care during visits, reduces documentation workload, and captures real-time observations without post-visit documentation delays"
   },
   {
-    title: "Patient Management",
-    description: "Maintain a comprehensive, centralized patient repository with complete health records, enabling seamless access to historical data and current clinical information.",
-    howToUse: [
-      "1. Navigate to the Patients section from main dashboard",
-      "2. Use advanced search or filtering tools to locate specific patient records",
-      "3. Select patient name to access complete demographic and clinical profile",
-      "4. Update and maintain current patient information throughout episodes of care",
-      "5. Review complete care timeline, visit history, and associated documents"
-    ],
-    bestPractices: [
-      "Ensure demographic data is reviewed and updated at each interaction",
-      "Document all active diagnoses, comorbidities, and allergies",
-      "Maintain current emergency contact and designee information",
-      "Perform systematic medication reconciliation at each care episode",
-      "Clearly identify all interdisciplinary care team members and their roles"
-    ],
-    importance: "Eliminates time searching for records across multiple systems, reduces duplicate data entry, improves patient safety through consolidated medication and allergy information, and ensures compliance with continuity of care documentation requirements"
-  },
-  {
     title: "Care Plan Management",
     description: "Develop and monitor individualized care plans with measurable outcomes, facilitating interdisciplinary coordination and ensuring alignment with patient goals.",
     howToUse: [
