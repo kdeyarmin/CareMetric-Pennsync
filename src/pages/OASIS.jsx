@@ -8,9 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { 
-  UploadCloud, Brain, FileText, CheckCircle2, AlertCircle, Loader2, X
-} from "lucide-react";
+import {
+  UploadCloud, Brain, FileText, CheckCircle2, AlertCircle, Loader2, X } from
+"lucide-react";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 
 export default function OASIS() {
@@ -22,7 +22,7 @@ export default function OASIS() {
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: () => base44.auth.me()
   });
 
   const handleFileChange = (event) => {
@@ -49,7 +49,7 @@ export default function OASIS() {
 
       const result = await base44.functions.invoke('analyzeOASIS', {
         oasis_file_url: fileUrl,
-        narrative_text: narrative,
+        narrative_text: narrative
       });
 
       if (result.data?.success) {
@@ -68,10 +68,10 @@ export default function OASIS() {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'compliant': return <Badge className="bg-green-500 text-white">Compliant</Badge>;
-      case 'flagged': return <Badge className="bg-orange-500 text-white">Flagged</Badge>;
-      case 'critical': return <Badge className="bg-red-500 text-white">Critical Issues</Badge>;
-      default: return <Badge variant="secondary">Unknown</Badge>;
+      case 'compliant':return <Badge className="bg-green-500 text-white">Compliant</Badge>;
+      case 'flagged':return <Badge className="bg-orange-500 text-white">Flagged</Badge>;
+      case 'critical':return <Badge className="bg-red-500 text-white">Critical Issues</Badge>;
+      default:return <Badge variant="secondary">Unknown</Badge>;
     }
   };
 
@@ -81,10 +81,10 @@ export default function OASIS() {
         <h1 className="text-3xl font-bold mb-6 text-slate-900 dark:text-slate-100">OASIS Documentation Assistant</h1>
 
         <Card className="mb-6">
-          <CardHeader>
+          <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
             <CardTitle className="flex items-center gap-2"><UploadCloud className="w-5 h-5" /> Upload OASIS Assessment</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="bg-slate-100 pt-0 p-6 space-y-4">
             <div>
               <Label htmlFor="oasis-file">OASIS Assessment File (PDF, Image)</Label>
               <Input id="oasis-file" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} />
@@ -97,36 +97,36 @@ export default function OASIS() {
                 placeholder="Enter the detailed narrative notes related to the OASIS assessment..."
                 value={narrative}
                 onChange={(e) => setNarrative(e.target.value)}
-                rows={8}
-              />
+                rows={8} />
+
             </div>
-            <Button 
-              onClick={analyzeOASIS} 
-              disabled={isAnalyzing || (!oasisFile && !narrative.trim())}
-              className="w-full"
-            >
-              {isAnalyzing ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
-              ) : (
-                <><Brain className="w-4 h-4 mr-2" /> Analyze OASIS</>
-              )}
+            <Button
+              onClick={analyzeOASIS}
+              disabled={isAnalyzing || !oasisFile && !narrative.trim()}
+              className="w-full">
+
+              {isAnalyzing ?
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</> :
+
+              <><Brain className="w-4 h-4 mr-2" /> Analyze OASIS</>
+              }
             </Button>
           </CardContent>
         </Card>
 
         {/* AI Auto-Populate OASIS Fields */}
-        {narrative && (
-          <AutoPopulateDataFields
-            narrative={narrative}
-            dataType="oasis_m1800"
-            onDataExtracted={(data) => {
-              console.log('Extracted OASIS data:', data);
-            }}
-          />
-        )}
+        {narrative &&
+        <AutoPopulateDataFields
+          narrative={narrative}
+          dataType="oasis_m1800"
+          onDataExtracted={(data) => {
+            console.log('Extracted OASIS data:', data);
+          }} />
 
-        {analysisResult && (
-          <Card className="mt-6">
+        }
+
+        {analysisResult &&
+        <Card className="mt-6">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2"><FileText className="w-5 h-5" /> Analysis Results</span>
@@ -138,50 +138,50 @@ export default function OASIS() {
                 <h3 className="text-lg font-semibold">Overall Status:</h3>
                 <p className="text-sm">{analysisResult.summary_message}</p>
               </div>
-              {analysisResult.inconsistencies && analysisResult.inconsistencies.length > 0 && (
-                <div>
+              {analysisResult.inconsistencies && analysisResult.inconsistencies.length > 0 &&
+            <div>
                   <h3 className="text-lg font-semibold text-red-600">Inconsistencies Found:</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {analysisResult.inconsistencies.map((item, index) => (
-                      <li key={index} className="text-sm text-red-700"><strong>{item.field}:</strong> {item.issue} (Suggested fix: {item.suggestion})</li>
-                    ))}
+                    {analysisResult.inconsistencies.map((item, index) =>
+                <li key={index} className="text-sm text-red-700"><strong>{item.field}:</strong> {item.issue} (Suggested fix: {item.suggestion})</li>
+                )}
                   </ul>
                 </div>
-              )}
-              {analysisResult.reasonableness_flags && analysisResult.reasonableness_flags.length > 0 && (
-                <div>
+            }
+              {analysisResult.reasonableness_flags && analysisResult.reasonableness_flags.length > 0 &&
+            <div>
                   <h3 className="text-lg font-semibold text-orange-600">Reasonableness Flags:</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {analysisResult.reasonableness_flags.map((item, index) => (
-                      <li key={index} className="text-sm text-orange-700"><strong>{item.field}:</strong> {item.issue} (Context: {item.context})</li>
-                    ))}
+                    {analysisResult.reasonableness_flags.map((item, index) =>
+                <li key={index} className="text-sm text-orange-700"><strong>{item.field}:</strong> {item.issue} (Context: {item.context})</li>
+                )}
                   </ul>
                 </div>
-              )}
-              {analysisResult.compliance_warnings && analysisResult.compliance_warnings.length > 0 && (
-                <div>
+            }
+              {analysisResult.compliance_warnings && analysisResult.compliance_warnings.length > 0 &&
+            <div>
                   <h3 className="text-lg font-semibold text-yellow-600">Compliance Warnings:</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {analysisResult.compliance_warnings.map((item, index) => (
-                      <li key={index} className="text-sm text-yellow-700"><strong>Rule:</strong> {item.rule} (Details: {item.details})</li>
-                    ))}
+                    {analysisResult.compliance_warnings.map((item, index) =>
+                <li key={index} className="text-sm text-yellow-700"><strong>Rule:</strong> {item.rule} (Details: {item.details})</li>
+                )}
                   </ul>
                 </div>
-              )}
-              {analysisResult.suggestions && analysisResult.suggestions.length > 0 && (
-                <div>
+            }
+              {analysisResult.suggestions && analysisResult.suggestions.length > 0 &&
+            <div>
                   <h3 className="text-lg font-semibold text-green-600">Suggestions for Improvement:</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {analysisResult.suggestions.map((item, index) => (
-                      <li key={index} className="text-sm text-green-700">{item}</li>
-                    ))}
+                    {analysisResult.suggestions.map((item, index) =>
+                <li key={index} className="text-sm text-green-700">{item}</li>
+                )}
                   </ul>
                 </div>
-              )}
+            }
             </CardContent>
           </Card>
-        )}
+        }
       </div>
-    </PullToRefresh>
-  );
+    </PullToRefresh>);
+
 }
