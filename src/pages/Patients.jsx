@@ -12,7 +12,6 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format, isValid } from 'date-fns';
 import { secureDelete, handleSecureError, logSecurityEvent } from "../components/utils/security";
-import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -173,7 +172,7 @@ export default function Patients() {
     },
     onError: async (error) => {
       setIsDeleting(false);
-      await handleSecureError(error, 'patient_delete', (msg) => toast.error(msg));
+      await handleSecureError(error, 'patient_delete', (msg) => alert(msg));
     }
   });
 
@@ -206,10 +205,10 @@ export default function Patients() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todayVisits'] }); // Invalidate relevant queries, e.g., for a dashboard showing today's visits
-      toast.success('Visit scheduled successfully!');
+      alert('Visit scheduled successfully!'); // Simple feedback
     },
     onError: (error) => {
-      toast.error('Failed to schedule visit. Please try again.');
+      alert('Failed to schedule visit. Please try again.');
     }
   });
 

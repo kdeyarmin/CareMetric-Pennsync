@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { User, Edit3, Save, X, Shield, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -75,14 +74,14 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setIsEditing(false);
     } catch (error) {
-      toast.error('Failed to update profile. Please try again.');
+      alert('Failed to update profile. Please try again.');
     }
     setIsSaving(false);
   };
 
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'DELETE') {
-      toast.warning('Please type DELETE to confirm');
+      alert('Please type DELETE to confirm');
       return;
     }
 
@@ -93,7 +92,7 @@ export default function Settings() {
       // Logout and redirect
       base44.auth.logout();
     } catch (error) {
-      toast.error('Failed to delete account. Please try again or contact support.');
+      alert('Failed to delete account. Please try again or contact support.');
       setIsDeleting(false);
     }
   };

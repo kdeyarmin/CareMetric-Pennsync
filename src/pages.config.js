@@ -1,6 +1,5 @@
 import About from './pages/About';
 import Admin from './pages/Admin';
-import AdminDashboard from './pages/AdminDashboard';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
@@ -12,10 +11,8 @@ import Billing from './pages/Billing';
 import BillingInvoicing from './pages/BillingInvoicing';
 import BillingModule from './pages/BillingModule';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
-import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
-import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import ComplianceRegulatory from './pages/ComplianceRegulatory';
 import Dashboard from './pages/Dashboard';
@@ -37,7 +34,6 @@ import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
 import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
 import MobileWorkflow from './pages/MobileWorkflow';
 import MyAILearning from './pages/MyAILearning';
-import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
 import NurseEducationVideos from './pages/NurseEducationVideos';
 import NursePerformanceDashboard from './pages/NursePerformanceDashboard';
 import NurseTraining from './pages/NurseTraining';
@@ -97,13 +93,16 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import CarePlanManagement from './pages/CarePlanManagement';
+import Compliance from './pages/Compliance';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "About": About,
     "Admin": Admin,
-    "AdminDashboard": AdminDashboard,
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
     "AdminTrainingAnalytics": AdminTrainingAnalytics,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
@@ -115,10 +114,8 @@ export const PAGES = {
     "BillingInvoicing": BillingInvoicing,
     "BillingModule": BillingModule,
     "CareCoordinationDashboard": CareCoordinationDashboard,
-    "CarePlanManagement": CarePlanManagement,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
-    "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
     "ComplianceRegulatory": ComplianceRegulatory,
     "Dashboard": Dashboard,
@@ -140,7 +137,6 @@ export const PAGES = {
     "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
     "MobileWorkflow": MobileWorkflow,
     "MyAILearning": MyAILearning,
-    "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
     "NurseEducationVideos": NurseEducationVideos,
     "NursePerformanceDashboard": NursePerformanceDashboard,
     "NurseTraining": NurseTraining,
@@ -200,6 +196,10 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
+    "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
+    "AdminDashboard": AdminDashboard,
+    "CarePlanManagement": CarePlanManagement,
+    "Compliance": Compliance,
 }
 
 export const pagesConfig = {
