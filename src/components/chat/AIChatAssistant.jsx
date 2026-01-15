@@ -42,13 +42,13 @@ export default function AIChatAssistant() {
 
   const suggestedQuestions = [
     "How do I create a smart note?",
-    "How do I add a new patient?",
+    "How do I use the medical scribe?",
     "How do care plans work?",
-    "How do I use voice dictation?",
-    "What's the compliance checker?",
-    "How do I track patient outcomes?",
-    "How do I use offline mode?",
-    "How do I generate patient education materials?"
+    "What's OASIS compliance checking?",
+    "How do I track patient risk alerts?",
+    "How do I access analytics?",
+    "What training modules are available?",
+    "How do I manage tasks?"
   ];
 
   useEffect(() => {
