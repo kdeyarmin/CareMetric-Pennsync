@@ -232,6 +232,25 @@ const FEATURES_GUIDE = [
       "Chronic Condition Management: Uncontrolled diabetes, heart failure decompensation, COPD exacerbation risk",
       "Social Factors: Living alone, limited caregiver availability, financial constraints, transportation barriers"
     ]
+  },
+  {
+    title: "HIPAA Compliance & Security",
+    description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, and strict access controls.",
+    howToUse: [
+      "1. Access system using secure login with required multi-factor authentication",
+      "2. Access only patient records necessary for direct clinical care provision",
+      "3. Logout immediately upon completion of work or when stepping away from device",
+      "4. Report any suspected security breaches or unauthorized access immediately to IT",
+      "5. Adhere strictly to all organizational data protection policies and HIPAA regulations"
+    ],
+    bestPractices: [
+      "Never disclose login credentials or access tokens to any individual",
+      "Utilize VPN for all remote access to protected systems",
+      "Implement password protection on all devices with access to patient data",
+      "Refrain from discussing Protected Health Information in public or unsecured areas",
+      "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
+    ],
+    importance: "Protects patient privacy and prevents costly HIPAA violations and fines, maintains audit compliance and organizational reputation, ensures secure remote access for mobile workforce, and protects sensitive clinical data from unauthorized access"
   }
 ];
 
