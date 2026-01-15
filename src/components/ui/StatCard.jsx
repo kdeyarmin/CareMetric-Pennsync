@@ -12,19 +12,16 @@ export default function StatCard({ icon: Icon, label, value, trend, color = 'blu
 
   return (
     <Card className={`border-2 ${colorClasses[color]} hover:shadow-md transition-shadow`}>
-      <div className="p-4 sm:p-6">
-        <div className="flex items-start justify-between mb-3">
-          <div className="p-2 rounded-lg bg-slate-300 dark:bg-slate-600">
-            {Icon && <Icon className="w-5 h-5 text-slate-900 dark:text-slate-300" />}
-          </div>
+      <div className="p-3">
+        <div className="flex items-start justify-between mb-2">
+          <h3 className="text-xs text-slate-600 dark:text-slate-400">{label}</h3>
           {trend && (
             <span className={`text-xs font-semibold ${trend > 0 ? 'text-slate-400' : 'text-slate-500'}`}>
               {trend > 0 ? '+' : ''}{trend}%
             </span>
           )}
         </div>
-        <h3 className="text-sm text-slate-600 dark:text-slate-400 mb-1">{label}</h3>
-        <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
+        <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
       </div>
     </Card>
   );
