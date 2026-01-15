@@ -6,89 +6,89 @@ import { Download, Zap, Users, FileText, Brain, Mic, Target, Calendar, Shield, B
 import { base44 } from "@/api/base44Client";
 
 const FEATURES = [
-  {
-    icon: Brain,
-    title: "Smart Notes Assistant",
-    description: "AI-powered documentation assistant that enhances clinical notes in real-time, ensuring compliance and reducing documentation time.",
-    category: "Documentation"
-  },
-  {
-    icon: Mic,
-    title: "Medical Scribe",
-    description: "Voice-to-text medical scribe that transcribes patient interactions and generates structured clinical documentation.",
-    category: "Documentation"
-  },
-  {
-    icon: Users,
-    title: "Patient Management",
-    description: "Centralized patient database with comprehensive health records, demographics, and care history.",
-    category: "Patients"
-  },
-  {
-    icon: Target,
-    title: "Care Plan Management",
-    description: "Automated care plan creation, tracking, and adjustments based on patient progress and clinical indicators.",
-    category: "Care"
-  },
-  {
-    icon: FileText,
-    title: "Document Generation",
-    description: "Generate customizable patient education materials, discharge summaries, and referral letters with AI assistance.",
-    category: "Documents"
-  },
-  {
-    icon: Calendar,
-    title: "Provider Scheduling",
-    description: "Intelligent scheduling system that optimizes visit timing and route planning for maximum efficiency.",
-    category: "Operations"
-  },
-  {
-    icon: Shield,
-    title: "OASIS & Compliance",
-    description: "Automated OASIS validation and compliance checking to ensure Medicare requirements are met.",
-    category: "Compliance"
-  },
-  {
-    icon: BarChart3,
-    title: "Analytics Dashboard",
-    description: "Real-time performance metrics, compliance reports, and clinical outcome analytics.",
-    category: "Analytics"
-  },
-  {
-    icon: GraduationCap,
-    title: "Training & Development",
-    description: "Personalized training modules with AI-generated recommendations based on compliance gaps and skill assessments.",
-    category: "Training"
-  },
-  {
-    icon: ListTodo,
-    title: "Task Management",
-    description: "Intelligent task creation and assignment with automatic reminders and priority management.",
-    category: "Operations"
-  },
-  {
-    icon: Lock,
-    title: "HIPAA Compliance & Security",
-    description: "Enterprise-grade encryption, audit trails, and access controls meeting all healthcare security standards.",
-    category: "Security"
-  },
-  {
-    icon: AlertCircle,
-    title: "Patient Risk Alerts",
-    description: "AI-powered early warning system that identifies patients at risk for readmission or adverse events.",
-    category: "Clinical"
-  }
-];
+{
+  icon: Brain,
+  title: "Smart Notes Assistant",
+  description: "AI-powered documentation assistant that enhances clinical notes in real-time, ensuring compliance and reducing documentation time.",
+  category: "Documentation"
+},
+{
+  icon: Mic,
+  title: "Medical Scribe",
+  description: "Voice-to-text medical scribe that transcribes patient interactions and generates structured clinical documentation.",
+  category: "Documentation"
+},
+{
+  icon: Users,
+  title: "Patient Management",
+  description: "Centralized patient database with comprehensive health records, demographics, and care history.",
+  category: "Patients"
+},
+{
+  icon: Target,
+  title: "Care Plan Management",
+  description: "Automated care plan creation, tracking, and adjustments based on patient progress and clinical indicators.",
+  category: "Care"
+},
+{
+  icon: FileText,
+  title: "Document Generation",
+  description: "Generate customizable patient education materials, discharge summaries, and referral letters with AI assistance.",
+  category: "Documents"
+},
+{
+  icon: Calendar,
+  title: "Provider Scheduling",
+  description: "Intelligent scheduling system that optimizes visit timing and route planning for maximum efficiency.",
+  category: "Operations"
+},
+{
+  icon: Shield,
+  title: "OASIS & Compliance",
+  description: "Automated OASIS validation and compliance checking to ensure Medicare requirements are met.",
+  category: "Compliance"
+},
+{
+  icon: BarChart3,
+  title: "Analytics Dashboard",
+  description: "Real-time performance metrics, compliance reports, and clinical outcome analytics.",
+  category: "Analytics"
+},
+{
+  icon: GraduationCap,
+  title: "Training & Development",
+  description: "Personalized training modules with AI-generated recommendations based on compliance gaps and skill assessments.",
+  category: "Training"
+},
+{
+  icon: ListTodo,
+  title: "Task Management",
+  description: "Intelligent task creation and assignment with automatic reminders and priority management.",
+  category: "Operations"
+},
+{
+  icon: Lock,
+  title: "HIPAA Compliance & Security",
+  description: "Enterprise-grade encryption, audit trails, and access controls meeting all healthcare security standards.",
+  category: "Security"
+},
+{
+  icon: AlertCircle,
+  title: "Patient Risk Alerts",
+  description: "AI-powered early warning system that identifies patients at risk for readmission or adverse events.",
+  category: "Clinical"
+}];
 
-const CATEGORIES = ["All", ...new Set(FEATURES.map(f => f.category))];
+
+const CATEGORIES = ["All", ...new Set(FEATURES.map((f) => f.category))];
 
 export default function Features() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
 
-  const filteredFeatures = selectedCategory === "All" 
-    ? FEATURES 
-    : FEATURES.filter(f => f.category === selectedCategory);
+  const filteredFeatures = selectedCategory === "All" ?
+  FEATURES :
+  FEATURES.filter((f) => f.category === selectedCategory);
 
   const handleDownloadGuide = async () => {
     setIsGeneratingGuide(true);
@@ -115,14 +115,14 @@ export default function Features() {
       {/* Header */}
       <div className="mb-12">
         <h1 className="text-4xl font-bold mb-4">CareMetric AI Features</h1>
-        <p className="text-lg text-slate-600 dark:text-slate-400 mb-6">
-          Comprehensive tools designed to streamline healthcare documentation, enhance compliance, and improve patient outcomes.
+        <p className="text-lg text-slate-600 dark:text-slate-400 mb-6">Comprehensive tools designed to streamline documentation, enhance compliance, and improve patient outcomes.
+
         </p>
         
-        <Button 
+        <Button
           onClick={handleDownloadGuide}
-          disabled={isGeneratingGuide}
-          className="bg-blue-600 hover:bg-blue-700">
+          disabled={isGeneratingGuide} className="bg-slate-300 text-slate-900 px-4 py-2 text-sm font-medium rounded-md inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm dark:bg-slate-600 dark:hover:bg-slate-700 h-9 hover:bg-blue-700">
+
           <Download className="w-4 h-4 mr-2" />
           {isGeneratingGuide ? 'Generating Guide...' : 'Download User Guide PDF'}
         </Button>
@@ -130,15 +130,15 @@ export default function Features() {
 
       {/* Category Filter */}
       <div className="mb-8 flex flex-wrap gap-2">
-        {CATEGORIES.map(category => (
-          <Badge
-            key={category}
-            variant={selectedCategory === category ? "default" : "outline"}
-            className="cursor-pointer px-3 py-1.5"
-            onClick={() => setSelectedCategory(category)}>
+        {CATEGORIES.map((category) =>
+        <Badge
+          key={category}
+          variant={selectedCategory === category ? "default" : "outline"}
+          className="cursor-pointer px-3 py-1.5"
+          onClick={() => setSelectedCategory(category)}>
             {category}
           </Badge>
-        ))}
+        )}
       </div>
 
       {/* Features Grid */}
@@ -159,10 +159,10 @@ export default function Features() {
                   {feature.description}
                 </p>
               </CardContent>
-            </Card>
-          );
+            </Card>);
+
         })}
       </div>
-    </div>
-  );
+    </div>);
+
 }
