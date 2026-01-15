@@ -144,7 +144,8 @@ const FEATURES_GUIDE = [
       "Leverage AI-provided suggestions to identify missing or conflicting data elements",
       "Obtain supervisory or administrative review prior to final OASIS submission",
       "Document clinical rationale for any manual overrides or exceptional decisions"
-    ]
+    ],
+    importance: "Prevents costly compliance violations and audit findings, reduces OASIS submission errors by 80%, ensures accurate PDGM coding for optimal reimbursement, and maintains regulatory compliance with CMS requirements"
   },
   {
     title: "Analytics Dashboard",
