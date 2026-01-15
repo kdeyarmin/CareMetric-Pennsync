@@ -435,6 +435,8 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
 
 
+
+
                   className="w-full h-48 p-3 border rounded-lg text-sm resize-none" />
 
                 </div>
@@ -457,8 +459,8 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 {/* Enhance Button */}
                 <Button
                 onClick={enhanceNote}
-                disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 h-12"
+                disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()} className="bg-green-400 text-slate-900 px-8 text-sm font-medium rounded-md inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm dark:bg-slate-600 dark:hover:bg-slate-700 w-full hover:bg-indigo-700 h-12"
+
                 size="lg">
 
                   {enhancing ?
