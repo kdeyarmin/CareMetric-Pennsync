@@ -30,6 +30,7 @@ import PullToRefresh from "../components/mobile/PullToRefresh";
 import { motion } from "framer-motion";
 import UserManagement from "../components/admin/UserManagement";
 import TrainingFeedbackManager from "../components/admin/TrainingFeedbackManager";
+import SubscriptionPricingManager from "../components/admin/SubscriptionPricingManager";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function AdminDashboard() {
