@@ -121,7 +121,7 @@ export default function Patients() {
   // Handle query errors gracefully (logged server-side)
 
   const createPatientMutation = useMutation({
-    mutationFn: (patientData) => secureEntity.create('Patient', patientData),
+    mutationFn: (patientData) => base44.entities.Patient.create(patientData),
     onSuccess: (newPatient) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       setShowForm(false);
@@ -138,7 +138,7 @@ export default function Patients() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: ({ id, data }) => secureEntity.update('Patient', id, data),
+    mutationFn: ({ id, data }) => base44.entities.Patient.update(id, data),
     onSuccess: (updatedPatient, variables) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       setShowForm(false);
@@ -155,7 +155,7 @@ export default function Patients() {
 
   const deletePatientMutation = useMutation({
     mutationFn: async (patientId) => {
-      await secureDelete(base44.entities.Patient, patientId, 'Patient');
+      await base44.entities.Patient.delete(patientId);
     },
     onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
@@ -569,7 +569,7 @@ export default function Patients() {
 
       {/* Referral Upload Dialog */}
       <Dialog open={showReferralUpload} onOpenChange={setShowReferralUpload}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl sm:max-w-5xl max-h-[90vh] overflow-y-auto w-full mx-2">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
                  <FileText className="w-5 h-5 text-slate-700 dark:text-slate-400" />

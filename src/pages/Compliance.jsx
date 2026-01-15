@@ -57,25 +57,25 @@ export default function Compliance() {
 
   return (
     <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['regulatoryUpdates'] })}>
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6 text-slate-900 dark:text-slate-100">Regulatory Compliance Center</h1>
-        <p className="text-slate-600 dark:text-slate-400 mb-8">
+      <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-slate-900 dark:text-slate-100">Regulatory Compliance Center</h1>
+        <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-400 mb-6 sm:mb-8">
           Stay informed about the latest healthcare regulatory changes from various sources. These updates are automatically fetched and categorized to help you stay compliant with evolving standards.
         </p>
 
         {regulatoryUpdates.length === 0 ? (
-          <div className="text-center py-12">
-            <CheckCircle2 className="w-16 h-16 mx-auto text-green-400 mb-4" />
-            <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200">No Recent Regulatory Updates</h2>
-            <p className="text-slate-600 dark:text-slate-400">The system will automatically fetch and display new updates as they become available.</p>
+          <div className="text-center py-12 sm:py-16">
+            <CheckCircle2 className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-green-400 mb-4" />
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-800 dark:text-slate-200">No Recent Regulatory Updates</h2>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-2">The system will automatically fetch and display new updates as they become available.</p>
           </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 w-full">
             {regulatoryUpdates.map((update) => (
-              <Card key={update.id} className="hover-lift">
+              <Card key={update.id} className="hover-lift overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="text-lg font-bold flex items-start justify-between gap-2">
-                    <span className="flex-1">{update.title}</span>
+                  <CardTitle className="text-sm sm:text-base md:text-lg font-bold flex flex-col sm:flex-row items-start justify-between gap-2">
+                    <span className="flex-1 break-words">{update.title}</span>
                     <div className="flex flex-col gap-2">
                       {getImpactBadge(update.impact_level)}
                       {getStatusBadge(update.status)}

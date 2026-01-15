@@ -116,7 +116,7 @@ export default function CarePlanManagement() {
 
   // Delete care plan
   const deleteCarePlanMutation = useMutation({
-    mutationFn: (id) => secureEntity.delete('CarePlan', id),
+    mutationFn: (id) => base44.entities.CarePlan.delete(id),
     onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
       
