@@ -324,38 +324,12 @@ Deno.serve(async (req) => {
     }
 
     const pdfBytes = doc.output('arraybuffer');
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const fileName = `CareMetric-AI-User-Guide-${Date.now()}.pdf`;
-
-    // Upload to storage
-    const formData = new FormData();
-    formData.append('file', blob, fileName);
-
-    const uploadResponse = await fetch(
-      `${Deno.env.get('BASE44_API_URL') || 'https://api.base44.com'}/files/upload`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${Deno.env.get('BASE44_SERVICE_ROLE_KEY')}`
-        },
-        body: formData
-      }
-    ).catch(() => null);
-
-    if (uploadResponse?.ok) {
-      const { url } = await uploadResponse.json();
-      return new Response(JSON.stringify({ file_url: url }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Fallback: return PDF directly
+    
     return new Response(pdfBytes, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${fileName}"`
+        'Content-Disposition': 'attachment; filename="CareMetric-AI-User-Guide.pdf"'
       }
     });
   } catch (error) {
