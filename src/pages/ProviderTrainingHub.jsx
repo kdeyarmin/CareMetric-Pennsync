@@ -17,6 +17,7 @@ import {
 import PersonalizedLearningPathPlanner from "../components/training/PersonalizedLearningPathPlanner";
 import BadgeDisplay from "../components/training/BadgeDisplay";
 import TrainingProgressDashboard from "../components/training/TrainingProgressDashboard";
+import PersonalizedRecommendationsWidget from "../components/training/PersonalizedRecommendationsWidget";
 
  
 
