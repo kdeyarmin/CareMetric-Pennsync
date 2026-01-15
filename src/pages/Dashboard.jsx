@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video, Shield, Target, Activity } from "lucide-react";
+import { Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video, Shield, Target, Activity, ListTodo, ChevronRight } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
@@ -135,8 +135,8 @@ export default function Dashboard() {
     queryKey: ['nurseTasks', currentUser?.email],
     queryFn: () => base44.entities.Task.filter({ 
       assigned_to: currentUser?.email,
-      status: 'pending'
-    }),
+      status: { "$ne": "completed" }
+    }, '-due_date'),
     enabled: !!currentUser?.email,
     initialData: [],
   });
@@ -265,7 +265,7 @@ export default function Dashboard() {
         queryClient.invalidateQueries({ queryKey: ['myVisits'] }),
         queryClient.invalidateQueries({ queryKey: ['nurseNoteConversions'] }),
         queryClient.invalidateQueries({ queryKey: ['myAlerts'] }),
-        queryClient.invalidateQueries({ queryKey: ['myTasks'] })
+        queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })
       ]);
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
@@ -282,6 +282,100 @@ export default function Dashboard() {
 
       {/* Workflow Shortcuts */}
       <WorkflowShortcuts />
+
+      {/* My Tasks Widget */}
+      {canAccessWidget('tasks') && (
+        <Card className="hover-lift">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <ListTodo className="w-5 h-5 text-blue-600" />
+              My Tasks
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(createPageUrl('Tasks'))}
+              className="text-xs"
+            >
+              View All
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {nurseTasks && nurseTasks.length > 0 ? (
+              <div className="space-y-2">
+                {nurseTasks.slice(0, 5).map(task => {
+                  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.due_date !== new Date().toISOString().split('T')[0];
+                  const isDueToday = task.due_date && task.due_date === new Date().toISOString().split('T')[0];
+                  
+                  return (
+                    <div 
+                      key={task.id} 
+                      className={`p-3 rounded-lg border ${
+                        isOverdue ? 'border-red-300 bg-red-50 dark:bg-red-950' :
+                        isDueToday ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950' :
+                        'border-slate-200 bg-slate-50 dark:bg-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge className={
+                              task.priority === 'critical' ? 'bg-red-600' :
+                              task.priority === 'high' ? 'bg-orange-500' :
+                              task.priority === 'medium' ? 'bg-yellow-500' :
+                              'bg-blue-500'
+                            }>
+                              {task.priority}
+                            </Badge>
+                            <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{task.title}</span>
+                          </div>
+                          {task.due_date && (
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                              Due: {new Date(task.due_date).toLocaleDateString()}
+                              {isOverdue && <span className="text-red-600 ml-1">• Overdue</span>}
+                              {isDueToday && <span className="text-yellow-600 ml-1">• Due Today</span>}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={async () => {
+                            await base44.entities.Task.update(task.id, { status: 'completed' });
+                            queryClient.invalidateQueries({ queryKey: ['nurseTasks'] });
+                          }}
+                          className="flex-shrink-0"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {nurseTasks.length > 5 && (
+                  <p className="text-xs text-center text-slate-500 dark:text-slate-400 pt-2">
+                    +{nurseTasks.length - 5} more tasks
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <ListTodo className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                <p className="text-sm text-slate-500 dark:text-slate-400">No pending tasks</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => navigate(createPageUrl('Tasks'))}
+                >
+                  Create Task
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
 
 
