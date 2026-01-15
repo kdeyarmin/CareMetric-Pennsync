@@ -1650,6 +1650,11 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
+        {/* User Feedback Tab */}
+        <TabsContent value="feedback" className="space-y-6">
+          <TrainingFeedbackManager />
+        </TabsContent>
+
         {/* AI Feedback Tab */}
         <TabsContent value="ai-feedback" className="space-y-6">
           <AIFeedbackAnalytics />
