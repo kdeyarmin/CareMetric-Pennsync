@@ -89,11 +89,11 @@ export default function TerminologyGlossaryManager({ userEmail, selectedLanguage
     setIsAddOpen(true);
   };
 
-  const languageName = LANGUAGES.find(l => l.code === selectedLanguage)?.name || selectedLanguage;
+  const languageName = LANGUAGES.find((l) => l.code === selectedLanguage)?.name || selectedLanguage;
 
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="bg-slate-200 pb-3 p-6 flex flex-col space-y-1.5">
         <CardTitle className="text-base flex items-center justify-between">
           <span className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-purple-600" />
@@ -122,16 +122,16 @@ export default function TerminologyGlossaryManager({ userEmail, selectedLanguage
                   <Input
                     placeholder="e.g., Blood pressure"
                     value={formData.term}
-                    onChange={(e) => setFormData({ ...formData, term: e.target.value })}
-                  />
+                    onChange={(e) => setFormData({ ...formData, term: e.target.value })} />
+
                 </div>
                 <div>
                   <Label>Preferred Translation/Phrasing</Label>
                   <Input
                     placeholder="e.g., Presión arterial"
                     value={formData.preferred_translation}
-                    onChange={(e) => setFormData({ ...formData, preferred_translation: e.target.value })}
-                  />
+                    onChange={(e) => setFormData({ ...formData, preferred_translation: e.target.value })} />
+
                 </div>
                 <div>
                   <Label>Context (Optional)</Label>
@@ -139,8 +139,8 @@ export default function TerminologyGlossaryManager({ userEmail, selectedLanguage
                     placeholder="When to use this term..."
                     value={formData.context}
                     onChange={(e) => setFormData({ ...formData, context: e.target.value })}
-                    className="h-20"
-                  />
+                    className="h-20" />
+
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={handleSave} className="flex-1">
@@ -155,47 +155,47 @@ export default function TerminologyGlossaryManager({ userEmail, selectedLanguage
           </Dialog>
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        {glossary.length === 0 ? (
-          <p className="text-sm text-gray-600 text-center py-4">
+      <CardContent className="bg-slate-100 pt-0 p-6">
+        {glossary.length === 0 ?
+        <p className="text-sm text-gray-600 text-center py-4">
             No custom terms yet. Add medical terminology to improve AI accuracy.
-          </p>
-        ) : (
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {glossary.map((entry) => (
-              <div key={entry.id} className="flex items-start justify-between p-2 bg-purple-50 rounded border border-purple-200">
+          </p> :
+
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+            {glossary.map((entry) =>
+          <div key={entry.id} className="flex items-start justify-between p-2 bg-purple-50 rounded border border-purple-200">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-gray-900">{entry.term}</p>
-                  {entry.preferred_translation && (
-                    <p className="text-xs text-purple-700 mt-1">→ {entry.preferred_translation}</p>
-                  )}
-                  {entry.context && (
-                    <p className="text-xs text-gray-600 mt-1 italic">{entry.context}</p>
-                  )}
+                  {entry.preferred_translation &&
+              <p className="text-xs text-purple-700 mt-1">→ {entry.preferred_translation}</p>
+              }
+                  {entry.context &&
+              <p className="text-xs text-gray-600 mt-1 italic">{entry.context}</p>
+              }
                 </div>
                 <div className="flex gap-1 ml-2">
                   <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleEdit(entry)}
-                    className="h-7 w-7 p-0"
-                  >
+                size="sm"
+                variant="ghost"
+                onClick={() => handleEdit(entry)}
+                className="h-7 w-7 p-0">
+
                     <Edit className="w-3 h-3" />
                   </Button>
                   <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => deleteMutation.mutate(entry.id)}
-                    className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
-                  >
+                size="sm"
+                variant="ghost"
+                onClick={() => deleteMutation.mutate(entry.id)}
+                className="h-7 w-7 p-0 text-red-600 hover:text-red-700">
+
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
               </div>
-            ))}
+          )}
           </div>
-        )}
+        }
       </CardContent>
-    </Card>
-  );
+    </Card>);
+
 }
