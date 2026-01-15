@@ -227,6 +227,8 @@ export const PROVIDER_PAGE_ACCESS = {
     'PDGMPredictiveAnalytics',
     'StaffTrainingHub',
     'MyAILearning',
+    'PersonalizedLearningPath',
+    'ProviderTrainingHub',
     'Settings',
     'ProviderSettings',
     'OASIS',
@@ -244,6 +246,8 @@ export const PROVIDER_PAGE_ACCESS = {
     'PatientDetails',
     'TelehealthDashboard',
     'TelehealthVisit',
+    'PersonalizedLearningPath',
+    'ProviderTrainingHub',
     'Settings',
     'ProviderSettings',
     'OASIS',
@@ -267,6 +271,8 @@ export const PROVIDER_PAGE_ACCESS = {
     'ComplianceDashboard',
     'StaffTrainingHub',
     'MyAILearning',
+    'PersonalizedLearningPath',
+    'ProviderTrainingHub',
     'Settings',
     'ProviderSettings'
   ],
@@ -283,6 +289,8 @@ export const PROVIDER_PAGE_ACCESS = {
     'TelehealthDashboard',
     'TelehealthVisit',
     'ProviderScheduling',
+    'PersonalizedLearningPath',
+    'ProviderTrainingHub',
     'Settings',
     'ProviderSettings'
   ],
@@ -300,6 +308,8 @@ export const PROVIDER_PAGE_ACCESS = {
     'TelehealthDashboard',
     'TelehealthVisit',
     'ProviderScheduling',
+    'PersonalizedLearningPath',
+    'ProviderTrainingHub',
     'Settings',
     'ProviderSettings',
     'OASIS',
@@ -317,6 +327,8 @@ export const PROVIDER_PAGE_ACCESS = {
     'PatientDetails',
     'TelehealthDashboard',
     'TelehealthVisit',
+    'PersonalizedLearningPath',
+    'ProviderTrainingHub',
     'Settings',
     'ProviderSettings'
   ],
@@ -333,6 +345,8 @@ export const PROVIDER_PAGE_ACCESS = {
     'TelehealthDashboard',
     'TelehealthVisit',
     'ProviderScheduling',
+    'PersonalizedLearningPath',
+    'ProviderTrainingHub',
     'Settings',
     'ProviderSettings'
   ]
