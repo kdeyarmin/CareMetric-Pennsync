@@ -41,113 +41,113 @@ import SkillGapWidget from "../components/dashboard/SkillGapWidget";
 import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
 
 export default function Dashboard() {
-    const navigate = useNavigate();
-    const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-    const { data: currentUser, isLoading: userLoading } = useQuery({
-      queryKey: ['currentUser'],
-      queryFn: async () => {
-        try {
-          return await base44.auth.me();
-        } catch (error) {
-          base44.auth.redirectToLogin();
-          return null;
-        }
-      },
-    });
-
-    // Get role-specific widgets
-    const accessibleWidgets = currentUser?.credential_type 
-      ? getAccessibleWidgets(currentUser.credential_type)
-      : [];
-    
-    const canAccessWidget = (widgetName) => accessibleWidgets.includes(widgetName);
-
-    // Redirect to onboarding if not completed
-    React.useEffect(() => {
-      if (currentUser && !currentUser.onboarding_completed) {
-        navigate(createPageUrl("Onboarding"));
+  const { data: currentUser, isLoading: userLoading } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        base44.auth.redirectToLogin();
+        return null;
       }
-    }, [currentUser, navigate]);
+    }
+  });
 
-    // Log page visit with user context
-    React.useEffect(() => {
-      if (currentUser?.email) {
-        logActivity(ActivityActions.PAGE_VISIT, {
-          page: 'Dashboard',
-          page_title: 'Dashboard',
-          user_role: currentUser.role
-        });
-      }
-    }, [currentUser?.email]);
+  // Get role-specific widgets
+  const accessibleWidgets = currentUser?.credential_type ?
+  getAccessibleWidgets(currentUser.credential_type) :
+  [];
 
-    const { data: visits, isLoading, error: visitsError } = useQuery({
-      queryKey: ['todayVisits'],
-      queryFn: async () => {
-        const today = todayEastern();
-        return base44.entities.Visit.filter({ visit_date: today }, '-visit_time');
-      },
-      initialData: [],
-      staleTime: 60000,
-    });
+  const canAccessWidget = (widgetName) => accessibleWidgets.includes(widgetName);
+
+  // Redirect to onboarding if not completed
+  React.useEffect(() => {
+    if (currentUser && !currentUser.onboarding_completed) {
+      navigate(createPageUrl("Onboarding"));
+    }
+  }, [currentUser, navigate]);
+
+  // Log page visit with user context
+  React.useEffect(() => {
+    if (currentUser?.email) {
+      logActivity(ActivityActions.PAGE_VISIT, {
+        page: 'Dashboard',
+        page_title: 'Dashboard',
+        user_role: currentUser.role
+      });
+    }
+  }, [currentUser?.email]);
+
+  const { data: visits, isLoading, error: visitsError } = useQuery({
+    queryKey: ['todayVisits'],
+    queryFn: async () => {
+      const today = todayEastern();
+      return base44.entities.Visit.filter({ visit_date: today }, '-visit_time');
+    },
+    initialData: [],
+    staleTime: 60000
+  });
 
   const { data: patients, error: patientsError } = useQuery({
     queryKey: ['patients'],
     queryFn: () => base44.entities.Patient.list('-updated_date', 500),
     initialData: [],
-    staleTime: 300000,
+    staleTime: 300000
   });
 
   const { data: carePlans = [] } = useQuery({
     queryKey: ['allCarePlans'],
     queryFn: () => base44.entities.CarePlan.list('-updated_date', 200),
     initialData: [],
-    staleTime: 300000,
+    staleTime: 300000
   });
 
   const { data: incidents = [] } = useQuery({
     queryKey: ['recentIncidents'],
     queryFn: () => base44.entities.Incident.filter({}, '-incident_date', 50),
     initialData: [],
-    staleTime: 180000,
+    staleTime: 180000
   });
 
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['nurseNoteConversions', currentUser?.email],
     queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser?.email }, '-created_date', 10),
     enabled: !!currentUser?.email,
-    initialData: [],
+    initialData: []
   });
 
   const { data: nurseTrainingRecommendations = [] } = useQuery({
     queryKey: ['nurseTrainingRecommendations', currentUser?.email],
     queryFn: () => base44.entities.TrainingRecommendation.filter({ nurse_email: currentUser?.email, addressed: false }),
     enabled: !!currentUser?.email,
-    initialData: [],
+    initialData: []
   });
 
   const { data: nurseComplianceAudits = [] } = useQuery({
     queryKey: ['nurseComplianceAudits', currentUser?.email],
     queryFn: () => base44.entities.ComplianceAudit.filter({ nurse_email: currentUser?.email }, '-audit_date', 5),
     enabled: !!currentUser?.email,
-    initialData: [],
+    initialData: []
   });
 
   const { data: nurseTasks = [] } = useQuery({
     queryKey: ['nurseTasks', currentUser?.email],
-    queryFn: () => base44.entities.Task.filter({ 
+    queryFn: () => base44.entities.Task.filter({
       assigned_to: currentUser?.email,
       status: { "$ne": "completed" }
     }, '-due_date'),
     enabled: !!currentUser?.email,
-    initialData: [],
+    initialData: []
   });
 
   const { data: nurseActivity = [] } = useQuery({
     queryKey: ['nurseRecentActivity', currentUser?.email],
     queryFn: () => base44.entities.UserActivity.filter({ user_email: currentUser?.email }, '-created_date', 20),
     enabled: !!currentUser?.email,
-    initialData: [],
+    initialData: []
   });
 
   const { data: subscription } = useQuery({
@@ -166,9 +166,9 @@ export default function Dashboard() {
         appointment_type: 'telehealth',
         appointment_date: today
       }, 'start_time');
-      
-      return appointments.map(apt => {
-        const patient = patients.find(p => p.id === apt.patient_id);
+
+      return appointments.map((apt) => {
+        const patient = patients.find((p) => p.id === apt.patient_id);
         return {
           ...apt,
           patient_name: patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown'
@@ -181,7 +181,7 @@ export default function Dashboard() {
   // Handle errors gracefully (logged server-side)
 
   const getPatient = (patientId) => {
-    return patients.find(p => p.id === patientId);
+    return patients.find((p) => p.id === patientId);
   };
 
   const getStatusColor = (status) => {
@@ -226,7 +226,7 @@ export default function Dashboard() {
         window.location.reload();
         break;
       default:
-        // Unhandled command
+      // Unhandled command
     }
   };
 
@@ -251,8 +251,8 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-600 dark:border-slate-400 border-t-transparent"></div>
-      </div>
-    );
+      </div>);
+
   }
 
   if (!currentUser) {
@@ -262,13 +262,13 @@ export default function Dashboard() {
   return (
     <PullToRefresh onRefresh={async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
-        queryClient.invalidateQueries({ queryKey: ['myPatients'] }),
-        queryClient.invalidateQueries({ queryKey: ['myVisits'] }),
-        queryClient.invalidateQueries({ queryKey: ['nurseNoteConversions'] }),
-        queryClient.invalidateQueries({ queryKey: ['myAlerts'] }),
-        queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })
-      ]);
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
+      queryClient.invalidateQueries({ queryKey: ['myPatients'] }),
+      queryClient.invalidateQueries({ queryKey: ['myVisits'] }),
+      queryClient.invalidateQueries({ queryKey: ['nurseNoteConversions'] }),
+      queryClient.invalidateQueries({ queryKey: ['myAlerts'] }),
+      queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })]
+      );
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header with integrated banners */}
@@ -276,11 +276,11 @@ export default function Dashboard() {
 
       {/* Quick Stats */}
       <QuickStatsSummary stats={{
-        activePatients: patients.length,
-        completedVisits: visits.length,
-        pendingAlerts: 0,
-        upcomingVisits: todayTelehealthAppointments.length
-      }} />
+          activePatients: patients.length,
+          completedVisits: visits.length,
+          pendingAlerts: 0,
+          upcomingVisits: todayTelehealthAppointments.length
+        }} />
 
       {/* Workflow Shortcuts */}
       <WorkflowShortcuts />
@@ -292,9 +292,9 @@ export default function Dashboard() {
       </div>
 
       {/* My Tasks Widget */}
-      {canAccessWidget('tasks') && (
+      {canAccessWidget('tasks') &&
         <Card className="hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="bg-slate-100 pb-2 p-6 space-y-1.5 flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <ListTodo className="w-5 h-5 text-blue-600" />
               My Tasks
@@ -303,87 +303,87 @@ export default function Dashboard() {
               variant="ghost"
               size="sm"
               onClick={() => navigate(createPageUrl('Tasks'))}
-              className="text-xs"
-            >
+              className="text-xs">
+
               View All
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </CardHeader>
-          <CardContent>
-            {nurseTasks && nurseTasks.length > 0 ? (
-              <div className="space-y-2">
-                {nurseTasks.slice(0, 5).map(task => {
-                  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.due_date !== new Date().toISOString().split('T')[0];
-                  const isDueToday = task.due_date && task.due_date === new Date().toISOString().split('T')[0];
-                  
-                  return (
-                    <div 
-                      key={task.id} 
-                      className={`p-3 rounded-lg border ${
-                        isOverdue ? 'border-red-300 bg-red-50 dark:bg-red-950' :
-                        isDueToday ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950' :
-                        'border-slate-200 bg-slate-50 dark:bg-slate-800'
-                      }`}
-                    >
+          <CardContent className="bg-slate-100 pt-0 p-6">
+            {nurseTasks && nurseTasks.length > 0 ?
+            <div className="space-y-2">
+                {nurseTasks.slice(0, 5).map((task) => {
+                const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.due_date !== new Date().toISOString().split('T')[0];
+                const isDueToday = task.due_date && task.due_date === new Date().toISOString().split('T')[0];
+
+                return (
+                  <div
+                    key={task.id}
+                    className={`p-3 rounded-lg border ${
+                    isOverdue ? 'border-red-300 bg-red-50 dark:bg-red-950' :
+                    isDueToday ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950' :
+                    'border-slate-200 bg-slate-50 dark:bg-slate-800'}`
+                    }>
+
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <Badge className={
-                              task.priority === 'critical' ? 'bg-red-600' :
-                              task.priority === 'high' ? 'bg-orange-500' :
-                              task.priority === 'medium' ? 'bg-yellow-500' :
-                              'bg-blue-500'
-                            }>
+                          task.priority === 'critical' ? 'bg-red-600' :
+                          task.priority === 'high' ? 'bg-orange-500' :
+                          task.priority === 'medium' ? 'bg-yellow-500' :
+                          'bg-blue-500'
+                          }>
                               {task.priority}
                             </Badge>
                             <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{task.title}</span>
                           </div>
-                          {task.due_date && (
-                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                          {task.due_date &&
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
                               Due: {new Date(task.due_date).toLocaleDateString()}
                               {isOverdue && <span className="text-red-600 ml-1">• Overdue</span>}
                               {isDueToday && <span className="text-yellow-600 ml-1">• Due Today</span>}
                             </p>
-                          )}
+                        }
                         </div>
                         <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={async () => {
-                            await base44.entities.Task.update(task.id, { status: 'completed' });
-                            queryClient.invalidateQueries({ queryKey: ['nurseTasks'] });
-                          }}
-                          className="flex-shrink-0"
-                        >
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          await base44.entities.Task.update(task.id, { status: 'completed' });
+                          queryClient.invalidateQueries({ queryKey: ['nurseTasks'] });
+                        }}
+                        className="flex-shrink-0">
+
                           <CheckCircle2 className="w-4 h-4" />
                         </Button>
                       </div>
-                    </div>
-                  );
-                })}
-                {nurseTasks.length > 5 && (
-                  <p className="text-xs text-center text-slate-500 dark:text-slate-400 pt-2">
+                    </div>);
+
+              })}
+                {nurseTasks.length > 5 &&
+              <p className="text-xs text-center text-slate-500 dark:text-slate-400 pt-2">
                     +{nurseTasks.length - 5} more tasks
                   </p>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8">
+              }
+              </div> :
+
+            <div className="text-center py-8">
                 <ListTodo className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
                 <p className="text-sm text-slate-500 dark:text-slate-400">No pending tasks</p>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => navigate(createPageUrl('Tasks'))}
-                >
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() => navigate(createPageUrl('Tasks'))}>
+
                   Create Task
                 </Button>
               </div>
-            )}
+            }
           </CardContent>
         </Card>
-      )}
+        }
 
 
 
@@ -396,39 +396,39 @@ export default function Dashboard() {
 
 
       {/* Telehealth Quick Launcher - only for providers with telehealth access */}
-      {canAccessWidget('telehealth') && (
+      {canAccessWidget('telehealth') &&
         <QuickTelehealthLauncher
           todayAppointments={todayTelehealthAppointments}
-          onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))}
-        />
-      )}
+          onScheduleNew={() => navigate(createPageUrl("TelehealthDashboard"))} />
+
+        }
 
 
       {/* Critical Alerts & Compliance Section - only for providers with access */}
-      {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) && (
+      {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) &&
         <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden">
-            {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
-              <ComplianceAlertNotifications 
-                nurseEmail={currentUser?.email}
-                showAll={false}
-                maxAlerts={5}
-                compact={true}
-              />
-            )}
-            {canAccessWidget('clinicalSupport') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits.length > 0 && visits[0]?.patient_id && (
-              <ProactiveClinicalSupport 
-                patientId={visits[0].patient_id}
-                compact={true}
-              />
-            )}
+            {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) &&
+            <ComplianceAlertNotifications
+              nurseEmail={currentUser?.email}
+              showAll={false}
+              maxAlerts={5}
+              compact={true} />
+
+            }
+            {canAccessWidget('clinicalSupport') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits.length > 0 && visits[0]?.patient_id &&
+            <ProactiveClinicalSupport
+              patientId={visits[0].patient_id}
+              compact={true} />
+
+            }
           </div>
         </DashboardSection>
-      )}
+        }
 
 
 
     </div>
-    </PullToRefresh>
-  );
+    </PullToRefresh>);
+
 }
