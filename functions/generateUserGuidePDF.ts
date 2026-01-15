@@ -220,7 +220,8 @@ const FEATURES_GUIDE = [
       "Implement password protection on all devices with access to patient data",
       "Refrain from discussing Protected Health Information in public or unsecured areas",
       "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
-    ]
+    ],
+    importance: "Protects patient privacy and prevents costly HIPAA violations and fines, maintains audit compliance and organizational reputation, ensures secure remote access for mobile workforce, and protects sensitive clinical data from unauthorized access"
   },
   {
     title: "Patient Risk Alerts",
