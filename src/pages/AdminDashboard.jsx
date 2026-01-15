@@ -692,9 +692,9 @@ export default function AdminDashboard() {
             <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">Training</TabsTrigger>
             <TabsTrigger value="feedback" className="text-xs sm:text-sm py-2 whitespace-nowrap">User Feedback</TabsTrigger>
             <TabsTrigger value="pricing" className="text-xs sm:text-sm py-2 whitespace-nowrap">Pricing</TabsTrigger>
-            <TabsTrigger value="ai-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Insights</TabsTrigger>
             <TabsTrigger value="ai-feedback" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Feedback</TabsTrigger>
             <TabsTrigger value="activity" className="text-xs sm:text-sm py-2 whitespace-nowrap">Activity</TabsTrigger>
+            <TabsTrigger value="ai-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Insights</TabsTrigger>
             <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">Export</TabsTrigger>
           </TabsList>
         </div>
