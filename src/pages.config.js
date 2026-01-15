@@ -16,6 +16,7 @@ import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
+import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import ComplianceRegulatory from './pages/ComplianceRegulatory';
 import Dashboard from './pages/Dashboard';
@@ -66,6 +67,7 @@ import PatientMessaging from './pages/PatientMessaging';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
+import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
 import Pricing from './pages/Pricing';
 import PrivacyPolicy from './pages/PrivacyPolicy';
@@ -99,8 +101,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import Compliance from './pages/Compliance';
-import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
 import __Layout from './Layout.jsx';
 
 
@@ -123,6 +123,7 @@ export const PAGES = {
     "CarePlanManagement": CarePlanManagement,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
+    "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
     "ComplianceRegulatory": ComplianceRegulatory,
     "Dashboard": Dashboard,
@@ -173,6 +174,7 @@ export const PAGES = {
     "PatientRecordDashboard": PatientRecordDashboard,
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
+    "PersonalizedLearningPath": PersonalizedLearningPath,
     "PredictiveAnalytics": PredictiveAnalytics,
     "Pricing": Pricing,
     "PrivacyPolicy": PrivacyPolicy,
@@ -206,8 +208,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "Compliance": Compliance,
-    "PersonalizedLearningPath": PersonalizedLearningPath,
 }
 
 export const pagesConfig = {

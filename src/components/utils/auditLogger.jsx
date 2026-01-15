@@ -1,176 +1,191 @@
-import { base44 } from "@/api/base44Client";
+
+import { base44 } from '@/api/base44Client';
 
 /**
- * Comprehensive audit logging for sensitive operations
+ * Centralized audit logging utility
+ * Automatically logs sensitive data access and modifications
  */
-export async function logAuditTrail({
-  actionType,
-  actionDescription,
-  targetEntityType = null,
-  targetEntityId = null,
-  targetIdentifier = null,
-  beforeState = null,
-  afterState = null,
-  changeDetails = null,
-  currentUser = null
-}) {
+
+export const AuditActions = {
+  VIEW: 'view',
+  CREATE: 'create',
+  UPDATE: 'update',
+  DELETE: 'delete',
+  EXPORT: 'export',
+  PRINT: 'print',
+  DOWNLOAD: 'download',
+  SHARE: 'share',
+  LOGIN: 'login',
+  LOGOUT: 'logout',
+  ACCESS_DENIED: 'access_denied',
+  PASSWORD_RESET: 'password_reset',
+  ROLE_CHANGE: 'role_change',
+  BULK_OPERATION: 'bulk_operation',
+  OASIS_UPLOAD: 'oasis_upload',
+  OASIS_REVIEW: 'oasis_review',
+  OASIS_COMPARE: 'oasis_compare',
+  OASIS_EXPORT: 'oasis_export',
+  OASIS_DELETE: 'oasis_delete'
+};
+
+export const logAudit = async ({
+  action,
+  entityType,
+  entityId = null,
+  affectedData = null,
+  previousData = null,
+  description = null
+}) => {
   try {
-    // Get current user if not provided
-    const user = currentUser || await base44.auth.me();
-    
-    // Calculate what changed
-    const changes = beforeState && afterState 
-      ? calculateChanges(beforeState, afterState)
-      : changeDetails;
+    // Get user agent (IP will be captured server-side)
+    const userAgent = navigator.userAgent;
 
-    const auditEntry = {
-      timestamp: new Date().toISOString(),
-      user_email: user.email,
-      user_role: user.role,
-      action_type: actionType,
-      action_description: actionDescription,
-      target_entity_type: targetEntityType,
-      target_entity_id: targetEntityId,
-      target_identifier: targetIdentifier,
-      before_state: beforeState,
-      after_state: afterState,
-      change_details: changes,
-      ip_address: await getClientIP(),
-      user_agent: navigator.userAgent,
-      session_id: getSessionId(),
-      flagged_suspicious: false,
-      reviewed: false
-    };
-
-    await base44.entities.AuditTrail.create(auditEntry);
-  } catch (error) {
-    console.error('Audit logging failed:', error);
-    // Still throw to UserActivity as backup
-    try {
-      const user = currentUser || await base44.auth.me();
-      await base44.entities.UserActivity.create({
-        user_email: user.email,
-        user_name: user.full_name,
-        action: actionType,
-        details: { actionDescription, targetEntityType, targetEntityId }
-      });
-    } catch (backupError) {
-      console.error('Backup logging failed:', backupError);
-    }
-  }
-}
-
-function calculateChanges(before, after) {
-  const changes = {};
-  
-  // Compare all keys in both objects
-  const allKeys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
-  
-  for (const key of allKeys) {
-    if (JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key])) {
-      changes[key] = {
-        from: before?.[key],
-        to: after?.[key]
-      };
-    }
-  }
-  
-  return changes;
-}
-
-async function getClientIP() {
-  try {
-    const response = await fetch('https://api.ipify.org?format=json');
-    const data = await response.json();
-    return data.ip;
-  } catch {
-    return 'unknown';
-  }
-}
-
-function getSessionId() {
-  // Generate or retrieve session ID from localStorage
-  let sessionId = localStorage.getItem('session_id');
-  if (!sessionId) {
-    sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('session_id', sessionId);
-  }
-  return sessionId;
-}
-
-// Specific helpers for common operations
-export async function logPasswordReset(targetUserEmail, resetByEmail) {
-  await logAuditTrail({
-    actionType: 'PASSWORD_RESET',
-    actionDescription: `Password reset for ${targetUserEmail}`,
-    targetEntityType: 'User',
-    targetIdentifier: targetUserEmail,
-    changeDetails: {
-      reset_by: resetByEmail,
-      reset_timestamp: new Date().toISOString()
-    }
-  });
-}
-
-export async function logRoleChange(userId, userEmail, oldRole, newRole, changedBy) {
-  await logAuditTrail({
-    actionType: 'ROLE_CHANGE',
-    actionDescription: `Changed role from ${oldRole} to ${newRole} for ${userEmail}`,
-    targetEntityType: 'User',
-    targetEntityId: userId,
-    targetIdentifier: userEmail,
-    beforeState: { role: oldRole },
-    afterState: { role: newRole },
-    currentUser: changedBy
-  });
-}
-
-export async function logPatientModification(action, patientId, patientName, beforeState, afterState) {
-  await logAuditTrail({
-    actionType: `PATIENT_${action.toUpperCase()}`,
-    actionDescription: `${action} patient: ${patientName}`,
-    targetEntityType: 'Patient',
-    targetEntityId: patientId,
-    targetIdentifier: patientName,
-    beforeState,
-    afterState
-  });
-}
-
-export async function logBulkOperation(operationType, entityType, count, details) {
-  await logAuditTrail({
-    actionType: 'BULK_OPERATION',
-    actionDescription: `Bulk ${operationType} on ${count} ${entityType} records`,
-    targetEntityType: entityType,
-    changeDetails: {
-      operation: operationType,
-      count,
-      details
-    }
-  });
-}
-
-// OASIS specific logging helper
-export const logOASISAction = async (action, details = {}) => {
-  try {
-    const user = await base44.auth.me();
-    await logAuditTrail({
-      actionType: 'OASIS_' + action.toUpperCase(),
-      actionDescription: `OASIS action: ${action}`,
-      targetEntityType: 'OASIS',
-      changeDetails: details,
-      currentUser: user
+    await base44.functions.invoke('logAuditEvent', {
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      affected_data: affectedData,
+      previous_data: previousData,
+      user_agent: userAgent,
+      description: description || `${action} ${entityType}`
     });
   } catch (error) {
-    console.error('OASIS audit logging failed:', error);
+    console.error('Audit logging failed:', error);
+    // Don't throw - audit failures shouldn't break app functionality
   }
 };
 
-// Audit action constants
-export const AuditActions = {
-  OASIS_UPLOAD: 'OASIS_UPLOAD',
-  OASIS_REVIEW: 'OASIS_REVIEW',
-  OASIS_COMPARE: 'OASIS_COMPARE',
-  OASIS_EXPORT: 'OASIS_EXPORT',
-  OASIS_DELETE: 'OASIS_DELETE'
+// Convenience methods for common audit events
+export const auditLogger = {
+  viewPatient: (patientId, patientName) => 
+    logAudit({
+      action: AuditActions.VIEW,
+      entityType: 'Patient',
+      entityId: patientId,
+      description: `Viewed patient record: ${patientName}`
+    }),
+
+  viewVisit: (visitId, patientName) =>
+    logAudit({
+      action: AuditActions.VIEW,
+      entityType: 'Visit',
+      entityId: visitId,
+      description: `Viewed visit for patient: ${patientName}`
+    }),
+
+  createPatient: (patientId, patientName, patientData) =>
+    logAudit({
+      action: AuditActions.CREATE,
+      entityType: 'Patient',
+      entityId: patientId,
+      affectedData: patientData,
+      description: `Created new patient record: ${patientName}`
+    }),
+
+  updatePatient: (patientId, patientName, previousData, updatedData) =>
+    logAudit({
+      action: AuditActions.UPDATE,
+      entityType: 'Patient',
+      entityId: patientId,
+      previousData: previousData,
+      affectedData: updatedData,
+      description: `Updated patient record: ${patientName}`
+    }),
+  
+  deletePatient: (patientId, patientName) =>
+    logAudit({
+      action: AuditActions.DELETE,
+      entityType: 'Patient',
+      entityId: patientId,
+      description: `Deleted patient record: ${patientName}`
+    }),
+
+  exportData: (entityType, recordCount) =>
+    logAudit({
+      action: AuditActions.EXPORT,
+      entityType: entityType,
+      description: `Exported ${recordCount} ${entityType} records`
+    }),
+
+  printData: (entityType, entityId, description) =>
+    logAudit({
+      action: AuditActions.PRINT,
+      entityType: entityType,
+      entityId: entityId,
+      description: description || `Printed ${entityType} record`
+    }),
+  
+  downloadData: (entityType, entityId, description) =>
+    logAudit({
+      action: AuditActions.DOWNLOAD,
+      entityType: entityType,
+      entityId: entityId,
+      description: description || `Downloaded ${entityType} data`
+    }),
+
+  shareData: (entityType, entityId, sharedWith, description) =>
+    logAudit({
+      action: AuditActions.SHARE,
+      entityType: entityType,
+      entityId: entityId,
+      affectedData: { sharedWith },
+      description: description || `Shared ${entityType} with ${sharedWith}`
+    }),
+
+  accessDenied: (resource) =>
+    logAudit({
+      action: AuditActions.ACCESS_DENIED,
+      entityType: 'Security',
+      description: `Access denied to: ${resource}`
+    }),
+
+  loginAttempt: (success) =>
+    logAudit({
+      action: success ? AuditActions.LOGIN : AuditActions.ACCESS_DENIED,
+      entityType: 'User',
+      description: success ? 'User logged in' : 'Failed login attempt'
+    }),
+  
+  logout: () =>
+    logAudit({
+      action: AuditActions.LOGOUT,
+      entityType: 'User',
+      description: 'User logged out'
+    }),
+
+  passwordReset: (targetUserEmail, resetByEmail) =>
+    logAudit({
+      action: AuditActions.PASSWORD_RESET,
+      entityType: 'User',
+      affectedData: { targetUserEmail, resetByEmail },
+      description: `Password reset for ${targetUserEmail}`
+    }),
+
+  roleChange: (userId, userEmail, oldRole, newRole) =>
+    logAudit({
+      action: AuditActions.ROLE_CHANGE,
+      entityType: 'User',
+      entityId: userId,
+      previousData: { role: oldRole },
+      affectedData: { role: newRole },
+      description: `Changed role from ${oldRole} to ${newRole} for ${userEmail}`
+    }),
+  
+  bulkOperation: (operationType, entityType, count, details) =>
+    logAudit({
+      action: AuditActions.BULK_OPERATION,
+      entityType: entityType,
+      affectedData: { operationType, count, details },
+      description: `Bulk ${operationType} on ${count} ${entityType} records`
+    }),
+
+  oasisAction: (action, details = {}) =>
+    logAudit({
+      action: AuditActions[`OASIS_${action.toUpperCase()}`] || `OASIS_${action.toUpperCase()}`,
+      entityType: 'OASIS',
+      affectedData: details,
+      description: `OASIS action: ${action}`
+    })
 };
+
+export default auditLogger;
