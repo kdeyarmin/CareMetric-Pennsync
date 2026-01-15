@@ -18,7 +18,20 @@ const FEATURES_GUIDE = [
       "Use standardized medical terminology for improved documentation quality",
       "Include baseline assessment information for comprehensive patient context",
       "Maintain current patient history records for better AI contextualization"
-    ]
+    ],
+    smartNoteChecks: [
+      "Medicare Compliance: Validates skilled nursing documentation requirements and justification for continued home health services",
+      "Documentation Completeness: Flags missing critical elements such as patient status, interventions, patient response, and plan of care",
+      "Clinical Accuracy: Cross-references clinical findings with patient history to identify inconsistencies or contradictions",
+      "ICD-10 Code Suggestions: Recommends appropriate diagnostic codes aligned with documented clinical findings and assessment",
+      "Skilled Nursing Documentation: Ensures skilled nursing judgment is clearly articulated and justified for medical necessity",
+      "OASIS Alignment: Verifies narrative documentation supports corresponding OASIS assessment responses",
+      "Grammar and Medical Terminology: Corrects documentation errors and suggests proper medical terminology usage",
+      "Risk Identification: Highlights potential clinical red flags, safety concerns, and adverse events requiring intervention",
+      "Patient Functional Status: Ensures documentation of patient functional assessment and activities of daily living status",
+      "Care Plan Correlation: Validates that documented care aligns with established care plan goals and interventions"
+    ],
+    importance: "Reduces note documentation time by 40-50%, improves Medicare compliance audit rates by 30%, and prevents costly claim denials while ensuring comprehensive clinical documentation"
   },
   {
     title: "Medical Scribe",
