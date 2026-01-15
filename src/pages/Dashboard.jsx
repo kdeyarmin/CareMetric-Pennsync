@@ -55,8 +55,8 @@ export default function Dashboard() {
     });
 
     // Get role-specific widgets
-    const accessibleWidgets = currentUser?.provider_type 
-      ? getAccessibleWidgets(currentUser.provider_type)
+    const accessibleWidgets = currentUser?.credential_type 
+      ? getAccessibleWidgets(currentUser.credential_type)
       : [];
     
     const canAccessWidget = (widgetName) => accessibleWidgets.includes(widgetName);
@@ -270,7 +270,7 @@ export default function Dashboard() {
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header with integrated banners */}
-      <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.provider_type || currentUser?.credential_type} />
+      <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
 
       {/* Quick Stats */}
       <QuickStatsSummary stats={{
