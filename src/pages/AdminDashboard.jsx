@@ -1657,6 +1657,11 @@ export default function AdminDashboard() {
           <TrainingFeedbackManager />
         </TabsContent>
 
+        {/* Pricing Tab */}
+        <TabsContent value="pricing" className="space-y-6">
+          <SubscriptionPricingManager />
+        </TabsContent>
+
         {/* AI Feedback Tab */}
         <TabsContent value="ai-feedback" className="space-y-6">
           <AIFeedbackAnalytics />
