@@ -111,7 +111,7 @@ export default function SmartNoteAssistant() {
     setShowResults(false);
     
     try {
-      const compliancePrompt = getProviderCompliancePrompt(currentUser?.provider_type || 'RN', visitType);
+      const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: `You are a healthcare documentation specialist. Analyze the following rough clinical note and:
@@ -123,7 +123,7 @@ export default function SmartNoteAssistant() {
 
 Visit Type: ${visitType}
 Primary Diagnosis: ${selectedDiagnosis}
-Provider Type: ${currentUser?.provider_type || 'RN'}
+Provider Type: ${currentUser?.credential_type || 'RN'}
 Compliance Requirements: ${compliancePrompt}
 
 Rough Note:
@@ -185,8 +185,8 @@ Return your analysis in the following JSON format:
     }
   };
 
-  const availableVisitTypes = currentUser?.provider_type 
-    ? getVisitTypesForProvider(currentUser.provider_type)
+  const availableVisitTypes = currentUser?.credential_type 
+    ? getVisitTypesForProvider(currentUser.credential_type)
     : [];
 
   // Common diagnoses list
@@ -334,10 +334,10 @@ Return your analysis in the following JSON format:
                 </div>
 
                 {/* Template Selector */}
-                {visitType && currentUser?.provider_type && (
+                {visitType && currentUser?.credential_type && (
                   <NoteTemplateSelector
                     visitType={visitType}
-                    providerType={currentUser.provider_type}
+                    providerType={currentUser.credential_type}
                     onSelectTemplate={(formattedNote, template) => {
                       setRoughNotes(formattedNote);
                       setSelectedTemplate(template);
@@ -528,7 +528,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               )}
 
               {/* Care Plan Suggestions */}
-              {patientData && (currentUser?.provider_type === 'RN' || currentUser?.provider_type === 'MSW') && (
+              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') && (
                 <CarePlanSuggestionsPanel
                   patientId={patientData.id}
                   visitType={visitType}
