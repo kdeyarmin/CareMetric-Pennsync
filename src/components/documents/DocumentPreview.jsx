@@ -1,17 +1,31 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Download, Mail, Copy, Edit2, Save, X } from 'lucide-react';
+import { Download, Mail, Copy, Edit2, Save, X, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useMutation } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import DocumentAIReview from './DocumentAIReview';
 
 export default function DocumentPreview({ document, onClose, onSave, onSend, saving, patient }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(document.generated_content);
   const [patientEmail, setPatientEmail] = useState(document.patient_email || patient?.email || '');
+  const [reviewExpanded, setReviewExpanded] = useState(false);
+
+  const reviewMutation = useMutation({
+    mutationFn: async () => {
+      const response = await base44.functions.invoke('reviewDocument', {
+        document_content: editedContent || document.generated_content,
+        template_type: document.template_type
+      });
+      return response.data || response;
+    }
+  });
 
   const handleDownloadPDF = async () => {
     const element = document.getElementById('document-preview-content');
@@ -86,53 +100,76 @@ export default function DocumentPreview({ document, onClose, onSave, onSend, sav
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Button
-          variant="outline"
-          onClick={() => setIsEditing(!isEditing)}
-          className="w-full"
-        >
-          <Edit2 className="w-4 h-4 mr-2" />
-          {isEditing ? 'View' : 'Edit'}
-        </Button>
-
-        {isEditing && (
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Button
-            onClick={handleSaveChanges}
-            disabled={saving}
-            className="bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white"
+            variant="outline"
+            onClick={() => setIsEditing(!isEditing)}
+            className="w-full"
           >
-            <Save className="w-4 h-4 mr-2" />
-            Save
+            <Edit2 className="w-4 h-4 mr-2" />
+            {isEditing ? 'View' : 'Edit'}
           </Button>
-        )}
+
+          {isEditing && (
+            <Button
+              onClick={handleSaveChanges}
+              disabled={saving}
+              className="bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-700 text-slate-900 dark:text-white"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save
+            </Button>
+          )}
+
+          <Button
+            variant="outline"
+            onClick={handleDownloadPDF}
+            className="w-full"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            PDF
+          </Button>
+
+          <Button
+            onClick={handleSendToPatient}
+            disabled={saving || !patientEmail}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Mail className="w-4 h-4 mr-2" />
+            Send
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="w-full"
+          >
+            Done
+          </Button>
+        </div>
 
         <Button
-          variant="outline"
-          onClick={handleDownloadPDF}
-          className="w-full"
+          onClick={() => {
+            reviewMutation.mutate();
+            setReviewExpanded(true);
+          }}
+          disabled={reviewMutation.isPending}
+          className="w-full bg-green-600 hover:bg-green-700 text-white"
         >
-          <Download className="w-4 h-4 mr-2" />
-          PDF
-        </Button>
-
-        <Button
-          onClick={handleSendToPatient}
-          disabled={saving || !patientEmail}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <Mail className="w-4 h-4 mr-2" />
-          Send
-        </Button>
-
-        <Button
-          variant="outline"
-          onClick={onClose}
-          className="w-full"
-        >
-          Done
+          <Sparkles className="w-4 h-4 mr-2" />
+          {reviewMutation.isPending ? 'Analyzing...' : 'AI Quality Review'}
         </Button>
       </div>
+
+      {reviewExpanded && (
+        <div className="mt-6">
+          <DocumentAIReview 
+            review={reviewMutation.data?.review} 
+            loading={reviewMutation.isPending}
+          />
+        </div>
+      )}
     </div>
   );
 }
