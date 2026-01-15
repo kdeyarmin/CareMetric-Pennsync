@@ -21,7 +21,6 @@ import {
 import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
 import { getProviderCompliancePrompt } from "@/components/utils/providerSpecificConfig";
-import { getSmartNoteEnhancementPrompt } from "@/components/utils/prompts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +29,6 @@ import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
 import RealTimeQualityFeedback from "@/components/smartNote/RealTimeQualityFeedback";
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
-import { useSearchParams } from "react-router-dom";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -55,19 +53,6 @@ export default function SmartNoteAssistant() {
   });
   const [creatingPatient, setCreatingPatient] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [searchParams] = useSearchParams();
-
-  React.useEffect(() => {
-    const preFilledNote = sessionStorage.getItem('preFilledNote');
-    const patientId = searchParams.get('patientId');
-    if (preFilledNote) {
-      setRoughNotes(preFilledNote);
-      sessionStorage.removeItem('preFilledNote');
-    }
-    if (patientId) {
-      setSelectedPatient(patientId);
-    }
-  }, [searchParams]);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -140,16 +125,38 @@ export default function SmartNoteAssistant() {
     try {
       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
 
-      const prompt = getSmartNoteEnhancementPrompt({
-        visitType,
-        diagnosis: selectedDiagnosis,
-        providerType: currentUser?.credential_type,
-        compliancePrompt,
-        roughNotes,
-      });
-
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt,
+        prompt: `You are a healthcare documentation specialist. Analyze the following rough clinical note and:
+
+1. Extract key clinical data (diagnoses, medications, symptoms, vital signs)
+2. Enhance it into a Medicare-compliant, professional clinical note
+3. Perform comprehensive compliance checks based on the visit type and diagnosis
+4. Provide specific compliance feedback and suggestions
+
+Visit Type: ${visitType}
+Primary Diagnosis: ${selectedDiagnosis}
+Provider Type: ${currentUser?.credential_type || 'RN'}
+Compliance Requirements: ${compliancePrompt}
+
+Rough Note:
+${roughNotes}
+
+Return your analysis in the following JSON format:
+{
+  "extracted_data": {
+    "diagnoses": ["list of diagnoses found"],
+    "medications": ["list of medications"],
+    "symptoms": ["list of symptoms"],
+    "vitals": {"temperature": "", "blood_pressure": "", "heart_rate": "", etc}
+  },
+  "enhanced_note": "The full Medicare-compliant enhanced clinical note with proper formatting",
+  "compliance_check": {
+    "compliance_score": 0-100,
+    "status": "passed" | "flagged" | "critical",
+    "issues": [{"element": "", "severity": "", "problem": "", "suggestion": ""}],
+    "compliant_elements": ["list of elements that passed"]
+  }
+}`,
         response_json_schema: {
           type: "object",
           properties: {

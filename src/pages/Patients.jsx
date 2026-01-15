@@ -172,7 +172,7 @@ export default function Patients() {
     },
     onError: async (error) => {
       setIsDeleting(false);
-      await handleSecureError(error, 'patient_delete', (msg) => toast.error(msg));
+      await handleSecureError(error, 'patient_delete', (msg) => alert(msg));
     }
   });
 

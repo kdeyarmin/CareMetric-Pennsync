@@ -79,9 +79,9 @@ export default function MedicalScribe() {
 
   const handleUseNote = () => {
     if (generatedNote) {
-      sessionStorage.setItem('preFilledNote', generatedNote);
+      const noteText = generatedNote;
       const patientParam = selectedPatientId && selectedPatientId !== 'anonymous' ? `&patientId=${selectedPatientId}` : '';
-      window.location.href = `/app?redirect=SmartNoteAssistant${patientParam}`;
+      window.location.href = `/app?redirect=SmartNoteAssistant${patientParam}&preFilledNote=${encodeURIComponent(noteText)}`;
     }
   };
 

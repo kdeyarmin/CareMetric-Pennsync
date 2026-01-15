@@ -80,7 +80,7 @@ export default function Dashboard() {
     }
   }, [currentUser?.email]);
 
-  const { data: visits, isLoading: visitsLoading, error: visitsError } = useQuery({
+  const { data: visits, isLoading, error: visitsError } = useQuery({
     queryKey: ['todayVisits'],
     queryFn: async () => {
       const today = todayEastern();
@@ -90,7 +90,7 @@ export default function Dashboard() {
     staleTime: 60000
   });
 
-  const { data: patients, isLoading: patientsLoading, error: patientsError } = useQuery({
+  const { data: patients, error: patientsError } = useQuery({
     queryKey: ['patients'],
     queryFn: () => base44.entities.Patient.list('-updated_date', 500),
     initialData: [],
