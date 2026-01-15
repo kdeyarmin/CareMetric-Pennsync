@@ -107,7 +107,7 @@ export default function Settings() {
       <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Profile Info */}
         <Card className="w-full max-w-full overflow-hidden">
-          <CardHeader>
+          <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-slate-900 dark:text-slate-100">
                 <User className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
@@ -153,7 +153,7 @@ export default function Settings() {
               }
             </div>
           </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
+          <CardContent className="bg-slate-100 pt-0 p-6 space-y-3 sm:space-y-4">
             {isEditing ?
             <>
                 <div>
@@ -346,13 +346,13 @@ export default function Settings() {
 
         {/* Two-Factor Authentication */}
         <Card className="w-full max-w-full overflow-hidden">
-          <CardHeader>
+          <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
             <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
               <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400" />
               Two-Factor Authentication
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="bg-slate-100 pt-0 p-6">
             <div className="space-y-4">
               <p className="text-slate-600 dark:text-slate-400">
                 Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
@@ -405,7 +405,7 @@ export default function Settings() {
               Danger Zone
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-4 sm:pt-6">
+          <CardContent className="bg-slate-100 pt-4 p-6 sm:pt-6">
             <div className="space-y-3 sm:space-y-4">
               <div>
                 <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-2 text-sm sm:text-base">Delete Account</h3>
@@ -418,8 +418,8 @@ export default function Settings() {
               {!showDeleteConfirm ?
               <Button
                 variant="destructive"
-                onClick={() => setShowDeleteConfirm(true)}
-                className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] w-full sm:w-auto text-white">
+                onClick={() => setShowDeleteConfirm(true)} className="bg-red-600 text-white px-4 py-2 text-sm font-medium rounded-md inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm h-9 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 min-h-[44px] w-full sm:w-auto">
+
 
                   <AlertTriangle className="w-4 h-4 mr-2" />
                   Delete My Account
