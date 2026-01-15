@@ -15,6 +15,8 @@ import {
   Loader2,
   Plus,
   ShieldAlert,
+  ListTodo,
+  Clock,
 } from "lucide-react";
 import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
@@ -39,6 +41,7 @@ export default function SmartNoteAssistant() {
   const [showResults, setShowResults] = useState(false);
   const [medicareViolations, setMedicareViolations] = useState([]);
   const [regulatoryWarnings, setRegulatoryWarnings] = useState([]);
+  const [suggestedTasks, setSuggestedTasks] = useState([]);
   const [newPatientData, setNewPatientData] = useState({
     first_name: "",
     last_name: "",
@@ -114,6 +117,7 @@ export default function SmartNoteAssistant() {
     setShowResults(false);
     setMedicareViolations([]);
     setRegulatoryWarnings([]);
+    setSuggestedTasks([]);
     
     try {
       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
@@ -181,6 +185,7 @@ Return your analysis in the following JSON format:
       setComplianceResults(result.compliance_check);
       setMedicareViolations(result.compliance_check?.medicare_violations || []);
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
+      setSuggestedTasks(result.suggested_tasks || []);
       setShowResults(true);
       
       if (result.compliance_check?.compliance_score >= 85) {
@@ -623,6 +628,98 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 </Card>
               )}
 
+              {/* Suggested Tasks */}
+              {suggestedTasks && suggestedTasks.length > 0 && (
+                <Card className="border-blue-300 bg-blue-50 dark:bg-blue-950">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ListTodo className="w-5 h-5 text-blue-600" />
+                      Suggested Follow-Up Tasks ({suggestedTasks.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {suggestedTasks.map((task, idx) => (
+                      <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-semibold text-slate-900 dark:text-slate-100">{task.title}</h4>
+                              <Badge className={
+                                task.priority === 'critical' ? 'bg-red-600' :
+                                task.priority === 'high' ? 'bg-orange-500' :
+                                task.priority === 'medium' ? 'bg-yellow-500' :
+                                'bg-blue-500'
+                              }>
+                                {task.priority}
+                              </Badge>
+                              <Badge variant="outline">{task.type}</Badge>
+                            </div>
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{task.description}</p>
+                            <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-500">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {task.suggested_due_timeframe?.replace('_', ' ') || 'No deadline'}
+                              </span>
+                            </div>
+                            {task.ai_reason && (
+                              <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-800 rounded text-xs text-slate-600 dark:text-slate-400">
+                                <strong>Why:</strong> {task.ai_reason}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const dueDate = (() => {
+                                  const today = new Date();
+                                  switch(task.suggested_due_timeframe) {
+                                    case 'today': return today.toISOString().split('T')[0];
+                                    case '24_hours': 
+                                      today.setDate(today.getDate() + 1);
+                                      return today.toISOString().split('T')[0];
+                                    case '48_hours':
+                                      today.setDate(today.getDate() + 2);
+                                      return today.toISOString().split('T')[0];
+                                    case 'this_week':
+                                      today.setDate(today.getDate() + 7);
+                                      return today.toISOString().split('T')[0];
+                                    default: return null;
+                                  }
+                                })();
+
+                                await base44.entities.Task.create({
+                                  title: task.title,
+                                  description: task.description,
+                                  priority: task.priority,
+                                  type: task.type,
+                                  due_date: dueDate,
+                                  due_timeframe: task.suggested_due_timeframe,
+                                  patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
+                                  assigned_to: currentUser?.email,
+                                  source: 'ai_generated',
+                                  ai_reason: task.ai_reason,
+                                  status: 'pending'
+                                });
+                                toast.success('Task added to your list');
+                                setSuggestedTasks(prev => prev.filter((_, i) => i !== idx));
+                              } catch (error) {
+                                toast.error('Failed to add task');
+                                console.error(error);
+                              }
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Add Task
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Care Plan Suggestions */}
               {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') && (
                 <CarePlanSuggestionsPanel
@@ -641,6 +738,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   setComplianceResults(null);
                   setMedicareViolations([]);
                   setRegulatoryWarnings([]);
+                  setSuggestedTasks([]);
                   setRoughNotes("");
                 }}
                 variant="outline"

@@ -210,6 +210,7 @@ export const PROVIDER_PAGE_ACCESS = {
   RN: [
     'Dashboard',
     'Patients',
+    'Tasks',
     'SmartNoteAssistant',
     'MedicalScribe',
     'DocumentVisit',
@@ -232,6 +233,7 @@ export const PROVIDER_PAGE_ACCESS = {
   LPN: [
     'Dashboard',
     'Patients',
+    'Tasks',
     'SmartNoteAssistant',
     'MedicalScribe',
     'DocumentVisit',
@@ -246,6 +248,7 @@ export const PROVIDER_PAGE_ACCESS = {
   NP: [
     'Dashboard',
     'Patients',
+    'Tasks',
     'SmartNoteAssistant',
     'MedicalScribe',
     'DocumentVisit',
@@ -266,6 +269,7 @@ export const PROVIDER_PAGE_ACCESS = {
   Physician: [
     'Dashboard',
     'Patients',
+    'Tasks',
     'SmartNoteAssistant',
     'MedicalScribe',
     'DocumentVisit',
@@ -281,6 +285,7 @@ export const PROVIDER_PAGE_ACCESS = {
   Therapist: [
     'Dashboard',
     'Patients',
+    'Tasks',
     'SmartNoteAssistant',
     'MedicalScribe',
     'DocumentVisit',
@@ -297,6 +302,7 @@ export const PROVIDER_PAGE_ACCESS = {
   MSW: [
     'Dashboard',
     'Patients',
+    'Tasks',
     'SmartNoteAssistant',
     'DocumentVisit',
     'MobileWorkflow',
@@ -311,6 +317,7 @@ export const PROVIDER_PAGE_ACCESS = {
   Chiropractor: [
     'Dashboard',
     'Patients',
+    'Tasks',
     'SmartNoteAssistant',
     'MedicalScribe',
     'DocumentVisit',

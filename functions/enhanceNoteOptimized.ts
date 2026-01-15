@@ -150,7 +150,27 @@ Return valid JSON with:
 - documentation_gaps (array of {element, reason, priority, regulatory_reference})
 - medicare_violations (array of {violation, severity, cop_reference, remediation})
 - time_saved_minutes (number)
-- regulatory_warnings (array of strings for potential audit flags)`;
+- regulatory_warnings (array of strings for potential audit flags)
+- suggested_tasks (array of {title, description, priority (critical/high/medium/low), type (call/notify/schedule/order/coordinate/document/safety/followup/other), suggested_due_timeframe (today/24_hours/48_hours/this_week/next_visit), ai_reason})`;
+
+    const taskSystemPrompt = `
+CRITICAL: Based on the clinical note, identify follow-up actions needed. Consider:
+- Physician notifications required (critical changes, new symptoms)
+- Medication management (refills, reconciliation, new orders)
+- Care coordination (referrals, equipment, home health aide)
+- Safety concerns (fall risk interventions, environment modifications)
+- Patient/family education needs
+- Documentation requirements (orders, signatures, updates)
+- Compliance follow-ups (missed elements, required assessments)
+
+For EACH identified action, create a task with:
+- Clear, actionable title
+- Specific description with WHY it's needed
+- Appropriate priority based on clinical urgency
+- Realistic timeframe
+- Clinical reasoning (ai_reason)
+
+ONLY suggest tasks that are clinically necessary based on the note content.`;
 
     const systemPrompt = aiConfig.system_prompt || 
       `You are an expert clinical documentation specialist with deep knowledge of:
@@ -177,7 +197,7 @@ Always return valid JSON with all required fields.`;
       messages: [
         {
           role: "system",
-          content: systemPrompt
+          content: systemPrompt + '\n\n' + taskSystemPrompt
         },
         {
           role: "user",
@@ -261,6 +281,7 @@ Always return valid JSON with all required fields.`;
       documentation_gaps: result.documentation_gaps || [],
       medicare_violations: result.medicare_violations || [],
       regulatory_warnings: result.regulatory_warnings || [],
+      suggested_tasks: result.suggested_tasks || [],
       time_saved: result.time_saved_minutes || 15,
       compliance_threshold_met: result.enhanced_compliance_score >= 85
     });
