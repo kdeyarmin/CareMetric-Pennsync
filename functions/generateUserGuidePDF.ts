@@ -361,24 +361,48 @@ Deno.serve(async (req) => {
     doc.setFontSize(8);
     doc.text('www.caremetricai.com', margin + 5, yPosition);
 
+    // Add table of contents (optional) - Add feature section heading
+    doc.addPage();
+    yPosition = margin + 5;
+    
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(41, 98, 255);
+    doc.text('Features Overview', margin, yPosition);
+    
+    yPosition += 12;
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(0, 0, 0);
+    
+    for (let i = 0; i < FEATURES_GUIDE.length; i++) {
+      const feature = FEATURES_GUIDE[i];
+      doc.text(`${i + 1}. ${feature.title}`, margin + 5, yPosition);
+      yPosition += 7;
+    }
+
     // Add each feature section
     for (const feature of FEATURES_GUIDE) {
       // Check if we need a new page
-      if (yPosition > pageHeight - 40) {
+      if (yPosition > pageHeight - 50) {
         doc.addPage();
         yPosition = margin;
       }
 
-      // Feature title with background
+      // Add page break before each feature
+      doc.addPage();
+      yPosition = margin + 5;
+
+      // Feature title with professional styling
       doc.setFillColor(41, 98, 255);
-      doc.rect(margin - 2, yPosition - 6, contentWidth + 4, 8, 'F');
+      doc.rect(margin - 3, yPosition - 7, contentWidth + 6, 12, 'F');
       
-      doc.setFontSize(13);
+      doc.setFontSize(16);
       doc.setFont(undefined, 'bold');
       doc.setTextColor(255, 255, 255);
-      doc.text(feature.title, margin + 2, yPosition);
+      doc.text(feature.title, margin + 3, yPosition + 1);
       doc.setTextColor(0, 0, 0);
-      yPosition += 10;
+      yPosition += 18;
 
       // Description
       doc.setFontSize(10);
