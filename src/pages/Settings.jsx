@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useForm, Controller } from "react-hook-form";
+import { toast } from "sonner";
 import { User, Edit3, Save, X, Shield, AlertTriangle } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,17 +22,19 @@ import ProviderSpecializationManager from "../components/settings/ProviderSpecia
 export default function Settings() {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [formData, setFormData] = useState({
-    full_name: '',
-    credential_type: 'RN',
-    service_type: 'home_health',
-    preferred_language: 'en-US',
-    phone_number: '',
-    two_factor_enabled: false
+
+  const { register, handleSubmit, control, reset, watch, formState: { isSubmitting, isDirty } } = useForm({
+    defaultValues: {
+      full_name: '',
+      credential_type: 'RN',
+      service_type: 'home_health',
+      preferred_language: 'en-US',
+      phone_number: '',
+      two_factor_enabled: false
+    }
   });
 
   const navigate = useNavigate();
@@ -49,7 +53,7 @@ export default function Settings() {
 
   React.useEffect(() => {
     if (currentUser) {
-      setFormData({
+      reset({
         full_name: currentUser.full_name || '',
         credential_type: currentUser.credential_type || 'RN',
         service_type: currentUser.service_type || 'home_health',
@@ -58,30 +62,22 @@ export default function Settings() {
         two_factor_enabled: currentUser.two_factor_enabled || false
       });
     }
-  }, [currentUser]);
+  }, [currentUser, reset]);
 
-  const handleSaveProfile = async () => {
-    setIsSaving(true);
+  const onSaveProfile = async (data) => {
     try {
-      await base44.auth.updateMe({
-        full_name: formData.full_name,
-        credential_type: formData.credential_type,
-        service_type: formData.service_type,
-        preferred_language: formData.preferred_language,
-        phone_number: formData.phone_number,
-        two_factor_enabled: formData.two_factor_enabled
-      });
+      await base44.auth.updateMe(data);
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setIsEditing(false);
+      toast.success("Profile updated successfully!");
     } catch (error) {
-      alert('Failed to update profile. Please try again.');
+      toast.error('Failed to update profile. Please try again.');
     }
-    setIsSaving(false);
   };
 
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'DELETE') {
-      alert('Please type DELETE to confirm');
+      toast.error('Please type DELETE to confirm');
       return;
     }
 
@@ -92,7 +88,7 @@ export default function Settings() {
       // Logout and redirect
       base44.auth.logout();
     } catch (error) {
-      alert('Failed to delete account. Please try again or contact support.');
+      toast.error('Failed to delete account. Please try again or contact support.');
       setIsDeleting(false);
     }
   };
@@ -130,24 +126,18 @@ export default function Settings() {
                   size="sm"
                   onClick={() => {
                     setIsEditing(false);
-                    setFormData({
-                      full_name: currentUser?.full_name || '',
-                      credential_type: currentUser?.credential_type || 'RN',
-                      preferred_language: currentUser?.preferred_language || 'en-US'
-                    });
+                    reset();
                   }}
-                  disabled={isSaving}>
-
-                    
+                  disabled={isSubmitting}>
+                    <X className="w-4 h-4 mr-2" />
+                    Cancel
                   </Button>
                   <Button
                   size="sm"
-                  onClick={handleSaveProfile}
-                  disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
-
-
-                    <Save className="w-4 h-4" />
-                    {isSaving ? 'Saving...' : 'Save'}
+                  onClick={handleSubmit(onSaveProfile)}
+                  disabled={isSubmitting || !isDirty} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    <Save className="w-4 h-4 mr-2" />
+                    {isSubmitting ? 'Saving...' : 'Save'}
                   </Button>
                 </div>
               }
@@ -160,17 +150,18 @@ export default function Settings() {
                   <Label htmlFor="full_name" className="text-sm sm:text-base">Full Name</Label>
                   <Input
                   id="full_name"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  {...register("full_name")}
                   placeholder="Enter your full name"
                   className="mt-1 h-11 sm:h-12 text-base" />
 
                 </div>
                 <div>
                    <Label htmlFor="credential_type">Provider Type</Label>
-                   <Select
-                  value={formData.credential_type}
-                  onValueChange={(value) => setFormData({ ...formData, credential_type: value })}>
+                   <Controller
+                    name="credential_type"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
 
                      <SelectTrigger className="mt-1">
                        <SelectValue />
@@ -188,9 +179,11 @@ export default function Settings() {
                  </div>
                 <div>
                    <Label htmlFor="service_type">Service Type / Work Setting</Label>
-                   <Select
-                  value={formData.service_type}
-                  onValueChange={(value) => setFormData({ ...formData, service_type: value })}>
+                   <Controller
+                    name="service_type"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
 
                      <SelectTrigger className="mt-1">
                        <SelectValue />
@@ -206,17 +199,21 @@ export default function Settings() {
                        <SelectItem value="behavioral_health">🧠 Behavioral Health / Mental Health</SelectItem>
                        <SelectItem value="school_based">🎓 School-Based Services</SelectItem>
                        <SelectItem value="other">📍 Other</SelectItem>
-                     </SelectContent>
-                   </Select>
+                       </SelectContent>
+                       </Select>
+                       )}
+                       />
                    <p className="text-xs text-gray-500 mt-1">
                      This determines which compliance standards and documentation guidelines apply
                    </p>
                  </div>
                 <div>
                   <Label htmlFor="preferred_language">Preferred Language</Label>
-                  <Select
-                  value={formData.preferred_language}
-                  onValueChange={(value) => setFormData({ ...formData, preferred_language: value })}>
+                  <Controller
+                    name="preferred_language"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
 
                     <SelectTrigger className="mt-1">
                       <SelectValue />
@@ -233,6 +230,8 @@ export default function Settings() {
                       <SelectItem value="ko-KR">🇰🇷 한국어</SelectItem>
                     </SelectContent>
                   </Select>
+                  )}
+                  />
                 </div>
                 <div>
                   <Label className="text-slate-600 dark:text-slate-400">Email (Cannot be changed)</Label>
@@ -249,7 +248,7 @@ export default function Settings() {
                       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
                       window.location.reload();
                     } catch (error) {
-                      alert('Failed to update role');
+                      toast.error('Failed to update role');
                     }
                   }}>
 
@@ -269,8 +268,7 @@ export default function Settings() {
                   <Input
                   id="phone_number"
                   type="tel"
-                  value={formData.phone_number}
-                  onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                  {...register("phone_number")}
                   placeholder="+1234567890"
                   className="mt-1" />
 
@@ -285,10 +283,17 @@ export default function Settings() {
                     'Require SMS code on login'}
                     </p>
                   </div>
-                  <Switch
-                  checked={formData.two_factor_enabled}
-                  onCheckedChange={(checked) => setFormData({ ...formData, two_factor_enabled: checked })}
-                  disabled={!formData.phone_number || currentUser?.data_retention_preference === 'save'} />
+                  <Controller
+                    name="two_factor_enabled"
+                    control={control}
+                    render={({ field }) => (
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={!watch("phone_number") || currentUser?.data_retention_preference === 'save'}
+                      />
+                    )}
+                  />
 
                 </div>
               </> :
