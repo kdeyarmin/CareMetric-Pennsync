@@ -281,7 +281,7 @@ export default function CarePlanManagement() {
       allowTrial={true}
     >
     <div className="w-full overflow-x-hidden">
-      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 overflow-hidden">
+      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 overflow-x-hidden">
         <Button
           variant="outline"
           onClick={() => navigate(createPageUrl("Dashboard"))}

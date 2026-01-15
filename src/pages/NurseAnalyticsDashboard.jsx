@@ -182,7 +182,7 @@ export default function NurseAnalyticsDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">Notes Enhanced</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.noteConversions}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.noteConversions}</p>
                   <p className="text-xs text-slate-600 dark:text-slate-400">Last {dateRange} days</p>
                 </div>
                 <BarChart3 className="w-10 h-10 text-slate-600 dark:text-slate-400" />
@@ -208,7 +208,7 @@ export default function NurseAnalyticsDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">Avg Compliance</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{performanceData.avgCompliance}%</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{performanceData.avgCompliance}%</p>
                   <p className="text-xs text-slate-600 dark:text-slate-400">Recent average</p>
                 </div>
                 <Target className="w-10 h-10 text-slate-600 dark:text-slate-400" />
@@ -221,7 +221,7 @@ export default function NurseAnalyticsDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">AI Adoption</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{featureUsage.adoptionRate}%</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{featureUsage.adoptionRate}%</p>
                   <p className="text-xs text-slate-600 dark:text-slate-400">Of your workflow</p>
                 </div>
                 <Sparkles className="w-10 h-10 text-slate-600 dark:text-slate-400" />
@@ -233,7 +233,8 @@ export default function NurseAnalyticsDashboard() {
 
       {/* Main Analytics Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
+        <div className="w-full overflow-x-auto pb-2">
+          <TabsList className="w-max min-w-full grid-cols-4">
           <TabsTrigger value="performance" className="gap-2">
             <TrendingUp className="w-4 h-4" />
             <span className="hidden sm:inline">Performance</span>
@@ -250,7 +251,8 @@ export default function NurseAnalyticsDashboard() {
             <Brain className="w-4 h-4" />
             <span className="hidden sm:inline">Coaching</span>
           </TabsTrigger>
-        </TabsList>
+                  </TabsList>
+        </div>
 
         {/* Performance Trends Tab */}
         <TabsContent value="performance">
