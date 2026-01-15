@@ -179,11 +179,8 @@ export default function Settings() {
                        <SelectItem value="RN">RN (Registered Nurse)</SelectItem>
                        <SelectItem value="LPN">LPN (Licensed Practical Nurse)</SelectItem>
                        <SelectItem value="NP">NP (Nurse Practitioner)</SelectItem>
-                       <SelectItem value="MD">MD (Medical Doctor)</SelectItem>
-                       <SelectItem value="DO">DO (Doctor of Osteopathic Medicine)</SelectItem>
-                       <SelectItem value="PT">PT (Physical Therapist)</SelectItem>
-                       <SelectItem value="OT">OT (Occupational Therapist)</SelectItem>
-                       <SelectItem value="ST">ST (Speech Therapist)</SelectItem>
+                       <SelectItem value="PHYSICIAN">Physician (MD/DO)</SelectItem>
+                       <SelectItem value="THERAPIST">Therapist (PT/OT/ST)</SelectItem>
                        <SelectItem value="MSW">MSW (Medical Social Worker)</SelectItem>
                        <SelectItem value="Chiropractor">Chiropractor</SelectItem>
                      </SelectContent>
