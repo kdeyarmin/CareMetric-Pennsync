@@ -84,6 +84,7 @@ import PatientEventsTimeline from "../components/patient/PatientEventsTimeline";
 import VitalSignsTrendsChart from "../components/patient/VitalSignsTrendsChart";
 import PatientRiskAnalysisPanel from "../components/risk/PatientRiskAnalysisPanel";
 import RiskAlertConfiguration from "../components/risk/RiskAlertConfiguration";
+import ProactiveRiskInterventions from "../components/patient/ProactiveRiskInterventions";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -403,6 +404,11 @@ export default function PatientDetails() {
         {/* AI Risk Analysis Panel */}
         <div className="mb-3 sm:mb-4 max-w-full overflow-hidden min-w-0">
           <PatientRiskAnalysisPanel patientId={patientId} />
+        </div>
+
+        {/* Proactive Risk Interventions */}
+        <div className="mb-3 sm:mb-4 max-w-full overflow-hidden min-w-0">
+          <ProactiveRiskInterventions patientId={patientId} patientName={`${patient.first_name} ${patient.last_name}`} />
         </div>
 
         {/* Risk Alert Configuration */}

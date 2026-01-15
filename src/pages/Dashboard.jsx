@@ -37,6 +37,8 @@ import QuickAccessCards from "../components/dashboard/QuickAccessCards";
 import DashboardSection from "../components/dashboard/DashboardSection";
 import QuickStatsSummary from "../components/dashboard/QuickStatsSummary";
 import WorkflowShortcuts from "../components/dashboard/WorkflowShortcuts";
+import SkillGapWidget from "../components/dashboard/SkillGapWidget";
+import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -282,6 +284,12 @@ export default function Dashboard() {
 
       {/* Workflow Shortcuts */}
       <WorkflowShortcuts />
+
+      {/* Skill Gap & Risk Widgets */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
+        <SkillGapWidget userEmail={currentUser?.email} />
+        <PatientRiskWidget />
+      </div>
 
       {/* My Tasks Widget */}
       {canAccessWidget('tasks') && (
