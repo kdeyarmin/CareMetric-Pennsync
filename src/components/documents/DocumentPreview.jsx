@@ -49,6 +49,14 @@ export default function DocumentPreview({ document, onClose, onSave, onSend, sav
 
   return (
     <div className="space-y-6">
+      <Tabs defaultValue="preview" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="preview">Document Preview</TabsTrigger>
+          <TabsTrigger value="review" className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            AI Review
+          </TabsTrigger>
+        </TabsList>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
           {document.document_name}
