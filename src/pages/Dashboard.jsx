@@ -285,12 +285,7 @@ export default function Dashboard() {
 
 
 
-      {/* Dashboard Customizer */}
-      {currentUser && (
-        <div className="flex justify-end mb-4">
-          <DashboardCustomizer user={currentUser} />
-        </div>
-      )}
+
 
 
 
