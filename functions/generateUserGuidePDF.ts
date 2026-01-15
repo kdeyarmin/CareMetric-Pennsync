@@ -201,7 +201,8 @@ const FEATURES_GUIDE = [
       "Document detailed completion notes for accountability and continuity",
       "Coordinate with interdisciplinary team members on shared or dependent tasks",
       "Delegate tasks appropriately within scope of practice and role boundaries"
-    ]
+    ],
+    importance: "Prevents missed follow-ups and care coordination lapses, reduces administrative task burden, ensures critical clinical actions are completed on time, and improves team communication and accountability"
   },
   {
     title: "HIPAA Compliance & Security",
