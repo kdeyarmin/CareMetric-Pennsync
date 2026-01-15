@@ -39,8 +39,8 @@ export default function PersonalizedLearningPathPlanner({ providerEmail, provide
   if (!learningPath) {
     return (
       <Card>
-        <CardContent className="p-6 space-y-4">
-          <Alert className="bg-blue-50 border-blue-200">
+        <CardContent className="bg-slate-100 p-6 space-y-4">
+          <Alert className="bg-slate-200 text-foreground px-4 py-3 text-sm rounded-lg relative w-full border [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7 border-blue-200">
             <Lightbulb className="w-4 h-4 text-blue-600" />
             <AlertDescription className="text-blue-900">
               Get a personalized learning path based on your role, skill gaps, and usage patterns.
@@ -48,14 +48,14 @@ export default function PersonalizedLearningPathPlanner({ providerEmail, provide
           </Alert>
           <Button
             onClick={handleGeneratePath}
-            disabled={isGenerating}
-            className="w-full bg-blue-600 hover:bg-blue-700"
-          >
+            disabled={isGenerating} className="bg-slate-200 text-slate-900 px-4 py-2 text-sm font-medium rounded-md inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm dark:bg-slate-600 dark:hover:bg-slate-700 h-9 w-full hover:bg-blue-700">
+
+
             {isGenerating ? 'Analyzing Your Profile...' : 'Generate My Learning Path'}
           </Button>
         </CardContent>
-      </Card>
-    );
+      </Card>);
+
   }
 
   return (
@@ -96,38 +96,38 @@ export default function PersonalizedLearningPathPlanner({ providerEmail, provide
             </div>
             <div className="text-center p-3 bg-gray-50 rounded-lg">
               <TrendingUp className="w-5 h-5 mx-auto text-purple-600 mb-1" />
-              <p className="text-sm font-medium">{learningPath.modules?.filter(m => m.status === 'completed').length || 0}</p>
+              <p className="text-sm font-medium">{learningPath.modules?.filter((m) => m.status === 'completed').length || 0}</p>
               <p className="text-xs text-gray-600">Completed</p>
             </div>
           </div>
 
           {/* Skill Gaps */}
-          {learningPath.skill_gaps?.length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          {learningPath.skill_gaps?.length > 0 &&
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <h4 className="font-medium text-yellow-900 mb-2">Identified Skill Gaps</h4>
               <div className="flex flex-wrap gap-2">
-                {learningPath.skill_gaps.map((gap, idx) => (
-                  <Badge key={idx} className="bg-yellow-100 text-yellow-800">
+                {learningPath.skill_gaps.map((gap, idx) =>
+              <Badge key={idx} className="bg-yellow-100 text-yellow-800">
                     {gap}
                   </Badge>
-                ))}
+              )}
               </div>
             </div>
-          )}
+          }
 
           {/* Modules List */}
-          {learningPath.modules && learningPath.modules.length > 0 && (
-            <div className="space-y-2">
+          {learningPath.modules && learningPath.modules.length > 0 &&
+          <div className="space-y-2">
               <h4 className="font-medium">Your Learning Path</h4>
-              {learningPath.modules.map((module, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  {module.status === 'completed' ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center text-xs font-bold text-gray-300 flex-shrink-0">
+              {learningPath.modules.map((module, idx) =>
+            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  {module.status === 'completed' ?
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" /> :
+
+              <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center text-xs font-bold text-gray-300 flex-shrink-0">
                       {idx + 1}
                     </div>
-                  )}
+              }
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">Module {idx + 1}</p>
                     {module.score && <p className="text-xs text-gray-600">Score: {module.score}%</p>}
@@ -136,18 +136,18 @@ export default function PersonalizedLearningPathPlanner({ providerEmail, provide
                     {module.status}
                   </Badge>
                 </div>
-              ))}
+            )}
             </div>
-          )}
+          }
 
-          {learningPath.next_recommended_module && (
-            <Button className="w-full bg-blue-600 hover:bg-blue-700">
+          {learningPath.next_recommended_module &&
+          <Button className="w-full bg-blue-600 hover:bg-blue-700">
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Start Next Module
             </Button>
-          )}
+          }
         </CardContent>
       </Card>
-    </div>
-  );
+    </div>);
+
 }
