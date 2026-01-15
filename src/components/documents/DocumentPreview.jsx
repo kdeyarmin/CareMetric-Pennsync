@@ -160,6 +160,7 @@ export default function DocumentPreview({ document, onClose, onSave, onSend, sav
           patientName={patient?.first_name ? `${patient.first_name} ${patient.last_name}` : 'Unknown'}
         />
       </TabsContent>
+      </Tabs>
     </div>
   );
 }
