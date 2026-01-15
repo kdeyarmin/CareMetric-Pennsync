@@ -13,11 +13,46 @@ export default function DocumentDataForm({ template, patients, onGenerate, onBac
   const [customText, setCustomText] = useState('');
   const [documentName, setDocumentName] = useState('');
   const [formData, setFormData] = useState({});
+  const [autoFilledFields, setAutoFilledFields] = useState(new Set());
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
     setDocumentName(`${template.template_name} - ${new Date().toLocaleDateString()}`);
   }, [template]);
+
+  // Populate with pre-filled fields if provided
+  useEffect(() => {
+    if (patients.length > 0 && selectedPatient) {
+      const patient = patients.find(p => p.id === selectedPatient);
+      if (patient) {
+        const autoFilled = new Set();
+        const newData = { ...formData };
+
+        // Auto-fill patient name
+        if (patient.first_name && patient.last_name) {
+          newData.patient_name = `${patient.first_name} ${patient.last_name}`;
+          autoFilled.add('patient_name');
+        }
+        if (patient.primary_diagnosis) {
+          newData.diagnosis = patient.primary_diagnosis;
+          autoFilled.add('diagnosis');
+        }
+        if (patient.allergies) {
+          newData.allergies = patient.allergies;
+          autoFilled.add('allergies');
+        }
+        if (patient.current_medications?.length) {
+          newData.current_medications = patient.current_medications
+            .map(m => `${m.name} ${m.dosage || ''}`.trim())
+            .join(', ');
+          autoFilled.add('current_medications');
+        }
+
+        setFormData(newData);
+        setAutoFilledFields(autoFilled);
+      }
+    }
+  }, [selectedPatient, patients]);
 
   const handleFieldChange = (fieldName, value) => {
     setFormData(prev => ({ ...prev, [fieldName]: value }));
@@ -123,30 +158,40 @@ export default function DocumentDataForm({ template, patients, onGenerate, onBac
             <CardTitle>Required Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {template.required_fields.map((field) => (
-              <div key={field}>
-                <Label htmlFor={field}>{field} *</Label>
-                {field.toLowerCase().includes('description') || field.toLowerCase().includes('notes') ? (
-                  <Textarea
-                    id={field}
-                    value={formData[field] || ''}
-                    onChange={(e) => handleFieldChange(field, e.target.value)}
-                    placeholder={`Enter ${field.toLowerCase()}`}
-                    rows={3}
-                    className={errors[field] ? 'border-red-500' : ''}
-                  />
-                ) : (
-                  <Input
-                    id={field}
-                    value={formData[field] || ''}
-                    onChange={(e) => handleFieldChange(field, e.target.value)}
-                    placeholder={`Enter ${field.toLowerCase()}`}
-                    className={errors[field] ? 'border-red-500' : ''}
-                  />
-                )}
-                {errors[field] && <p className="text-xs text-red-600 mt-1">{errors[field]}</p>}
-              </div>
-            ))}
+            {template.required_fields.map((field) => {
+              const isAutoFilled = autoFilledFields.has(field);
+              return (
+                <div key={field}>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor={field}>{field} *</Label>
+                    {isAutoFilled && (
+                      <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-2 py-0.5 rounded">
+                        Auto-filled
+                      </span>
+                    )}
+                  </div>
+                  {field.toLowerCase().includes('description') || field.toLowerCase().includes('notes') ? (
+                    <Textarea
+                      id={field}
+                      value={formData[field] || ''}
+                      onChange={(e) => handleFieldChange(field, e.target.value)}
+                      placeholder={`Enter ${field.toLowerCase()}`}
+                      rows={3}
+                      className={`${errors[field] ? 'border-red-500' : ''} ${isAutoFilled ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
+                    />
+                  ) : (
+                    <Input
+                      id={field}
+                      value={formData[field] || ''}
+                      onChange={(e) => handleFieldChange(field, e.target.value)}
+                      placeholder={`Enter ${field.toLowerCase()}`}
+                      className={`${errors[field] ? 'border-red-500' : ''} ${isAutoFilled ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
+                    />
+                  )}
+                  {errors[field] && <p className="text-xs text-red-600 mt-1">{errors[field]}</p>}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -157,27 +202,39 @@ export default function DocumentDataForm({ template, patients, onGenerate, onBac
             <CardTitle>Optional Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {template.optional_fields.map((field) => (
-              <div key={field}>
-                <Label htmlFor={field}>{field}</Label>
-                {field.toLowerCase().includes('description') || field.toLowerCase().includes('notes') ? (
-                  <Textarea
-                    id={field}
-                    value={formData[field] || ''}
-                    onChange={(e) => handleFieldChange(field, e.target.value)}
-                    placeholder={`Enter ${field.toLowerCase()}`}
-                    rows={3}
-                  />
-                ) : (
-                  <Input
-                    id={field}
-                    value={formData[field] || ''}
-                    onChange={(e) => handleFieldChange(field, e.target.value)}
-                    placeholder={`Enter ${field.toLowerCase()}`}
-                  />
-                )}
-              </div>
-            ))}
+            {template.optional_fields.map((field) => {
+              const isAutoFilled = autoFilledFields.has(field);
+              return (
+                <div key={field}>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor={field}>{field}</Label>
+                    {isAutoFilled && (
+                      <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-2 py-0.5 rounded">
+                        Auto-filled
+                      </span>
+                    )}
+                  </div>
+                  {field.toLowerCase().includes('description') || field.toLowerCase().includes('notes') ? (
+                    <Textarea
+                      id={field}
+                      value={formData[field] || ''}
+                      onChange={(e) => handleFieldChange(field, e.target.value)}
+                      placeholder={`Enter ${field.toLowerCase()}`}
+                      rows={3}
+                      className={isAutoFilled ? 'bg-blue-50 dark:bg-slate-800' : ''}
+                    />
+                  ) : (
+                    <Input
+                      id={field}
+                      value={formData[field] || ''}
+                      onChange={(e) => handleFieldChange(field, e.target.value)}
+                      placeholder={`Enter ${field.toLowerCase()}`}
+                      className={isAutoFilled ? 'bg-blue-50 dark:bg-slate-800' : ''}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}

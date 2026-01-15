@@ -3,8 +3,10 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileText, History } from 'lucide-react';
-import DocumentTemplateSelector from '../components/documents/DocumentTemplateSelector';
+import TemplateSelectionFlow from '../components/documents/TemplateSelectionFlow';
 import DocumentDataForm from '../components/documents/DocumentDataForm';
 import DocumentPreview from '../components/documents/DocumentPreview';
 import EmptyState from '../components/ui/EmptyState';
@@ -13,8 +15,10 @@ import PullToRefresh from '../components/mobile/PullToRefresh';
 export default function DocumentGenerator() {
   const [step, setStep] = useState('select'); // select, form, preview
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [selectedPatientForDoc, setSelectedPatientForDoc] = useState(null);
   const [generatedDocument, setGeneratedDocument] = useState(null);
   const [selectedHistoryDoc, setSelectedHistoryDoc] = useState(null);
+  const [preFilledData, setPreFilledData] = useState({});
   const queryClient = useQueryClient();
 
   const { data: currentUser } = useQuery({
@@ -104,22 +108,76 @@ export default function DocumentGenerator() {
 
           <TabsContent value="templates" className="space-y-6 mt-6">
             {step === 'select' && (
-              <DocumentTemplateSelector
-                templates={templates}
-                onSelect={(template) => {
-                  setSelectedTemplate(template);
-                  setStep('form');
-                }}
-                loading={templatesLoading}
-              />
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Create Document</h2>
+                  <p className="text-slate-600 dark:text-slate-400 mb-4">
+                    Select a patient to see AI-recommended templates tailored to their clinical profile.
+                  </p>
+                </div>
+
+                {!selectedPatientForDoc ? (
+                  <Card>
+                    <CardContent className="p-6">
+                      <Label className="text-base font-semibold mb-3 block">Select Patient</Label>
+                      <Select value={selectedPatientForDoc || ''} onValueChange={setSelectedPatientForDoc}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a patient..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {patients.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.first_name} {p.last_name} {p.date_of_birth && `(DOB: ${p.date_of_birth})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedPatientForDoc(null)}
+                      className="mb-4"
+                    >
+                      Change Patient
+                    </Button>
+                    <TemplateSelectionFlow
+                      patient={patients.find(p => p.id === selectedPatientForDoc)}
+                      templates={templates}
+                      onSelect={(template, prefilled) => {
+                        setSelectedTemplate(template);
+                        setPreFilledData(prefilled);
+                        setStep('form');
+                      }}
+                      loading={templatesLoading}
+                    />
+                  </>
+                )}
+              </div>
             )}
 
             {step === 'form' && selectedTemplate && (
               <DocumentDataForm
                 template={selectedTemplate}
                 patients={patients}
-                onGenerate={(data) => generateDocMutation.mutate(data)}
-                onBack={() => setStep('select')}
+                onGenerate={(data) => {
+                  // Merge pre-filled data with form data
+                  const mergedData = {
+                    ...data,
+                    generation_data: {
+                      ...preFilledData,
+                      ...data.generation_data
+                    }
+                  };
+                  generateDocMutation.mutate(mergedData);
+                }}
+                onBack={() => {
+                  setStep('select');
+                  setSelectedPatientForDoc(null);
+                  setPreFilledData({});
+                }}
                 generating={generateDocMutation.isPending}
               />
             )}
