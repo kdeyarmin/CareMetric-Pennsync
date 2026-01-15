@@ -161,6 +161,7 @@ export default function Layout({ children, currentPageName }) {
   const userNavItems = allNavItems.filter((item) =>
   item.page === "Dashboard" ||
   item.page === "Settings" ||
+  item.page === "SubscriptionPlans" ||
   accessiblePages.includes(item.page)
   );
 
