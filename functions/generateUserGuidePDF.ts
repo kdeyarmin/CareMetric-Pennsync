@@ -460,7 +460,7 @@ Deno.serve(async (req) => {
             doc.addPage();
             yPosition = margin;
           }
-          const checkLines = doc.splitTextToSize('• ' + check, contentWidth - 8);
+          const checkLines = doc.splitTextToSize('\u2022 ' + check, contentWidth - 8);
           doc.text(checkLines, margin + 5, yPosition);
           yPosition += checkLines.length * 3.5 + 1;
         }
