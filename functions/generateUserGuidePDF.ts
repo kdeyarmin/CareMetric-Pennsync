@@ -182,7 +182,8 @@ const FEATURES_GUIDE = [
       "Conduct systematic review of compliance training at designated intervals",
       "Discuss learning outcomes and application strategies with direct supervisor",
       "Integrate new knowledge and techniques into daily clinical practice"
-    ]
+    ],
+    importance: "Ensures regulatory compliance with mandatory training requirements, reduces staff turnover through professional development, improves clinical documentation quality through targeted education, and demonstrates competency for accreditation purposes"
   },
   {
     title: "Task Management",
