@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Loader2,
   Plus,
+  ShieldAlert,
 } from "lucide-react";
 import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
@@ -36,6 +37,8 @@ export default function SmartNoteAssistant() {
   const [complianceResults, setComplianceResults] = useState(null);
   const [extractedData, setExtractedData] = useState(null);
   const [showResults, setShowResults] = useState(false);
+  const [medicareViolations, setMedicareViolations] = useState([]);
+  const [regulatoryWarnings, setRegulatoryWarnings] = useState([]);
   const [newPatientData, setNewPatientData] = useState({
     first_name: "",
     last_name: "",
@@ -109,6 +112,8 @@ export default function SmartNoteAssistant() {
     setEnhancedNote(null);
     setComplianceResults(null);
     setShowResults(false);
+    setMedicareViolations([]);
+    setRegulatoryWarnings([]);
     
     try {
       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
@@ -174,9 +179,15 @@ Return your analysis in the following JSON format:
       setExtractedData(result.extracted_data);
       setEnhancedNote(result.enhanced_note);
       setComplianceResults(result.compliance_check);
+      setMedicareViolations(result.compliance_check?.medicare_violations || []);
+      setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
       setShowResults(true);
       
-      toast.success("Note enhanced and compliance checked");
+      if (result.compliance_check?.compliance_score >= 85) {
+        toast.success("Note enhanced - Medicare compliant!");
+      } else {
+        toast.warning("Note enhanced - Review compliance warnings");
+      }
     } catch (error) {
       toast.error("Failed to enhance note");
       console.error(error);
@@ -467,32 +478,117 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 </CardContent>
               </Card>
 
+              {/* Medicare Compliance Threshold */}
+              <Card className={complianceResults?.compliance_score >= 85 ? 'border-green-300 bg-green-50 dark:bg-green-950' : 'border-red-300 bg-red-50 dark:bg-red-950'}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {complianceResults?.compliance_score >= 85 ? (
+                        <CheckCircle2 className="w-6 h-6 text-green-600" />
+                      ) : (
+                        <ShieldAlert className="w-6 h-6 text-red-600" />
+                      )}
+                      <div>
+                        <p className="font-semibold text-sm">Medicare Compliance</p>
+                        <p className="text-xs text-gray-600">
+                          {complianceResults?.compliance_score >= 85 
+                            ? '✓ Meets 85% threshold' 
+                            : '✗ Below required 85% threshold'}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`text-3xl font-bold ${
+                      complianceResults?.compliance_score >= 85 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {complianceResults?.compliance_score || 0}%
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Medicare Violations */}
+              {medicareViolations && medicareViolations.length > 0 && (
+                <Card className="border-red-300 bg-red-50 dark:bg-red-950">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-red-800 dark:text-red-400">
+                      <ShieldAlert className="w-5 h-5" />
+                      Medicare Compliance Violations ({medicareViolations.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {medicareViolations.map((violation, idx) => (
+                      <div key={idx} className="bg-white dark:bg-gray-900 p-3 rounded-lg border-l-4 border-red-600">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <p className="font-semibold text-sm text-red-800 dark:text-red-400">{violation.violation}</p>
+                          <Badge className={
+                            violation.severity === 'critical' ? 'bg-red-700' :
+                            violation.severity === 'high' ? 'bg-orange-600' :
+                            'bg-yellow-600'
+                          }>
+                            {violation.severity}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                          <strong>42 CFR Reference:</strong> {violation.cop_reference}
+                        </p>
+                        <div className="bg-green-50 dark:bg-green-900 p-2 rounded">
+                          <p className="text-xs font-medium text-green-800 dark:text-green-300">
+                            <strong>How to Fix:</strong> {violation.remediation}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Regulatory Warnings */}
+              {regulatoryWarnings && regulatoryWarnings.length > 0 && (
+                <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-orange-800 dark:text-orange-400">
+                      <AlertTriangle className="w-5 h-5" />
+                      Regulatory Warnings ({regulatoryWarnings.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {regulatoryWarnings.map((warning, idx) => (
+                        <div key={idx} className="p-2 bg-white dark:bg-gray-900 rounded border-l-2 border-orange-500">
+                          <p className="text-sm text-orange-800 dark:text-orange-300">{warning}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Compliance Results */}
               {complianceResults && (
                 <Card className={
-                  complianceResults.status === 'passed' ? 'border-green-300 bg-green-50' :
-                  complianceResults.status === 'critical' ? 'border-red-300 bg-red-50' :
-                  'border-yellow-300 bg-yellow-50'
+                  complianceResults.status === 'passed' ? 'border-green-300 bg-green-50 dark:bg-green-950' :
+                  complianceResults.status === 'critical' ? 'border-red-300 bg-red-50 dark:bg-red-950' :
+                  'border-yellow-300 bg-yellow-50 dark:bg-yellow-950'
                 }>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
-                      <span>Compliance Analysis</span>
-                      <span className={`text-3xl font-bold ${
-                        complianceResults.compliance_score >= 90 ? 'text-green-600' :
-                        complianceResults.compliance_score >= 70 ? 'text-yellow-600' :
-                        'text-red-600'
-                      }`}>
-                        {complianceResults.compliance_score}%
-                      </span>
+                      <span>Documentation Analysis</span>
+                      <Badge className={
+                        complianceResults.compliance_score >= 90 ? 'bg-green-600' :
+                        complianceResults.compliance_score >= 70 ? 'bg-yellow-600' :
+                        'bg-red-600'
+                      }>
+                        {complianceResults.status.toUpperCase()}
+                      </Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {complianceResults.compliant_elements?.length > 0 && (
                       <div>
-                        <h5 className="font-semibold text-green-800 mb-2">✓ Compliant Elements</h5>
+                        <h5 className="font-semibold text-green-800 dark:text-green-400 mb-2">✓ Compliant Elements</h5>
                         <ul className="space-y-1">
                           {complianceResults.compliant_elements.map((element, idx) => (
-                            <li key={idx} className="text-sm text-green-700">• {element}</li>
+                            <li key={idx} className="text-sm text-green-700 dark:text-green-300">• {element}</li>
                           ))}
                         </ul>
                       </div>
@@ -500,10 +596,10 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
                     {complianceResults.issues?.length > 0 && (
                       <div>
-                        <h5 className="font-semibold text-red-800 mb-2">⚠ Issues Found</h5>
+                        <h5 className="font-semibold text-red-800 dark:text-red-400 mb-2">⚠ Issues Found</h5>
                         <div className="space-y-3">
                           {complianceResults.issues.map((issue, idx) => (
-                            <div key={idx} className="bg-white p-3 rounded border border-red-200">
+                            <div key={idx} className="bg-white dark:bg-gray-900 p-3 rounded border border-red-200">
                               <div className="flex items-start gap-2 mb-1">
                                 <Badge className={
                                   issue.severity === 'critical' ? 'bg-red-600' :
@@ -514,8 +610,8 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                                 </Badge>
                                 <p className="font-medium text-sm">{issue.element}</p>
                               </div>
-                              <p className="text-sm text-red-700 mb-2">{issue.problem}</p>
-                              <p className="text-sm text-green-700 bg-green-50 p-2 rounded">
+                              <p className="text-sm text-red-700 dark:text-red-300 mb-2">{issue.problem}</p>
+                              <p className="text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900 p-2 rounded">
                                 💡 {issue.suggestion}
                               </p>
                             </div>
@@ -543,6 +639,8 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   setShowResults(false);
                   setEnhancedNote(null);
                   setComplianceResults(null);
+                  setMedicareViolations([]);
+                  setRegulatoryWarnings([]);
                   setRoughNotes("");
                 }}
                 variant="outline"
