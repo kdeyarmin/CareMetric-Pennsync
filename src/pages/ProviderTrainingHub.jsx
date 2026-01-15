@@ -18,34 +18,7 @@ import PersonalizedLearningPathPlanner from "../components/training/Personalized
 import BadgeDisplay from "../components/training/BadgeDisplay";
 import TrainingProgressDashboard from "../components/training/TrainingProgressDashboard";
 
-const ALL_MODULES = {
-  RN: [
-  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-  { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
-  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
-  { id: "oasis-compliance-pro", title: "OASIS Compliance Pro", description: "Ensure perfect Medicare compliance with AI assistance", category: "Compliance", duration: 30, difficulty: "Advanced" }],
-
-  LPN: [
-  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-  { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
-  { id: "documentation-best-practices", title: "Documentation Best Practices", description: "Essential documentation skills for LPN providers", category: "Documentation", duration: 20, difficulty: "Beginner" }],
-
-  PT: [
-  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
-  { id: "telehealth-guidance", title: "Telehealth Best Practices", description: "Conduct effective virtual therapy sessions", category: "Telehealth", duration: 20, difficulty: "Beginner" }],
-
-  OT: [
-  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" },
-  { id: "telehealth-guidance", title: "Telehealth Best Practices", description: "Conduct effective virtual therapy sessions", category: "Telehealth", duration: 20, difficulty: "Beginner" }],
-
-  MD: [
-  { id: "smart-notes-101", title: "Smart Notes 101", description: "Learn to leverage AI for faster, more compliant documentation", category: "Smart Notes", duration: 15, difficulty: "Beginner" },
-  { id: "ai-scribe-mastery", title: "AI Scribe Mastery", description: "Master voice dictation and AI-powered note generation", category: "AI Features", duration: 20, difficulty: "Intermediate" },
-  { id: "care-plan-optimization", title: "Care Plan Optimization", description: "Use AI to create better, more effective care plans", category: "Care Planning", duration: 25, difficulty: "Intermediate" }]
-
-};
+ 
 
 export default function ProviderTrainingHub() {
   
@@ -86,6 +59,12 @@ export default function ProviderTrainingHub() {
       provider_email: currentUser?.email
     }),
     enabled: !!currentUser?.email,
+    initialData: []
+  });
+
+  const { data: trainingModules = [] } = useQuery({
+    queryKey: ['trainingModules'],
+    queryFn: () => base44.entities.TrainingModule.list(),
     initialData: []
   });
 
@@ -159,7 +138,7 @@ export default function ProviderTrainingHub() {
         {/* Modules Tab */}
         <TabsContent value="modules" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(currentUser && ALL_MODULES[currentUser.provider_type] || ALL_MODULES.RN).map((module) => {
+                      {trainingModules.map((module) => {
               const isCompleted = completedModuleIds.includes(module.id);
 
               return (

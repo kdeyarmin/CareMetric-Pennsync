@@ -43,6 +43,16 @@ import CarePlanTemplateSelector from "../components/carePlan/CarePlanTemplateSel
 import ProgressTracker from "../components/carePlan/ProgressTracker";
 import ReviewReminders from "../components/carePlan/ReviewReminders";
 import CollaborationPanel from "../components/carePlan/CollaborationPanel";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function CarePlanManagement() {
   const navigate = useNavigate();
@@ -53,6 +63,8 @@ export default function CarePlanManagement() {
   const [showAITools, setShowAITools] = useState(false);
   const [viewMode, setViewMode] = useState("list"); // "list" or "timeline"
   const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [planToDelete, setPlanToDelete] = useState(null);
   const [newPatientData, setNewPatientData] = useState({
     first_name: "",
     last_name: "",
@@ -168,14 +180,21 @@ export default function CarePlanManagement() {
   };
 
   const handleDelete = (planId) => {
-    if (window.confirm('Are you sure you want to delete this care plan?')) {
-      deleteCarePlanMutation.mutate(planId);
+    setPlanToDelete(planId);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if(planToDelete) {
+      deleteCarePlanMutation.mutate(planToDelete);
     }
+    setPlanToDelete(null);
+    setDeleteDialogOpen(false);
   };
 
   const createNewPatient = async () => {
     if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
-      alert("First and last name are required");
+      toast.error("First and last name are required");
       return;
     }
 
@@ -196,10 +215,10 @@ export default function CarePlanManagement() {
         date_of_birth: "",
         medical_record_number: "",
       });
-      alert("Patient created successfully");
+      toast.success("Patient created successfully");
       setShowAITools(true);
     } catch (error) {
-      alert("Failed to create patient");
+      toast.error("Failed to create patient");
       console.error(error);
     } finally {
       setCreatingPatient(false);
@@ -252,9 +271,9 @@ export default function CarePlanManagement() {
         page: 'CarePlanManagement'
       });
       
-      alert('Care plan created successfully with education materials!');
+      toast.success('Care plan created successfully with education materials!');
     } catch (error) {
-      alert('Failed to create care plan. Please try again.');
+      toast.error('Failed to create care plan. Please try again.');
     }
   };
 
@@ -491,7 +510,7 @@ export default function CarePlanManagement() {
                   page: 'CarePlanManagement'
                 });
               } catch (error) {
-                alert('Failed to create care plan. Please try again.');
+                toast.error('Failed to create care plan. Please try again.');
               }
             }}
             autoGenerate={true}
@@ -811,6 +830,21 @@ export default function CarePlanManagement() {
           </Card>
         </div>
       )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the care plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </div>
     </div>
     </PremiumFeatureGate>

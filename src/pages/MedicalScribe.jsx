@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Mic, ArrowRight, Info, CheckCircle2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import { todayEastern } from "../components/utils/timezone";
 import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
@@ -39,6 +40,7 @@ export default function MedicalScribe() {
   const [showAddPatientDialog, setShowAddPatientDialog] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const navigate = useNavigate();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -79,9 +81,9 @@ export default function MedicalScribe() {
 
   const handleUseNote = () => {
     if (generatedNote) {
-      const noteText = generatedNote;
+      sessionStorage.setItem('preFilledNote', generatedNote);
       const patientParam = selectedPatientId && selectedPatientId !== 'anonymous' ? `&patientId=${selectedPatientId}` : '';
-      window.location.href = `/app?redirect=SmartNoteAssistant${patientParam}&preFilledNote=${encodeURIComponent(noteText)}`;
+      navigate(`${createPageUrl("SmartNoteAssistant")}?fromScribe=true${patientParam}`);
     }
   };
 

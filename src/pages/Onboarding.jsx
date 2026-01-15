@@ -9,6 +9,7 @@ import { Stethoscope, Heart, UserCircle, CheckCircle2, Loader2 } from "lucide-re
 import { motion } from "framer-motion";
 import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 export const publicPage = true;
 
@@ -49,13 +50,13 @@ export default function Onboarding() {
       navigate(createPageUrl("Dashboard"));
     },
     onError: (error) => {
-      alert('Failed to save your preferences. Please try again.');
+      toast.error('Failed to save your preferences. Please try again.');
     }
   });
 
   const handleComplete = () => {
     if (!serviceType || !credentialType) {
-      alert('Please complete all selections');
+      toast.warning('Please complete all selections');
       return;
     }
     completeOnboardingMutation.mutate({ serviceType, credentialType });

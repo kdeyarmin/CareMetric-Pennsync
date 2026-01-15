@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -144,13 +144,13 @@ export default function Tasks() {
     return matchesSearch && matchesPriority && matchesStatus;
   });
 
-  const categorizedTasks = {
+  const categorizedTasks = useMemo(() => ({
     overdue: filteredTasks.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
     today: filteredTasks.filter((t) => t.due_date && isToday(parseISO(t.due_date)) && t.status === 'pending'),
     upcoming: filteredTasks.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
     noDueDate: filteredTasks.filter((t) => !t.due_date && t.status === 'pending'),
     completed: filteredTasks.filter((t) => t.status === 'completed')
-  };
+  }), [filteredTasks]);
 
   const getPriorityColor = (priority) => {
     const colors = {

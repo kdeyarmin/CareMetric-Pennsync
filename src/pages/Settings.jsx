@@ -10,6 +10,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { toast } from "sonner";
 import DataRetentionSettings from "../components/settings/DataRetentionSettings";
 import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
 
@@ -74,14 +75,14 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setIsEditing(false);
     } catch (error) {
-      alert('Failed to update profile. Please try again.');
+      toast.error('Failed to update profile. Please try again.');
     }
     setIsSaving(false);
   };
 
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'DELETE') {
-      alert('Please type DELETE to confirm');
+      toast.warning('Please type DELETE to confirm');
       return;
     }
 
@@ -92,7 +93,7 @@ export default function Settings() {
       // Logout and redirect
       base44.auth.logout();
     } catch (error) {
-      alert('Failed to delete account. Please try again or contact support.');
+      toast.error('Failed to delete account. Please try again or contact support.');
       setIsDeleting(false);
     }
   };
