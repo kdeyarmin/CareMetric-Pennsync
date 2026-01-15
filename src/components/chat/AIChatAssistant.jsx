@@ -151,10 +151,10 @@ export default function AIChatAssistant() {
             <div className="flex justify-between items-center">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Bot className="w-4 h-4" />
-                AI Assistant
-                <Badge className="bg-white/20 text-white">Beta</Badge>
+                CareMetric AI Support
+                <Badge className="bg-white/20 text-white text-xs">24/7</Badge>
               </CardTitle>
-              <Button size="icon" variant="ghost" onClick={() => setIsOpen(false)}>
+              <Button size="icon" variant="ghost" onClick={() => setIsOpen(false)} className="hover:bg-white/20">
                 <X className="w-4 h-4 text-white" />
               </Button>
             </div>
