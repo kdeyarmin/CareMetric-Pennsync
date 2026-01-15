@@ -97,6 +97,7 @@ import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import MedicalScribe from './pages/MedicalScribe';
+import AdminUserManagement from './pages/AdminUserManagement';
 import __Layout from './Layout.jsx';
 
 
@@ -200,6 +201,7 @@ export const PAGES = {
     "Dashboard": Dashboard,
     "Admin": Admin,
     "MedicalScribe": MedicalScribe,
+    "AdminUserManagement": AdminUserManagement,
 }
 
 export const pagesConfig = {
