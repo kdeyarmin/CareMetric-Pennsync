@@ -48,7 +48,7 @@ const ALL_MODULES = {
 };
 
 export default function ProviderTrainingHub() {
-  const [selectedModule, setSelectedModule] = useState(null);
+  
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -137,11 +137,13 @@ export default function ProviderTrainingHub() {
       </div>
 
       <Tabs defaultValue="learning-path" className="space-y-4 sm:space-y-6">
-        <TabsList className="bg-slate-100 text-muted-foreground p-1 rounded-lg items-center justify-center grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+        <TabsList className="w-full overflow-x-auto">
+          <div className="flex w-max min-w-full space-x-2 p-1">
           <TabsTrigger value="learning-path">Learning Path</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
           <TabsTrigger value="badges">Badges</TabsTrigger>
           <TabsTrigger value="progress">Progress</TabsTrigger>
+        </div>
         </TabsList>
 
         {/* Learning Path Tab */}

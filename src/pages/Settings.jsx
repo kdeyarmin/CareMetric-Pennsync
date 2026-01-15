@@ -138,12 +138,12 @@ export default function Settings() {
                   }}
                   disabled={isSaving}>
 
-                    <X className="w-4 h-4" />
+                    
                   </Button>
                   <Button
                   size="sm"
                   onClick={handleSaveProfile}
-                  disabled={isSaving} className="bg-slate-200 text-slate-900 px-3 text-xs font-medium rounded-md inline-flex items-center justify-center whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm dark:bg-slate-600 dark:hover:bg-slate-700 h-8 gap-2 hover:bg-blue-700">
+                  disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
 
 
                     <Save className="w-4 h-4" />
