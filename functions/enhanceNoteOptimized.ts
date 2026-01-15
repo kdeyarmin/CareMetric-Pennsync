@@ -23,16 +23,18 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    const providerType = user.provider_type || 'RN';
+    const providerType = user.credential_type || user.provider_type || 'RN';
     const isAnonymous = !patientId || patientId === 'anonymous';
 
-    // Parallel fetch: provider settings + patient data (avoid sequential calls)
-    const [providerSettings, patientData] = await Promise.all([
+    // Parallel fetch: provider settings, patient data, and Medicare compliance rules
+    const [providerSettings, patientData, medicareRules, complianceRules] = await Promise.all([
       base44.entities.ProviderSettings.filter({
         provider_type: providerType,
         is_active: true
       }),
-      !isAnonymous ? base44.entities.Patient.filter({ id: patientId }) : Promise.resolve([])
+      !isAnonymous ? base44.entities.Patient.filter({ id: patientId }) : Promise.resolve([]),
+      base44.entities.MedicareComplianceRule.filter({ is_active: true }),
+      base44.entities.ComplianceRule.filter({ is_active: true })
     ]);
 
     const providerConfig = providerSettings[0] || null;
@@ -56,8 +58,29 @@ Deno.serve(async (req) => {
     const isLPN = nurseType === 'LPN';
     const nurseTitle = isLPN ? 'LPN' : 'RN';
 
+    // Build comprehensive Medicare compliance requirements
+    const relevantMedicareRules = medicareRules.filter(rule => 
+      !rule.applies_to_visit_types || 
+      rule.applies_to_visit_types.length === 0 || 
+      rule.applies_to_visit_types.includes(visitType)
+    );
+
+    const medicareRequirements = relevantMedicareRules.map(rule => 
+      `- ${rule.category}: ${rule.required_elements?.join(', ')}`
+    ).join('\n');
+
+    const relevantComplianceRules = complianceRules.filter(rule =>
+      (!rule.applies_to_visit_types || rule.applies_to_visit_types.includes(visitType)) &&
+      (!rule.applies_to_care_type || rule.applies_to_care_type === 'both' || rule.applies_to_care_type === 'home_health')
+    );
+
+    const complianceRequirements = relevantComplianceRules
+      .slice(0, 10)
+      .map(rule => `- ${rule.rule_name}: ${rule.description}`)
+      .join('\n');
+
     // Build prompt with provider-specific customization
-    let basePrompt = `Transform to Medicare-compliant ${nurseTitle} documentation.`;
+    let basePrompt = `Transform to Medicare-compliant ${nurseTitle} documentation with STRICT adherence to regulatory requirements.`;
     if (providerConfig?.ai_note_prompt) {
       basePrompt = providerConfig.ai_note_prompt.replace('{nurseTitle}', nurseTitle);
     }
@@ -87,20 +110,67 @@ ${roughNote}
 
 CRITICAL: Only use info from rough note or patient data above. Do NOT invent age, DOB, or demographics.
 
-INCLUDE:
-1. Homebound status (mobility limits)
-2. Skilled need (why ${nurseTitle} required)
-3. Patient response
-4. Functional status
-5. Safety factors
-${isLPN ? '6. RN supervision noted' : '6. Care plan progress'}
-${visitType === 'recertification' ? '\nRECERT: Compare baseline, justify continued care' : ''}
-${visitType === 'discharge' ? '\nDISCHARGE: Admission vs discharge, improvements, plan' : ''}
+MEDICARE COMPLIANCE REQUIREMENTS:
+${medicareRequirements}
 
-Return valid JSON with: rough_compliance_score (0-100), missing_elements (array), enhanced_note (string), enhanced_compliance_score (0-100), quality_score (0-100), compliance_improvement (number), documentation_gaps (array of {element, reason, priority}), time_saved_minutes (number).`;
+REGULATORY COMPLIANCE CHECKS:
+${complianceRequirements}
+
+MANDATORY DOCUMENTATION ELEMENTS:
+1. HOMEBOUND STATUS - Specific mobility restrictions, cannot leave home without considerable/taxing effort
+2. SKILLED NEED - Why ${nurseTitle} skilled services are medically necessary (cannot be performed by non-skilled personnel)
+3. PATIENT RESPONSE - Observable patient response to skilled interventions
+4. FUNCTIONAL STATUS - ADL/IADL capabilities, limitations, safety concerns
+5. SAFETY ASSESSMENT - Fall risk, medication safety, environmental hazards
+6. CARE COORDINATION - Physician orders, care plan alignment, family education
+${isLPN ? '7. RN SUPERVISION - Document RN oversight and supervisory visit schedule' : '7. CARE PLAN PROGRESS - Progress toward goals, barriers, interventions effectiveness'}
+8. VITAL SIGNS - Document all vitals with context and clinical significance
+9. SKILLED INTERVENTION - Specific skilled activities performed (assessment, teaching, wound care, etc.)
+10. PLAN OF CARE - Next visit plan, ongoing interventions, physician communication needs
+${visitType === 'recertification' ? '\n\nRECERTIFICATION REQUIREMENTS:\n- Compare baseline functional status vs current\n- Justify continued need for skilled services\n- Document progress toward goals or reasons for lack of progress\n- Update homebound status\n- Recertify skilled need with new clinical findings' : ''}
+${visitType === 'admission' ? '\n\nADMISSION REQUIREMENTS:\n- Complete baseline assessment\n- Establish homebound criteria\n- Document all medications with reconciliation\n- Initial safety assessment\n- Baseline vital signs and functional status' : ''}
+${visitType === 'discharge' ? '\n\nDISCHARGE REQUIREMENTS:\n- Compare admission vs discharge status\n- Document goal achievement\n- Patient/caregiver education provided\n- Discharge instructions and follow-up plan\n- Reason for discharge (goals met, hospitalization, etc.)' : ''}
+
+QUALITY STANDARDS:
+- Use objective, measurable terms
+- Avoid vague language like "tolerated well" without specifics
+- Include direct patient quotes where relevant
+- Document clinical reasoning for interventions
+- Link all activities to physician orders
+- Use proper medical terminology
+- Maintain professional, clinical tone
+
+Return valid JSON with: 
+- rough_compliance_score (0-100)
+- missing_elements (array of strings)
+- enhanced_note (string)
+- enhanced_compliance_score (0-100, must be 85+ to meet Medicare standards)
+- quality_score (0-100)
+- compliance_improvement (number)
+- documentation_gaps (array of {element, reason, priority, regulatory_reference})
+- medicare_violations (array of {violation, severity, cop_reference, remediation})
+- time_saved_minutes (number)
+- regulatory_warnings (array of strings for potential audit flags)`;
 
     const systemPrompt = aiConfig.system_prompt || 
-      "You are an expert clinical documentation assistant specializing in Medicare-compliant home health documentation. Always return valid JSON.";
+      `You are an expert clinical documentation specialist with deep knowledge of:
+- Medicare Conditions of Participation (42 CFR Part 484)
+- OASIS-E documentation requirements
+- CMS compliance standards for home health
+- State-specific regulations and requirements
+- Clinical best practices and evidence-based care
+
+Your role is to transform rough clinical notes into comprehensive, Medicare-compliant documentation that will withstand audits and ensure proper reimbursement. Every note must meet or exceed 85% compliance threshold.
+
+CRITICAL COMPLIANCE REQUIREMENTS:
+1. Homebound status MUST be specific and measurable
+2. Skilled need MUST justify why skilled nursing is medically necessary
+3. Patient response MUST be observable and objective
+4. All interventions MUST tie to physician orders and care plan
+5. Safety assessment MUST be comprehensive
+6. Documentation MUST support medical necessity
+
+Always return valid JSON with all required fields.`;
 
     const completion = await openai.chat.completions.create({
       model: aiConfig.model,
@@ -189,7 +259,10 @@ Return valid JSON with: rough_compliance_score (0-100), missing_elements (array)
       enhanced_compliance: result.enhanced_compliance_score,
       compliance_improvement: result.compliance_improvement,
       documentation_gaps: result.documentation_gaps || [],
-      time_saved: result.time_saved_minutes || 15
+      medicare_violations: result.medicare_violations || [],
+      regulatory_warnings: result.regulatory_warnings || [],
+      time_saved: result.time_saved_minutes || 15,
+      compliance_threshold_met: result.enhanced_compliance_score >= 85
     });
 
   } catch (error) {
