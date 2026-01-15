@@ -693,7 +693,11 @@ export default function SmartNoteAssistant() {
               />
             )}
 
-            <ClinicalNoteAnalyzer onDataExtracted={handleDataExtracted} />
+            <ClinicalNoteAnalyzer 
+              onDataExtracted={handleDataExtracted}
+              visitType={visitType}
+              diagnosis={selectedDiagnosis}
+            />
           </TabsContent>
 
           {/* Analysis Tab */}
