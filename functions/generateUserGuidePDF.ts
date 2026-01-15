@@ -94,20 +94,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Provider Scheduling",
-    description: "Intelligent scheduling that optimizes visit timing and routes.",
+    description: "Optimize visit schedules and care routes using intelligent algorithms that maximize efficiency while maintaining clinical continuity and patient accessibility.",
     howToUse: [
-      "1. Open Schedule page",
-      "2. View weekly or daily schedule",
-      "3. Add new visits using intelligent suggestions",
-      "4. System optimizes route and timing automatically",
-      "5. Adjust as needed for patient preferences"
+      "1. Access Schedule page from dashboard navigation",
+      "2. Review current weekly or daily visit schedule",
+      "3. Add new visits while leveraging intelligent scheduling suggestions",
+      "4. Allow system to optimize geographic routing and visit sequencing automatically",
+      "5. Manually adjust schedule to accommodate specific patient or clinical needs"
     ],
     bestPractices: [
-      "Schedule similar visit types together",
-      "Consider patient preferences and availability",
-      "Build in travel time between visits",
-      "Use AI route optimization suggestions",
-      "Confirm visits 24 hours in advance"
+      "Cluster similar visit types and geographic locations for operational efficiency",
+      "Account for patient preferences, availability, and medical urgency in scheduling",
+      "Allocate adequate travel time between visits for remote home health care delivery",
+      "Implement AI-generated route optimization recommendations to reduce travel time",
+      "Confirm all scheduled visits with patients at least 24 hours prior to appointment"
     ]
   },
   {
