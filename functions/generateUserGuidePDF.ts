@@ -58,20 +58,20 @@ const FEATURES_GUIDE = [
   },
   {
     title: "Care Plan Management",
-    description: "Automated care plan creation and tracking.",
+    description: "Develop and monitor individualized care plans with measurable outcomes, facilitating interdisciplinary coordination and ensuring alignment with patient goals.",
     howToUse: [
-      "1. Open patient record and navigate to Care Plans",
-      "2. Click 'Create Care Plan' or use AI suggestions",
-      "3. Define problems, goals, and interventions",
-      "4. Set review dates and assign to team members",
-      "5. Track progress and update as patient status changes"
+      "1. Access patient record and navigate to Care Plans section",
+      "2. Select 'Create Care Plan' option or review AI-generated suggestions",
+      "3. Define clinical problems, establish SMART goals, and identify evidence-based interventions",
+      "4. Schedule review dates and assign responsibilities to care team members",
+      "5. Monitor progress at each visit and revise plan based on patient response"
     ],
     bestPractices: [
-      "Set measurable and achievable goals",
-      "Review care plans at least monthly",
-      "Involve patient in goal setting",
-      "Collaborate with interdisciplinary team",
-      "Document progress at each visit"
+      "Establish SMART goals that are Specific, Measurable, Achievable, Relevant, and Time-bound",
+      "Conduct systematic care plan reviews at minimum monthly intervals",
+      "Actively engage patient and family in collaborative goal setting",
+      "Coordinate with all interdisciplinary team members involved in patient care",
+      "Document patient progress and clinical response at every care encounter"
     ]
   },
   {
