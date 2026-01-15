@@ -5,30 +5,31 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-                              Home,
-                              Users,
-                              User,
-                              WifiOff,
-                              GraduationCap,
-                              BarChart3,
-                              Settings,
-                              Menu,
-                              X,
-                              Brain,
-                              Target,
-                              Bell,
-                              LogOut,
-                              ChevronLeft,
-                              ChevronRight,
-                              Sparkles,
-                              Activity,
-                              CreditCard,
-                              Mic,
-                              Phone,
-                              Video,
-                              UserPlus,
-                              ShieldAlert
-                            } from "lucide-react";
+                                    Home,
+                                    Users,
+                                    User,
+                                    WifiOff,
+                                    GraduationCap,
+                                    BarChart3,
+                                    Settings,
+                                    Menu,
+                                    X,
+                                    Brain,
+                                    Target,
+                                    Bell,
+                                    LogOut,
+                                    ChevronLeft,
+                                    ChevronRight,
+                                    Sparkles,
+                                    Activity,
+                                    CreditCard,
+                                    Mic,
+                                    Phone,
+                                    Video,
+                                    UserPlus,
+                                    ShieldAlert,
+                                    ListTodo
+                                  } from "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -149,6 +150,7 @@ export default function Layout({ children, currentPageName }) {
     { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
     { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
     { name: "My Learning", icon: Target, page: "PersonalizedLearningPath" },
+    { name: "Tasks", icon: ListTodo, page: "Tasks" },
     { name: "Settings", icon: Settings, page: "Settings" }
   ];
 
