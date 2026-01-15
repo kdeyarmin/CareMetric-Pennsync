@@ -120,6 +120,7 @@ export default function ProviderTrainingHub() {
         <TabsList className="w-full overflow-x-auto">
           <div className="flex w-max min-w-full space-x-2 p-1">
           <TabsTrigger value="learning-path">Learning Path</TabsTrigger>
+          <TabsTrigger value="recommendations">AI Recommendations</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
           <TabsTrigger value="badges">Badges</TabsTrigger>
           <TabsTrigger value="progress">Progress</TabsTrigger>
