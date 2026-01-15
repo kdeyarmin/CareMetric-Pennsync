@@ -175,7 +175,7 @@ export default function CarePlanManagement() {
 
   const createNewPatient = async () => {
     if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
-      alert("First and last name are required");
+      toast.error("First and last name are required");
       return;
     }
 
@@ -196,10 +196,10 @@ export default function CarePlanManagement() {
         date_of_birth: "",
         medical_record_number: "",
       });
-      alert("Patient created successfully");
+      toast.success("Patient created successfully");
       setShowAITools(true);
     } catch (error) {
-      alert("Failed to create patient");
+      toast.error("Failed to create patient");
       console.error(error);
     } finally {
       setCreatingPatient(false);
@@ -252,7 +252,7 @@ export default function CarePlanManagement() {
         page: 'CarePlanManagement'
       });
       
-      alert('Care plan created successfully with education materials!');
+      toast.success('Care plan created successfully with education materials!');
     } catch (error) {
       alert('Failed to create care plan. Please try again.');
     }
