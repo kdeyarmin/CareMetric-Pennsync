@@ -280,7 +280,20 @@ If you have any questions, please contact your administrator.`,
 
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-1 sm:gap-2 h-auto">
+        <div className="w-full overflow-x-auto">
+          <TabsList className="w-max min-w-full grid-cols-none gap-1 sm:gap-2 h-auto">
+            <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">Overview</TabsTrigger>
+            <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">Users</TabsTrigger>
+            <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">Training</TabsTrigger>
+            <TabsTrigger value="providers" className="text-xs sm:text-sm py-2 whitespace-nowrap">Providers</TabsTrigger>
+            <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Models</TabsTrigger>
+            <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Compliance</TabsTrigger>
+            <TabsTrigger value="audit" className="text-xs sm:text-sm py-2 whitespace-nowrap">Audit</TabsTrigger>
+            <TabsTrigger value="security" className="text-xs sm:text-sm py-2 whitespace-nowrap">Security</TabsTrigger>
+            <TabsTrigger value="encryption" className="text-xs sm:text-sm py-2 whitespace-nowrap">Encryption</TabsTrigger>
+            <TabsTrigger value="data" className="text-xs sm:text-sm py-2 whitespace-nowrap">Data</TabsTrigger>
+          </TabsList>
+        </div>
           <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 sm:py-3">Overview</TabsTrigger>
           <TabsTrigger value="users" className="text-xs sm:text-sm py-2 sm:py-3">Users</TabsTrigger>
           <TabsTrigger value="training" className="text-xs sm:text-sm py-2 sm:py-3">Training</TabsTrigger>

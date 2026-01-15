@@ -74,7 +74,7 @@ export default function Onboarding() {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-2xl"
+        className="w-full max-w-2xl mx-auto"
       >
         <Card className="border-2 shadow-2xl">
           <CardHeader className="text-center pb-8 pt-8">

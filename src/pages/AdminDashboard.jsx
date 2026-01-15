@@ -676,7 +676,7 @@ export default function AdminDashboard() {
 
       <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
         <div className="w-full overflow-x-auto">
-          <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1">
+          <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1 sm:p-2">
             <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">Overview</TabsTrigger>
             <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">Users</TabsTrigger>
             <TabsTrigger value="appointments" className="text-xs sm:text-sm py-2 whitespace-nowrap">Appointments</TabsTrigger>
@@ -1200,10 +1200,10 @@ export default function AdminDashboard() {
             <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <DollarSign className="w-8 h-8 text-green-600" />
+                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
-                <p className="text-xs text-gray-600">Monthly Recurring Revenue</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
+                <p className="text-[10px] sm:text-xs text-gray-600">Monthly Recurring Revenue</p>
               </CardContent>
             </Card>
 
