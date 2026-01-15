@@ -177,7 +177,7 @@ export default function Patients() {
   });
 
   const handleDeletePatient = () => {
-    if (!patientToDelete) return;
+    if (!patientToDelete) 
     setIsDeleting(true);
     deletePatientMutation.mutate(patientToDelete.id);
   };
@@ -321,7 +321,7 @@ export default function Patients() {
               size="sm"
               className="flex-1 sm:flex-none"
             >
-              <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               <span className="text-xs sm:text-sm">Upload</span>
             </Button>
             <Button
@@ -429,130 +429,7 @@ export default function Patients() {
       </div>
 
       {/* Legacy patient cards - keeping for reference if needed */}
-      <div className="hidden grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        {filteredPatients.map((patient) => {
-            const isSelected = selectedPatients.some(p => p.id === patient.id);
-            return (
-            <Card 
-              key={patient.id} 
-              className={`hover:shadow-lg transition-all duration-200 border-l-4 ${
-                isSelected ? 'border-l-slate-500 bg-slate-200 dark:border-l-slate-400 dark:bg-slate-800' : 'border-l-slate-400 dark:border-l-slate-500'
-              }`}
-            >
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => togglePatientSelection(patient)}
-                    className="mt-1 mr-3 w-4 h-4"
-                  />
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 bg-slate-600 dark:bg-slate-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
-                     <User className="w-6 h-6 text-slate-100" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900">
-                        {patient.first_name} {patient.last_name}
-                      </h3>
-                      <p className="text-sm text-gray-500">MRN: {patient.medical_record_number || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <Badge className="bg-slate-300 text-slate-900 border-slate-400 dark:bg-slate-700 dark:text-slate-100">
-                    Home Health
-                  </Badge>
-                </div>
-
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Phone className="w-4 h-4" />
-                    <span>{patient.phone || 'No phone'}</span>
-                  </div>
-                  {patient.address && (
-                    <div className="flex items-start gap-2 text-sm text-gray-600">
-                      <MapPin className="w-4 h-4 mt-0.5" />
-                      <span>{patient.address}</span>
-                    </div>
-                  )}
-                </div>
-
-                {patient.primary_diagnosis && (
-                  <div className="mb-4">
-                    <p className="text-sm font-medium text-gray-700 mb-1">Primary Diagnosis</p>
-                    <p className="text-sm text-gray-600">{patient.primary_diagnosis}</p>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleShowSummary(patient)}
-                                          className="gap-1"
-                                          title="View AI Summary"
-                                        >
-                                          <FileText className="w-3 h-3" />
-                                          Summary
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => {
-                                            setEditingPatient(patient);
-                                            setShowForm(true);
-                                          }}
-                                        >
-                                          Edit
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => {
-                                            setPatientToDelete(patient);
-                                            setDeleteDialogOpen(true);
-                                          }}
-                                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </Button>
-                                        <Link 
-                                          to={`${createPageUrl("PatientDetails")}?id=${patient.id}`}
-                                          className="flex-1"
-                                        >
-                                          <Button size="sm" className="w-full">
-                                            View Details
-                                          </Button>
-                                        </Link>
-                                      </div>
-
-                {/* Visit type templates */}
-                <div className="mt-3 pt-3 border-t">
-                  <p className="text-xs font-medium text-gray-600 mb-2">Quick Schedule:</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {visitTemplates.map((template) => (
-                      <Button
-                        key={template.type}
-                        size="sm"
-                        variant="outline"
-                        onClick={() => createVisitFromTemplate.mutate({ 
-                          patientId: patient.id, 
-                          templateType: template.type 
-                        })}
-                        className="text-xs h-auto py-2"
-                        disabled={createVisitFromTemplate.isLoading}
-                      >
-                        <span className="mr-1">{template.icon}</span>
-                        {template.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      
 
       {/* Patient Merge Dialog */}
       <PatientMergeDialog
