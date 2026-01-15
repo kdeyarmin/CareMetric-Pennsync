@@ -18,10 +18,10 @@ export default function Compliance() {
 
   const getImpactBadge = (impact) => {
     switch (impact) {
-      case 'critical': return <Badge variant="destructive">Critical</Badge>;
-      case 'high': return <Badge className="bg-orange-500 text-white border-orange-600">High</Badge>;
-      case 'medium': return <Badge className="bg-yellow-500 text-white border-yellow-600">Medium</Badge>;
-      case 'low': return <Badge className="bg-blue-500 text-white border-blue-600">Low</Badge>;
+      case 'critical': return <Badge className="bg-red-600 text-white">Critical</Badge>;
+      case 'high': return <Badge className="bg-orange-500 text-white">High</Badge>;
+      case 'medium': return <Badge className="bg-yellow-500 text-white">Medium</Badge>;
+      case 'low': return <Badge className="bg-blue-500 text-white">Low</Badge>;
       default: return <Badge variant="secondary">N/A</Badge>;
     }
   };
@@ -29,9 +29,9 @@ export default function Compliance() {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'pending_review': return <Badge variant="secondary">Pending Review</Badge>;
-      case 'under_review': return <Badge className="bg-blue-500 text-white border-blue-600">Under Review</Badge>;
-      case 'approved': return <Badge className="bg-green-600 text-white">Approved</Badge>;
-      case 'implemented': return <Badge className="bg-emerald-600 text-white border-emerald-700">Implemented</Badge>;
+      case 'under_review': return <Badge className="bg-blue-500 text-white">Under Review</Badge>;
+      case 'approved': return <Badge className="bg-green-500 text-white">Approved</Badge>;
+      case 'implemented': return <Badge className="bg-emerald-600 text-white">Implemented</Badge>;
       case 'dismissed': return <Badge variant="outline">Dismissed</Badge>;
       default: return <Badge variant="secondary">Unknown</Badge>;
     }

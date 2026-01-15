@@ -13,7 +13,6 @@ import {
   RefreshCw, BookOpen, Download, CreditCard, TrendingDown, XCircle
 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { formatEastern } from "@/components/utils/timezone";
@@ -123,12 +122,8 @@ export default function AdminDashboard() {
       const response = await base44.functions.invoke('autoFetchCMSGuidelines', {});
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['medicareGuidelines'] });
-      toast.success(data?.message || "Guidelines have been updated.");
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to fetch guidelines.");
     },
   });
 

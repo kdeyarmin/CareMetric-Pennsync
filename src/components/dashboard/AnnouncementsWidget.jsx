@@ -11,7 +11,7 @@ export default function AnnouncementsWidget() {
     queryKey: ['announcements'],
     queryFn: async () => {
       const result = await base44.entities.Announcement.filter({ is_active: true }, '-created_date');
-      
+      console.log('Active announcements:', result);
       return result || [];
     },
     initialData: [],
@@ -35,7 +35,7 @@ export default function AnnouncementsWidget() {
 
   }
 
-  
+  console.log('Announcements to display:', announcements);
 
   if (announcements.length === 0) {
     return (
