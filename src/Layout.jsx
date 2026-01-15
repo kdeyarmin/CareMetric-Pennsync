@@ -174,14 +174,14 @@ export default function Layout({ children, currentPageName }) {
   return (
                 <ThemeProvider>
                 <div className="fixed inset-0 -z-10">
-        {/* Main gradient background - sophisticated light theme */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-gray-100 to-slate-100 dark:from-gray-900 dark:via-slate-800 dark:to-gray-900" />
-        
-        {/* Subtle accent overlays */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-amber-200/20 to-amber-300/20 dark:from-amber-900/20 dark:to-amber-800/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-slate-300/20 to-gray-300/20 dark:from-slate-600/15 dark:to-gray-600/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-slate-200/15 to-gray-200/15 dark:from-slate-600/10 dark:to-gray-600/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
-      </div>
+                  {/* Main gradient background - light grey to darker grey */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-900 dark:via-gray-800 dark:to-gray-700" />
+
+                  {/* Subtle grey overlays */}
+                  <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-r from-gray-300/20 to-gray-400/20 dark:from-gray-700/20 dark:to-gray-600/20 rounded-full blur-3xl animate-pulse" />
+                  <div className="absolute bottom-1/4 right-1/3 w-80 h-80 bg-gradient-to-l from-gray-300/20 to-gray-400/20 dark:from-gray-600/15 dark:to-gray-500/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+                  <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-b from-gray-200/15 to-gray-300/15 dark:from-gray-600/10 dark:to-gray-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+                </div>
                 <div className="min-h-screen flex overflow-x-hidden transition-colors duration-300 relative">
       {/* =========================
           Scoped overrides:

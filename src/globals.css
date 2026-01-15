@@ -10,11 +10,11 @@ css
     background: transparent !important;
   }
   body { /* Added: Body background moved here with !important */
-    background: linear-gradient(135deg, #f5f7fa 0%, #f0f4f8 50%, #e8eef6 100%) !important;
-  }
-  .dark body { /* Added: Dark body background moved here with !important */
-    background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 50%, #16213e 100%) !important;
-  }
+        background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 50%, #9ca3af 100%) !important;
+      }
+      .dark body { /* Added: Dark body background moved here with !important */
+        background: linear-gradient(135deg, #1f2937 0%, #374151 50%, #4b5563 100%) !important;
+      }
   :root {
     --background: 0 0% 100%;
     --foreground: 220 12% 18%;
@@ -106,8 +106,8 @@ css
       right: 0;
       bottom: 0;
       background: 
-        radial-gradient(ellipse at 20% 30%, rgba(217, 119, 6, 0.06) 0%, transparent 40%),
-        radial-gradient(ellipse at 80% 70%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        radial-gradient(ellipse at 20% 30%, rgba(156, 163, 175, 0.08) 0%, transparent 40%),
+        radial-gradient(ellipse at 80% 70%, rgba(107, 114, 128, 0.06) 0%, transparent 40%);
       pointer-events: none;
       z-index: -1;
     }
