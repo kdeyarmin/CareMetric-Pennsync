@@ -87,7 +87,8 @@ const FEATURES_GUIDE = [
       "Actively engage patient and family in collaborative goal setting",
       "Coordinate with all interdisciplinary team members involved in patient care",
       "Document patient progress and clinical response at every care encounter"
-    ]
+    ],
+    importance: "Ensures Medicare compliance with individualized care plan requirements, reduces care plan development time through AI suggestions, improves patient outcomes through coordinated interventions, and demonstrates medical necessity for continued skilled care"
   },
   {
     title: "Document Generation",
