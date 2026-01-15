@@ -175,7 +175,7 @@ export default function CarePlanManagement() {
 
   const createNewPatient = async () => {
     if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
-      toast.error("First and last name are required");
+      alert("First and last name are required");
       return;
     }
 
@@ -196,10 +196,10 @@ export default function CarePlanManagement() {
         date_of_birth: "",
         medical_record_number: "",
       });
-      toast.success("Patient created successfully");
+      alert("Patient created successfully");
       setShowAITools(true);
     } catch (error) {
-      toast.error("Failed to create patient");
+      alert("Failed to create patient");
       console.error(error);
     } finally {
       setCreatingPatient(false);
@@ -252,7 +252,7 @@ export default function CarePlanManagement() {
         page: 'CarePlanManagement'
       });
       
-      toast.success('Care plan created successfully with education materials!');
+      alert('Care plan created successfully with education materials!');
     } catch (error) {
       alert('Failed to create care plan. Please try again.');
     }
@@ -509,7 +509,7 @@ export default function CarePlanManagement() {
               carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
               onTasksGenerated={() => {
                 queryClient.invalidateQueries({ queryKey: ['patientEducation'] });
-                toast.success('Tasks created successfully!');
+                alert('Tasks created successfully!');
               }}
             />
           </div>
