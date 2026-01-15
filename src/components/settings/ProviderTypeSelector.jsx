@@ -59,35 +59,35 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
   };
 
   const providerTypes = [
-    { value: "RN", label: "Registered Nurse" },
-    { value: "LPN", label: "Licensed Practical Nurse" },
-    { value: "NP", label: "Nurse Practitioner" },
-    { value: "MD", label: "Medical Doctor" },
-    { value: "DO", label: "Doctor of Osteopathic Medicine" },
-    { value: "PT", label: "Physical Therapist" },
-    { value: "OT", label: "Occupational Therapist" },
-    { value: "ST", label: "Speech Therapist" },
-    { value: "MSW", label: "Medical Social Worker" },
-    { value: "Chiropractor", label: "Chiropractor" }
-  ];
+  { value: "RN", label: "Registered Nurse" },
+  { value: "LPN", label: "Licensed Practical Nurse" },
+  { value: "NP", label: "Nurse Practitioner" },
+  { value: "MD", label: "Medical Doctor" },
+  { value: "DO", label: "Doctor of Osteopathic Medicine" },
+  { value: "PT", label: "Physical Therapist" },
+  { value: "OT", label: "Occupational Therapist" },
+  { value: "ST", label: "Speech Therapist" },
+  { value: "MSW", label: "Medical Social Worker" },
+  { value: "Chiropractor", label: "Chiropractor" }];
+
 
   const selectedProviderSetting = providerSettings.find(
-    ps => ps.provider_type === formData.credential_type && ps.is_active
+    (ps) => ps.provider_type === formData.credential_type && ps.is_active
   );
 
   return (
     <div className="space-y-4">
-      {allowAdminOverride && user?.role === 'admin' && (
-        <Alert className="border-amber-300 bg-amber-50">
+      {allowAdminOverride && user?.role === 'admin' &&
+      <Alert className="border-amber-300 bg-amber-50">
           <Info className="w-4 h-4 text-amber-600" />
           <AlertDescription className="text-amber-900">
             <strong>Admin Testing Mode:</strong> You can switch provider types to test different features and AI behaviors. Changes will reload the page.
           </AlertDescription>
         </Alert>
-      )}
+      }
       
       <Card>
-        <CardHeader>
+        <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
           <CardTitle className="flex items-center gap-2">
             <Stethoscope className="w-5 h-5" />
             Provider Profile
@@ -96,25 +96,25 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
             Configure your provider type to customize AI note generation and compliance checks
           </p>
         </CardHeader>
-      <CardContent>
+      <CardContent className="bg-slate-100 pt-0 p-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label>Provider Type</Label>
-            <select
-              className="w-full p-2 border rounded mt-1"
+            <select className="bg-slate-50 mt-1 p-2 rounded w-full border"
+
               value={formData.credential_type}
-              onChange={(e) => setFormData({ ...formData, credential_type: e.target.value })}
-            >
-              {providerTypes.map(pt => (
+              onChange={(e) => setFormData({ ...formData, credential_type: e.target.value })}>
+
+              {providerTypes.map((pt) =>
                 <option key={pt.value} value={pt.value}>{pt.label}</option>
-              ))}
+                )}
             </select>
-            {!allowAdminOverride && user?.role !== 'admin' && (
+            {!allowAdminOverride && user?.role !== 'admin' &&
               <p className="text-xs text-gray-500 mt-1">Changes will take effect after saving</p>
-            )}
+              }
           </div>
 
-          {selectedProviderSetting && (
+          {selectedProviderSetting &&
             <Alert className="bg-blue-50 border-blue-200">
               <Info className="w-4 h-4 text-blue-600" />
               <AlertDescription className="text-sm text-blue-800">
@@ -123,44 +123,44 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
                 Your notes will be tailored to {selectedProviderSetting.provider_type} standards and compliance requirements.
               </AlertDescription>
             </Alert>
-          )}
+            }
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label>License Number</Label>
               <Input
-                value={formData.license_number}
-                onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
-                placeholder="e.g., RN123456"
-              />
+                  value={formData.license_number}
+                  onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
+                  placeholder="e.g., RN123456" />
+
             </div>
 
             <div>
               <Label>Credentials</Label>
               <Input
-                value={formData.credentials}
-                onChange={(e) => setFormData({ ...formData, credentials: e.target.value })}
-                placeholder="e.g., RN, BSN, MSN"
-              />
+                  value={formData.credentials}
+                  onChange={(e) => setFormData({ ...formData, credentials: e.target.value })}
+                  placeholder="e.g., RN, BSN, MSN" />
+
             </div>
           </div>
 
           <div>
             <Label>Clinical Specialty</Label>
             <Input
-              value={formData.specialty}
-              onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-              placeholder="e.g., Wound Care, Cardiac, Palliative"
-            />
+                value={formData.specialty}
+                onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+                placeholder="e.g., Wound Care, Cardiac, Palliative" />
+
           </div>
 
           <div>
             <Label>Preferred Note Style</Label>
-            <select
-              className="w-full p-2 border rounded mt-1"
+            <select className="bg-slate-50 mt-1 p-2 rounded w-full border"
+
               value={formData.preferred_note_style}
-              onChange={(e) => setFormData({ ...formData, preferred_note_style: e.target.value })}
-            >
+              onChange={(e) => setFormData({ ...formData, preferred_note_style: e.target.value })}>
+
               <option value="detailed">Detailed Narrative</option>
               <option value="concise">Concise</option>
               <option value="narrative">Full Narrative</option>
@@ -176,6 +176,6 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
         </form>
       </CardContent>
     </Card>
-    </div>
-  );
+    </div>);
+
 }
