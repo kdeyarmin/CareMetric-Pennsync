@@ -310,40 +310,74 @@ Return your analysis in the following JSON format:
 
                   <div>
                     <Label className="text-sm font-medium">Primary Diagnosis *</Label>
-                    <Input
-                      type="text"
-                      placeholder="Search diagnoses..."
-                      value={diagnosisSearch}
-                      onChange={(e) => setDiagnosisSearch(e.target.value)}
-                      className="mb-2"
-                    />
-                    {diagnosisSearch && (
-                      <div className="absolute z-10 w-full max-h-48 overflow-y-auto border rounded-lg bg-white dark:bg-slate-900 shadow-lg">
-                        {filteredDiagnoses.map((diagnosis, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              setSelectedDiagnosis(diagnosis);
-                              setDiagnosisSearch("");
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm border-b last:border-b-0"
-                          >
+                    <Select value={selectedDiagnosis} onValueChange={setSelectedDiagnosis}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select diagnosis..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {commonDiagnoses.map((diagnosis, idx) => (
+                          <SelectItem key={idx} value={diagnosis}>
                             {diagnosis}
-                          </button>
+                          </SelectItem>
                         ))}
-                        {filteredDiagnoses.length === 0 && (
-                          <div className="px-3 py-2 text-sm text-slate-500">No matches found</div>
-                        )}
-                      </div>
-                    )}
-                    {selectedDiagnosis && (
-                      <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 border rounded-lg px-3 py-2">
-                        <span className="text-sm">{selectedDiagnosis}</span>
-                        <Button size="sm" variant="ghost" onClick={() => setSelectedDiagnosis("")}>
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Vital Signs */}
+                <div>
+                  <Label className="text-sm font-medium">Vital Signs</Label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+                    <div>
+                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Temperature (°F)</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        placeholder="98.6"
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Heart Rate (bpm)</label>
+                      <Input
+                        type="number"
+                        placeholder="72"
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Resp Rate</label>
+                      <Input
+                        type="number"
+                        placeholder="16"
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">BP Systolic</label>
+                      <Input
+                        type="number"
+                        placeholder="120"
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">BP Diastolic</label>
+                      <Input
+                        type="number"
+                        placeholder="80"
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">O2 Sat (%)</label>
+                      <Input
+                        type="number"
+                        placeholder="98"
+                        className="h-9"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -355,7 +389,7 @@ Return your analysis in the following JSON format:
                     onChange={(e) => setRoughNotes(e.target.value)}
                     placeholder="Enter your rough clinical notes here...
 
-Example: Pt seen for routine visit. VS: T 98.6, BP 120/80, HR 72, RR 16, O2 98%. Patient reports feeling better, pain level 2/10. Medications reviewed, compliant. Wound healing well..."
+Example: Patient reports feeling better, pain level 2/10. Medications reviewed, compliant. Wound healing well, no signs of infection. Patient ambulating with walker..."
                     className="w-full h-48 p-3 border rounded-lg text-sm resize-none"
                   />
                 </div>
