@@ -68,7 +68,8 @@ const FEATURES_GUIDE = [
       "Maintain current emergency contact and designee information",
       "Perform systematic medication reconciliation at each care episode",
       "Clearly identify all interdisciplinary care team members and their roles"
-    ]
+    ],
+    importance: "Eliminates time searching for records across multiple systems, reduces duplicate data entry, improves patient safety through consolidated medication and allergy information, and ensures compliance with continuity of care documentation requirements"
   },
   {
     title: "Care Plan Management",
