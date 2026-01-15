@@ -177,7 +177,7 @@ export default function Patients() {
   });
 
   const handleDeletePatient = () => {
-    if (!patientToDelete) 
+    if (!patientToDelete) return;
     setIsDeleting(true);
     deletePatientMutation.mutate(patientToDelete.id);
   };
@@ -330,7 +330,7 @@ export default function Patients() {
                 setShowForm(true);
               }}
               size="sm"
-              className="flex-1 sm:flex-none"
+              className="flex-1 sm:flex-none bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600"
             >
               <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               <span className="text-xs sm:text-sm">Add Patient</span>

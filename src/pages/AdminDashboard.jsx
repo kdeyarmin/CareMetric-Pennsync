@@ -306,7 +306,6 @@ export default function AdminDashboard() {
         flaggedAudits: stats.flaggedAudits,
         avgAuditScore: stats.avgAuditScore
       },
-      topPerformers,
       recentPayments: allPayments.slice(0, 50),
       subscriptions: allSubscriptions
     };
@@ -1431,7 +1430,7 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </Link>
-            <Card 
+            <Card
               className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full"
               onClick={() => autoFetchGuidelinesMutation.mutate()}
             >

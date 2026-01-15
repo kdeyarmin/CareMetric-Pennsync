@@ -1,6 +1,5 @@
 import About from './pages/About';
 import Admin from './pages/Admin';
-import AdminDashboard from './pages/AdminDashboard';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
@@ -14,7 +13,6 @@ import BillingModule from './pages/BillingModule';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
-import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import ComplianceRegulatory from './pages/ComplianceRegulatory';
 import Dashboard from './pages/Dashboard';
@@ -95,15 +93,16 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import CarePlanManagement from './pages/CarePlanManagement';
 import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import CarePlanManagement from './pages/CarePlanManagement';
+import Compliance from './pages/Compliance';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "About": About,
     "Admin": Admin,
-    "AdminDashboard": AdminDashboard,
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
     "AdminTrainingAnalytics": AdminTrainingAnalytics,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
@@ -117,7 +116,6 @@ export const PAGES = {
     "CareCoordinationDashboard": CareCoordinationDashboard,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
-    "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
     "ComplianceRegulatory": ComplianceRegulatory,
     "Dashboard": Dashboard,
@@ -198,8 +196,10 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "CarePlanManagement": CarePlanManagement,
     "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
+    "AdminDashboard": AdminDashboard,
+    "CarePlanManagement": CarePlanManagement,
+    "Compliance": Compliance,
 }
 
 export const pagesConfig = {
