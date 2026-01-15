@@ -1,106 +1,200 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, FileOutput, GraduationCap, TrendingUp, Sparkles } from "lucide-react";
-import SearchablePatientSelect from "../components/ui/SearchablePatientSelect";
-import DischargeSummaryGenerator from "../components/documents/DischargeSummaryGenerator";
-import ReferralLetterGenerator from "../components/documents/ReferralLetterGenerator";
-import PatientEducationGenerator from "../components/documents/PatientEducationGenerator";
-import ProgressReportGenerator from "../components/documents/ProgressReportGenerator";
+import React, { useState, useEffect } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FileText, History } from 'lucide-react';
+import DocumentTemplateSelector from '../components/documents/DocumentTemplateSelector';
+import DocumentDataForm from '../components/documents/DocumentDataForm';
+import DocumentPreview from '../components/documents/DocumentPreview';
+import EmptyState from '../components/ui/EmptyState';
+import PullToRefresh from '../components/mobile/PullToRefresh';
 
 export default function DocumentGenerator() {
-  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [step, setStep] = useState('select'); // select, form, preview
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [generatedDocument, setGeneratedDocument] = useState(null);
+  const [selectedHistoryDoc, setSelectedHistoryDoc] = useState(null);
+  const queryClient = useQueryClient();
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
+
+  const { data: templates = [], isLoading: templatesLoading } = useQuery({
+    queryKey: ['documentTemplates'],
+    queryFn: () => base44.entities.DocumentTemplate.list('-created_date', 100)
+  });
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
-    initialData: [],
+    queryFn: () => base44.entities.Patient.list('-updated_date', 100)
   });
 
-  const { data: selectedPatient } = useQuery({
-    queryKey: ['patient', selectedPatientId],
-    queryFn: () => base44.entities.Patient.filter({ id: selectedPatientId }).then(res => res[0]),
-    enabled: !!selectedPatientId,
+  const { data: generatedDocuments = [] } = useQuery({
+    queryKey: ['generatedDocuments', currentUser?.email],
+    queryFn: () => base44.entities.GeneratedDocument.filter({ created_by: currentUser?.email }, '-created_date'),
+    enabled: !!currentUser?.email
   });
+
+  const generateDocMutation = useMutation({
+    mutationFn: async (data) => {
+      const response = await base44.functions.invoke('generateDocument', {
+        template: selectedTemplate,
+        generation_data: data.generation_data,
+        custom_text: data.custom_text
+      });
+      return response.data || response;
+    },
+    onSuccess: (data) => {
+      setGeneratedDocument(data.document);
+      setStep('preview');
+      queryClient.invalidateQueries({ queryKey: ['generatedDocuments'] });
+    }
+  });
+
+  const updateDocMutation = useMutation({
+    mutationFn: (doc) => base44.entities.GeneratedDocument.update(doc.id, {
+      generated_content: doc.generated_content,
+      status: 'final'
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['generatedDocuments'] });
+    }
+  });
+
+  const sendDocMutation = useMutation({
+    mutationFn: async (doc) => {
+      await base44.integrations.Core.SendEmail({
+        to: doc.patient_email,
+        subject: `Patient Document: ${doc.document_name}`,
+        body: `Dear Patient,\n\nPlease find your ${doc.template_type.replace('_', ' ')} document attached.\n\nIf you have any questions, please contact your healthcare provider.\n\nBest regards,\nYour Healthcare Team`
+      });
+
+      return base44.entities.GeneratedDocument.update(doc.id, {
+        status: 'sent',
+        sent_date: new Date().toISOString(),
+        sent_via: 'email'
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['generatedDocuments'] });
+    }
+  });
+
+  const patient = patients.find(p => p.id === generatedDocument?.patient_id);
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">AI Document Generator</h1>
-            <p className="text-gray-600">Generate compliant healthcare documents instantly</p>
-          </div>
-        </div>
-      </div>
-
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="text-lg">Select Patient</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SearchablePatientSelect
-            patients={patients}
-            value={selectedPatientId}
-            onValueChange={setSelectedPatientId}
-            placeholder="Search for a patient..."
-          />
-        </CardContent>
-      </Card>
-
-      {selectedPatientId && selectedPatient && (
-        <Tabs defaultValue="discharge" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2">
-            <TabsTrigger value="discharge" className="gap-2">
-              <FileOutput className="w-4 h-4" />
-              Discharge Summary
+    <PullToRefresh onRefresh={async () => {
+      await queryClient.invalidateQueries({ queryKey: ['documentTemplates', 'generatedDocuments'] });
+    }}>
+      <div className="p-4 md:p-6 max-w-6xl mx-auto">
+        <Tabs value={step === 'preview' && selectedHistoryDoc ? 'history' : (step === 'select' ? 'templates' : 'templates')} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="templates">
+              <FileText className="w-4 h-4 mr-2" />
+              Create Document
             </TabsTrigger>
-            <TabsTrigger value="referral" className="gap-2">
-              <FileText className="w-4 h-4" />
-              Referral Letter
-            </TabsTrigger>
-            <TabsTrigger value="education" className="gap-2">
-              <GraduationCap className="w-4 h-4" />
-              Patient Education
-            </TabsTrigger>
-            <TabsTrigger value="progress" className="gap-2">
-              <TrendingUp className="w-4 h-4" />
-              Progress Report
+            <TabsTrigger value="history">
+              <History className="w-4 h-4 mr-2" />
+              My Documents
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="discharge">
-            <DischargeSummaryGenerator patientId={selectedPatientId} patient={selectedPatient} />
+          <TabsContent value="templates" className="space-y-6 mt-6">
+            {step === 'select' && (
+              <DocumentTemplateSelector
+                templates={templates}
+                onSelect={(template) => {
+                  setSelectedTemplate(template);
+                  setStep('form');
+                }}
+                loading={templatesLoading}
+              />
+            )}
+
+            {step === 'form' && selectedTemplate && (
+              <DocumentDataForm
+                template={selectedTemplate}
+                patients={patients}
+                onGenerate={(data) => generateDocMutation.mutate(data)}
+                onBack={() => setStep('select')}
+                generating={generateDocMutation.isPending}
+              />
+            )}
+
+            {step === 'preview' && generatedDocument && (
+              <DocumentPreview
+                document={generatedDocument}
+                patient={patient}
+                onClose={() => {
+                  setStep('select');
+                  setGeneratedDocument(null);
+                  setSelectedTemplate(null);
+                }}
+                onSave={(doc) => updateDocMutation.mutate(doc)}
+                onSend={(doc) => sendDocMutation.mutate(doc)}
+                saving={updateDocMutation.isPending || sendDocMutation.isPending}
+              />
+            )}
           </TabsContent>
 
-          <TabsContent value="referral">
-            <ReferralLetterGenerator patientId={selectedPatientId} patient={selectedPatient} />
-          </TabsContent>
+          <TabsContent value="history" className="space-y-4 mt-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">My Generated Documents</h2>
+              <p className="text-slate-600 dark:text-slate-400">View, edit, and resend previously generated documents.</p>
+            </div>
 
-          <TabsContent value="education">
-            <PatientEducationGenerator patientId={selectedPatientId} patient={selectedPatient} />
-          </TabsContent>
-
-          <TabsContent value="progress">
-            <ProgressReportGenerator patientId={selectedPatientId} patient={selectedPatient} />
+            {generatedDocuments.length === 0 ? (
+              <EmptyState
+                icon={FileText}
+                title="No Documents Yet"
+                description="Create your first patient document to get started."
+              />
+            ) : (
+              <div className="grid gap-4">
+                {generatedDocuments.map((doc) => (
+                  <Card
+                    key={doc.id}
+                    className="cursor-pointer hover:shadow-lg transition-shadow"
+                    onClick={() => {
+                      setSelectedHistoryDoc(doc);
+                      setGeneratedDocument(doc);
+                      setStep('preview');
+                    }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold text-slate-900 dark:text-slate-100">
+                            {doc.document_name}
+                          </h3>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            Patient: {doc.patient_name}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                            Created: {new Date(doc.created_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-block px-3 py-1 rounded text-sm font-medium ${
+                            doc.status === 'sent' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                            doc.status === 'final' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                            'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                          }`}>
+                            {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
-      )}
-
-      {!selectedPatientId && (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <Sparkles className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Ready to Generate Documents</h3>
-            <p className="text-gray-600">Select a patient above to begin generating healthcare documents</p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+      </div>
+    </PullToRefresh>
   );
 }
