@@ -401,12 +401,15 @@ export default function Dashboard() {
 
             }
           </div>
-        </DashboardSection>
-        }
+          </DashboardSection>
+          }
 
+          {/* AI Insights */}
+          <ErrorBoundary>
+          <AIInsightsPanel />
+          </ErrorBoundary>
 
+          </div>
+          </PullToRefresh>);
 
-    </div>
-    </PullToRefresh>);
-
-}
+          }
