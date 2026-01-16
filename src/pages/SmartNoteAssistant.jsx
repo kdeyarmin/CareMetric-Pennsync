@@ -1200,11 +1200,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 currentUser={currentUser}
               />
 
-              {/* Regulatory Compliance Monitor */}
-              <RegulatoryComplianceMonitor
-                enhancedNote={enhancedNote}
-                visitType={visitType}
-              />
+
 
               {/* Patient Education Panel */}
               <PatientEducationPanel
