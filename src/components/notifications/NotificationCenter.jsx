@@ -18,6 +18,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { toast } from "sonner";
 
 export default function NotificationCenter() {
   const queryClient = useQueryClient();
@@ -271,6 +272,36 @@ export default function NotificationCenter() {
     }
   };
 
+  const markAllAsRead = async () => {
+    const itemsToMark = filteredNotifications.filter(n => !n.read);
+    
+    if (itemsToMark.length === 0) {
+      toast.info('No unread notifications to mark');
+      return;
+    }
+
+    try {
+      const alertIds = itemsToMark.filter(n => n.type === 'patient_alert').map(n => n.id.replace('alert-', ''));
+      const trainingIds = itemsToMark.filter(n => n.type === 'training').map(n => n.id.replace('training-', ''));
+      
+      // Update patient alerts to acknowledged status
+      for (const id of alertIds) {
+        await base44.entities.PatientAlert.update(id, { status: 'acknowledged' });
+      }
+      
+      // Update training recommendations to addressed
+      for (const id of trainingIds) {
+        await base44.entities.TrainingRecommendation.update(id, { addressed: true });
+      }
+
+      queryClient.invalidateQueries();
+      toast.success(`All ${itemsToMark.length} notifications dismissed`);
+    } catch (error) {
+      console.error('Error dismissing all notifications:', error);
+      toast.error('Failed to dismiss notifications');
+    }
+  };
+
   const getColorClass = (color) => {
     const classes = {
       red: 'bg-red-100 text-red-800 border-red-200',
@@ -303,9 +334,22 @@ export default function NotificationCenter() {
                 {unreadCount} unread • {criticalCount} critical
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={markAllAsRead}
+                  className="text-xs"
+                >
+                  <CheckCheck className="w-4 h-4 mr-1" />
+                  Mark All Read
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
           
           {/* Bulk Actions Bar */}
