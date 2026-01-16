@@ -112,6 +112,49 @@ Format your response as JSON with these exact sections.`;
               }
             }
           },
+          hcpcs_codes: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                code: { type: "string" },
+                code_type: { type: "string" },
+                description: { type: "string" },
+                typical_cost: { type: "string" },
+                rationale: { type: "string" },
+                confidence: { type: "string", enum: ["high", "medium", "low"] },
+                payer_notes: { type: "string" }
+              }
+            }
+          },
+          recommended_modifiers: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                modifier: { type: "string" },
+                description: { type: "string" },
+                applies_to_codes: { type: "array", items: { type: "string" } },
+                usage_scenario: { type: "string" },
+                denial_prevention: { type: "string" }
+              }
+            }
+          },
+          payer_specific_denial_risks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                payer_type: { type: "string" },
+                risk_level: { type: "string", enum: ["critical", "high", "medium", "low"] },
+                problematic_codes: { type: "array", items: { type: "string" } },
+                denial_reason: { type: "string" },
+                required_documentation: { type: "array", items: { type: "string" } },
+                requires_preauth: { type: "boolean" },
+                age_gender_restrictions: { type: "string" }
+              }
+            }
+          },
           cci_bundling_concerns: {
             type: "array",
             items: {
@@ -139,6 +182,17 @@ Format your response as JSON with these exact sections.`;
           compliance_notes: {
             type: "array",
             items: { type: "string" }
+          },
+          billing_form_prefill_data: {
+            type: "object",
+            properties: {
+              primary_icd10: { type: "string" },
+              secondary_icd10s: { type: "array", items: { type: "string" } },
+              primary_cpt: { type: "string" },
+              cpt_modifiers: { type: "array", items: { type: "string" } },
+              hcpcs: { type: "array", items: { type: "string" } },
+              hcpcs_modifiers: { type: "array", items: { type: "string" } }
+            }
           }
         }
       }
