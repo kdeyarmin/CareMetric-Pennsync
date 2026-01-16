@@ -137,6 +137,11 @@ export default function SmartNoteAssistant() {
     setSuggestedTasks([]);
 
     try {
+      console.log('Starting note enhancement...');
+      console.log('Visit Type:', visitType);
+      console.log('Diagnosis:', selectedDiagnosis);
+      console.log('Provider Type:', currentUser?.credential_type);
+      
       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
       const prompt = getEnhanceNotePrompt({
         visitType,
@@ -146,6 +151,7 @@ export default function SmartNoteAssistant() {
         roughNotes
       });
 
+      console.log('Calling InvokeLLM...');
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
         response_json_schema: {
@@ -174,6 +180,8 @@ export default function SmartNoteAssistant() {
         }
       });
 
+      console.log('InvokeLLM result:', result);
+
       setExtractedData(result.extracted_data);
       setEnhancedNote(result.enhanced_note);
       setComplianceResults(result.compliance_check);
@@ -188,8 +196,9 @@ export default function SmartNoteAssistant() {
         toast.warning("Note enhanced - Review compliance warnings");
       }
     } catch (error) {
-      toast.error(`Failed to enhance note: ${error.message || 'Unknown error'}`);
       console.error('Error enhancing note:', error);
+      console.error('Error stack:', error.stack);
+      toast.error(`Failed to enhance note: ${error.message || 'Unknown error'}`);
     } finally {
       setEnhancing(false);
     }
