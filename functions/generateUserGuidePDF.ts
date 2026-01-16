@@ -188,11 +188,11 @@ const FEATURES_GUIDE = [
     title: "Risk Factors Assessment",
     description: "The system automatically evaluates multiple clinical and demographic risk factors to predict patient deterioration, hospitalization risk, and readmission probability.",
     howToUse: [
-      "1. Review the Risk Factors section within patient alert or dashboard widget",
-      "2. Review vital signs for abnormal trends: blood pressure, heart rate, respiratory rate, oxygen saturation, temperature",
-      "3. Check medication adherence and reconciliation status for completeness",
-      "4. Assess functional and cognitive status changes from baseline",
-      "5. Monitor social determinants: living situation, caregiver support, transportation access"
+      "Review the Risk Factors section within patient alert or dashboard widget",
+      "Review vital signs for abnormal trends: blood pressure, heart rate, respiratory rate, oxygen saturation, temperature",
+      "Check medication adherence and reconciliation status for completeness",
+      "Assess functional and cognitive status changes from baseline",
+      "Monitor social determinants: living situation, caregiver support, transportation access"
     ],
     bestPractices: [
       "Conduct comprehensive assessment of vital sign trends over time, not isolated measurements",
@@ -215,7 +215,7 @@ const FEATURES_GUIDE = [
     ]
   },
   {
-    title: "HIPAA Compliance & Security",
+    title: "AI Documentation Assistant",
     description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, and strict access controls.",
     howToUse: [
       "1. Access system using secure login with required multi-factor authentication",
@@ -237,12 +237,12 @@ const FEATURES_GUIDE = [
     title: "AI Documentation Assistant",
     description: "24/7 AI-powered chatbot that provides instant answers to documentation questions, compliance requirements, and regulatory guidance. Available throughout the app for on-demand support.",
     howToUse: [
-      "1. Click the AI chat icon in the bottom-right corner of any page",
-      "2. Ask questions about documentation requirements (e.g., 'What's required for skilled nursing documentation?')",
-      "3. Get compliance guidance (e.g., 'How do I document homebound status?')",
-      "4. Learn about OASIS requirements and Medicare regulations",
-      "5. Receive ICD-10 coding guidance and documentation standards",
-      "6. Get help with CareMetric AI features and troubleshooting"
+      "Click the AI chat icon in the bottom-right corner of any page",
+      "Ask questions about documentation requirements (e.g., 'What's required for skilled nursing documentation?')",
+      "Get compliance guidance (e.g., 'How do I document homebound status?')",
+      "Learn about OASIS requirements and Medicare regulations",
+      "Receive ICD-10 coding guidance and documentation standards",
+      "Get help with CareMetric AI features and troubleshooting"
     ],
     bestPractices: [
       "Ask specific questions for more targeted answers",
@@ -298,6 +298,25 @@ const FEATURES_GUIDE = [
       "Monitor high-risk patients more frequently"
     ],
     importance: "Reduces hospital readmission rates by 25-30%, prevents Medicare penalties for excess readmissions, improves patient outcomes through proactive intervention, and demonstrates quality of care for value-based reimbursement programs."
+  },
+  {
+    title: "HIPAA Compliance & Security",
+    description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, and strict access controls.",
+    howToUse: [
+      "Access system using secure login with required multi-factor authentication",
+      "Access only patient records necessary for direct clinical care provision",
+      "Logout immediately upon completion of work or when stepping away from device",
+      "Report any suspected security breaches or unauthorized access immediately to IT",
+      "Adhere strictly to all organizational data protection policies and HIPAA regulations"
+    ],
+    bestPractices: [
+      "Never disclose login credentials or access tokens to any individual",
+      "Utilize VPN for all remote access to protected systems",
+      "Implement password protection on all devices with access to patient data",
+      "Refrain from discussing Protected Health Information in public or unsecured areas",
+      "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
+    ],
+    importance: "Protects patient privacy and prevents costly HIPAA violations and fines, maintains audit compliance and organizational reputation, ensures secure remote access for mobile workforce, and protects sensitive clinical data from unauthorized access"
   }
 ];
 
