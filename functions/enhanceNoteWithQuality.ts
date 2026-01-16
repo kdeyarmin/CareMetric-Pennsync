@@ -230,9 +230,22 @@ Return comprehensive results in the specified JSON format.`;
 
     console.log('Enhancement and quality analysis completed successfully');
 
+    // Apply quality improvements to the enhanced note
+    let improvedNote = result.enhanced_note;
+    if (result.quality_analysis?.suggestions && Array.isArray(result.quality_analysis.suggestions)) {
+      for (const suggestion of result.quality_analysis.suggestions) {
+        if (suggestion.excerpt && suggestion.improved_text) {
+          improvedNote = improvedNote.replace(suggestion.excerpt, suggestion.improved_text);
+        }
+      }
+    }
+
     return Response.json({
       success: true,
-      data: result
+      data: {
+        ...result,
+        enhanced_note: improvedNote
+      }
     });
 
   } catch (error) {
