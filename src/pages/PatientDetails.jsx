@@ -85,6 +85,7 @@ import VitalSignsTrendsChart from "../components/patient/VitalSignsTrendsChart";
 import PatientRiskAnalysisPanel from "../components/risk/PatientRiskAnalysisPanel";
 import RiskAlertConfiguration from "../components/risk/RiskAlertConfiguration";
 import ProactiveRiskInterventions from "../components/patient/ProactiveRiskInterventions";
+import HealthMetricsDashboard from "../components/patient/HealthMetricsDashboard";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -356,6 +357,11 @@ export default function PatientDetails() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Health Metrics Dashboard */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <HealthMetricsDashboard patient={patient} visits={visits} />
+        </div>
 
         {/* AI-Generated Recommendations from OASIS */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
