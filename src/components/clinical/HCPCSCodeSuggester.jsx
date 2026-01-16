@@ -39,9 +39,11 @@ export default function HCPCSCodeSuggester({ hcpcsCodes = [] }) {
                   <span className="font-mono font-bold text-lg text-purple-700">
                     {code.code}
                   </span>
-                  <Badge className={CODE_TYPE_COLORS[code.code_type] || "bg-gray-100"}>
-                    {code.code_type?.toUpperCase().replace("_", " ")}
-                  </Badge>
+                  {code.code_type && (
+                    <Badge className={CODE_TYPE_COLORS[code.code_type] || "bg-gray-100"}>
+                      {code.code_type.toUpperCase().replace("_", " ")}
+                    </Badge>
+                  )}
                   {code.confidence === "high" && (
                     <Badge variant="outline" className="text-xs text-green-700">
                       High Confidence
