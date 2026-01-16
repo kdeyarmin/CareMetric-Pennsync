@@ -45,22 +45,29 @@ export default function CarePlanSuggestionsPanel({ patientId, visitType, diagnos
 
     setIsGenerating(true);
     try {
+      const providerContext = getProviderSpecificPromptAdditions(effectiveProviderType);
+
       const prompt = `Based on the following clinical note, suggest new or updated care plans for this patient.
 
-Visit Type: ${visitType || 'Not specified'}
-Diagnosis: ${diagnosis || 'Not specified'}
-Clinical Note: ${noteContent.substring(0, 1000)}
+  Visit Type: ${visitType || 'Not specified'}
+  Diagnosis: ${diagnosis || 'Not specified'}
+  Provider Type: ${effectiveProviderType}
+  Clinical Note: ${noteContent.substring(0, 1000)}
 
-Current Care Plans:
-${existingCarePlans.map(cp => `- Problem: ${cp.problem}, Goal: ${cp.goal}, Status: ${cp.status}`).join('\n') || 'No existing care plans'}
+  ${providerContext}
 
-Suggest 2-3 care plans with:
-- problem: nursing diagnosis/problem
-- goal: measurable goal
-- interventions: array of specific nursing actions
-- frequency: how often to assess (e.g., "Each visit", "Weekly")
+  Current Care Plans:
+  ${existingCarePlans.map(cp => `- Problem: ${cp.problem}, Goal: ${cp.goal}, Status: ${cp.status}`).join('\n') || 'No existing care plans'}
 
-Return as JSON object with "carePlans" array.`;
+  Relevant task types for ${effectiveProviderType}: ${relevantTaskTypes.join(', ')}
+
+  Suggest 2-3 care plans tailored to this ${effectiveProviderType}'s scope and focus areas with:
+  - problem: relevant to ${effectiveProviderType} practice
+  - goal: measurable and achievable goal
+  - interventions: array of specific ${effectiveProviderType}-appropriate actions
+  - frequency: how often to assess (e.g., "Each visit", "Weekly")
+
+  Return as JSON object with "carePlans" array.`;
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
