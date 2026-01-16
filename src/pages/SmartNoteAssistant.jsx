@@ -37,6 +37,9 @@ import InteractiveQualitySuggestions from "@/components/smartNote/InteractiveQua
 import VisitTypeGuidance from "@/components/smartNote/VisitTypeGuidance";
 import CodeSearchInserter from "@/components/smartNote/CodeSearchInserter";
 import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
+import NextBestActionSuggestions from "@/components/smartNote/NextBestActionSuggestions";
+import SmartPhraseVoiceInput from "@/components/smartNote/SmartPhraseVoiceInput";
+import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryComplianceMonitor";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -363,6 +366,21 @@ export default function SmartNoteAssistant() {
       setMedicareViolations(result.compliance_check?.medicare_violations || []);
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
 
+      // Learn from the edits made by the user
+      if (enhancedNote !== editedNote) {
+        try {
+          const { learnFromNoteEdits } = await import('@/functions/learnFromNoteEdits');
+          await learnFromNoteEdits({
+            original_note: enhancedNote,
+            edited_note: editedNote,
+            visit_type: visitType,
+            provider_type: currentUser?.credential_type || 'RN'
+          });
+        } catch (learnError) {
+          console.error('Error learning from edits:', learnError);
+        }
+      }
+
       toast.dismiss(loadingToast);
       toast.success("Compliance check complete!");
     } catch (error) {
@@ -516,6 +534,14 @@ export default function SmartNoteAssistant() {
 
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
+
+                {/* Smart Phrase Voice Input */}
+                <SmartPhraseVoiceInput
+                  onInsertText={(text) => {
+                    setRoughNotes(roughNotes + '\n\n' + text);
+                  }}
+                  disabled={enhancing}
+                />
 
                 {/* Code Search & Inserter */}
                 <CodeSearchInserter
@@ -1060,6 +1086,26 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               noteContent={enhancedNote} />
 
             }
+
+              {/* Next Best Action Suggestions */}
+              <NextBestActionSuggestions
+                enhancedNote={enhancedNote}
+                patientContext={patientData ? {
+                  patient_name: `${patientData.first_name} ${patientData.last_name}`,
+                  primary_diagnosis: patientData.primary_diagnosis,
+                  current_medications: patientData.current_medications,
+                  active_care_plans: []
+                } : null}
+                visitType={visitType}
+                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                currentUser={currentUser}
+              />
+
+              {/* Regulatory Compliance Monitor */}
+              <RegulatoryComplianceMonitor
+                enhancedNote={enhancedNote}
+                visitType={visitType}
+              />
 
               {/* Start Over Button */}
               <Button
