@@ -244,7 +244,8 @@ export default function SmartNoteAssistant() {
        });
 
        console.log('✅ Function response received:', response);
-       const result = response.data || response;
+       // Handle nested response structure: response.data.data contains the actual result
+       const result = response.data?.data || response.data || response;
        console.log('✅ Result extracted:', result);
        console.log('📋 FULL RESULT STRUCTURE:', JSON.stringify(result, null, 2));
        
