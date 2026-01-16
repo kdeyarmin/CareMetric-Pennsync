@@ -210,6 +210,44 @@ export default function MedicalCodingAssistant({
             </div>
           )}
 
+          {/* HCPCS Codes */}
+          {codes.hcpcs_codes?.length > 0 && (
+            <HCPCSCodeSuggester hcpcsCodes={codes.hcpcs_codes} />
+          )}
+
+          {/* Recommended Modifiers */}
+          {codes.recommended_modifiers?.length > 0 && (
+            <div className="border rounded-lg p-4 bg-pink-50">
+              <h3 className="font-semibold text-pink-900 mb-3">Recommended Modifiers</h3>
+              <div className="space-y-2">
+                {codes.recommended_modifiers.map((mod, idx) => (
+                  <div key={idx} className="bg-white p-3 rounded border border-pink-200">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <span className="font-mono font-bold text-lg text-pink-700">{mod.modifier}</span>
+                        <p className="text-sm text-gray-700">{mod.description}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-600 mb-2">
+                      <strong>Applies to:</strong> {mod.applies_to_codes.join(', ')}
+                    </p>
+                    <p className="text-sm text-gray-700 mb-1">
+                      <strong>Usage:</strong> {mod.usage_scenario}
+                    </p>
+                    <p className="text-sm text-pink-700">
+                      <strong>Denial Prevention:</strong> {mod.denial_prevention}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Payer-Specific Denial Risks */}
+          {codes.payer_specific_denial_risks?.length > 0 && (
+            <DenialRiskAnalyzer denialRisks={codes.payer_specific_denial_risks} />
+          )}
+
           {/* Compliance Notes */}
           {codes.compliance_notes?.length > 0 && (
             <div className="border rounded-lg p-4 bg-indigo-50">
@@ -224,8 +262,17 @@ export default function MedicalCodingAssistant({
               </ul>
             </div>
           )}
-        </CardContent>
-      )}
-    </Card>
-  );
-}
+
+          {/* Billing Form Populator */}
+          {codes.billing_form_prefill_data && (
+            <BillingFormPopulator 
+              prefillData={codes.billing_form_prefill_data}
+              allCodes={codes}
+              patientContext={patientContext}
+            />
+          )}
+          </CardContent>
+          )}
+          </Card>
+          );
+          }
