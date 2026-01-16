@@ -39,11 +39,22 @@ Deno.serve(async (req) => {
         ).join('\n')}\n\nIMPORTANT: These are the user's specific compliance requirements. Interpret and apply them intelligently to the clinical note.`
       : '';
 
+    // Import provider-specific context
+    const { getProviderSpecificPromptAdditions, getCareLocationPromptAdditions } = await import('../components/utils/providerSpecificPrompts.js');
+    
+    const providerContext = getProviderSpecificPromptAdditions(provider_type);
+    const locationContext = getCareLocationPromptAdditions(user?.service_type || 'home_health');
+
     const enhancementPrompt = `You are an elite healthcare documentation specialist. Your task is to craft the highest quality Medicare-compliant clinical narrative that demonstrates clinical excellence and regulatory mastery.
 
 VISIT TYPE: ${visit_type}
 PRIMARY DIAGNOSIS: ${diagnosis}
 PROVIDER TYPE: ${provider_type}
+CARE LOCATION: ${user?.service_type || 'home_health'}
+
+${providerContext}
+
+${locationContext}
 
 ${compliance_prompt}${customRulesText}${userRulesText}
 
