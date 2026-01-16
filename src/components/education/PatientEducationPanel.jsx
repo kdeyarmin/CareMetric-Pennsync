@@ -2,10 +2,11 @@ import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Mail, Printer, CheckCircle2, Loader2, X } from "lucide-react";
+import { BookOpen, Mail, Printer, CheckCircle2, Loader2, X, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import EducationAssignmentDialog from "@/components/education/EducationAssignmentDialog";
 
 export default function PatientEducationPanel({ 
   suggestedMaterials = [], 
@@ -15,7 +16,19 @@ export default function PatientEducationPanel({
 }) {
   const [selectedMaterials, setSelectedMaterials] = useState([]);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [assignmentDialog, setAssignmentDialog] = useState(null);
   const queryClient = useQueryClient();
+
+  const { data: carePlans = [] } = useQuery({
+    queryKey: ["carePlans", patientId],
+    queryFn: async () => {
+      return await base44.entities.CarePlan.filter({
+        patient_id: patientId,
+        status: "active"
+      });
+    },
+    enabled: !!patientId
+  });
 
   const toggleMaterial = (material) => {
     setSelectedMaterials(prev => {
