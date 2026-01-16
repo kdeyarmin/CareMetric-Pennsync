@@ -291,7 +291,10 @@ export default function SmartNoteAssistant() {
        setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
        setSuggestedTasks(result.suggested_tasks || []);
        setSuggestedEducation(result.suggested_education_materials || []);
-       
+
+       // Generate clinical insights in background
+       generateClinicalInsights(finalNote, result.extracted_data);
+
        console.log('🔵 STATE AFTER UPDATES:');
        console.log('  - enhancedNote will be:', result.enhanced_note);
        console.log('  - complianceResults will be:', {...result.compliance_check, quality_analysis: result.quality_analysis});
