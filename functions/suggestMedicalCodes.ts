@@ -9,60 +9,64 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Restrict to physicians and NPs
+    // Only physicians and NPs can suggest codes
     if (user.credential_type !== 'MD' && user.credential_type !== 'NP') {
-      return Response.json({ error: 'Only physicians and NPs can access medical coding suggestions' }, { status: 403 });
+      return Response.json({ 
+        error: 'Only physicians and nurse practitioners can use medical coding assistant' 
+      }, { status: 403 });
     }
 
-    const {
-      enhanced_note,
-      diagnosis,
+    const { 
+      enhanced_note, 
+      diagnosis, 
       visit_type,
       provider_type,
       patient_context
     } = await req.json();
 
-    const prompt = `You are an expert medical coding assistant. Analyze the following clinical note and provide detailed ICD-10 and CPT code suggestions.
+    if (!enhanced_note || !diagnosis) {
+      return Response.json({ 
+        error: 'Enhanced note and diagnosis are required' 
+      }, { status: 400 });
+    }
 
-VISIT TYPE: ${visit_type}
-PRIMARY DIAGNOSIS: ${diagnosis}
-PROVIDER TYPE: ${provider_type}
+    console.log('Starting medical code suggestion analysis...');
 
-${patient_context ? `PATIENT CONTEXT:
-- Secondary Diagnoses: ${patient_context.secondary_diagnoses?.join(', ') || 'None'}
-- Current Medications: ${patient_context.current_medications?.map(m => m.name).join(', ') || 'None'}
-` : ''}
+    const codingPrompt = `You are an expert medical coder and billing compliance specialist. Analyze the following clinical note and suggest appropriate medical codes.
 
 CLINICAL NOTE:
 ${enhanced_note}
 
-Please provide:
+PRIMARY DIAGNOSIS: ${diagnosis}
+VISIT TYPE: ${visit_type}
+PROVIDER TYPE: ${provider_type}
 
-1. PRIMARY ICD-10 CODES:
-   - For the main diagnosis and any significant secondary diagnoses/conditions documented
-   - Include: Code, Description, Confidence Level (high/medium/low), Rationale
+${patient_context ? `PATIENT CONTEXT:
+- Patient: ${patient_context.patient_name}
+- Secondary Diagnoses: ${patient_context.secondary_diagnoses?.join(', ') || 'None'}
+- Current Medications: ${patient_context.current_medications?.map(m => m.name || m).join(', ') || 'None'}
+` : ''}
 
-2. CPT CODES:
-   - For the visit/service level based on documented complexity and time/medical decision-making
-   - Include: Code, Description, Typical RVU, Work involved, Confidence Level, Rationale
+Please analyze this note and provide comprehensive medical coding recommendations including:
 
-3. BUNDLING & CCI CONCERNS:
-   - Flag any potential CPT code pairs that may have CCI edits (Column 1/2 indicators)
-   - Identify any unbundling risks
-   - Suggest proper coding hierarchy to avoid denials
+1. PRIMARY ICD-10 CODES: Main diagnostic codes applicable to this visit
+2. SECONDARY ICD-10 CODES: Supporting diagnostic codes
+3. CPT CODES: Procedure/service codes for billing
+4. CCI & BUNDLING CONCERNS: Identify any Correct Coding Initiative issues or unbundling risks
+5. DOCUMENTATION GAPS: Identify missing documentation needed for coding accuracy
+6. COMPLIANCE NOTES: Key compliance considerations for this visit
 
-4. DOCUMENTATION GAPS:
-   - Note any missing documentation that would support higher-level coding
-   - Suggest specific documentation improvements
+For each code, provide:
+- Code number
+- Description
+- Rationale for why it applies
+- Confidence level (high/medium/low)
+- Any special billing considerations
 
-5. COMPLIANCE NOTES:
-   - Any Medicare/regulatory concerns with the suggested codes
-   - Adherence to coding guidelines
-
-Format response as structured JSON.`;
+Format your response as JSON with these exact sections.`;
 
     const result = await base44.integrations.Core.InvokeLLM({
-      prompt,
+      prompt: codingPrompt,
       response_json_schema: {
         type: "object",
         properties: {
@@ -73,9 +77,8 @@ Format response as structured JSON.`;
               properties: {
                 code: { type: "string" },
                 description: { type: "string" },
-                confidence: { type: "string", enum: ["high", "medium", "low"] },
                 rationale: { type: "string" },
-                is_primary: { type: "boolean" }
+                confidence: { type: "string", enum: ["high", "medium", "low"] }
               }
             }
           },
@@ -86,8 +89,8 @@ Format response as structured JSON.`;
               properties: {
                 code: { type: "string" },
                 description: { type: "string" },
-                confidence: { type: "string" },
-                rationale: { type: "string" }
+                rationale: { type: "string" },
+                confidence: { type: "string", enum: ["high", "medium", "low"] }
               }
             }
           },
@@ -99,10 +102,9 @@ Format response as structured JSON.`;
                 code: { type: "string" },
                 description: { type: "string" },
                 visit_level: { type: "string" },
-                typical_rvu: { type: "number" },
-                work_rvu: { type: "number" },
-                confidence: { type: "string" },
-                rationale: { type: "string" }
+                typical_rvu: { type: "string" },
+                rationale: { type: "string" },
+                confidence: { type: "string", enum: ["high", "medium", "low"] }
               }
             }
           },
@@ -112,7 +114,7 @@ Format response as structured JSON.`;
               type: "object",
               properties: {
                 code_pair: { type: "string" },
-                concern_type: { type: "string", enum: ["CCI_Edit", "Unbundling_Risk", "Separate_Billing"] },
+                concern_type: { type: "string" },
                 severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
                 description: { type: "string" },
                 recommendation: { type: "string" }
@@ -138,6 +140,8 @@ Format response as structured JSON.`;
       }
     });
 
+    console.log('Medical code suggestion analysis completed');
+
     return Response.json({
       success: true,
       data: result
@@ -145,9 +149,9 @@ Format response as structured JSON.`;
 
   } catch (error) {
     console.error('Error in suggestMedicalCodes:', error);
-    return Response.json({
+    return Response.json({ 
       error: error.message || 'Failed to suggest medical codes',
-      details: error.stack
+      details: error.stack 
     }, { status: 500 });
   }
 });
