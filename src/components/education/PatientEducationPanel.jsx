@@ -181,6 +181,15 @@ export default function PatientEducationPanel({
                     )}
                     Email
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAssignmentDialog(item)}
+                    className="flex-1"
+                  >
+                    <Link2 className="w-3 h-3 mr-1" />
+                    Assign
+                  </Button>
                 </div>
               </div>
             ))}
