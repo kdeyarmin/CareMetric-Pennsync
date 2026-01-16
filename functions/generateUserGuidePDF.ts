@@ -34,7 +34,7 @@ const FEATURES_GUIDE = [
     importance: "Reduces note documentation time by 40-50%, improves Medicare compliance audit rates by 30%, and prevents costly claim denials while ensuring comprehensive clinical documentation"
   },
   {
-    title: "Medical Scribe",
+    title: "Visit Scribe",
     description: "Utilize voice-to-text transcription technology to capture patient interactions and automatically convert them to structured clinical documentation.",
     howToUse: [
       "1. Click the microphone icon to initiate voice recording",

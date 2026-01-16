@@ -42,7 +42,7 @@ export default function AIChatAssistant() {
 
   const suggestedQuestions = [
     "How do I create a smart note?",
-    "How do I use the medical scribe?",
+    "How do I use the visit scribe?",
     "How do care plans work?",
     "What's OASIS compliance checking?",
     "How do I track patient risk alerts?",

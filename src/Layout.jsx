@@ -146,7 +146,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Features", icon: Sparkles, page: "Features" },
   { name: "Patients", icon: Users, page: "Patients" },
   { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
-  { name: "Medical Scribe", icon: Mic, page: "MedicalScribe" },
+  { name: "Visit Scribe", icon: Mic, page: "MedicalScribe" },
   { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
   { name: "Documents", icon: FileText, page: "DocumentGenerator" },
   { name: "Templates", icon: FileText, page: "TemplateLibrary" },
