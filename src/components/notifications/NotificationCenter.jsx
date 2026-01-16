@@ -13,7 +13,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Bell, AlertCircle, CheckCircle2, Clock, Users, FileText,
-  Target, Shield, TrendingUp, X, Check, Filter
+  Target, Shield, TrendingUp, X, Check, Filter, CheckCheck, Circle
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
@@ -23,6 +23,8 @@ export default function NotificationCenter() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("all"); // all, unread, critical
+  const [selectedNotifications, setSelectedNotifications] = useState([]);
+  const [bulkMode, setBulkMode] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -198,6 +200,77 @@ export default function NotificationCenter() {
   const unreadCount = notifications.filter(n => !n.read).length;
   const criticalCount = notifications.filter(n => n.severity === 'critical').length;
 
+  const toggleNotificationSelection = (notifId) => {
+    setSelectedNotifications(prev => 
+      prev.includes(notifId) 
+        ? prev.filter(id => id !== notifId)
+        : [...prev, notifId]
+    );
+  };
+
+  const selectAll = () => {
+    setSelectedNotifications(filteredNotifications.map(n => n.id));
+  };
+
+  const deselectAll = () => {
+    setSelectedNotifications([]);
+  };
+
+  const bulkMarkAsRead = async () => {
+    const selectedItems = notifications.filter(n => selectedNotifications.includes(n.id));
+    
+    try {
+      // Update each entity type accordingly
+      const alertIds = selectedItems.filter(n => n.type === 'patient_alert').map(n => n.id.replace('alert-', ''));
+      const trainingIds = selectedItems.filter(n => n.type === 'training').map(n => n.id.replace('training-', ''));
+      
+      // Update patient alerts to acknowledged status
+      for (const id of alertIds) {
+        await base44.entities.PatientAlert.update(id, { status: 'acknowledged' });
+      }
+      
+      // Update training recommendations to addressed
+      for (const id of trainingIds) {
+        await base44.entities.TrainingRecommendation.update(id, { addressed: true });
+      }
+
+      queryClient.invalidateQueries();
+      setSelectedNotifications([]);
+      setBulkMode(false);
+      toast.success(`${selectedItems.length} notifications marked as read`);
+    } catch (error) {
+      console.error('Error marking notifications as read:', error);
+      toast.error('Failed to update notifications');
+    }
+  };
+
+  const bulkMarkAsUnread = async () => {
+    const selectedItems = notifications.filter(n => selectedNotifications.includes(n.id));
+    
+    try {
+      const alertIds = selectedItems.filter(n => n.type === 'patient_alert').map(n => n.id.replace('alert-', ''));
+      const trainingIds = selectedItems.filter(n => n.type === 'training').map(n => n.id.replace('training-', ''));
+      
+      // Update patient alerts back to active status
+      for (const id of alertIds) {
+        await base44.entities.PatientAlert.update(id, { status: 'active' });
+      }
+      
+      // Update training recommendations back to unaddressed
+      for (const id of trainingIds) {
+        await base44.entities.TrainingRecommendation.update(id, { addressed: false });
+      }
+
+      queryClient.invalidateQueries();
+      setSelectedNotifications([]);
+      setBulkMode(false);
+      toast.success(`${selectedItems.length} notifications marked as unread`);
+    } catch (error) {
+      console.error('Error marking notifications as unread:', error);
+      toast.error('Failed to update notifications');
+    }
+  };
+
   const getColorClass = (color) => {
     const classes = {
       red: 'bg-red-100 text-red-800 border-red-200',
@@ -222,16 +295,79 @@ export default function NotificationCenter() {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-96 p-0" align="end">
-        <div className="border-b p-4 flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-lg">Notifications</h3>
-            <p className="text-sm text-gray-600">
-              {unreadCount} unread • {criticalCount} critical
-            </p>
+        <div className="border-b p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="font-semibold text-lg">Notifications</h3>
+              <p className="text-sm text-gray-600">
+                {unreadCount} unread • {criticalCount} critical
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              <X className="w-4 h-4" />
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-            <X className="w-4 h-4" />
-          </Button>
+          
+          {/* Bulk Actions Bar */}
+          {filteredNotifications.length > 0 && (
+            <div className="flex items-center gap-2 mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setBulkMode(!bulkMode);
+                  setSelectedNotifications([]);
+                }}
+              >
+                {bulkMode ? 'Cancel' : 'Select'}
+              </Button>
+              
+              {bulkMode && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={selectAll}
+                    disabled={selectedNotifications.length === filteredNotifications.length}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={deselectAll}
+                    disabled={selectedNotifications.length === 0}
+                  >
+                    Clear
+                  </Button>
+                  
+                  {selectedNotifications.length > 0 && (
+                    <>
+                      <div className="flex-1" />
+                      <Badge variant="outline">{selectedNotifications.length} selected</Badge>
+                      <Button
+                        size="sm"
+                        onClick={bulkMarkAsRead}
+                        className="bg-green-600 hover:bg-green-700 h-7"
+                      >
+                        <CheckCheck className="w-3 h-3 mr-1" />
+                        Mark Read
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={bulkMarkAsUnread}
+                        className="h-7"
+                      >
+                        <Circle className="w-3 h-3 mr-1" />
+                        Mark Unread
+                      </Button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <Tabs defaultValue="all" className="w-full">
@@ -259,9 +395,21 @@ export default function NotificationCenter() {
                   {filteredNotifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className={`p-4 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-blue-50/30' : ''}`}
+                      className={`p-4 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-blue-50/30' : ''} ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
                     >
                       <div className="flex gap-3">
+                        {bulkMode && (
+                          <div 
+                            className="flex items-center pt-1 cursor-pointer"
+                            onClick={() => toggleNotificationSelection(notif.id)}
+                          >
+                            {selectedNotifications.includes(notif.id) ? (
+                              <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                            ) : (
+                              <Circle className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
                           <notif.icon className="w-5 h-5" />
                         </div>
@@ -310,9 +458,21 @@ export default function NotificationCenter() {
                   {filteredNotifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className="p-4 hover:bg-gray-50 transition-colors bg-blue-50/30"
+                      className={`p-4 hover:bg-gray-50 transition-colors bg-blue-50/30 ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
                     >
                       <div className="flex gap-3">
+                        {bulkMode && (
+                          <div 
+                            className="flex items-center pt-1 cursor-pointer"
+                            onClick={() => toggleNotificationSelection(notif.id)}
+                          >
+                            {selectedNotifications.includes(notif.id) ? (
+                              <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                            ) : (
+                              <Circle className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
                           <notif.icon className="w-5 h-5" />
                         </div>
@@ -359,9 +519,21 @@ export default function NotificationCenter() {
                   {filteredNotifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className="p-4 hover:bg-gray-50 transition-colors"
+                      className={`p-4 hover:bg-gray-50 transition-colors ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
                     >
                       <div className="flex gap-3">
+                        {bulkMode && (
+                          <div 
+                            className="flex items-center pt-1 cursor-pointer"
+                            onClick={() => toggleNotificationSelection(notif.id)}
+                          >
+                            {selectedNotifications.includes(notif.id) ? (
+                              <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                            ) : (
+                              <Circle className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
                           <notif.icon className="w-5 h-5" />
                         </div>
