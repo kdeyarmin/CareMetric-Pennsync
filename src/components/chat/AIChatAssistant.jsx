@@ -41,14 +41,14 @@ export default function AIChatAssistant() {
   }, [conversation]);
 
   const suggestedQuestions = [
-    "How do I create a smart note?",
+    "What documentation is required for skilled nursing visits?",
+    "How do I document homebound status?",
+    "What are OASIS M-item requirements?",
+    "How do I ensure Medicare compliance?",
+    "What's required for medication reconciliation?",
     "How do I use the visit scribe?",
-    "How do care plans work?",
-    "What's OASIS compliance checking?",
-    "How do I track patient risk alerts?",
-    "How do I access analytics?",
-    "What training modules are available?",
-    "How do I manage tasks?"
+    "What are ICD-10 coding requirements?",
+    "How do care plans work?"
   ];
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function AIChatAssistant() {
       setConversation([
         {
           role: "assistant",
-          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your CareMetric AI Support Assistant.\n\nI can help you with:\n• Feature guidance and tutorials\n• Troubleshooting issues\n• Best practices and workflows\n• Documentation standards\n• Compliance questions\n\nWhat do you need help with?`,
+          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your AI Documentation Assistant.\n\nI can help you with:\n• Documentation requirements & best practices\n• Medicare/Medicaid compliance guidance\n• OASIS assessment standards\n• Clinical coding (ICD-10, procedures)\n• Regulatory requirements & updates\n• CareMetric AI features & workflows\n\nWhat documentation or compliance question can I answer?`,
           timestamp: new Date(),
           showSuggestions: true
         }
@@ -151,7 +151,7 @@ export default function AIChatAssistant() {
             <div className="flex justify-between items-center">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Bot className="w-4 h-4" />
-                CareMetric AI Support
+                AI Documentation Assistant
                 <Badge className="bg-white/20 text-white text-xs">24/7</Badge>
               </CardTitle>
               <Button size="icon" variant="ghost" onClick={() => setIsOpen(false)} className="hover:bg-white/20">
@@ -228,7 +228,7 @@ export default function AIChatAssistant() {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                  placeholder="Ask me how to use CareMetric AI..."
+                  placeholder="Ask about documentation or compliance..."
                   className="bg-white"
                 />
                 <Button onClick={() => handleSendMessage()} size="icon" className="bg-gradient-to-r from-indigo-600 to-purple-600">
@@ -236,7 +236,7 @@ export default function AIChatAssistant() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center">
-                Ask anything about features, workflows, or compliance
+                Ask about documentation, compliance, or regulatory requirements
               </p>
             </div>
           </CardContent>
