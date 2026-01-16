@@ -72,6 +72,18 @@ export default function Settings() {
         phone_number: formData.phone_number,
         two_factor_enabled: formData.two_factor_enabled
       });
+
+      // Sync provider type to other settings if it changed
+      if (currentUser?.credential_type !== formData.credential_type) {
+        try {
+          await base44.functions.invoke('syncProviderType', {
+            credential_type: formData.credential_type
+          });
+        } catch (syncError) {
+          console.error('Error syncing provider type:', syncError);
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       setIsEditing(false);
     } catch (error) {
