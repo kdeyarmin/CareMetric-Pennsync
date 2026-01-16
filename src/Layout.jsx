@@ -24,7 +24,6 @@ import {
               Activity,
               CreditCard,
               Mic,
-              Phone,
               UserPlus,
               ShieldAlert,
               ListTodo,
