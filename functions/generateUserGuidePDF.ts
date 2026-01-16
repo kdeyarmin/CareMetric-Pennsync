@@ -275,6 +275,29 @@ const FEATURES_GUIDE = [
       "Document all conditions that affect treatment or management"
     ],
     importance: "Improves coding accuracy, reduces claim denials, ensures proper reimbursement, and helps maintain compliance with ICD-10 documentation specificity requirements."
+  },
+  {
+    title: "Readmission Risk Prediction",
+    description: "AI-powered predictive analytics that analyzes patient clinical and demographic data to calculate readmission probability with a risk score (0-100), identifies key risk factors, and provides evidence-based intervention recommendations to prevent hospital readmissions.",
+    howToUse: [
+      "Available in patient records and clinical decision support sections",
+      "Click 'Assess Readmission Risk' or allow automatic risk calculation",
+      "Review the risk score (0-100) with color-coded severity indicators",
+      "Examine identified risk factors contributing to high risk",
+      "Review recommended interventions specific to patient's risk profile",
+      "Document interventions implemented and patient response",
+      "Reassess risk periodically or after significant clinical changes"
+    ],
+    bestPractices: [
+      "Run risk assessment at admission and before discharge",
+      "Review all identified risk factors for accuracy and completeness",
+      "Prioritize interventions based on modifiable risk factors",
+      "Coordinate care plan with interdisciplinary team members",
+      "Document patient and caregiver education provided",
+      "Ensure follow-up appointments are scheduled before discharge",
+      "Monitor high-risk patients more frequently"
+    ],
+    importance: "Reduces hospital readmission rates by 25-30%, prevents Medicare penalties for excess readmissions, improves patient outcomes through proactive intervention, and demonstrates quality of care for value-based reimbursement programs."
   }
 ];
 
@@ -431,7 +454,7 @@ Deno.serve(async (req) => {
           doc.addPage();
           yPosition = margin;
         }
-        const stepLines = doc.splitTextToSize('\u2022 ' + step.replace(/^\d+\.\s/, ''), contentWidth - 5);
+        const stepLines = doc.splitTextToSize('\u2022 ' + step, contentWidth - 5);
         doc.text(stepLines, margin + 5, yPosition);
         yPosition += stepLines.length * 4 + 2;
       }

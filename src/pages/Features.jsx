@@ -83,6 +83,12 @@ const FEATURES = [
   title: "ICD-10 Code Suggestions",
   description: "AI analyzes clinical notes to suggest relevant ICD-10 codes with confidence levels, rationale, and billing impact guidance.",
   category: "Clinical"
+},
+{
+  icon: AlertCircle,
+  title: "Readmission Risk Prediction",
+  description: "AI-powered risk assessment that analyzes patient data to predict readmission probability with actionable intervention recommendations.",
+  category: "Clinical"
 }];
 
 
