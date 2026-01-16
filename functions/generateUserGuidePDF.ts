@@ -232,6 +232,49 @@ const FEATURES_GUIDE = [
       "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
     ],
     importance: "Protects patient privacy and prevents costly HIPAA violations and fines, maintains audit compliance and organizational reputation, ensures secure remote access for mobile workforce, and protects sensitive clinical data from unauthorized access"
+  },
+  {
+    title: "AI Documentation Assistant",
+    description: "24/7 AI-powered chatbot that provides instant answers to documentation questions, compliance requirements, and regulatory guidance. Available throughout the app for on-demand support.",
+    howToUse: [
+      "1. Click the AI chat icon in the bottom-right corner of any page",
+      "2. Ask questions about documentation requirements (e.g., 'What's required for skilled nursing documentation?')",
+      "3. Get compliance guidance (e.g., 'How do I document homebound status?')",
+      "4. Learn about OASIS requirements and Medicare regulations",
+      "5. Receive ICD-10 coding guidance and documentation standards",
+      "6. Get help with CareMetric AI features and troubleshooting"
+    ],
+    bestPractices: [
+      "Ask specific questions for more targeted answers",
+      "Use it during documentation to verify compliance requirements in real-time",
+      "Reference it when unsure about regulatory requirements",
+      "Ask follow-up questions to clarify complex topics",
+      "Use it to train new staff on documentation standards"
+    ],
+    importance: "Provides instant access to documentation expertise and compliance guidance, reducing errors and improving documentation quality."
+  },
+  {
+    title: "ICD-10 Code Suggestions",
+    description: "AI-powered clinical decision support that analyzes clinical notes and automatically suggests relevant ICD-10 diagnostic codes with confidence levels, clinical rationale, and billing impact guidance.",
+    howToUse: [
+      "1. Available in Smart Notes and clinical documentation pages",
+      "2. Enter or dictate clinical notes describing patient condition",
+      "3. Click 'Suggest ICD-10 Codes' or let AI automatically analyze",
+      "4. Review suggested codes with confidence percentages",
+      "5. See clinical rationale explaining why each code is recommended",
+      "6. View billing impact and specificity requirements",
+      "7. Copy codes directly to your documentation or billing system"
+    ],
+    bestPractices: [
+      "Provide detailed clinical notes for more accurate code suggestions",
+      "Include specific symptoms, severity, and clinical findings",
+      "Review confidence levels - higher confidence indicates stronger match",
+      "Read the clinical rationale to ensure code appropriateness",
+      "Use suggestions as guidance, not replacement for clinical judgment",
+      "Verify codes match patient's actual diagnosis and documentation",
+      "Document all conditions that affect treatment or management"
+    ],
+    importance: "Improves coding accuracy, reduces claim denials, ensures proper reimbursement, and helps maintain compliance with ICD-10 documentation specificity requirements."
   }
 ];
 
