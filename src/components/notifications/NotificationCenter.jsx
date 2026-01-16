@@ -221,9 +221,12 @@ export default function NotificationCenter() {
       });
     });
 
+    // Filter by provider type relevance
+    const filtered = items.filter(item => isRelevantToProvider(item.type, currentUser?.credential_type));
+    
     // Sort by time (newest first)
-    return items.sort((a, b) => new Date(b.time) - new Date(a.time));
-  }, [patientAlerts, tasks, complianceAudits, trainingRecommendations, regulatoryUpdates, announcements]);
+    return filtered.sort((a, b) => new Date(b.time) - new Date(a.time));
+  }, [patientAlerts, tasks, complianceAudits, trainingRecommendations, regulatoryUpdates, announcements, currentUser?.credential_type]);
 
   const filteredNotifications = useMemo(() => {
     if (filter === 'unread') {
