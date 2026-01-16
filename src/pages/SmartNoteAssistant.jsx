@@ -452,6 +452,9 @@ export default function SmartNoteAssistant() {
 
               }
 
+                {/* Visit Type Guidance */}
+                {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
+
                 {/* Vital Signs */}
                 <div>
                   <Label className="text-sm font-medium">Vital Signs</Label>
