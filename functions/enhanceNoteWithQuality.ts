@@ -95,6 +95,10 @@ Please provide a comprehensive response that includes:
    - Specific strengths in the documentation
    - Detailed suggestions for improvement with severity levels
    - Each suggestion should include: issue, category, severity, recommendation, excerpt (if applicable), and improved_text (if applicable)
+5. SUGGESTED EDUCATION MATERIALS: Based on the diagnosis and note content, suggest relevant patient education topics with:
+   - title: Education topic title
+   - reason: Why this education is important for this patient
+   - category: Education category (e.g., disease management, medication, lifestyle)
 
 Return comprehensive results in the specified JSON format.`;
 
@@ -181,6 +185,17 @@ Return comprehensive results in the specified JSON format.`;
                 type: { type: "string" },
                 suggested_due_timeframe: { type: "string" },
                 ai_reason: { type: "string" }
+              }
+            }
+          },
+          suggested_education_materials: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                reason: { type: "string" },
+                category: { type: "string" }
               }
             }
           }

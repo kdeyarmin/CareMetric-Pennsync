@@ -40,6 +40,8 @@ import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
 import NextBestActionSuggestions from "@/components/smartNote/NextBestActionSuggestions";
 import SmartPhraseVoiceInput from "@/components/smartNote/SmartPhraseVoiceInput";
 import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryComplianceMonitor";
+import EducationLibraryBrowser from "@/components/education/EducationLibraryBrowser";
+import PatientEducationPanel from "@/components/education/PatientEducationPanel";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1105,6 +1107,17 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               <RegulatoryComplianceMonitor
                 enhancedNote={enhancedNote}
                 visitType={visitType}
+              />
+
+              {/* Patient Education Panel */}
+              <PatientEducationPanel
+                suggestedMaterials={suggestedEducation}
+                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                patientEmail={patientData?.email}
+                onEducationProvided={(material, method) => {
+                  setProvidedEducation(prev => [...prev, { material, method }]);
+                  toast.success('Education documented - will be added to note');
+                }}
               />
 
               {/* Start Over Button */}
