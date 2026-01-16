@@ -335,17 +335,17 @@ export default function NotificationCenter() {
               </p>
             </div>
             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              {unreadCount > 0 && (
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={markAllAsRead}
-                  className="text-xs h-8 px-2 sm:px-3"
-                >
-                  <CheckCheck className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-1" />
-                  <span className="hidden sm:inline">Mark All Read</span>
-                </Button>
-              )}
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={markAllAsRead}
+                disabled={unreadCount === 0}
+                className="text-xs h-8 px-2 sm:px-3"
+              >
+                <CheckCheck className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-1" />
+                <span className="hidden sm:inline">Dismiss All</span>
+                <span className="sm:hidden">Dismiss</span>
+              </Button>
               <Button variant="ghost" size="sm" onClick={() => setOpen(false)} className="h-8 w-8">
                 <X className="w-4 h-4" />
               </Button>
