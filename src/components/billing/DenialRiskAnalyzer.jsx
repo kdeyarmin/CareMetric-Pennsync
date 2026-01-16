@@ -47,7 +47,9 @@ export default function DenialRiskAnalyzer({ denialRisks = [] }) {
               <h4 className={`font-semibold ${colors.text}`}>
                 {risk.payer_type} - {risk.denial_reason}
               </h4>
-              <Badge className={colors.badge}>{risk.risk_level.toUpperCase()}</Badge>
+              {risk.risk_level && (
+                <Badge className={colors.badge}>{risk.risk_level.toUpperCase()}</Badge>
+              )}
             </div>
             <p className={`text-sm ${colors.text} opacity-75`}>
               Codes at risk: {risk.problematic_codes.join(", ")}
