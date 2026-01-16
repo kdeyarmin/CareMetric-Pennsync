@@ -98,39 +98,30 @@ export default function PatientEducationPanel({
 
   const markAsProvided = async (material, method) => {
     try {
-      // Create task for follow-up
-      await base44.entities.Task.create({
-        patient_id: patientId,
-        title: `Follow up on patient education: ${material.title}`,
-        description: `Verify patient understanding of ${material.title} material provided via ${method}`,
-        type: 'followup',
-        priority: 'medium',
-        due_timeframe: 'next_visit',
-        source: 'ai_generated',
-        status: 'pending'
-      });
+      const user = await base44.auth.me();
 
       // Create assignment record
       await base44.entities.PatientEducationAssignment.create({
         patient_id: patientId,
-        material_id: material.id,
+        education_material_id: material.id,
         material_title: material.title,
-        provided_by: (await base44.auth.me())?.email,
+        assigned_by: user.email,
+        assigned_date: new Date().toISOString(),
         provided_date: new Date().toISOString(),
         delivery_method: method,
         status: 'provided'
       });
 
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['educationAssignments', patientId] });
       
       if (onEducationProvided) {
         onEducationProvided(material, method);
       }
       
-      toast.success('Education marked as provided and follow-up task created');
+      toast.success('Education tracked successfully');
     } catch (error) {
       console.error('Error marking education as provided:', error);
-      toast.error('Failed to create follow-up task');
+      toast.error('Failed to track education');
     }
   };
 
