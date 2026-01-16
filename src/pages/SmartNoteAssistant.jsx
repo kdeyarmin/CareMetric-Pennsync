@@ -1020,7 +1020,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 }
 
                     {complianceResults.issues?.length > 0 &&
-                <div>
+                    <div>
                         <h5 className="font-semibold text-red-800 dark:text-red-400 mb-2">⚠ Issues Found</h5>
                         <div className="space-y-3">
                           {complianceResults.issues.map((issue, idx) =>
@@ -1036,14 +1036,21 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                                 <p className="font-medium text-sm">{issue.element}</p>
                               </div>
                               <p className="text-sm text-red-700 dark:text-red-300 mb-2">{issue.problem}</p>
-                              <p className="text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900 p-2 rounded">
-                                💡 {issue.suggestion}
-                              </p>
+                              <div className="space-y-2">
+                                <p className="text-sm text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900 p-2 rounded">
+                                  <strong>How to fix:</strong> {issue.suggestion}
+                                </p>
+                                {issue.specific_fix &&
+                          <p className="text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900 p-2 rounded">
+                                    <strong>Example:</strong> {issue.specific_fix}
+                                  </p>
+                          }
+                              </div>
                             </div>
                     )}
                         </div>
                       </div>
-                }
+                    }
                   </CardContent>
                 </Card>
             }
