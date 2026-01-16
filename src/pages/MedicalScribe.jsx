@@ -103,7 +103,7 @@ export default function MedicalScribe() {
                <Mic className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700 dark:text-slate-300" />
             </div>
             <div className="flex-1 min-w-0 overflow-hidden">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 truncate">Medical Scribe</h1>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 truncate">Visit Scribe</h1>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1 hidden sm:block">Record or upload visit audio to auto-generate clinical notes</p>
             </div>
           </div>
