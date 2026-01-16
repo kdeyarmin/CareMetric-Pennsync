@@ -550,14 +550,16 @@ export default function SmartNoteAssistant() {
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
 
-                {/* Code Search & Inserter */}
-                <CodeSearchInserter
-                  onInsertCode={(code) => {
-                    setRoughNotes(roughNotes + '\n\n' + code);
-                    toast.success('Code inserted into notes');
-                  }}
-                  noteType="rough"
-                />
+                {/* Code Search & Inserter - Only for Physicians & NPs */}
+                {(currentUser?.credential_type === 'MD' || currentUser?.credential_type === 'NP') && (
+                  <CodeSearchInserter
+                    onInsertCode={(code) => {
+                      setRoughNotes(roughNotes + '\n\n' + code);
+                      toast.success('Code inserted into notes');
+                    }}
+                    noteType="rough"
+                  />
+                )}
 
                 {/* Vital Signs */}
                 <div>
