@@ -53,14 +53,14 @@ export default function ProviderPracticeInfoManager({ userEmail, credentialType 
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
-      if (practiceInfo?.id) {
-        return await base44.entities.ProviderPracticeInfo.update(practiceInfo.id, data);
-      } else {
-        return await base44.entities.ProviderPracticeInfo.create({
+      const result = practiceInfo?.id ?
+        await base44.entities.ProviderPracticeInfo.update(practiceInfo.id, data) :
+        await base44.entities.ProviderPracticeInfo.create({
           provider_email: userEmail,
+          credential_type: credentialType,
           ...data
         });
-      }
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['providerPracticeInfo'] });
