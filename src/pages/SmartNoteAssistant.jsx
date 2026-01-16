@@ -223,8 +223,7 @@ export default function SmartNoteAssistant() {
       }
 
       // Single consolidated backend call with vital signs, patient context, and AI preferences
-      const { enhanceNoteWithQuality } = await import('@/functions/enhanceNoteWithQuality');
-      const response = await enhanceNoteWithQuality({
+      const response = await base44.functions.invoke('enhanceNoteWithQuality', {
         rough_notes: roughNotes,
         visit_type: visitType,
         diagnosis: selectedDiagnosis,
