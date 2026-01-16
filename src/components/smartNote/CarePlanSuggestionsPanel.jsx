@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader, CheckCircle2, AlertCircle, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getProviderSpecificPromptAdditions, getRelevantTaskTypes } from '@/components/utils/providerSpecificPrompts';
 
 export default function CarePlanSuggestionsPanel({ patientId, visitType, diagnosis, noteContent }) {
   const [isGenerating, setIsGenerating] = useState(false);
