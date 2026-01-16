@@ -14,11 +14,14 @@ export default function PatientEducationGenerator() {
     patientId: '',
     diagnosis: '',
     topic: '',
-    educationLevel: 'general'
+    educationLevel: 'basic',
+    language: 'English',
+    treatmentPlan: ''
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(false);
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
@@ -34,13 +37,16 @@ export default function PatientEducationGenerator() {
 
     setLoading(true);
     setError(null);
+    setSaved(false);
 
     try {
       const response = await base44.functions.invoke('generatePatientEducationMaterial', {
         patientId: formData.patientId || null,
         diagnosis: formData.diagnosis,
         topic: formData.topic,
-        educationLevel: formData.educationLevel
+        educationLevel: formData.educationLevel,
+        language: formData.language,
+        treatmentPlan: formData.treatmentPlan
       });
 
       setResult(response.data);
@@ -48,6 +54,30 @@ export default function PatientEducationGenerator() {
       setError(err.message || 'Failed to generate education material');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!result) return;
+    
+    try {
+      await base44.entities.PatientEducationMaterial.create({
+        title: `${formData.topic} - ${formData.diagnosis}`,
+        description: result.content?.overview || '',
+        category: formData.diagnosis,
+        content_type: 'text',
+        content_text: JSON.stringify(result.content),
+        reading_level: formData.educationLevel,
+        language: formData.language,
+        source: 'ai_generated',
+        tags: [formData.diagnosis, formData.topic, formData.language],
+        is_active: true
+      });
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError('Failed to save education material');
     }
   };
 
@@ -105,17 +135,45 @@ export default function PatientEducationGenerator() {
               </div>
 
               <div>
-                <Label className="text-sm">Education Level</Label>
+                <Label className="text-sm">Reading Level</Label>
                 <Select value={formData.educationLevel} onValueChange={(value) => setFormData({...formData, educationLevel: value})}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="basic">Basic</SelectItem>
-                    <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="advanced">Advanced</SelectItem>
+                    <SelectItem value="basic">Basic (Elementary)</SelectItem>
+                    <SelectItem value="intermediate">Intermediate (High School)</SelectItem>
+                    <SelectItem value="advanced">Advanced (College)</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm">Language</Label>
+                <Select value={formData.language} onValueChange={(value) => setFormData({...formData, language: value})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="English">English</SelectItem>
+                    <SelectItem value="Spanish">Spanish</SelectItem>
+                    <SelectItem value="French">French</SelectItem>
+                    <SelectItem value="Mandarin">Mandarin Chinese</SelectItem>
+                    <SelectItem value="Vietnamese">Vietnamese</SelectItem>
+                    <SelectItem value="Tagalog">Tagalog</SelectItem>
+                    <SelectItem value="Korean">Korean</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm">Treatment Plan (Optional)</Label>
+                <Textarea
+                  placeholder="Describe the patient's treatment plan for more personalized material"
+                  value={formData.treatmentPlan}
+                  onChange={(e) => setFormData({...formData, treatmentPlan: e.target.value})}
+                  className="h-20"
+                />
               </div>
 
               <Button
@@ -202,9 +260,19 @@ export default function PatientEducationGenerator() {
                   </div>
                 )}
 
-                <Button className="w-full bg-blue-600 hover:bg-blue-700">
-                  Save & Send to Patient
-                </Button>
+                <div className="space-y-2">
+                  {saved && (
+                    <div className="bg-green-50 border border-green-200 rounded p-2 text-sm text-green-800">
+                      ✓ Material saved successfully
+                    </div>
+                  )}
+                  <Button 
+                    onClick={handleSave}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    Save to Library
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
