@@ -71,6 +71,12 @@ const FEATURES = [
   title: "Patient Risk Alerts",
   description: "AI-powered early warning system that identifies patients at risk for readmission or adverse events.",
   category: "Clinical"
+},
+{
+  icon: Zap,
+  title: "AI Documentation Assistant",
+  description: "24/7 AI chatbot that answers documentation questions, compliance requirements, and provides regulatory guidance.",
+  category: "Support"
 }];
 
 
