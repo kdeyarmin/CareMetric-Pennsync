@@ -1195,19 +1195,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
             }
 
-              {/* Next Best Action Suggestions */}
-              <NextBestActionSuggestions
-                enhancedNote={enhancedNote}
-                patientContext={patientData ? {
-                  patient_name: `${patientData.first_name} ${patientData.last_name}`,
-                  primary_diagnosis: patientData.primary_diagnosis,
-                  current_medications: patientData.current_medications,
-                  active_care_plans: []
-                } : null}
-                visitType={visitType}
-                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                currentUser={currentUser}
-              />
+
 
 
 
