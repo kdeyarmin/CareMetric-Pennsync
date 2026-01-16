@@ -1,9 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
-/**
- * Enhances AI prompts with learned provider preferences and feedback patterns
- * This function analyzes provider's past feedback and preferences to customize AI outputs
- */
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -13,117 +9,96 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { 
-      base_prompt, 
-      provider_email,
+    const {
+      enhanced_note,
+      provider_type,
       visit_type,
-      diagnosis 
+      suggested_suggestions = []
     } = await req.json();
 
-    if (!base_prompt) {
-      return Response.json({ error: 'base_prompt is required' }, { status: 400 });
+    console.log(`Applying learned preferences for user: ${user.email}`);
+
+    // Fetch user's learned patterns
+    const learnedPatterns = await base44.entities.UserLearnedPattern.filter({
+      user_email: user.email,
+      provider_type: provider_type,
+      is_active: true
+    });
+
+    if (!learnedPatterns || learnedPatterns.length === 0) {
+      console.log('No learned patterns found');
+      return Response.json({
+        success: true,
+        enhanced_note: enhanced_note,
+        applied_patterns: [],
+        filtered_suggestions: suggested_suggestions
+      });
     }
 
-    // Get provider preferences
-    const preferences = await base44.entities.ProviderPreferences.filter({ 
-      provider_email: provider_email || user.email 
-    });
-    const pref = preferences[0];
+    // Apply text patterns to enhance note
+    let refinedNote = enhanced_note;
+    const appliedPatterns = [];
 
-    // Get usage patterns
-    const patterns = await base44.entities.ProviderUsagePattern.filter({ 
-      provider_email: provider_email || user.email 
-    });
-    const pattern = patterns[0];
+    for (const pattern of learnedPatterns) {
+      // Only apply high-confidence patterns
+      if (pattern.confidence_score >= 65 && pattern.original_text) {
+        // Check if pattern's original text exists in the note
+        if (refinedNote.includes(pattern.original_text)) {
+          refinedNote = refinedNote.replace(new RegExp(escapeRegex(pattern.original_text), 'g'), pattern.user_preferred_text);
+          appliedPatterns.push({
+            pattern_category: pattern.pattern_category,
+            confidence: pattern.confidence_score,
+            replacements_made: 1
+          });
+          console.log(`Applied pattern: ${pattern.pattern_category} (confidence: ${pattern.confidence_score}%)`);
+        }
+      }
+    }
 
-    // Get recent feedback to learn from
-    const recentFeedback = await base44.entities.NoteFeedback.filter(
-      { created_by: user.email },
-      '-created_date',
-      20
+    // Filter suggestions based on user preferences
+    const filteredSuggestions = filterSuggestionsBasedOnPreference(
+      suggested_suggestions,
+      learnedPatterns
     );
 
-    // Build personalization additions to prompt
-    let personalizedAdditions = "\n\nPERSONALIZED STYLE PREFERENCES:\n";
+    console.log(`Applied ${appliedPatterns.length} patterns, filtered suggestions from ${suggested_suggestions.length} to ${filteredSuggestions.length}`);
 
-    if (pref?.ai_personalization) {
-      const ai = pref.ai_personalization;
-      
-      personalizedAdditions += `- Writing Style: ${ai.writing_style || 'clinical'}\n`;
-      personalizedAdditions += `- Detail Level: ${ai.detail_level || 'moderate'} - ${
-        ai.detail_level === 'minimal' ? 'Keep descriptions brief and focused' :
-        ai.detail_level === 'comprehensive' ? 'Provide comprehensive, detailed documentation' :
-        'Balance detail with conciseness'
-      }\n`;
-      personalizedAdditions += `- Tone: ${ai.tone || 'professional'}\n`;
-
-      if (ai.focus_areas && ai.focus_areas.length > 0) {
-        personalizedAdditions += `- Priority Focus Areas: ${ai.focus_areas.join(', ')}\n`;
-        personalizedAdditions += `  → Emphasize these elements in the documentation\n`;
-      }
-    }
-
-    // Add learned patterns from feedback
-    if (recentFeedback.length > 0) {
-      const avgRating = recentFeedback.reduce((sum, f) => sum + (f.rating || 0), 0) / recentFeedback.length;
-      
-      // Extract common improvement suggestions
-      const allSuggestions = recentFeedback.flatMap(f => f.improvement_suggestions || []);
-      const commonSuggestions = [...new Set(allSuggestions)].slice(0, 5);
-
-      if (commonSuggestions.length > 0) {
-        personalizedAdditions += `\nLEARNED FROM FEEDBACK (avg rating: ${avgRating.toFixed(1)}/5):\n`;
-        commonSuggestions.forEach(suggestion => {
-          personalizedAdditions += `- ${suggestion}\n`;
-        });
-      }
-
-      // Extract common missed elements
-      const missedElements = recentFeedback
-        .filter(f => f.feedback_type === 'missed_elements')
-        .flatMap(f => f.missed_elements || []);
-      const commonMissed = [...new Set(missedElements)].slice(0, 3);
-
-      if (commonMissed.length > 0) {
-        personalizedAdditions += `\nCRITICAL - Provider frequently adds these elements (ensure they're included):\n`;
-        commonMissed.forEach(element => {
-          personalizedAdditions += `- ${element}\n`;
-        });
-      }
-    }
-
-    // Add preferred phrasing from ProviderPreferences
-    if (pref?.preferred_phrasing) {
-      personalizedAdditions += `\nPREFERRED PHRASING:\n`;
-      if (pref.preferred_phrasing.vital_signs) {
-        personalizedAdditions += `- Vital Signs Format: ${pref.preferred_phrasing.vital_signs}\n`;
-      }
-      if (pref.preferred_phrasing.patient_response) {
-        personalizedAdditions += `- Patient Response Format: ${pref.preferred_phrasing.patient_response}\n`;
-      }
-      if (pref.preferred_phrasing.assessment) {
-        personalizedAdditions += `- Assessment Format: ${pref.preferred_phrasing.assessment}\n`;
-      }
-    }
-
-    // Combine base prompt with personalized additions
-    const enhancedPrompt = base_prompt + personalizedAdditions;
-
-    return Response.json({ 
+    return Response.json({
       success: true,
-      enhanced_prompt: enhancedPrompt,
-      personalization_applied: {
-        has_preferences: !!pref,
-        feedback_count: recentFeedback.length,
-        usage_pattern_exists: !!pattern
-      }
+      enhanced_note: refinedNote,
+      applied_patterns: appliedPatterns,
+      filtered_suggestions: filteredSuggestions
     });
 
   } catch (error) {
     console.error('Error applying learned preferences:', error);
     return Response.json({ 
-      error: error.message,
-      success: false 
+      error: error.message || 'Failed to apply learned preferences',
+      details: error.stack 
     }, { status: 500 });
   }
 });
+
+function filterSuggestionsBasedOnPreference(suggestions, patterns) {
+  if (!suggestions || suggestions.length === 0) return [];
+
+  return suggestions.filter(suggestion => {
+    // Check if user has rejected similar suggestions before
+    const rejectionPattern = patterns.find(p =>
+      p.pattern_type === 'suggestion_preference' &&
+      p.pattern_category === suggestion.category &&
+      p.suggestions_rejected > p.suggestions_accepted * 2 // 2x more rejections than acceptances
+    );
+
+    if (rejectionPattern && rejectionPattern.confidence_score >= 70) {
+      console.log(`Filtered out suggestion for ${suggestion.category} (rejected by user before)`);
+      return false; // Don't include this suggestion
+    }
+
+    return true; // Include this suggestion
+  });
+}
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
