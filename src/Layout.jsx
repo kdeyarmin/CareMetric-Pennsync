@@ -27,9 +27,8 @@ import {
               UserPlus,
               ShieldAlert,
               ListTodo,
-              FileText,
-              Download } from
-            "lucide-react";
+              FileText } from
+              "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
