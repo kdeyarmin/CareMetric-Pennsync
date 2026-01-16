@@ -637,10 +637,15 @@ export default function SmartNoteAssistant() {
                 {/* Rough Notes Input */}
                 <div>
                   <Label className="text-sm font-medium">Clinical Notes *</Label>
+                  <VoiceNoteRecorder
+                    onTranscriptionComplete={(text) => {
+                      setRoughNotes(prev => prev ? prev + '\n\n' + text : text);
+                    }}
+                  />
                   <textarea
                   value={roughNotes}
                   onChange={(e) => setRoughNotes(e.target.value)}
-                  placeholder="Enter your rough clinical notes here...
+                  placeholder="Enter your rough clinical notes here or use voice dictation above...
 
 Example: Patient reports feeling better, pain level 2/10. Medications reviewed, compliant. Wound healing well, no signs of infection. Patient ambulating with walker..."
 
@@ -651,7 +656,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
 
 
-                  className="w-full h-48 p-3 border rounded-lg text-sm resize-none"
+                  className="w-full h-48 p-3 border rounded-lg text-sm resize-none mt-2"
                   />
 
 
