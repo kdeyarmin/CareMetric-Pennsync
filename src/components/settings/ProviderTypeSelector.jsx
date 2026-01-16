@@ -53,8 +53,20 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
     }
   }, [currentUser, user]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Sync provider type to other settings if it changed
+    if ((currentUser?.credential_type || user?.credential_type) !== formData.credential_type) {
+      try {
+        await base44.functions.invoke('syncProviderType', {
+          credential_type: formData.credential_type
+        });
+      } catch (syncError) {
+        console.error('Error syncing provider type:', syncError);
+      }
+    }
+
     updateUserMutation.mutate(formData);
   };
 
