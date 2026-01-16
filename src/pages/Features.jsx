@@ -77,6 +77,12 @@ const FEATURES = [
   title: "AI Documentation Assistant",
   description: "24/7 AI chatbot that answers documentation questions, compliance requirements, and provides regulatory guidance.",
   category: "Support"
+},
+{
+  icon: FileText,
+  title: "ICD-10 Code Suggestions",
+  description: "AI analyzes clinical notes to suggest relevant ICD-10 codes with confidence levels, rationale, and billing impact guidance.",
+  category: "Clinical"
 }];
 
 
