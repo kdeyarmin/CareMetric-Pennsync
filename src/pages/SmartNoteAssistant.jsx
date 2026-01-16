@@ -1093,14 +1093,20 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               </div>
               )}
 
-              {/* ICD-10 Code Suggestions - Only for Physicians & NPs after note enhancement */}
-              {(currentUser?.credential_type === 'MD' || currentUser?.credential_type === 'NP') && (
-                <EnhancedICD10Suggester 
-                  clinicalNote={enhancedNote}
-                  diagnosis={selectedDiagnosis}
-                  customRules={customComplianceRules}
-                />
-              )}
+              {/* Comprehensive Medical Coding Assistant - Only for Physicians & NPs after note enhancement */}
+              <MedicalCodingAssistant
+                enhancedNote={enhancedNote}
+                diagnosis={selectedDiagnosis}
+                visitType={visitType}
+                providerType={currentUser?.credential_type}
+                patientContext={patientData ? {
+                  patient_name: `${patientData.first_name} ${patientData.last_name}`,
+                  primary_diagnosis: patientData.primary_diagnosis,
+                  secondary_diagnoses: patientData.secondary_diagnoses,
+                  current_medications: patientData.current_medications
+                } : null}
+                currentUser={currentUser}
+              />
 
               {/* Care Plan Suggestions */}
               {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') &&
