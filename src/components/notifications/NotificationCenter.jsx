@@ -283,6 +283,10 @@ export default function NotificationCenter() {
     try {
       const alertIds = itemsToMark.filter(n => n.type === 'patient_alert').map(n => n.id.replace('alert-', ''));
       const trainingIds = itemsToMark.filter(n => n.type === 'training').map(n => n.id.replace('training-', ''));
+      const taskIds = itemsToMark.filter(n => n.type === 'task').map(n => n.id.replace('task-', ''));
+      const complianceIds = itemsToMark.filter(n => n.type === 'compliance').map(n => n.id.replace('compliance-', ''));
+      const regulatoryIds = itemsToMark.filter(n => n.type === 'regulatory').map(n => n.id.replace('regulatory-', ''));
+      const announcementIds = itemsToMark.filter(n => n.type === 'announcement').map(n => n.id.replace('announcement-', ''));
       
       // Update patient alerts to acknowledged status
       for (const id of alertIds) {
@@ -292,6 +296,26 @@ export default function NotificationCenter() {
       // Update training recommendations to addressed
       for (const id of trainingIds) {
         await base44.entities.TrainingRecommendation.update(id, { addressed: true });
+      }
+
+      // Update tasks to completed
+      for (const id of taskIds) {
+        await base44.entities.Task.update(id, { status: 'completed' });
+      }
+
+      // Update compliance audits status
+      for (const id of complianceIds) {
+        await base44.entities.ComplianceAudit.update(id, { status: 'resolved' });
+      }
+
+      // Update regulatory updates status
+      for (const id of regulatoryIds) {
+        await base44.entities.RegulatoryUpdate.update(id, { status: 'reviewed' });
+      }
+
+      // Mark announcements as read by updating or filtering
+      for (const id of announcementIds) {
+        await base44.entities.Announcement.update(id, { is_active: false });
       }
 
       queryClient.invalidateQueries();
