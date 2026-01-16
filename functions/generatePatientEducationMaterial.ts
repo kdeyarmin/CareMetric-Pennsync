@@ -1,9 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import OpenAI from 'npm:openai@4.28.0';
-
-const openai = new OpenAI({
-  apiKey: Deno.env.get('OPENAI_API_KEY'),
-});
 
 Deno.serve(async (req) => {
   try {
@@ -14,85 +9,91 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { patientId, diagnosis, educationLevel = 'general', topic } = await req.json();
+    const { patientId, diagnosis, topic, educationLevel, language, treatmentPlan } = await req.json();
 
     if (!diagnosis || !topic) {
-      return Response.json({ error: 'Missing required fields: diagnosis, topic' }, { status: 400 });
+      return Response.json({ error: 'Diagnosis and topic are required' }, { status: 400 });
     }
 
-    // Fetch patient data for personalization
-    const [patientData, educationMaterials] = await Promise.all([
-      patientId ? base44.entities.Patient.filter({ id: patientId }) : Promise.resolve([]),
-      base44.entities.PatientEducationMaterial.filter({ diagnosis, topic })
-    ]);
+    // Get patient data if provided
+    let patientContext = '';
+    if (patientId) {
+      const patient = await base44.entities.Patient.get(patientId);
+      if (patient) {
+        patientContext = `Patient: ${patient.first_name} ${patient.last_name}, Age: ${patient.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 'Unknown'}, Primary Diagnosis: ${patient.primary_diagnosis}`;
+      }
+    }
 
-    const patient = patientData[0] || null;
-    const existingMaterial = educationMaterials[0] || null;
+    // Build the prompt
+    const readingLevelDescription = {
+      basic: 'elementary school level (simple words, short sentences)',
+      intermediate: 'high school level (standard medical terminology with explanations)',
+      advanced: 'college level (technical medical terminology)'
+    }[educationLevel] || 'general public';
 
-    const prompt = `Create personalized patient education material for:
-Patient: ${patient ? `${patient.first_name} ${patient.last_name}, Age: ${patient.date_of_birth ? Math.floor((new Date() - new Date(patient.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : 'Unknown'}` : 'General patient'}
-Diagnosis: ${diagnosis}
+    const prompt = `Generate personalized patient education material for the following:
+
 Topic: ${topic}
-Education Level: ${educationLevel}
-${patient?.current_medications ? `Current Medications: ${patient.current_medications.slice(0, 5).map(m => m.name).join(', ')}` : ''}
+Diagnosis: ${diagnosis}
+Reading Level: ${readingLevelDescription}
+Language: ${language}
+${treatmentPlan ? `Treatment Plan: ${treatmentPlan}` : ''}
+${patientContext ? `${patientContext}` : ''}
 
-Create comprehensive yet easy-to-understand patient education material including:
-1. Overview (2-3 sentences)
-2. Key Points (5-7 bullet points)
-3. Daily Tips/Actions (3-5 practical steps)
-4. Warning Signs (when to call doctor)
-5. Resources/Support
+Create comprehensive, engaging, and medically accurate education material that includes:
+1. Overview - A clear, non-technical introduction
+2. Key Points - 5-7 essential points about the diagnosis and treatment
+3. Daily Tips - 4-5 practical daily tips for managing the condition
+4. Warning Signs - Important symptoms that require immediate medical attention
+5. Resources - Suggested resources or support options
 
-Format as structured JSON with sections.`;
+The material should be:
+- Written in clear, accessible language appropriate for the reading level
+- Personalized based on the provided context
+- Encouraging and positive in tone
+- Evidence-based and accurate
+- Formatted for easy reading
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert patient educator. Create clear, compassionate education materials for patients.'
+Return the response as JSON with the following structure:
+{
+  "title": "Title of the education material",
+  "overview": "...",
+  "key_points": ["point 1", "point 2", ...],
+  "daily_tips": ["tip 1", "tip 2", ...],
+  "warning_signs": ["sign 1", "sign 2", ...],
+  "resources": ["resource 1", "resource 2", ...],
+  "language": "${language}"
+}`;
+
+    // Call LLM to generate content
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      response_json_schema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          overview: { type: 'string' },
+          key_points: { type: 'array', items: { type: 'string' } },
+          daily_tips: { type: 'array', items: { type: 'string' } },
+          warning_signs: { type: 'array', items: { type: 'string' } },
+          resources: { type: 'array', items: { type: 'string' } },
+          language: { type: 'string' }
         },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.7,
-      max_tokens: 2000
+        required: ['title', 'overview', 'key_points', 'daily_tips', 'warning_signs']
+      }
     });
 
-    const educationContent = JSON.parse(completion.choices[0].message.content);
-
-    // Save education material
-    const savedMaterial = await base44.entities.PatientEducationMaterial.create({
-      diagnosis,
-      topic,
-      content: educationContent,
-      education_level: educationLevel,
-      created_by: user.email,
-      language: 'en'
+    return Response.json({ 
+      data: { 
+        content: result,
+        diagnosis,
+        topic,
+        language,
+        readingLevel: educationLevel
+      } 
     });
-
-    // If patient-specific, log the assignment
-    if (patientId && patient) {
-      await base44.entities.PatientEducationAssignment.create({
-        patient_id: patientId,
-        material_id: savedMaterial.id,
-        assigned_date: new Date().toISOString(),
-        status: 'assigned'
-      });
-    }
-
-    return Response.json({
-      success: true,
-      material_id: savedMaterial.id,
-      content: educationContent,
-      patient_specific: !!patient
-    });
-
   } catch (error) {
-    console.error('Education material generation error:', error);
+    console.error('Error generating patient education material:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
