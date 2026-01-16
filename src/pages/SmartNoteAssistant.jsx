@@ -160,113 +160,126 @@ export default function SmartNoteAssistant() {
   };
 
   const enhanceNote = async () => {
-    if (!roughNotes.trim()) {
-      toast.error("Please enter clinical notes");
-      return;
-    }
+     console.log('🔵 ENHANCE NOTE STARTED');
+     if (!roughNotes.trim()) {
+       toast.error("Please enter clinical notes");
+       return;
+     }
 
-    if (!visitType) {
-      toast.error("Please select a visit type");
-      return;
-    }
+     if (!visitType) {
+       toast.error("Please select a visit type");
+       return;
+     }
 
-    if (!selectedDiagnosis) {
-      toast.error("Please select a diagnosis");
-      return;
-    }
+     if (!selectedDiagnosis) {
+       toast.error("Please select a diagnosis");
+       return;
+     }
 
-    const loadingToast = toast.loading("Enhancing note and analyzing quality...");
-    setEnhancing(true);
-    setEnhancedNote(null);
-    setComplianceResults(null);
-    setShowResults(false);
-    setMedicareViolations([]);
-    setRegulatoryWarnings([]);
-    setSuggestedTasks([]);
+     const loadingToast = toast.loading("Enhancing note and analyzing quality...");
+     setEnhancing(true);
+     setEnhancedNote(null);
+     setComplianceResults(null);
+     setShowResults(false);
+     setMedicareViolations([]);
+     setRegulatoryWarnings([]);
+     setSuggestedTasks([]);
 
-    try {
-      const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
-      
-      // Filter custom rules applicable to this visit type
-      const applicableRules = customComplianceRules.filter(rule => {
-        if (!rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0) return true;
-        return rule.applies_to_visit_types.includes(visitType);
-      });
+     try {
+       console.log('🔵 Getting compliance prompt for:', currentUser?.credential_type, visitType);
+       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
+       console.log('✅ Compliance prompt received');
 
-      // Gather enhanced patient context
-      let patientContext = null;
-      if (selectedPatient !== 'no_patient' && patientData) {
-        const recentNotes = (patientData.enhanced_notes_history || []).slice(-3);
-        const carePlans = await base44.entities.CarePlan.filter({
-          patient_id: patientData.id,
-          status: 'active'
-        });
-        
-        patientContext = {
-          patient_name: `${patientData.first_name} ${patientData.last_name}`,
-          primary_diagnosis: patientData.primary_diagnosis,
-          secondary_diagnoses: patientData.secondary_diagnoses || [],
-          allergies: patientData.allergies,
-          current_medications: patientData.current_medications || [],
-          recent_notes: recentNotes.map(note => ({
-            date: note.date,
-            visit_type: note.visit_type,
-            diagnosis: note.diagnosis,
-            note_excerpt: note.enhanced_note?.substring(0, 300)
-          })),
-          active_care_plans: carePlans.map(cp => ({
-            problem: cp.problem,
-            goal: cp.goal,
-            status: cp.status
-          }))
-        };
-      }
+       // Filter custom rules applicable to this visit type
+       const applicableRules = customComplianceRules.filter(rule => {
+         if (!rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0) return true;
+         return rule.applies_to_visit_types.includes(visitType);
+       });
+       console.log('✅ Applicable rules:', applicableRules.length);
 
-      // Single consolidated backend call with vital signs, patient context, and AI preferences
-      const response = await base44.functions.invoke('enhanceNoteWithQuality', {
-        rough_notes: roughNotes,
-        visit_type: visitType,
-        diagnosis: selectedDiagnosis,
-        provider_type: currentUser?.credential_type || 'RN',
-        compliance_prompt: compliancePrompt,
-        custom_rules: applicableRules,
-        patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
-        vital_signs: vitalSigns,
-        patient_context: patientContext,
-        ai_preferences: aiPreferences
-      });
+       // Gather enhanced patient context
+       let patientContext = null;
+       if (selectedPatient !== 'no_patient' && patientData) {
+         console.log('🔵 Building patient context for:', patientData.id);
+         const recentNotes = (patientData.enhanced_notes_history || []).slice(-3);
+         const carePlans = await base44.entities.CarePlan.filter({
+           patient_id: patientData.id,
+           status: 'active'
+         });
 
-      const result = response.data;
+         patientContext = {
+           patient_name: `${patientData.first_name} ${patientData.last_name}`,
+           primary_diagnosis: patientData.primary_diagnosis,
+           secondary_diagnoses: patientData.secondary_diagnoses || [],
+           allergies: patientData.allergies,
+           current_medications: patientData.current_medications || [],
+           recent_notes: recentNotes.map(note => ({
+             date: note.date,
+             visit_type: note.visit_type,
+             diagnosis: note.diagnosis,
+             note_excerpt: note.enhanced_note?.substring(0, 300)
+           })),
+           active_care_plans: carePlans.map(cp => ({
+             problem: cp.problem,
+             goal: cp.goal,
+             status: cp.status
+           }))
+         };
+         console.log('✅ Patient context built');
+       }
 
-      // Update all state with consolidated results
-      setExtractedData(result.extracted_data);
-      setEnhancedNote(result.enhanced_note);
-      setEditedNote(result.enhanced_note);
-      setComplianceResults({
-        ...result.compliance_check,
-        quality_analysis: result.quality_analysis
-      });
-      setMedicareViolations(result.compliance_check?.medicare_violations || []);
-      setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
-      setSuggestedTasks(result.suggested_tasks || []);
-      setSuggestedEducation(result.suggested_education_materials || []);
-      setShowResults(true);
-      setIsEditMode(false);
+       // Single consolidated backend call with vital signs, patient context, and AI preferences
+       console.log('🔵 Calling enhanceNoteWithQuality function...');
+       const response = await base44.functions.invoke('enhanceNoteWithQuality', {
+         rough_notes: roughNotes,
+         visit_type: visitType,
+         diagnosis: selectedDiagnosis,
+         provider_type: currentUser?.credential_type || 'RN',
+         compliance_prompt: compliancePrompt,
+         custom_rules: applicableRules,
+         patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
+         vital_signs: vitalSigns,
+         patient_context: patientContext,
+         ai_preferences: aiPreferences
+       });
 
-      toast.dismiss(loadingToast);
-      if (result.compliance_check?.compliance_score >= 85) {
-        toast.success("Note enhanced - Medicare compliant!");
-      } else {
-        toast.warning("Note enhanced - Review compliance warnings");
-      }
-    } catch (error) {
-      console.error('Error enhancing note:', error);
-      toast.dismiss(loadingToast);
-      toast.error(`Failed to enhance note: ${error.message || 'Unknown error'}`);
-    } finally {
-      setEnhancing(false);
-    }
-  };
+       console.log('✅ Function response received:', response);
+       const result = response.data || response;
+       console.log('✅ Result extracted:', result);
+
+       // Update all state with consolidated results
+       console.log('🔵 Updating state...');
+       setExtractedData(result.extracted_data);
+       setEnhancedNote(result.enhanced_note);
+       setEditedNote(result.enhanced_note);
+       setComplianceResults({
+         ...result.compliance_check,
+         quality_analysis: result.quality_analysis
+       });
+       setMedicareViolations(result.compliance_check?.medicare_violations || []);
+       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
+       setSuggestedTasks(result.suggested_tasks || []);
+       setSuggestedEducation(result.suggested_education_materials || []);
+       console.log('✅ State updated, setting showResults to true');
+       setShowResults(true);
+       setIsEditMode(false);
+
+       toast.dismiss(loadingToast);
+       if (result.compliance_check?.compliance_score >= 85) {
+         toast.success("Note enhanced - Medicare compliant!");
+       } else {
+         toast.warning("Note enhanced - Review compliance warnings");
+       }
+       console.log('✅ ENHANCE NOTE COMPLETED SUCCESSFULLY');
+     } catch (error) {
+       console.error('❌ ERROR enhancing note:', error);
+       console.error('Error stack:', error.stack);
+       toast.dismiss(loadingToast);
+       toast.error(`Failed to enhance note: ${error.message || 'Unknown error'}`);
+     } finally {
+       setEnhancing(false);
+     }
+   };
 
   const availableVisitTypes = currentUser?.credential_type ?
   getVisitTypesForProvider(currentUser.credential_type) :
