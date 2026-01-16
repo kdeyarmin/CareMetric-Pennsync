@@ -143,7 +143,8 @@ Return comprehensive results in the specified JSON format.`;
                   properties: {
                     element: { type: "string" },
                     problem: { type: "string" },
-                    suggestion: { type: "string" },
+                    suggestion: { type: "string", description: "Specific, actionable guidance on what to add or change to fix this issue" },
+                    specific_fix: { type: "string", description: "Specific wording or example of what should be documented" },
                     severity: { type: "string" }
                   }
                 }
