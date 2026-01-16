@@ -14,8 +14,8 @@ const FEATURES = [
 },
 {
   icon: Mic,
-  title: "Medical Scribe",
-  description: "Voice-to-text medical scribe that transcribes patient interactions and generates structured clinical documentation.",
+  title: "Visit Scribe",
+  description: "Voice-to-text scribe that transcribes patient interactions and generates structured clinical documentation.",
   category: "Documentation"
 },
 {
