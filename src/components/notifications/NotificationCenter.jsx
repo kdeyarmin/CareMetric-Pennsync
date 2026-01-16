@@ -457,28 +457,28 @@ export default function NotificationCenter() {
                             )}
                           </div>
                         )}
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
-                          <notif.icon className="w-5 h-5" />
+                        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
+                          <notif.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <h4 className="font-medium text-sm text-gray-900 line-clamp-1">
+                            <h4 className="font-medium text-xs sm:text-sm text-gray-900 line-clamp-1">
                               {notif.title}
                             </h4>
                             {!notif.read && (
                               <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0" />
                             )}
                           </div>
-                          <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                          <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 mb-2">
                             {notif.message}
                           </p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-500">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-gray-500 truncate">
                               {formatDistanceToNow(new Date(notif.time), { addSuffix: true })}
                             </span>
                             {notif.link && (
                               <Link to={notif.link} onClick={() => setOpen(false)}>
-                                <Button variant="ghost" size="sm" className="h-7 text-xs">
+                                <Button variant="ghost" size="sm" className="h-6 sm:h-7 text-xs px-2 flex-shrink-0">
                                   View
                                 </Button>
                               </Link>
@@ -505,9 +505,9 @@ export default function NotificationCenter() {
                   {filteredNotifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className={`p-4 hover:bg-gray-50 transition-colors bg-blue-50/30 ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
+                      className={`p-3 sm:p-4 hover:bg-gray-50 transition-colors bg-blue-50/30 ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
                     >
-                      <div className="flex gap-3">
+                      <div className="flex gap-2 sm:gap-3">
                         {bulkMode && (
                           <div 
                             className="flex items-center pt-1 cursor-pointer"
@@ -520,26 +520,26 @@ export default function NotificationCenter() {
                             )}
                           </div>
                         )}
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
-                          <notif.icon className="w-5 h-5" />
+                        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
+                          <notif.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <h4 className="font-medium text-sm text-gray-900 line-clamp-1">
+                            <h4 className="font-medium text-xs sm:text-sm text-gray-900 line-clamp-1">
                               {notif.title}
                             </h4>
                             <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0" />
                           </div>
-                          <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                          <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 mb-2">
                             {notif.message}
                           </p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-500">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-gray-500 truncate">
                               {formatDistanceToNow(new Date(notif.time), { addSuffix: true })}
                             </span>
                             {notif.link && (
                               <Link to={notif.link} onClick={() => setOpen(false)}>
-                                <Button variant="ghost" size="sm" className="h-7 text-xs">
+                                <Button variant="ghost" size="sm" className="h-6 sm:h-7 text-xs px-2 flex-shrink-0">
                                   View
                                 </Button>
                               </Link>
@@ -566,9 +566,9 @@ export default function NotificationCenter() {
                   {filteredNotifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className={`p-4 hover:bg-gray-50 transition-colors ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
+                      className={`p-3 sm:p-4 hover:bg-gray-50 transition-colors ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
                     >
-                      <div className="flex gap-3">
+                      <div className="flex gap-2 sm:gap-3">
                         {bulkMode && (
                           <div 
                             className="flex items-center pt-1 cursor-pointer"
@@ -581,28 +581,28 @@ export default function NotificationCenter() {
                             )}
                           </div>
                         )}
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
-                          <notif.icon className="w-5 h-5" />
+                        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getColorClass(notif.color)}`}>
+                          <notif.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <h4 className="font-medium text-sm text-gray-900 line-clamp-1">
+                            <h4 className="font-medium text-xs sm:text-sm text-gray-900 line-clamp-1">
                               {notif.title}
                             </h4>
-                            <Badge className="bg-red-600 text-white text-xs">
+                            <Badge className="bg-red-600 text-white text-xs flex-shrink-0">
                               {notif.severity}
                             </Badge>
                           </div>
-                          <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                          <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 mb-2">
                             {notif.message}
                           </p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-500">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-gray-500 truncate">
                               {formatDistanceToNow(new Date(notif.time), { addSuffix: true })}
                             </span>
                             {notif.link && (
                               <Link to={notif.link} onClick={() => setOpen(false)}>
-                                <Button variant="ghost" size="sm" className="h-7 text-xs">
+                                <Button variant="ghost" size="sm" className="h-6 sm:h-7 text-xs px-2 flex-shrink-0">
                                   View
                                 </Button>
                               </Link>
