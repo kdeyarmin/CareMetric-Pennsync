@@ -398,23 +398,26 @@ export default function SmartNoteAssistant() {
       });
 
       const result = response.data;
+      const newComplianceResults = result.compliance_check?.medicare_violations || [];
       setComplianceResults({
         ...result.compliance_check,
         quality_analysis: result.quality_analysis
       });
-      setMedicareViolations(result.compliance_check?.medicare_violations || []);
+      setMedicareViolations(newComplianceResults);
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
 
-      // Learn from the edits made by the user
+      // Learn from the edits and suggestions made by the user
       if (enhancedNote !== editedNote) {
         try {
-          const { learnFromNoteEdits } = await import('@/functions/learnFromNoteEdits');
-          await learnFromNoteEdits({
-            original_note: enhancedNote,
+          await base44.functions.invoke('learnFromUserEdits', {
+            original_enhanced_note: enhancedNote,
             edited_note: editedNote,
             visit_type: visitType,
-            provider_type: currentUser?.credential_type || 'RN'
+            provider_type: currentUser?.credential_type || 'RN',
+            compliance_issues_before: medicareViolations,
+            compliance_issues_after: newComplianceResults
           });
+          console.log('✅ Learning from user edits complete');
         } catch (learnError) {
           console.error('Error learning from edits:', learnError);
         }
