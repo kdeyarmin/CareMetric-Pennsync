@@ -246,6 +246,14 @@ export default function SmartNoteAssistant() {
        console.log('✅ Function response received:', response);
        const result = response.data || response;
        console.log('✅ Result extracted:', result);
+       console.log('📋 FULL RESULT STRUCTURE:', JSON.stringify(result, null, 2));
+       
+       // Debug individual fields
+       console.log('🔍 enhanced_note:', result.enhanced_note);
+       console.log('🔍 compliance_check:', result.compliance_check);
+       console.log('🔍 quality_analysis:', result.quality_analysis);
+       console.log('🔍 suggested_tasks:', result.suggested_tasks);
+       console.log('🔍 suggested_education_materials:', result.suggested_education_materials);
 
        // Update all state with consolidated results
        console.log('🔵 Updating state...');
@@ -260,6 +268,10 @@ export default function SmartNoteAssistant() {
        setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
        setSuggestedTasks(result.suggested_tasks || []);
        setSuggestedEducation(result.suggested_education_materials || []);
+       
+       console.log('🔵 STATE AFTER UPDATES:');
+       console.log('  - enhancedNote will be:', result.enhanced_note);
+       console.log('  - complianceResults will be:', {...result.compliance_check, quality_analysis: result.quality_analysis});
        console.log('✅ State updated, setting showResults to true');
        setShowResults(true);
        setIsEditMode(false);
