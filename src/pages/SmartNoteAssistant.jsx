@@ -416,10 +416,10 @@ export default function SmartNoteAssistant() {
     <div className="min-h-screen p-2 sm:p-4 md:p-6 overflow-x-hidden">
       <div className="max-w-4xl mx-auto space-y-4 w-full">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">Smart Note Assistant</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="space-y-1 sm:space-y-2">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">Smart Note Assistant</h1>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
               AI-powered documentation with compliance checking
             </p>
           </div>
@@ -427,6 +427,7 @@ export default function SmartNoteAssistant() {
             variant="outline"
             size="sm"
             onClick={() => setShowPreferences(!showPreferences)}
+            className="w-full sm:w-auto"
           >
             <Settings className="w-4 h-4 mr-2" />
             AI Preferences
@@ -442,13 +443,13 @@ export default function SmartNoteAssistant() {
         <>
             {/* Streamlined Input Form */}
             <Card>
-              <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
-                <CardTitle className="flex items-center gap-2">
-                  <Wand2 className="w-5 h-5" />
+              <CardHeader className="bg-slate-200 p-4 sm:p-6 flex flex-col space-y-1.5">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Wand2 className="w-4 h-4 sm:w-5 sm:h-5" />
                   Clinical Documentation
                 </CardTitle>
               </CardHeader>
-              <CardContent className="bg-slate-100 pt-0 p-6 space-y-4">
+              <CardContent className="bg-slate-100 pt-0 p-4 sm:p-6 space-y-4">
                 {/* Patient Selection Dropdown */}
                 <div className="bg-slate-100">
                   <Label className="text-sm font-medium">Patient *</Label>
@@ -494,7 +495,7 @@ export default function SmartNoteAssistant() {
                 </div>
 
                 {/* Visit Type & Diagnosis */}
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium">Visit Type *</Label>
                     <Select value={visitType} onValueChange={setVisitType}>
@@ -569,7 +570,7 @@ export default function SmartNoteAssistant() {
                 {/* Vital Signs */}
                 <div>
                   <Label className="text-sm font-medium">Vital Signs</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mt-2">
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Temperature (°F)</label>
                       <Input
@@ -656,7 +657,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
 
 
-                  className="w-full h-48 p-3 border rounded-lg text-sm resize-none mt-2"
+                  className="w-full h-40 sm:h-48 p-3 border rounded-lg text-sm resize-none mt-2"
                   />
 
 
@@ -666,7 +667,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 <Button
                 onClick={enhanceNote}
                 disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()}
-                className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="w-full h-11 sm:h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-sm sm:text-base"
                 size="lg">
 
                   {enhancing ?
@@ -788,7 +789,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               </Card>
 
               {/* Quality & Compliance Scores */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {/* Medicare Compliance */}
                 <Card className={complianceResults?.compliance_score >= 85 ? 'border-green-300 bg-green-50 dark:bg-green-950' : 'border-red-300 bg-red-50 dark:bg-red-950'}>
                   <CardContent className="p-4">

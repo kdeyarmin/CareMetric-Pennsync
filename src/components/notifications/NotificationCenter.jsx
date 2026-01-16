@@ -325,28 +325,28 @@ export default function NotificationCenter() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-96 p-0" align="end">
-        <div className="border-b p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h3 className="font-semibold text-lg">Notifications</h3>
-              <p className="text-sm text-gray-600">
+      <PopoverContent className="w-[95vw] sm:w-96 p-0" align="end" sideOffset={5}>
+        <div className="border-b p-3 sm:p-4">
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <div className="min-w-0">
+              <h3 className="font-semibold text-base sm:text-lg">Notifications</h3>
+              <p className="text-xs sm:text-sm text-gray-600 truncate">
                 {unreadCount} unread • {criticalCount} critical
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
               {unreadCount > 0 && (
                 <Button 
                   variant="ghost" 
                   size="sm"
                   onClick={markAllAsRead}
-                  className="text-xs"
+                  className="text-xs h-8 px-2 sm:px-3"
                 >
-                  <CheckCheck className="w-4 h-4 mr-1" />
-                  Mark All Read
+                  <CheckCheck className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Mark All Read</span>
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)} className="h-8 w-8">
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -354,7 +354,7 @@ export default function NotificationCenter() {
           
           {/* Bulk Actions Bar */}
           {filteredNotifications.length > 0 && (
-            <div className="flex items-center gap-2 mt-3">
+            <div className="flex items-center gap-1 sm:gap-2 mt-3 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
@@ -362,6 +362,7 @@ export default function NotificationCenter() {
                   setBulkMode(!bulkMode);
                   setSelectedNotifications([]);
                 }}
+                className="h-7 text-xs"
               >
                 {bulkMode ? 'Cancel' : 'Select'}
               </Button>
@@ -373,6 +374,7 @@ export default function NotificationCenter() {
                     size="sm"
                     onClick={selectAll}
                     disabled={selectedNotifications.length === filteredNotifications.length}
+                    className="h-7 text-xs"
                   >
                     Select All
                   </Button>
@@ -381,30 +383,31 @@ export default function NotificationCenter() {
                     size="sm"
                     onClick={deselectAll}
                     disabled={selectedNotifications.length === 0}
+                    className="h-7 text-xs"
                   >
                     Clear
                   </Button>
                   
                   {selectedNotifications.length > 0 && (
                     <>
-                      <div className="flex-1" />
-                      <Badge variant="outline">{selectedNotifications.length} selected</Badge>
+                      <div className="hidden sm:flex flex-1" />
+                      <Badge variant="outline" className="text-xs">{selectedNotifications.length}</Badge>
                       <Button
                         size="sm"
                         onClick={bulkMarkAsRead}
-                        className="bg-green-600 hover:bg-green-700 h-7"
+                        className="bg-green-600 hover:bg-green-700 h-7 text-xs px-2"
                       >
-                        <CheckCheck className="w-3 h-3 mr-1" />
-                        Mark Read
+                        <CheckCheck className="w-3 h-3" />
+                        <span className="hidden sm:inline ml-1">Read</span>
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={bulkMarkAsUnread}
-                        className="h-7"
+                        className="h-7 text-xs px-2"
                       >
-                        <Circle className="w-3 h-3 mr-1" />
-                        Mark Unread
+                        <Circle className="w-3 h-3" />
+                        <span className="hidden sm:inline ml-1">Unread</span>
                       </Button>
                     </>
                   )}
@@ -428,7 +431,7 @@ export default function NotificationCenter() {
           </TabsList>
 
           <TabsContent value="all" className="m-0">
-            <ScrollArea className="h-[400px]">
+            <ScrollArea className="h-[50vh] sm:h-[400px]">
               {filteredNotifications.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <Bell className="w-12 h-12 mx-auto mb-3 text-gray-300" />
@@ -439,9 +442,9 @@ export default function NotificationCenter() {
                   {filteredNotifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className={`p-4 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-blue-50/30' : ''} ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
+                      className={`p-3 sm:p-4 hover:bg-gray-50 transition-colors ${!notif.read ? 'bg-blue-50/30' : ''} ${selectedNotifications.includes(notif.id) ? 'bg-indigo-50 border-l-4 border-indigo-600' : ''}`}
                     >
-                      <div className="flex gap-3">
+                      <div className="flex gap-2 sm:gap-3">
                         {bulkMode && (
                           <div 
                             className="flex items-center pt-1 cursor-pointer"
@@ -491,7 +494,7 @@ export default function NotificationCenter() {
           </TabsContent>
 
           <TabsContent value="unread" className="m-0">
-            <ScrollArea className="h-[400px]">
+            <ScrollArea className="h-[50vh] sm:h-[400px]">
               {filteredNotifications.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-400" />
@@ -552,7 +555,7 @@ export default function NotificationCenter() {
           </TabsContent>
 
           <TabsContent value="critical" className="m-0">
-            <ScrollArea className="h-[400px]">
+            <ScrollArea className="h-[50vh] sm:h-[400px]">
               {filteredNotifications.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <Shield className="w-12 h-12 mx-auto mb-3 text-gray-300" />
