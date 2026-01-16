@@ -74,9 +74,11 @@ Please provide a comprehensive response that includes:
 1. EXTRACTED DATA: Parse and extract structured data from the notes
 2. ENHANCED NOTE: Rewrite the notes to be Medicare-compliant, professional, and detailed. 
    CRITICAL: DO NOT include meta-commentary, recommendations, or statements about what should be done. Only include actual clinical documentation. Remove any sentences starting with "Further assessment", "Additional documentation", "It is recommended", etc.
+   IMPORTANT: Apply ALL quality improvements directly to the enhanced note text. Do not save them as separate suggestions - they should already be incorporated into the note itself.
    NOTE: Do NOT flag or include missing vital signs in the narrative - vitals are optional.
 3. COMPLIANCE CHECK: Assess Medicare compliance with specific issues and violations
    For each issue found, provide SPECIFIC, ACTIONABLE guidance on exactly what should be documented or improved, not just generic recommendations
+   NOTE: Only include actual compliance/regulatory violations here - quality improvements should already be in the enhanced note
 4. QUALITY ANALYSIS: Evaluate documentation quality including:
    - Overall quality score (0-100)
    - Clarity score (0-100)
