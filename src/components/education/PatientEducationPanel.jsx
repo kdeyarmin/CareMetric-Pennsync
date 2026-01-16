@@ -195,6 +195,18 @@ export default function PatientEducationPanel({
             ))}
           </div>
         )}
+
+        {assignmentDialog && (
+          <EducationAssignmentDialog
+            material={assignmentDialog}
+            patientId={patientId}
+            carePlans={carePlans}
+            onClose={() => setAssignmentDialog(null)}
+            onAssigned={() => {
+              queryClient.invalidateQueries({ queryKey: ['educationAssignments', patientId] });
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   );
