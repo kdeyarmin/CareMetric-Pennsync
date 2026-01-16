@@ -34,6 +34,8 @@ import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGene
 import EnhancedICD10Suggester from "@/components/clinical/EnhancedICD10Suggester";
 import InteractiveQualitySuggestions from "@/components/smartNote/InteractiveQualitySuggestions";
 import VisitTypeGuidance from "@/components/smartNote/VisitTypeGuidance";
+import CodeSearchInserter from "@/components/smartNote/CodeSearchInserter";
+import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -69,6 +71,7 @@ export default function SmartNoteAssistant() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedNote, setEditedNote] = useState("");
   const [savingToPatient, setSavingToPatient] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -100,6 +103,18 @@ export default function SmartNoteAssistant() {
       const rules = await base44.entities.ComplianceRule.list('-created_date', 500);
       return rules.filter(rule => rule.is_active);
     }
+  });
+
+  // Fetch user AI preferences
+  const { data: aiPreferences } = useQuery({
+    queryKey: ['aiPreferences', currentUser?.email],
+    queryFn: async () => {
+      const prefs = await base44.entities.AIConfiguration.filter({
+        user_email: currentUser?.email
+      });
+      return prefs[0] || null;
+    },
+    enabled: !!currentUser?.email
   });
 
   const createNewPatient = async () => {
@@ -168,7 +183,36 @@ export default function SmartNoteAssistant() {
         return rule.applies_to_visit_types.includes(visitType);
       });
 
-      // Single consolidated backend call with vital signs
+      // Gather enhanced patient context
+      let patientContext = null;
+      if (selectedPatient !== 'no_patient' && patientData) {
+        const recentNotes = (patientData.enhanced_notes_history || []).slice(-3);
+        const carePlans = await base44.entities.CarePlan.filter({
+          patient_id: patientData.id,
+          status: 'active'
+        });
+        
+        patientContext = {
+          patient_name: `${patientData.first_name} ${patientData.last_name}`,
+          primary_diagnosis: patientData.primary_diagnosis,
+          secondary_diagnoses: patientData.secondary_diagnoses || [],
+          allergies: patientData.allergies,
+          current_medications: patientData.current_medications || [],
+          recent_notes: recentNotes.map(note => ({
+            date: note.date,
+            visit_type: note.visit_type,
+            diagnosis: note.diagnosis,
+            note_excerpt: note.enhanced_note?.substring(0, 300)
+          })),
+          active_care_plans: carePlans.map(cp => ({
+            problem: cp.problem,
+            goal: cp.goal,
+            status: cp.status
+          }))
+        };
+      }
+
+      // Single consolidated backend call with vital signs, patient context, and AI preferences
       const { enhanceNoteWithQuality } = await import('@/functions/enhanceNoteWithQuality');
       const response = await enhanceNoteWithQuality({
         rough_notes: roughNotes,
@@ -178,7 +222,9 @@ export default function SmartNoteAssistant() {
         compliance_prompt: compliancePrompt,
         custom_rules: applicableRules,
         patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
-        vital_signs: vitalSigns
+        vital_signs: vitalSigns,
+        patient_context: patientContext,
+        ai_preferences: aiPreferences
       });
 
       const result = response.data;
@@ -337,12 +383,27 @@ export default function SmartNoteAssistant() {
     <div className="min-h-screen p-2 sm:p-4 md:p-6 overflow-x-hidden">
       <div className="max-w-4xl mx-auto space-y-4 w-full">
         {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">Smart Note Assistant</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            AI-powered documentation with compliance checking
-          </p>
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">Smart Note Assistant</h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              AI-powered documentation with compliance checking
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPreferences(!showPreferences)}
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            AI Preferences
+          </Button>
         </div>
+
+        {/* AI Preferences Panel */}
+        {showPreferences && (
+          <AIPreferencesPanel currentUser={currentUser} />
+        )}
 
         {!showResults ?
         <>
@@ -454,6 +515,15 @@ export default function SmartNoteAssistant() {
 
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
+
+                {/* Code Search & Inserter */}
+                <CodeSearchInserter
+                  onInsertCode={(code) => {
+                    setRoughNotes(roughNotes + '\n\n' + code);
+                    toast.success('Code inserted into notes');
+                  }}
+                  noteType="rough"
+                />
 
                 {/* Vital Signs */}
                 <div>
