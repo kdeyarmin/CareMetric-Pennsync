@@ -360,8 +360,7 @@ export default function SmartNoteAssistant() {
         return rule.applies_to_visit_types.includes(visitType);
       });
 
-      const { enhanceNoteWithQuality } = await import('@/functions/enhanceNoteWithQuality');
-      const response = await enhanceNoteWithQuality({
+      const response = await base44.functions.invoke('enhanceNoteWithQuality', {
         rough_notes: editedNote,
         visit_type: visitType,
         diagnosis: selectedDiagnosis,
