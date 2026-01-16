@@ -122,11 +122,6 @@ export default function SmartNoteAssistant() {
   };
 
   const enhanceNote = async () => {
-    console.log('Enhance note clicked!');
-    console.log('roughNotes:', roughNotes);
-    console.log('visitType:', visitType);
-    console.log('selectedDiagnosis:', selectedDiagnosis);
-    
     if (!roughNotes.trim()) {
       toast.error("Please enter clinical notes");
       return;
@@ -142,7 +137,7 @@ export default function SmartNoteAssistant() {
       return;
     }
 
-    toast.info("Starting note enhancement...");
+    const loadingToast = toast.loading("Enhancing note and analyzing quality...");
     setEnhancing(true);
     setEnhancedNote(null);
     setComplianceResults(null);
@@ -152,11 +147,6 @@ export default function SmartNoteAssistant() {
     setSuggestedTasks([]);
 
     try {
-      console.log('Starting note enhancement...');
-      console.log('Visit Type:', visitType);
-      console.log('Diagnosis:', selectedDiagnosis);
-      console.log('Provider Type:', currentUser?.credential_type);
-      
       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
       
       // Filter custom rules applicable to this visit type
@@ -164,76 +154,34 @@ export default function SmartNoteAssistant() {
         if (!rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0) return true;
         return rule.applies_to_visit_types.includes(visitType);
       });
-      
-      const prompt = getEnhanceNotePrompt({
-        visitType,
-        selectedDiagnosis,
-        providerType: currentUser?.credential_type,
-        compliancePrompt,
-        roughNotes,
-        customRules: applicableRules
+
+      // Single consolidated backend call
+      const { enhanceNoteWithQuality } = await import('@/functions/enhanceNoteWithQuality');
+      const response = await enhanceNoteWithQuality({
+        rough_notes: roughNotes,
+        visit_type: visitType,
+        diagnosis: selectedDiagnosis,
+        provider_type: currentUser?.credential_type || 'RN',
+        compliance_prompt: compliancePrompt,
+        custom_rules: applicableRules,
+        patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null
       });
 
-      console.log('Calling InvokeLLM...');
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            extracted_data: {
-              type: "object",
-              properties: {
-                diagnoses: { type: "array", items: { type: "string" } },
-                medications: { type: "array", items: { type: "string" } },
-                symptoms: { type: "array", items: { type: "string" } },
-                vitals: { type: "object" }
-              }
-            },
-            enhanced_note: { type: "string" },
-            compliance_check: {
-              type: "object",
-              properties: {
-                compliance_score: { type: "number" },
-                status: { type: "string" },
-                issues: { type: "array" },
-                compliant_elements: { type: "array" }
-              }
-            }
-          }
-        }
-      });
+      const result = response.data;
 
-      console.log('InvokeLLM result:', result);
-
-      // Run quality analysis on the rough notes
-      console.log('Running quality analysis...');
-      let qualityAnalysis = null;
-      try {
-        const { analyzeDocumentationQuality } = await import('@/functions/analyzeDocumentationQuality');
-        const qualityResponse = await analyzeDocumentationQuality({
-          note_content: roughNotes,
-          visit_type: visitType,
-          diagnosis: selectedDiagnosis,
-          patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null
-        });
-        qualityAnalysis = qualityResponse.data?.quality_analysis;
-        console.log('Quality analysis completed:', qualityAnalysis);
-      } catch (error) {
-        console.error('Quality analysis failed:', error);
-        // Continue without quality feedback
-      }
-
+      // Update all state with consolidated results
       setExtractedData(result.extracted_data);
       setEnhancedNote(result.enhanced_note);
       setComplianceResults({
         ...result.compliance_check,
-        quality_analysis: qualityAnalysis
+        quality_analysis: result.quality_analysis
       });
       setMedicareViolations(result.compliance_check?.medicare_violations || []);
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
       setSuggestedTasks(result.suggested_tasks || []);
       setShowResults(true);
 
+      toast.dismiss(loadingToast);
       if (result.compliance_check?.compliance_score >= 85) {
         toast.success("Note enhanced - Medicare compliant!");
       } else {
@@ -241,7 +189,7 @@ export default function SmartNoteAssistant() {
       }
     } catch (error) {
       console.error('Error enhancing note:', error);
-      console.error('Error stack:', error.stack);
+      toast.dismiss(loadingToast);
       toast.error(`Failed to enhance note: ${error.message || 'Unknown error'}`);
     } finally {
       setEnhancing(false);

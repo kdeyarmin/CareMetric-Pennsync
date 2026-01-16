@@ -18,6 +18,7 @@ import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import ComplianceRegulatory from './pages/ComplianceRegulatory';
+import CustomComplianceRules from './pages/CustomComplianceRules';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentGenerator from './pages/DocumentGenerator';
@@ -98,7 +99,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import CustomComplianceRules from './pages/CustomComplianceRules';
 import __Layout from './Layout.jsx';
 
 
@@ -123,6 +123,7 @@ export const PAGES = {
     "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
     "ComplianceRegulatory": ComplianceRegulatory,
+    "CustomComplianceRules": CustomComplianceRules,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
     "DocumentGenerator": DocumentGenerator,
@@ -203,7 +204,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "CustomComplianceRules": CustomComplianceRules,
 }
 
 export const pagesConfig = {
