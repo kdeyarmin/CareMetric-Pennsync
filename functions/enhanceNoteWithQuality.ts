@@ -285,3 +285,27 @@ Return comprehensive results in the specified JSON format.`;
     }, { status: 500 });
   }
 });
+
+function polishForCompliance(narrative, providerType) {
+  // Final compliance polish to ensure Medicare-ready documentation
+  
+  // Remove any lingering vague language
+  let polished = narrative
+    .replace(/\b(seems|appears|may|might|possibly|arguably)\b/gi, 'is') // Replace uncertain language with definitive
+    .replace(/patient denies/gi, 'Patient denies') // Standardize capitalization
+    .replace(/\s{2,}/g, ' '); // Remove extra spaces
+  
+  // Ensure assessment statements are specific to patient presentation
+  polished = polished.replace(/patient (is|presents|reports) with/gi, 'Patient presents with');
+  
+  // Strengthen clinical language for skilled assessment
+  polished = polished.replace(/slight/gi, 'mild');
+  polished = polished.replace(/somewhat/gi, ''); // Remove hedging
+  
+  // Ensure plan statements are action-oriented
+  polished = polished.replace(/plan is to/gi, 'Plan:');
+  polished = polished.replace(/will continue/gi, 'Continue');
+  
+  // Final trim and return
+  return polished.trim();
+}
