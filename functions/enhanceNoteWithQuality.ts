@@ -31,13 +31,21 @@ Deno.serve(async (req) => {
         ).join('\n')}`
       : '';
 
+    // Add user-defined custom compliance rules from AI preferences
+    const userCustomRules = ai_preferences?.custom_compliance_rules?.filter(r => r.is_active !== false) || [];
+    const userRulesText = userCustomRules.length > 0
+      ? `\n\nUSER-DEFINED CUSTOM COMPLIANCE RULES:\n${userCustomRules.map(rule =>
+          `- ${rule.rule_name}: ${rule.rule_description}${rule.applies_to_visit_types?.length > 0 ? `\n  Applies to: ${rule.applies_to_visit_types.join(', ')}` : ''}`
+        ).join('\n')}\n\nIMPORTANT: These are the user's specific compliance requirements. Interpret and apply them intelligently to the clinical note.`
+      : '';
+
     const enhancementPrompt = `You are a healthcare documentation AI assistant. Your task is to enhance clinical notes while ensuring Medicare compliance and assessing documentation quality.
 
 VISIT TYPE: ${visit_type}
 PRIMARY DIAGNOSIS: ${diagnosis}
 PROVIDER TYPE: ${provider_type}
 
-${compliance_prompt}${customRulesText}
+${compliance_prompt}${customRulesText}${userRulesText}
 
 ${vital_signs && Object.values(vital_signs).some(v => v) ? `VITAL SIGNS:
 ${vital_signs.temperature ? `Temperature: ${vital_signs.temperature}°F\n` : ''}${vital_signs.heart_rate ? `Heart Rate: ${vital_signs.heart_rate} bpm\n` : ''}${vital_signs.respiratory_rate ? `Respiratory Rate: ${vital_signs.respiratory_rate}\n` : ''}${vital_signs.bp_systolic && vital_signs.bp_diastolic ? `Blood Pressure: ${vital_signs.bp_systolic}/${vital_signs.bp_diastolic}\n` : ''}${vital_signs.oxygen_saturation ? `O2 Saturation: ${vital_signs.oxygen_saturation}%\n` : ''}
