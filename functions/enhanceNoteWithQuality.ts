@@ -245,24 +245,34 @@ Return comprehensive results in the specified JSON format.`;
 
     console.log('Enhancement and quality analysis completed successfully');
 
-    // Apply quality improvements to the enhanced note
-    let improvedNote = result.enhanced_note;
+    // The enhanced narrative should be pristine - apply any remaining improvements
+    let finalNarrative = result.enhanced_note;
+    const appliedImprovements = [];
+
     if (result.quality_analysis?.suggestions && Array.isArray(result.quality_analysis.suggestions)) {
       for (const suggestion of result.quality_analysis.suggestions) {
-        if (suggestion.excerpt && suggestion.improved_text) {
-          improvedNote = improvedNote.replace(suggestion.excerpt, suggestion.improved_text);
+        if (suggestion.excerpt && suggestion.improved_text && finalNarrative.includes(suggestion.excerpt)) {
+          finalNarrative = finalNarrative.replace(suggestion.excerpt, suggestion.improved_text);
+          appliedImprovements.push(suggestion.category);
         }
       }
     }
+
+    // Polish for compliance - ensure no ambiguities
+    finalNarrative = polishForCompliance(finalNarrative, provider_type);
+
+    console.log(`✅ Applied ${appliedImprovements.length} improvements to create compliant narrative`);
 
     return Response.json({
       success: true,
       data: {
         ...result,
-        enhanced_note: improvedNote,
+        enhanced_note: finalNarrative,
         quality_analysis: {
           ...result.quality_analysis,
-          suggestions: [] // Quality improvements are already applied to the enhanced note
+          suggestions: appliedImprovements.length > 0 
+            ? [{ note: `Applied ${appliedImprovements.length} quality refinements to create pristine narrative` }]
+            : []
         }
       }
     });
