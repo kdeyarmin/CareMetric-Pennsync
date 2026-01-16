@@ -1,5 +1,18 @@
-export const getEnhanceNotePrompt = ({ visitType, selectedDiagnosis, providerType, compliancePrompt, roughNotes }) => {
-  return `You are a healthcare documentation specialist. Analyze the following rough clinical note and:
+export const getEnhanceNotePrompt = ({ visitType, selectedDiagnosis, providerType, compliancePrompt, roughNotes, customRules = [] }) => {
+  const customRulesSection = customRules.length > 0 ? `
+
+CUSTOM ORGANIZATIONAL COMPLIANCE RULES:
+${customRules.map((rule, idx) => `
+${idx + 1}. ${rule.rule_name} (${rule.severity.toUpperCase()})
+   Category: ${rule.category}
+   Requirement: ${rule.validation_criteria}
+   ${rule.remediation_guidance ? `How to comply: ${rule.remediation_guidance}` : ''}
+`).join('\n')}
+
+IMPORTANT: Check compliance against ALL custom rules above and include any violations in the issues array with reference to the rule name.
+` : '';
+
+  return `You are a healthcare documentation specialist. Analyze the following rough clinical note and:${customRulesSection}
 
 1. Extract key clinical data (diagnoses, medications, symptoms, vital signs)
 2. Enhance it into a Medicare-compliant, professional clinical note
