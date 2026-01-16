@@ -932,13 +932,15 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <span>Documentation Analysis</span>
-                      <Badge className={
-                  complianceResults.compliance_score >= 90 ? 'bg-green-600' :
-                  complianceResults.compliance_score >= 70 ? 'bg-yellow-600' :
-                  'bg-red-600'
-                  }>
-                        {complianceResults.status.toUpperCase()}
-                      </Badge>
+                      {complianceResults?.status && (
+                        <Badge className={
+                      complianceResults.compliance_score >= 90 ? 'bg-green-600' :
+                      complianceResults.compliance_score >= 70 ? 'bg-yellow-600' :
+                      'bg-red-600'
+                      }>
+                           {complianceResults.status.toUpperCase()}
+                         </Badge>
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
