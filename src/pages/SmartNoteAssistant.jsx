@@ -80,6 +80,14 @@ export default function SmartNoteAssistant() {
     }
   });
 
+  const { data: customComplianceRules = [] } = useQuery({
+    queryKey: ['activeComplianceRules'],
+    queryFn: async () => {
+      const rules = await base44.entities.ComplianceRule.list('-created_date', 500);
+      return rules.filter(rule => rule.is_active);
+    }
+  });
+
   const createNewPatient = async () => {
     if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
       toast.error("First and last name are required");
@@ -143,12 +151,20 @@ export default function SmartNoteAssistant() {
       console.log('Provider Type:', currentUser?.credential_type);
       
       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
+      
+      // Filter custom rules applicable to this visit type
+      const applicableRules = customComplianceRules.filter(rule => {
+        if (!rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0) return true;
+        return rule.applies_to_visit_types.includes(visitType);
+      });
+      
       const prompt = getEnhanceNotePrompt({
         visitType,
         selectedDiagnosis,
         providerType: currentUser?.credential_type,
         compliancePrompt,
-        roughNotes
+        roughNotes,
+        customRules: applicableRules
       });
 
       console.log('Calling InvokeLLM...');

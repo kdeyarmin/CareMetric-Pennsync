@@ -98,6 +98,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import CustomComplianceRules from './pages/CustomComplianceRules';
 import __Layout from './Layout.jsx';
 
 
@@ -202,6 +203,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
+    "CustomComplianceRules": CustomComplianceRules,
 }
 
 export const pagesConfig = {
