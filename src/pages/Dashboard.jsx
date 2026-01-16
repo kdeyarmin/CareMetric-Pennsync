@@ -38,6 +38,7 @@ import QuickStatsSummary from "../components/dashboard/QuickStatsSummary";
 import WorkflowShortcuts from "../components/dashboard/WorkflowShortcuts";
 import SkillGapWidget from "../components/dashboard/SkillGapWidget";
 import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
+import ProactiveInsights from "../components/insights/ProactiveInsights";
 import { ErrorBoundary } from "../components/utils/ErrorBoundary";
 
 export default function Dashboard() {
@@ -254,6 +255,11 @@ export default function Dashboard() {
       {/* Header with integrated banners */}
       <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
 
+      {/* Proactive Insights */}
+      <ErrorBoundary>
+        <ProactiveInsights userEmail={currentUser?.email} />
+      </ErrorBoundary>
+
       {/* Quick Stats */}
       <QuickStatsSummary stats={{
           activePatients: patients.length,
@@ -262,30 +268,8 @@ export default function Dashboard() {
           upcomingVisits: 0
         }} />
 
-      {/* Quick Action Buttons */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <Button
-          onClick={() => navigate(createPageUrl('SmartNoteAssistant'))}
-          className="h-auto py-4 flex flex-col items-center gap-2 bg-blue-600 hover:bg-blue-700"
-        >
-          <Brain className="w-6 h-6" />
-          <span className="text-sm font-medium">Smart Notes</span>
-        </Button>
-        <Button
-          onClick={() => navigate(createPageUrl('MedicalScribe'))}
-          className="h-auto py-4 flex flex-col items-center gap-2 bg-purple-600 hover:bg-purple-700"
-        >
-          <Mic className="w-6 h-6" />
-          <span className="text-sm font-medium">Visit Scribe</span>
-        </Button>
-        <Button
-          onClick={() => navigate(createPageUrl('Tasks'))}
-          className="h-auto py-4 flex flex-col items-center gap-2 bg-green-600 hover:bg-green-700"
-        >
-          <ListTodo className="w-6 h-6" />
-          <span className="text-sm font-medium">Tasks</span>
-        </Button>
-      </div>
+      {/* Workflow Shortcuts */}
+      <WorkflowShortcuts />
 
       {/* Skill Gap & Risk Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
