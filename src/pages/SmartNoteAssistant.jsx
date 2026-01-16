@@ -122,6 +122,11 @@ export default function SmartNoteAssistant() {
   };
 
   const enhanceNote = async () => {
+    console.log('Enhance note clicked!');
+    console.log('roughNotes:', roughNotes);
+    console.log('visitType:', visitType);
+    console.log('selectedDiagnosis:', selectedDiagnosis);
+    
     if (!roughNotes.trim()) {
       toast.error("Please enter clinical notes");
       return;
@@ -137,6 +142,7 @@ export default function SmartNoteAssistant() {
       return;
     }
 
+    toast.info("Starting note enhancement...");
     setEnhancing(true);
     setEnhancedNote(null);
     setComplianceResults(null);
