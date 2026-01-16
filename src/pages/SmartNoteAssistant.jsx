@@ -42,6 +42,7 @@ import SmartPhraseVoiceInput from "@/components/smartNote/SmartPhraseVoiceInput"
 import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryComplianceMonitor";
 import EducationLibraryBrowser from "@/components/education/EducationLibraryBrowser";
 import PatientEducationPanel from "@/components/education/PatientEducationPanel";
+import VoiceNoteRecorder from "@/components/smartNote/VoiceNoteRecorder";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
