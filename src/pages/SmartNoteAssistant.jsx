@@ -231,17 +231,35 @@ export default function SmartNoteAssistant() {
        // Single consolidated backend call with vital signs, patient context, and AI preferences
        console.log('🔵 Calling enhanceNoteWithQuality function...');
        const response = await base44.functions.invoke('enhanceNoteWithQuality', {
-         rough_notes: roughNotes,
-         visit_type: visitType,
-         diagnosis: selectedDiagnosis,
-         provider_type: currentUser?.credential_type || 'RN',
-         compliance_prompt: compliancePrompt,
-         custom_rules: applicableRules,
-         patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
-         vital_signs: vitalSigns,
-         patient_context: patientContext,
-         ai_preferences: aiPreferences
-       });
+          rough_notes: roughNotes,
+          visit_type: visitType,
+          diagnosis: selectedDiagnosis,
+          provider_type: currentUser?.credential_type || 'RN',
+          compliance_prompt: compliancePrompt,
+          custom_rules: applicableRules,
+          patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
+          vital_signs: vitalSigns,
+          patient_context: patientContext,
+          ai_preferences: aiPreferences
+        });
+
+        // Apply user's learned preferences to refine the note
+        let refinedResponse = response;
+        try {
+          const preferencesResponse = await base44.functions.invoke('applyLearnedPreferences', {
+            enhanced_note: response.data?.enhanced_note || response.enhanced_note,
+            provider_type: currentUser?.credential_type || 'RN',
+            visit_type: visitType,
+            suggested_suggestions: response.data?.quality_analysis?.suggestions || []
+          });
+          if (preferencesResponse.data?.enhanced_note) {
+            refinedResponse.data.enhanced_note = preferencesResponse.data.enhanced_note;
+            console.log('✅ Applied learned preferences to note');
+          }
+        } catch (prefError) {
+          console.error('Warning: Could not apply learned preferences:', prefError);
+          // Continue without learned preferences
+        }
 
        console.log('✅ Function response received:', response);
        // Handle nested response structure: response.data.data contains the actual result
