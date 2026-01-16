@@ -870,12 +870,54 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 )}
               </div>
 
-              {/* Quality Feedback */}
-              {complianceResults?.quality_analysis && (
-                <InteractiveQualitySuggestions
-                  qualityAnalysis={complianceResults.quality_analysis}
-                  onApplySuggestion={applySuggestionToRoughNotes}
-                />
+              {/* Consolidated Suggestions & Analysis */}
+              {complianceResults && (
+                <Card className="border-purple-300 bg-purple-50 dark:bg-purple-950">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Brain className="w-5 h-5 text-purple-600" />
+                      Documentation Quality Improvements
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {complianceResults?.quality_analysis?.suggestions && complianceResults.quality_analysis.suggestions.length > 0 ? (
+                      <div className="space-y-3">
+                        {complianceResults.quality_analysis.suggestions.map((suggestion, idx) => (
+                          <div key={idx} className="bg-white dark:bg-gray-900 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex-1">
+                                <Badge className={
+                                  suggestion.severity === 'critical' ? 'bg-red-600' :
+                                  suggestion.severity === 'high' ? 'bg-orange-500' :
+                                  'bg-yellow-500'
+                                }>
+                                  {suggestion.severity}
+                                </Badge>
+                                <p className="font-semibold text-sm mt-2">{suggestion.category}</p>
+                              </div>
+                            </div>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{suggestion.issue}</p>
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">{suggestion.recommendation}</p>
+                            {suggestion.excerpt && suggestion.improved_text && (
+                              <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded mb-3 text-xs space-y-2">
+                                <div>
+                                  <span className="font-semibold text-slate-700 dark:text-slate-300">Current:</span>
+                                  <p className="text-slate-600 dark:text-slate-400 italic mt-1">"{suggestion.excerpt}"</p>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-700 dark:text-slate-300">Suggested improvement:</span>
+                                  <p className="text-slate-600 dark:text-slate-400 italic mt-1">"{suggestion.improved_text}"</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-600 dark:text-slate-400">No quality improvements needed - documentation is comprehensive!</p>
+                    )}
+                  </CardContent>
+                </Card>
               )}
 
               {/* Medicare Violations */}
