@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Save, Loader2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Settings, Save, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +14,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 export default function AIPreferencesPanel({ currentUser }) {
   const queryClient = useQueryClient();
 
-  // Fetch user's AI preferences
   const { data: preferences, isLoading } = useQuery({
     queryKey: ['aiPreferences', currentUser?.email],
     queryFn: async () => {
@@ -30,7 +31,15 @@ export default function AIPreferencesPanel({ currentUser }) {
     suggestion_aggressiveness: 'moderate',
     auto_apply_minor_fixes: false,
     include_education_tips: true,
-    preferred_note_structure: 'narrative'
+    preferred_note_structure: 'narrative',
+    custom_compliance_rules: []
+  });
+
+  const [newRule, setNewRule] = useState({ 
+    rule_name: '', 
+    rule_description: '', 
+    applies_to_visit_types: [], 
+    is_active: true 
   });
 
   React.useEffect(() => {
@@ -41,7 +50,8 @@ export default function AIPreferencesPanel({ currentUser }) {
         suggestion_aggressiveness: preferences.suggestion_aggressiveness || 'moderate',
         auto_apply_minor_fixes: preferences.auto_apply_minor_fixes || false,
         include_education_tips: preferences.include_education_tips !== false,
-        preferred_note_structure: preferences.preferred_note_structure || 'narrative'
+        preferred_note_structure: preferences.preferred_note_structure || 'narrative',
+        custom_compliance_rules: preferences.custom_compliance_rules || []
       });
     }
   }, [preferences]);
@@ -90,13 +100,11 @@ export default function AIPreferencesPanel({ currentUser }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Verbosity Level */}
         <div>
           <Label className="text-sm font-medium mb-2 block">Note Verbosity</Label>
           <Select
             value={localPrefs.verbosity_level}
-            onValueChange={(value) => setLocalPrefs({...localPrefs, verbosity_level: value})}
-          >
+            onValueChange={(value) => setLocalPrefs({...localPrefs, verbosity_level: value})}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -108,13 +116,11 @@ export default function AIPreferencesPanel({ currentUser }) {
           </Select>
         </div>
 
-        {/* Compliance Priority */}
         <div>
           <Label className="text-sm font-medium mb-2 block">Compliance Focus</Label>
           <Select
             value={localPrefs.compliance_priority}
-            onValueChange={(value) => setLocalPrefs({...localPrefs, compliance_priority: value})}
-          >
+            onValueChange={(value) => setLocalPrefs({...localPrefs, compliance_priority: value})}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -127,13 +133,11 @@ export default function AIPreferencesPanel({ currentUser }) {
           </Select>
         </div>
 
-        {/* Suggestion Aggressiveness */}
         <div>
           <Label className="text-sm font-medium mb-2 block">Quality Suggestions</Label>
           <Select
             value={localPrefs.suggestion_aggressiveness}
-            onValueChange={(value) => setLocalPrefs({...localPrefs, suggestion_aggressiveness: value})}
-          >
+            onValueChange={(value) => setLocalPrefs({...localPrefs, suggestion_aggressiveness: value})}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -145,13 +149,11 @@ export default function AIPreferencesPanel({ currentUser }) {
           </Select>
         </div>
 
-        {/* Note Structure Preference */}
         <div>
           <Label className="text-sm font-medium mb-2 block">Preferred Note Format</Label>
           <Select
             value={localPrefs.preferred_note_structure}
-            onValueChange={(value) => setLocalPrefs({...localPrefs, preferred_note_structure: value})}
-          >
+            onValueChange={(value) => setLocalPrefs({...localPrefs, preferred_note_structure: value})}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -164,31 +166,99 @@ export default function AIPreferencesPanel({ currentUser }) {
           </Select>
         </div>
 
-        {/* Toggle Options */}
         <div className="space-y-3 pt-2">
           <div className="flex items-center justify-between">
             <Label className="text-sm">Auto-apply minor grammar fixes</Label>
             <Switch
               checked={localPrefs.auto_apply_minor_fixes}
-              onCheckedChange={(checked) => setLocalPrefs({...localPrefs, auto_apply_minor_fixes: checked})}
-            />
+              onCheckedChange={(checked) => setLocalPrefs({...localPrefs, auto_apply_minor_fixes: checked})} />
           </div>
 
           <div className="flex items-center justify-between">
             <Label className="text-sm">Include patient education tips</Label>
             <Switch
               checked={localPrefs.include_education_tips}
-              onCheckedChange={(checked) => setLocalPrefs({...localPrefs, include_education_tips: checked})}
-            />
+              onCheckedChange={(checked) => setLocalPrefs({...localPrefs, include_education_tips: checked})} />
           </div>
         </div>
 
-        {/* Save Button */}
+        {/* Custom Compliance Rules */}
+        <div className="space-y-2 pt-4 border-t">
+          <Label className="text-base font-semibold">Custom Compliance Rules</Label>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+            Define your own compliance rules in natural language. The AI will interpret and apply them during note enhancement.
+          </p>
+          
+          {localPrefs.custom_compliance_rules?.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {localPrefs.custom_compliance_rules.map((rule, idx) => (
+                <div key={idx} className="bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-semibold text-sm">{rule.rule_name}</p>
+                        {!rule.is_active && <Badge variant="outline" className="text-xs">Inactive</Badge>}
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">{rule.rule_description}</p>
+                      {rule.applies_to_visit_types?.length > 0 && (
+                        <div className="flex gap-1 mt-2">
+                          {rule.applies_to_visit_types.map((vt, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">{vt}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        const updated = localPrefs.custom_compliance_rules.filter((_, i) => i !== idx);
+                        setLocalPrefs({ ...localPrefs, custom_compliance_rules: updated });
+                      }}
+                      className="h-6 w-6 text-red-600">
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-indigo-50 dark:bg-indigo-950 p-3 rounded-lg space-y-2">
+            <input
+              type="text"
+              placeholder="Rule name (e.g., 'Wound Measurement Detail')"
+              value={newRule.rule_name}
+              onChange={(e) => setNewRule({ ...newRule, rule_name: e.target.value })}
+              className="w-full px-3 py-2 rounded-md border text-sm" />
+            <Textarea
+              placeholder="Describe your rule in natural language (e.g., 'All wound assessments must include length, width, depth in centimeters, wound bed description, and surrounding skin condition')"
+              value={newRule.rule_description}
+              onChange={(e) => setNewRule({ ...newRule, rule_description: e.target.value })}
+              className="text-sm h-20" />
+            <Button
+              size="sm"
+              onClick={() => {
+                if (newRule.rule_name && newRule.rule_description) {
+                  setLocalPrefs({
+                    ...localPrefs,
+                    custom_compliance_rules: [...(localPrefs.custom_compliance_rules || []), newRule]
+                  });
+                  setNewRule({ rule_name: '', rule_description: '', applies_to_visit_types: [], is_active: true });
+                  toast.success('Rule added');
+                }
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700">
+              <Plus className="w-3 h-3 mr-1" />
+              Add Rule
+            </Button>
+          </div>
+        </div>
+
         <Button
           onClick={handleSave}
           disabled={saveMutation.isPending}
-          className="w-full bg-purple-600 hover:bg-purple-700 mt-4"
-        >
+          className="w-full bg-purple-600 hover:bg-purple-700 mt-4">
           {saveMutation.isPending ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
