@@ -38,7 +38,6 @@ import QuickStatsSummary from "../components/dashboard/QuickStatsSummary";
 import WorkflowShortcuts from "../components/dashboard/WorkflowShortcuts";
 import SkillGapWidget from "../components/dashboard/SkillGapWidget";
 import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
-import ProactiveInsights from "../components/insights/ProactiveInsights";
 import { ErrorBoundary } from "../components/utils/ErrorBoundary";
 
 export default function Dashboard() {
@@ -255,11 +254,6 @@ export default function Dashboard() {
       {/* Header with integrated banners */}
       <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
 
-      {/* Proactive Insights */}
-      <ErrorBoundary>
-        <ProactiveInsights userEmail={currentUser?.email} />
-      </ErrorBoundary>
-
       {/* Quick Stats */}
       <QuickStatsSummary stats={{
           activePatients: patients.length,
@@ -268,8 +262,7 @@ export default function Dashboard() {
           upcomingVisits: 0
         }} />
 
-      {/* Workflow Shortcuts */}
-      <WorkflowShortcuts />
+
 
       {/* Skill Gap & Risk Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
