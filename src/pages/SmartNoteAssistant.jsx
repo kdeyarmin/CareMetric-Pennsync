@@ -870,64 +870,43 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 )}
               </div>
 
-              {/* Consolidated Improvements to Apply to Note */}
-              {complianceResults && (
-                <Card className="border-purple-300 bg-purple-50 dark:bg-purple-950">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Brain className="w-5 h-5 text-purple-600" />
-                      Documentation Improvements Ready to Apply ({complianceResults?.quality_analysis?.suggestions?.length || 0})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {complianceResults?.quality_analysis?.suggestions && complianceResults.quality_analysis.suggestions.length > 0 ? (
-                      <div className="space-y-3">
-                        {complianceResults.quality_analysis.suggestions.map((suggestion, idx) => (
-                          suggestion.excerpt && suggestion.improved_text && (
-                            <div key={idx} className="bg-white dark:bg-gray-900 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <div className="flex-1">
-                                  <Badge className={
-                                    suggestion.severity === 'critical' ? 'bg-red-600' :
-                                    suggestion.severity === 'high' ? 'bg-orange-500' :
-                                    'bg-yellow-500'
-                                  }>
-                                    {suggestion.severity}
-                                  </Badge>
-                                  <p className="font-medium text-sm mt-2 text-slate-900 dark:text-slate-100">{suggestion.issue}</p>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  className="bg-purple-600 hover:bg-purple-700 text-white flex-shrink-0"
-                                  onClick={() => {
-                                    setEditedNote(editedNote.replace(suggestion.excerpt, suggestion.improved_text));
-                                    setIsEditMode(true);
-                                    toast.success('Improvement applied - review and save');
-                                  }}
-                                >
-                                  Apply
-                                </Button>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div className="bg-red-50 dark:bg-red-900 p-2 rounded">
-                                  <span className="font-semibold text-red-800 dark:text-red-300 block mb-1">Current text:</span>
-                                  <p className="text-red-700 dark:text-red-400 italic">"{suggestion.excerpt}"</p>
-                                </div>
-                                <div className="bg-green-50 dark:bg-green-900 p-2 rounded">
-                                  <span className="font-semibold text-green-800 dark:text-green-300 block mb-1">Suggested:</span>
-                                  <p className="text-green-700 dark:text-green-400 italic">"{suggestion.improved_text}"</p>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-600 dark:text-slate-400">No improvements needed - documentation is comprehensive!</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
+              {/* Quality Analysis Section */}
+              {complianceResults?.quality_analysis &&
+                <div className="mt-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Brain className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <h4 className="font-semibold text-blue-900 dark:text-blue-100">Quality Analysis</h4>
+                  </div>
+
+                  {/* Quality Scores */}
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-white dark:bg-gray-900 p-3 rounded">
+                      <p className="text-xs text-gray-500 mb-1">Overall Quality</p>
+                      <p className="text-xl font-bold text-blue-600">{complianceResults.quality_analysis.overall_quality_score || 0}%</p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-900 p-3 rounded">
+                      <p className="text-xs text-gray-500 mb-1">Clarity</p>
+                      <p className="text-xl font-bold text-blue-600">{complianceResults.quality_analysis.clarity_score || 0}%</p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-900 p-3 rounded">
+                      <p className="text-xs text-gray-500 mb-1">Completeness</p>
+                      <p className="text-xl font-bold text-blue-600">{complianceResults.quality_analysis.completeness_score || 0}%</p>
+                    </div>
+                  </div>
+
+                  {/* Strengths */}
+                  {complianceResults.quality_analysis.strengths?.length > 0 &&
+                    <div className="mb-4">
+                      <h5 className="font-semibold text-green-800 dark:text-green-400 mb-2">✓ Strengths</h5>
+                      <ul className="space-y-1">
+                        {complianceResults.quality_analysis.strengths.map((strength, idx) =>
+                          <li key={idx} className="text-sm text-green-700 dark:text-green-300">• {strength}</li>
+                        )}
+                      </ul>
+                    </div>
+                  }
+                </div>
+              }
 
               {/* Medicare Violations */}
               {medicareViolations && medicareViolations.length > 0 &&
