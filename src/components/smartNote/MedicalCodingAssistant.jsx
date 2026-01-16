@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, Code2, Zap, CheckCircle2, AlertTriangle, FileText, Copy } from 'lucide-react';
 import { toast } from 'sonner';
-import HCPCSCodeSuggester from '@/components/clinical/HCPCSCodeSuggester.js';
-import DenialRiskAnalyzer from '@/components/billing/DenialRiskAnalyzer.js';
-import BillingFormPopulator from '@/components/billing/BillingFormPopulator.js';
+import HCPCSCodeSuggester from '@/components/clinical/HCPCSCodeSuggester';
+import DenialRiskAnalyzer from '@/components/billing/DenialRiskAnalyzer';
+import BillingFormPopulator from '@/components/billing/BillingFormPopulator';
 
 export default function MedicalCodingAssistant({
   enhancedNote,
