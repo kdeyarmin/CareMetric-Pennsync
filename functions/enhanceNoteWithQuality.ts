@@ -249,7 +249,11 @@ Return comprehensive results in the specified JSON format.`;
       success: true,
       data: {
         ...result,
-        enhanced_note: improvedNote
+        enhanced_note: improvedNote,
+        quality_analysis: {
+          ...result.quality_analysis,
+          suggestions: [] // Quality improvements are already applied to the enhanced note
+        }
       }
     });
 
