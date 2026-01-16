@@ -78,6 +78,8 @@ export default function SmartNoteAssistant() {
   const [editedNote, setEditedNote] = useState("");
   const [savingToPatient, setSavingToPatient] = useState(false);
   const [showPreferences, setShowPreferences] = useState(false);
+  const [suggestedEducation, setSuggestedEducation] = useState([]);
+  const [providedEducation, setProvidedEducation] = useState([]);
   const location = useLocation();
 
   useEffect(() => {
@@ -246,6 +248,7 @@ export default function SmartNoteAssistant() {
       setMedicareViolations(result.compliance_check?.medicare_violations || []);
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
       setSuggestedTasks(result.suggested_tasks || []);
+      setSuggestedEducation(result.suggested_education_materials || []);
       setShowResults(true);
       setIsEditMode(false);
 
@@ -314,11 +317,19 @@ export default function SmartNoteAssistant() {
     setSavingToPatient(true);
     try {
       const currentHistory = patientData.enhanced_notes_history || [];
+      
+      // Build education text for the note
+      let educationText = '';
+      if (providedEducation.length > 0) {
+        educationText = '\n\nPatient Education Provided:\n' + 
+          providedEducation.map(ed => `- ${ed.material.title} (via ${ed.method})`).join('\n');
+      }
+      
       const newEntry = {
         date: new Date().toISOString(),
         visit_type: visitType,
         diagnosis: selectedDiagnosis,
-        enhanced_note: isEditMode ? editedNote : enhancedNote,
+        enhanced_note: (isEditMode ? editedNote : enhancedNote) + educationText,
         rough_note: roughNotes,
         quality_score: complianceResults?.quality_analysis?.overall_quality_score,
         compliance_score: complianceResults?.compliance_score,
@@ -330,7 +341,7 @@ export default function SmartNoteAssistant() {
         enhanced_notes_history: [...currentHistory, newEntry]
       });
 
-      toast.success("Note saved to patient record!");
+      toast.success("Note saved to patient record" + (educationText ? " with education documented!" : "!"));
     } catch (error) {
       console.error('Error saving to patient:', error);
       toast.error("Failed to save note to patient record");
