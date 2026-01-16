@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
 import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
-import RealTimeQualityFeedback from "@/components/smartNote/RealTimeQualityFeedback";
+
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
 import EnhancedICD10Suggester from "@/components/clinical/EnhancedICD10Suggester";
@@ -205,9 +205,30 @@ export default function SmartNoteAssistant() {
 
       console.log('InvokeLLM result:', result);
 
+      // Run quality analysis on the rough notes
+      console.log('Running quality analysis...');
+      let qualityAnalysis = null;
+      try {
+        const { analyzeDocumentationQuality } = await import('@/functions/analyzeDocumentationQuality');
+        const qualityResponse = await analyzeDocumentationQuality({
+          note_content: roughNotes,
+          visit_type: visitType,
+          diagnosis: selectedDiagnosis,
+          patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null
+        });
+        qualityAnalysis = qualityResponse.data?.quality_analysis;
+        console.log('Quality analysis completed:', qualityAnalysis);
+      } catch (error) {
+        console.error('Quality analysis failed:', error);
+        // Continue without quality feedback
+      }
+
       setExtractedData(result.extracted_data);
       setEnhancedNote(result.enhanced_note);
-      setComplianceResults(result.compliance_check);
+      setComplianceResults({
+        ...result.compliance_check,
+        quality_analysis: qualityAnalysis
+      });
       setMedicareViolations(result.compliance_check?.medicare_violations || []);
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
       setSuggestedTasks(result.suggested_tasks || []);
@@ -466,21 +487,6 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
                 </div>
 
-                {/* Real-Time Quality Feedback */}
-                {roughNotes && roughNotes.length > 50 && visitType && selectedDiagnosis &&
-              <RealTimeQualityFeedback
-                noteContent={roughNotes}
-                visitType={visitType}
-                diagnosis={selectedDiagnosis}
-                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                onApplySuggestion={(improvedText, originalExcerpt) => {
-                  if (originalExcerpt) {
-                    setRoughNotes(roughNotes.replace(originalExcerpt, improvedText));
-                  }
-                }} />
-
-              }
-
                 {/* Enhance Button */}
                 <Button
                 onClick={enhanceNote}
@@ -534,33 +540,104 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 </CardContent>
               </Card>
 
-              {/* Medicare Compliance Threshold */}
-              <Card className={complianceResults?.compliance_score >= 85 ? 'border-green-300 bg-green-50 dark:bg-green-950' : 'border-red-300 bg-red-50 dark:bg-red-950'}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+              {/* Quality & Compliance Scores */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Medicare Compliance */}
+                <Card className={complianceResults?.compliance_score >= 85 ? 'border-green-300 bg-green-50 dark:bg-green-950' : 'border-red-300 bg-red-50 dark:bg-red-950'}>
+                  <CardContent className="p-4">
+                    <div className="text-center">
                       {complianceResults?.compliance_score >= 85 ?
-                    <CheckCircle2 className="w-6 h-6 text-green-600" /> :
-
-                    <ShieldAlert className="w-6 h-6 text-red-600" />
-                    }
-                      <div>
-                        <p className="font-semibold text-sm">Medicare Compliance</p>
-                        <p className="text-xs text-gray-600">
-                          {complianceResults?.compliance_score >= 85 ?
-                        '✓ Meets 85% threshold' :
-                        '✗ Below required 85% threshold'}
-                        </p>
-                      </div>
+                        <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" /> :
+                        <ShieldAlert className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                      }
+                      <p className="font-semibold text-sm mb-1">Medicare Compliance</p>
+                      <span className={`text-3xl font-bold ${
+                        complianceResults?.compliance_score >= 85 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {complianceResults?.compliance_score || 0}%
+                      </span>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {complianceResults?.compliance_score >= 85 ? '✓ Meets threshold' : '✗ Below 85%'}
+                      </p>
                     </div>
-                    <span className={`text-3xl font-bold ${
-                  complianceResults?.compliance_score >= 85 ? 'text-green-600' : 'text-red-600'}`
-                  }>
-                      {complianceResults?.compliance_score || 0}%
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                {/* Quality Score */}
+                {complianceResults?.quality_analysis && (
+                  <>
+                    <Card className="border-purple-300 bg-purple-50 dark:bg-purple-950">
+                      <CardContent className="p-4">
+                        <div className="text-center">
+                          <Brain className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                          <p className="font-semibold text-sm mb-1">Documentation Quality</p>
+                          <span className={`text-3xl font-bold ${
+                            complianceResults.quality_analysis.overall_quality_score >= 90 ? 'text-green-600' :
+                            complianceResults.quality_analysis.overall_quality_score >= 75 ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {complianceResults.quality_analysis.overall_quality_score}%
+                          </span>
+                          <p className="text-xs text-gray-600 mt-1">Overall quality</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-blue-300 bg-blue-50 dark:bg-blue-950">
+                      <CardContent className="p-4">
+                        <div className="text-center">
+                          <CheckCircle2 className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                          <p className="font-semibold text-sm mb-1">Completeness</p>
+                          <span className={`text-3xl font-bold ${
+                            complianceResults.quality_analysis.completeness_score >= 90 ? 'text-green-600' :
+                            complianceResults.quality_analysis.completeness_score >= 75 ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {complianceResults.quality_analysis.completeness_score}%
+                          </span>
+                          <p className="text-xs text-gray-600 mt-1">Documentation complete</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+              </div>
+
+              {/* Quality Feedback */}
+              {complianceResults?.quality_analysis?.suggestions?.length > 0 && (
+                <Card className="border-purple-300 bg-purple-50 dark:bg-purple-950">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Brain className="w-5 h-5 text-purple-600" />
+                      Documentation Quality Improvements
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {complianceResults.quality_analysis.suggestions.map((suggestion, idx) => (
+                      <div key={idx} className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-purple-200">
+                        <div className="flex items-start gap-2 mb-2">
+                          <Badge className={
+                            suggestion.severity === 'critical' ? 'bg-red-600' :
+                            suggestion.severity === 'important' ? 'bg-orange-500' :
+                            'bg-blue-500'
+                          }>
+                            {suggestion.severity}
+                          </Badge>
+                          <Badge variant="outline">{suggestion.category?.replace(/_/g, ' ')}</Badge>
+                        </div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">
+                          {suggestion.issue}
+                        </p>
+                        <div className="bg-blue-50 dark:bg-blue-900 p-2 rounded">
+                          <p className="text-xs text-blue-800 dark:text-blue-300">
+                            <strong>Recommendation:</strong> {suggestion.recommendation}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Medicare Violations */}
               {medicareViolations && medicareViolations.length > 0 &&
