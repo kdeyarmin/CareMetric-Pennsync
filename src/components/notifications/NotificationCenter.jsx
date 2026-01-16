@@ -84,6 +84,43 @@ export default function NotificationCenter() {
     },
   });
 
+  // Helper: Check if notification is relevant to provider type
+  const isRelevantToProvider = (notificationType, providerType) => {
+    if (!providerType) return true;
+
+    // Notifications relevant to nursing roles (RN, LPN, NP)
+    const nursingRoles = ['RN', 'LPN', 'NP'];
+    const nursingNotifications = ['patient_alert', 'task', 'compliance'];
+
+    // Therapist-specific (PT, OT, ST)
+    const therapistRoles = ['PT', 'OT', 'ST'];
+    const therapistNotifications = ['task', 'patient_alert'];
+
+    // MSW-specific
+    const mswNotifications = ['task', 'patient_alert', 'training'];
+
+    // Physician
+    const physicianNotifications = ['patient_alert', 'task', 'compliance'];
+
+    // Training and regulatory updates are relevant to everyone
+    if (['training', 'regulatory', 'announcement'].includes(notificationType)) return true;
+
+    if (nursingRoles.includes(providerType)) {
+      return nursingNotifications.includes(notificationType);
+    }
+    if (therapistRoles.includes(providerType)) {
+      return therapistNotifications.includes(notificationType);
+    }
+    if (providerType === 'MSW') {
+      return mswNotifications.includes(notificationType);
+    }
+    if (providerType === 'Physician') {
+      return physicianNotifications.includes(notificationType);
+    }
+
+    return true;
+  };
+
   // Aggregate notifications
   const notifications = useMemo(() => {
     const items = [];
