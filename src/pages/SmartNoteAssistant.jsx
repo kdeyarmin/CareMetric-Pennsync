@@ -188,8 +188,8 @@ export default function SmartNoteAssistant() {
         toast.warning("Note enhanced - Review compliance warnings");
       }
     } catch (error) {
-      toast.error("Failed to enhance note");
-      console.error(error);
+      toast.error(`Failed to enhance note: ${error.message || 'Unknown error'}`);
+      console.error('Error enhancing note:', error);
     } finally {
       setEnhancing(false);
     }
