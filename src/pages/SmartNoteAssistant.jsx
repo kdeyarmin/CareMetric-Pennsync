@@ -760,6 +760,9 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
         <>
             {/* Results Page */}
             <div className="space-y-4">
+              {/* Clinical Insights Panel */}
+              <ClinicalInsightsPanel insights={clinicalInsights} isLoading={loadingInsights} />
+
               {/* Enhanced Note Display */}
               <Card className="border-green-300 bg-green-50 dark:bg-green-950">
                 <CardHeader>
