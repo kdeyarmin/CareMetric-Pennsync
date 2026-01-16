@@ -24,11 +24,13 @@ import {
               Activity,
               CreditCard,
               Mic,
+              Phone,
               UserPlus,
               ShieldAlert,
               ListTodo,
-              FileText } from
-              "lucide-react";
+              FileText,
+              Download } from
+            "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -139,13 +141,16 @@ export default function Layout({ children, currentPageName }) {
   // Get role-specific navigation items
   // User items first, then admin items
   const allNavItems = [
-  // User items - core navigation
+  // User items
   { name: "Dashboard", icon: Home, page: "Dashboard" },
+  { name: "Features", icon: Sparkles, page: "Features" },
   { name: "Patients", icon: Users, page: "Patients" },
   { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
   { name: "Visit Scribe", icon: Mic, page: "MedicalScribe" },
   { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
   { name: "Documents", icon: FileText, page: "DocumentGenerator" },
+  { name: "Templates", icon: FileText, page: "TemplateLibrary" },
+  { name: "Schedule", icon: Phone, page: "ProviderScheduling" },
   { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
   { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
   { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
