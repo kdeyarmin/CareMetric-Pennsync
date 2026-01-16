@@ -76,6 +76,7 @@ Please provide a comprehensive response that includes:
    CRITICAL: DO NOT include meta-commentary, recommendations, or statements about what should be done. Only include actual clinical documentation. Remove any sentences starting with "Further assessment", "Additional documentation", "It is recommended", etc.
    NOTE: Do NOT flag or include missing vital signs in the narrative - vitals are optional.
 3. COMPLIANCE CHECK: Assess Medicare compliance with specific issues and violations
+   For each issue found, provide SPECIFIC, ACTIONABLE guidance on exactly what should be documented or improved, not just generic recommendations
 4. QUALITY ANALYSIS: Evaluate documentation quality including:
    - Overall quality score (0-100)
    - Clarity score (0-100)
