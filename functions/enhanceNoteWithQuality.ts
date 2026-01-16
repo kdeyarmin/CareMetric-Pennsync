@@ -65,6 +65,13 @@ ${learnedPatterns.slice(0, 5).map(p =>
 ).join('\n')}
 ADAPT YOUR OUTPUT to match these learned preferences.
 ` : ''}
+${learnedPatterns?.length > 0 ? `LEARNED PROVIDER PREFERENCES:
+This provider has demonstrated the following documentation patterns:
+${learnedPatterns.slice(0, 5).map(p => 
+  `- ${p.pattern_type}: ${p.examples?.[0] || 'pattern detected'} (frequency: ${p.frequency_count})`
+).join('\n')}
+ADAPT YOUR OUTPUT to match these learned preferences.
+` : ''}
 ROUGH CLINICAL NOTES:
 ${rough_notes}
 
