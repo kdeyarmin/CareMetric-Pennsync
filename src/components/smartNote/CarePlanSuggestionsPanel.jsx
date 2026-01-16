@@ -8,18 +8,26 @@ import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProviderSpecificPromptAdditions, getRelevantTaskTypes } from '@/components/utils/providerSpecificPrompts';
 
-export default function CarePlanSuggestionsPanel({ patientId, visitType, diagnosis, noteContent }) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [suggestions, setSuggestions] = useState(null);
-  const [expanded, setExpanded] = useState(false);
+export default function CarePlanSuggestionsPanel({ patientId, visitType, diagnosis, noteContent, providerType }) {
+   const [isGenerating, setIsGenerating] = useState(false);
+   const [suggestions, setSuggestions] = useState(null);
+   const [expanded, setExpanded] = useState(false);
 
-  const { data: existingCarePlans = [] } = useQuery({
-    queryKey: ['carePlans', patientId],
-    queryFn: () => patientId ? base44.entities.CarePlan.filter({ patient_id: patientId }) : Promise.resolve([]),
-    enabled: !!patientId
-  });
+   const { data: currentUser } = useQuery({
+     queryKey: ['currentUser'],
+     queryFn: () => base44.auth.me()
+   });
 
-  const queryClient = useQueryClient();
+   const { data: existingCarePlans = [] } = useQuery({
+     queryKey: ['carePlans', patientId],
+     queryFn: () => patientId ? base44.entities.CarePlan.filter({ patient_id: patientId }) : Promise.resolve([]),
+     enabled: !!patientId
+   });
+
+   const queryClient = useQueryClient();
+
+   const effectiveProviderType = providerType || currentUser?.credential_type || 'RN';
+   const relevantTaskTypes = getRelevantTaskTypes(effectiveProviderType);
 
   const createCarePlanMutation = useMutation({
     mutationFn: (carePlan) => base44.entities.CarePlan.create(carePlan),
