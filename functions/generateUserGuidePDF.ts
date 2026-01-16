@@ -378,7 +378,7 @@ Deno.serve(async (req) => {
     yPosition += 18;
     doc.setFontSize(11);
     doc.setTextColor(120, 120, 120);
-    const taglineLines = doc.splitTextToSize('Streamline Documentation • Enhance Compliance • Improve Patient Outcomes', contentWidth - 10);
+    const taglineLines = doc.splitTextToSize('Streamline Documentation | Enhance Compliance | Improve Patient Outcomes', contentWidth - 10);
     doc.text(taglineLines, margin + 5, yPosition);
 
     // Divider line
@@ -473,7 +473,7 @@ Deno.serve(async (req) => {
           doc.addPage();
           yPosition = margin;
         }
-        const stepLines = doc.splitTextToSize('• ' + step, contentWidth - 5);
+        const stepLines = doc.splitTextToSize('- ' + step, contentWidth - 5);
         doc.text(stepLines, margin + 5, yPosition);
         yPosition += stepLines.length * 4 + 2;
       }
@@ -500,7 +500,7 @@ Deno.serve(async (req) => {
           doc.addPage();
           yPosition = margin;
         }
-        const practiceLines = doc.splitTextToSize('• ' + practice, contentWidth - 5);
+        const practiceLines = doc.splitTextToSize('- ' + practice, contentWidth - 5);
         doc.text(practiceLines, margin + 5, yPosition);
         yPosition += practiceLines.length * 4 + 2;
       }
@@ -526,7 +526,7 @@ Deno.serve(async (req) => {
             doc.addPage();
             yPosition = margin;
           }
-          const checkLines = doc.splitTextToSize('• ' + check, contentWidth - 8);
+          const checkLines = doc.splitTextToSize('- ' + check, contentWidth - 8);
           doc.text(checkLines, margin + 5, yPosition);
           yPosition += checkLines.length * 3.5 + 1;
         }
@@ -553,7 +553,7 @@ Deno.serve(async (req) => {
             doc.addPage();
             yPosition = margin;
           }
-          const factorLines = doc.splitTextToSize('• ' + factor, contentWidth - 8);
+          const factorLines = doc.splitTextToSize('- ' + factor, contentWidth - 8);
           doc.text(factorLines, margin + 5, yPosition);
           yPosition += factorLines.length * 3.5 + 1;
         }
