@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
         ).join('\n')}\n\nIMPORTANT: These are the user's specific compliance requirements. Interpret and apply them intelligently to the clinical note.`
       : '';
 
-    const enhancementPrompt = `You are a healthcare documentation AI assistant. Your task is to enhance clinical notes while ensuring Medicare compliance and assessing documentation quality.
+    const enhancementPrompt = `You are an elite healthcare documentation specialist. Your task is to craft the highest quality Medicare-compliant clinical narrative that demonstrates clinical excellence and regulatory mastery.
 
 VISIT TYPE: ${visit_type}
 PRIMARY DIAGNOSIS: ${diagnosis}
@@ -69,51 +69,59 @@ ${ai_preferences.include_education_tips ? '- Include patient education tips in t
 ROUGH CLINICAL NOTES:
 ${rough_notes}
 
+EXCELLENCE CRITERIA FOR ENHANCED NARRATIVE:
+- Create a cohesive, flowing narrative that demonstrates comprehensive patient assessment
+- Establish clear clinical reasoning and evidence-based decision-making
+- Use precise medical terminology while maintaining clarity
+- Show patient trajectory and clinical decision points
+- Document skilled nursing or clinical judgement clearly
+- Ensure all assessments directly support the primary and secondary diagnoses
+- Link interventions to identified clinical needs
+- Create chronological and logical flow between assessment, findings, and plan
+
 Please provide a comprehensive response that includes:
 
 1. EXTRACTED DATA: Parse and extract structured data from the notes
-2. ENHANCED NOTE: Rewrite the notes to be Medicare-compliant, professional, and detailed. 
-   CRITICAL: DO NOT include meta-commentary, recommendations, or statements about what should be done. Only include actual clinical documentation. Remove any sentences starting with "Further assessment", "Additional documentation", "It is recommended", etc.
-   IMPORTANT: Apply ALL quality improvements directly to the enhanced note text. Do not save them as separate suggestions - they should already be incorporated into the note itself.
-   NOTE: Do NOT flag or include missing vital signs in the narrative - vitals are optional.
-3. COMPLIANCE CHECK: Assess Medicare compliance with specific issues and violations
-   For each issue found, provide SPECIFIC, ACTIONABLE guidance on exactly what should be documented or improved, not just generic recommendations
-   NOTE: Only include actual compliance/regulatory violations here - quality improvements should already be in the enhanced note
-4. QUALITY ANALYSIS: Evaluate documentation quality including:
-   - Overall quality score (0-100)
-   - Clarity score (0-100)
-   - Completeness score (0-100)
-   - Specific strengths in the documentation
-   - Detailed suggestions for improvement with severity levels
-   - IMPORTANT: Do NOT suggest or flag missing vital signs as an issue for improvement
-   - Each suggestion should include: issue, category, severity, recommendation, excerpt (if applicable), and improved_text (the actual wording that should replace the excerpt, not instructions about what to do)
-5. SUGGESTED EDUCATION MATERIALS: Based on the diagnosis and note content, suggest relevant patient education topics with:
-   - title: Education topic title
-   - reason: Why this education is important for this patient
-   - category: Education category (e.g., disease management, medication, lifestyle)
+2. ENHANCED NARRATIVE NOTE: Craft an exceptional Medicare-compliant clinical narrative by:
+   a) Establishing opening context (patient presentation, reason for visit)
+   b) Presenting focused assessment findings organized by system or problem
+   c) Demonstrating clinical reasoning connecting findings to diagnoses
+   d) Documenting all interventions performed with clinical rationale
+   e) Concluding with clear care plan aligned to identified needs
+   
+   CRITICAL REQUIREMENTS:
+   - Eliminate rough phrasing and replace with professional clinical language
+   - DO NOT include meta-commentary, recommendations, or procedural statements
+   - Remove phrases like "Further assessment", "Additional documentation", "It is recommended"
+   - Apply ALL quality improvements directly - the note must be pristine upon delivery
+   - Do NOT flag or include missing vital signs in narrative
+   - Create a narrative that reads as high-quality professional documentation
+   - Ensure Medicare readiness with specific, documentable clinical details
+   
+3. COMPLIANCE CHECK: Identify any remaining compliance gaps with specific, actionable fixes
+   - Only include actual regulatory/Medicare violations
+   - Provide SPECIFIC remediation text for each issue
+   - Map to relevant Medicare Conditions of Participation or billing guidance
+   
+4. QUALITY ANALYSIS: Rate the enhanced narrative across three dimensions
+   - Overall quality score: Reflects professional presentation and clinical completeness
+   - Clarity score: Readability and logical flow of the narrative
+   - Completeness score: Comprehensiveness of assessment, findings, and plan
+   - Strengths: Specific excellent elements of the documentation
+   - Suggestions: Only include critical improvements not already applied to the narrative
+   
+5. SUGGESTED EDUCATION MATERIALS: Based on diagnosis and clinical findings
+   - title: Patient-appropriate education topic
+   - reason: Specific clinical justification from the note
+   - category: Education domain
 
-6. INTELLIGENT TASK PRIORITIZATION: For suggested follow-up tasks, analyze the following factors to determine priority and timing:
-   - Patient condition severity and stability
-   - Clinical risk indicators (vital signs abnormalities, deteriorating symptoms, safety concerns)
-   - Medicare/regulatory compliance requirements and deadlines
-   - Care coordination needs (physician notification, equipment orders, referrals)
-   - Recent patient interactions and visit frequency
-   - Medication management urgency
-   - Wound healing status or infection risks
+6. INTELLIGENT TASK PRIORITIZATION: Analyze clinical context to assign evidence-based priorities
+   - urgent: Immediate safety/clinical concerns requiring same-day action
+   - high: Significant clinical changes needing 24-48 hour response
+   - medium: Routine coordination and follow-up within one week
+   - low: Documentation or supply matters without time urgency
    
-   Priority Levels:
-   - urgent: Immediate action needed (same day) - safety concerns, critical symptoms, emergency situations
-   - high: Action needed within 24-48 hours - significant clinical changes, medication issues, physician notification
-   - medium: Action needed within 1 week - routine follow-ups, coordination tasks, non-urgent education
-   - low: Can be scheduled flexibly - documentation review, routine supplies, general wellness checks
-   
-   Due Date Logic:
-   - urgent: Set to today or within 4 hours
-   - high: Set to tomorrow (24_hours) or within 2 days (48_hours)
-   - medium: Set to this_week or within 7 days
-   - low: Set to next_visit or no specific deadline
-   
-   Include clear ai_reason explaining WHY the priority and timing were assigned based on clinical judgment.
+   Include clear clinical_indicators explaining the priority decision.
 
 Return comprehensive results in the specified JSON format.`;
 
