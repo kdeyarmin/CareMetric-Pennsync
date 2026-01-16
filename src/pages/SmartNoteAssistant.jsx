@@ -1004,7 +1004,15 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                             </div>
                             {task.ai_reason &&
                       <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-800 rounded text-xs text-slate-600 dark:text-slate-400">
-                                <strong>Why:</strong> {task.ai_reason}
+                                <strong>AI Analysis:</strong> {task.ai_reason}
+                              </div>
+                      }
+                            {task.clinical_indicators && task.clinical_indicators.length > 0 &&
+                      <div className="mt-2 flex gap-1 flex-wrap">
+                                <span className="text-xs text-slate-500">Factors:</span>
+                                {task.clinical_indicators.map((indicator, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs">{indicator}</Badge>
+                                ))}
                               </div>
                       }
                           </div>

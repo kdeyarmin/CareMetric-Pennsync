@@ -100,6 +100,29 @@ Please provide a comprehensive response that includes:
    - reason: Why this education is important for this patient
    - category: Education category (e.g., disease management, medication, lifestyle)
 
+6. INTELLIGENT TASK PRIORITIZATION: For suggested follow-up tasks, analyze the following factors to determine priority and timing:
+   - Patient condition severity and stability
+   - Clinical risk indicators (vital signs abnormalities, deteriorating symptoms, safety concerns)
+   - Medicare/regulatory compliance requirements and deadlines
+   - Care coordination needs (physician notification, equipment orders, referrals)
+   - Recent patient interactions and visit frequency
+   - Medication management urgency
+   - Wound healing status or infection risks
+   
+   Priority Levels:
+   - urgent: Immediate action needed (same day) - safety concerns, critical symptoms, emergency situations
+   - high: Action needed within 24-48 hours - significant clinical changes, medication issues, physician notification
+   - medium: Action needed within 1 week - routine follow-ups, coordination tasks, non-urgent education
+   - low: Can be scheduled flexibly - documentation review, routine supplies, general wellness checks
+   
+   Due Date Logic:
+   - urgent: Set to today or within 4 hours
+   - high: Set to tomorrow (24_hours) or within 2 days (48_hours)
+   - medium: Set to this_week or within 7 days
+   - low: Set to next_visit or no specific deadline
+   
+   Include clear ai_reason explaining WHY the priority and timing were assigned based on clinical judgment.
+
 Return comprehensive results in the specified JSON format.`;
 
     // Single LLM call for everything
@@ -181,10 +204,26 @@ Return comprehensive results in the specified JSON format.`;
               properties: {
                 title: { type: "string" },
                 description: { type: "string" },
-                priority: { type: "string" },
+                priority: { 
+                  type: "string",
+                  enum: ["urgent", "high", "medium", "low"],
+                  description: "AI-determined priority based on clinical severity and workflow needs"
+                },
                 type: { type: "string" },
-                suggested_due_timeframe: { type: "string" },
-                ai_reason: { type: "string" }
+                suggested_due_timeframe: { 
+                  type: "string",
+                  enum: ["today", "24_hours", "48_hours", "this_week", "next_visit"],
+                  description: "AI-recommended timeframe for completion"
+                },
+                ai_reason: { 
+                  type: "string",
+                  description: "Detailed explanation of why this priority and timing were assigned"
+                },
+                clinical_indicators: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Specific clinical factors that influenced prioritization"
+                }
               }
             }
           },
