@@ -31,6 +31,7 @@ import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
 import RealTimeQualityFeedback from "@/components/smartNote/RealTimeQualityFeedback";
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
+import EnhancedICD10Suggester from "@/components/clinical/EnhancedICD10Suggester";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -785,6 +786,13 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
               </div>
               )}
+
+              {/* ICD-10 Code Suggestions */}
+              <EnhancedICD10Suggester 
+                clinicalNote={enhancedNote}
+                diagnosis={selectedDiagnosis}
+                customRules={customComplianceRules}
+              />
 
               {/* Care Plan Suggestions */}
               {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') &&
