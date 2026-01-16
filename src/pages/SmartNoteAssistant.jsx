@@ -59,6 +59,8 @@ export default function SmartNoteAssistant() {
   const [showResults, setShowResults] = useState(false);
   const [medicareViolations, setMedicareViolations] = useState([]);
   const [regulatoryWarnings, setRegulatoryWarnings] = useState([]);
+  const [clinicalInsights, setClinicalInsights] = useState(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
   const [suggestedTasks, setSuggestedTasks] = useState([]);
   const [newPatientData, setNewPatientData] = useState({
     first_name: "",
