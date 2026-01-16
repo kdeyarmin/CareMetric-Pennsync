@@ -74,6 +74,7 @@ Please provide a comprehensive response that includes:
 1. EXTRACTED DATA: Parse and extract structured data from the notes
 2. ENHANCED NOTE: Rewrite the notes to be Medicare-compliant, professional, and detailed. 
    CRITICAL: DO NOT include meta-commentary, recommendations, or statements about what should be done. Only include actual clinical documentation. Remove any sentences starting with "Further assessment", "Additional documentation", "It is recommended", etc.
+   NOTE: Do NOT flag or include missing vital signs in the narrative - vitals are optional.
 3. COMPLIANCE CHECK: Assess Medicare compliance with specific issues and violations
 4. QUALITY ANALYSIS: Evaluate documentation quality including:
    - Overall quality score (0-100)
@@ -81,6 +82,7 @@ Please provide a comprehensive response that includes:
    - Completeness score (0-100)
    - Specific strengths in the documentation
    - Detailed suggestions for improvement with severity levels
+   - IMPORTANT: Do NOT suggest or flag missing vital signs as an issue for improvement
    - Each suggestion should include: issue, category, severity, recommendation, excerpt (if applicable), and improved_text (the actual wording that should replace the excerpt, not instructions about what to do)
 5. SUGGESTED EDUCATION MATERIALS: Based on the diagnosis and note content, suggest relevant patient education topics with:
    - title: Education topic title
