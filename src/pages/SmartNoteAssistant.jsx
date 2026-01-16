@@ -38,7 +38,7 @@ import VisitTypeGuidance from "@/components/smartNote/VisitTypeGuidance";
 import CodeSearchInserter from "@/components/smartNote/CodeSearchInserter";
 import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
 import NextBestActionSuggestions from "@/components/smartNote/NextBestActionSuggestions";
-import SmartPhraseVoiceInput from "@/components/smartNote/SmartPhraseVoiceInput";
+
 import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryComplianceMonitor";
 import EducationLibraryBrowser from "@/components/education/EducationLibraryBrowser";
 import PatientEducationPanel from "@/components/education/PatientEducationPanel";
@@ -549,14 +549,6 @@ export default function SmartNoteAssistant() {
 
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
-
-                {/* Smart Phrase Voice Input */}
-                <SmartPhraseVoiceInput
-                  onInsertText={(text) => {
-                    setRoughNotes(roughNotes + '\n\n' + text);
-                  }}
-                  disabled={enhancing}
-                />
 
                 {/* Code Search & Inserter */}
                 <CodeSearchInserter
@@ -1098,12 +1090,14 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               </div>
               )}
 
-              {/* ICD-10 Code Suggestions */}
-              <EnhancedICD10Suggester 
-                clinicalNote={enhancedNote}
-                diagnosis={selectedDiagnosis}
-                customRules={customComplianceRules}
-              />
+              {/* ICD-10 Code Suggestions - Only for Physicians & NPs after note enhancement */}
+              {(currentUser?.credential_type === 'MD' || currentUser?.credential_type === 'NP') && (
+                <EnhancedICD10Suggester 
+                  clinicalNote={enhancedNote}
+                  diagnosis={selectedDiagnosis}
+                  customRules={customComplianceRules}
+                />
+              )}
 
               {/* Care Plan Suggestions */}
               {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') &&
