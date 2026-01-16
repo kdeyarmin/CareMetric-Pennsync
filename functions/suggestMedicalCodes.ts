@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
     console.log('Starting medical code suggestion analysis...');
 
-    const codingPrompt = `You are an expert medical coder and billing compliance specialist. Analyze the following clinical note and suggest appropriate medical codes.
+    const codingPrompt = `You are an expert medical coder, billing compliance specialist, and payer-specific denial prevention expert. Analyze the following clinical note and suggest appropriate medical codes.
 
 CLINICAL NOTE:
 ${enhanced_note}
@@ -43,25 +43,29 @@ PROVIDER TYPE: ${provider_type}
 
 ${patient_context ? `PATIENT CONTEXT:
 - Patient: ${patient_context.patient_name}
+- Age: ${patient_context.date_of_birth ? new Date().getFullYear() - new Date(patient_context.date_of_birth).getFullYear() : 'Unknown'}
 - Secondary Diagnoses: ${patient_context.secondary_diagnoses?.join(', ') || 'None'}
 - Current Medications: ${patient_context.current_medications?.map(m => m.name || m).join(', ') || 'None'}
+- Insurance: ${patient_context.payor || 'Unknown'}
 ` : ''}
 
-Please analyze this note and provide comprehensive medical coding recommendations including:
+Please provide comprehensive medical coding recommendations including:
 
-1. PRIMARY ICD-10 CODES: Main diagnostic codes applicable to this visit
+1. PRIMARY ICD-10 CODES: Main diagnostic codes for this visit
 2. SECONDARY ICD-10 CODES: Supporting diagnostic codes
-3. CPT CODES: Procedure/service codes for billing
-4. CCI & BUNDLING CONCERNS: Identify any Correct Coding Initiative issues or unbundling risks
-5. DOCUMENTATION GAPS: Identify missing documentation needed for coding accuracy
-6. COMPLIANCE NOTES: Key compliance considerations for this visit
+3. CPT CODES: Procedure/service codes for billing with RVUs
+4. HCPCS CODES: Supply/device/modifier codes (J codes, E codes, L codes, etc.)
+5. RECOMMENDED MODIFIERS: CPT/HCPCS modifiers with usage scenarios (25, 59, RT/LT, 76, 77, etc.)
+6. PAYER-SPECIFIC DENIAL RISKS: Identify common denial patterns by major payers (Medicare, Medicaid, commercial) with:
+   - Specific code combinations that trigger denials
+   - Documentation requirements to support codes
+   - Pre-authorization needs
+   - Age/gender specific denials
+7. CCI & BUNDLING CONCERNS: CCI issues and unbundling risks
+8. DOCUMENTATION GAPS: Missing documentation needed for coding accuracy
+9. COMPLIANCE NOTES: Key compliance considerations
 
-For each code, provide:
-- Code number
-- Description
-- Rationale for why it applies
-- Confidence level (high/medium/low)
-- Any special billing considerations
+For each code, provide: code number, description, rationale, confidence level (high/medium/low), billing considerations, and typical payer rules.
 
 Format your response as JSON with these exact sections.`;
 
