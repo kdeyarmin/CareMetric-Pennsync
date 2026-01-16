@@ -32,6 +32,8 @@ import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
 import EnhancedICD10Suggester from "@/components/clinical/EnhancedICD10Suggester";
+import InteractiveQualitySuggestions from "@/components/smartNote/InteractiveQualitySuggestions";
+import VisitTypeGuidance from "@/components/smartNote/VisitTypeGuidance";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -56,6 +58,17 @@ export default function SmartNoteAssistant() {
   });
   const [creatingPatient, setCreatingPatient] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [vitalSigns, setVitalSigns] = useState({
+    temperature: "",
+    heart_rate: "",
+    respiratory_rate: "",
+    bp_systolic: "",
+    bp_diastolic: "",
+    oxygen_saturation: ""
+  });
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editedNote, setEditedNote] = useState("");
+  const [savingToPatient, setSavingToPatient] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -155,7 +168,7 @@ export default function SmartNoteAssistant() {
         return rule.applies_to_visit_types.includes(visitType);
       });
 
-      // Single consolidated backend call
+      // Single consolidated backend call with vital signs
       const { enhanceNoteWithQuality } = await import('@/functions/enhanceNoteWithQuality');
       const response = await enhanceNoteWithQuality({
         rough_notes: roughNotes,
@@ -164,7 +177,8 @@ export default function SmartNoteAssistant() {
         provider_type: currentUser?.credential_type || 'RN',
         compliance_prompt: compliancePrompt,
         custom_rules: applicableRules,
-        patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null
+        patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
+        vital_signs: vitalSigns
       });
 
       const result = response.data;
@@ -172,6 +186,7 @@ export default function SmartNoteAssistant() {
       // Update all state with consolidated results
       setExtractedData(result.extracted_data);
       setEnhancedNote(result.enhanced_note);
+      setEditedNote(result.enhanced_note);
       setComplianceResults({
         ...result.compliance_check,
         quality_analysis: result.quality_analysis
@@ -180,6 +195,7 @@ export default function SmartNoteAssistant() {
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
       setSuggestedTasks(result.suggested_tasks || []);
       setShowResults(true);
+      setIsEditMode(false);
 
       toast.dismiss(loadingToast);
       if (result.compliance_check?.compliance_score >= 85) {
@@ -236,6 +252,86 @@ export default function SmartNoteAssistant() {
   };
 
   const patientData = getSelectedPatientData();
+
+  const saveToPatientRecord = async () => {
+    if (selectedPatient === "no_patient" || !patientData) {
+      toast.error("Please select a patient to save this note");
+      return;
+    }
+
+    setSavingToPatient(true);
+    try {
+      const currentHistory = patientData.enhanced_notes_history || [];
+      const newEntry = {
+        date: new Date().toISOString(),
+        visit_type: visitType,
+        diagnosis: selectedDiagnosis,
+        enhanced_note: isEditMode ? editedNote : enhancedNote,
+        rough_note: roughNotes,
+        quality_score: complianceResults?.quality_analysis?.overall_quality_score,
+        compliance_score: complianceResults?.compliance_score,
+        nurse_email: currentUser?.email,
+        vital_signs: vitalSigns
+      };
+
+      await base44.entities.Patient.update(patientData.id, {
+        enhanced_notes_history: [...currentHistory, newEntry]
+      });
+
+      toast.success("Note saved to patient record!");
+    } catch (error) {
+      console.error('Error saving to patient:', error);
+      toast.error("Failed to save note to patient record");
+    } finally {
+      setSavingToPatient(false);
+    }
+  };
+
+  const recheckCompliance = async () => {
+    const loadingToast = toast.loading("Re-checking compliance and quality...");
+    try {
+      const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
+      const applicableRules = customComplianceRules.filter(rule => {
+        if (!rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0) return true;
+        return rule.applies_to_visit_types.includes(visitType);
+      });
+
+      const { enhanceNoteWithQuality } = await import('@/functions/enhanceNoteWithQuality');
+      const response = await enhanceNoteWithQuality({
+        rough_notes: editedNote,
+        visit_type: visitType,
+        diagnosis: selectedDiagnosis,
+        provider_type: currentUser?.credential_type || 'RN',
+        compliance_prompt: compliancePrompt,
+        custom_rules: applicableRules,
+        patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
+        vital_signs: vitalSigns
+      });
+
+      const result = response.data;
+      setComplianceResults({
+        ...result.compliance_check,
+        quality_analysis: result.quality_analysis
+      });
+      setMedicareViolations(result.compliance_check?.medicare_violations || []);
+      setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
+
+      toast.dismiss(loadingToast);
+      toast.success("Compliance check complete!");
+    } catch (error) {
+      console.error('Error re-checking:', error);
+      toast.dismiss(loadingToast);
+      toast.error("Failed to re-check compliance");
+    }
+  };
+
+  const applySuggestionToRoughNotes = (improvedText, originalExcerpt) => {
+    if (originalExcerpt) {
+      setRoughNotes(roughNotes.replace(originalExcerpt, improvedText));
+    } else {
+      setRoughNotes(roughNotes + '\n\n' + improvedText);
+    }
+  };
 
   return (
     <div className="min-h-screen p-2 sm:p-4 md:p-6 overflow-x-hidden">
@@ -363,51 +459,63 @@ export default function SmartNoteAssistant() {
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Temperature (°F)</label>
                       <Input
-                      type="number"
-                      step="0.1"
-                      placeholder="98.6"
-                      className="h-9" />
-
+                        type="number"
+                        step="0.1"
+                        placeholder="98.6"
+                        value={vitalSigns.temperature}
+                        onChange={(e) => setVitalSigns({...vitalSigns, temperature: e.target.value})}
+                        className="h-9"
+                      />
                     </div>
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Heart Rate (bpm)</label>
                       <Input
-                      type="number"
-                      placeholder="72"
-                      className="h-9" />
-
+                        type="number"
+                        placeholder="72"
+                        value={vitalSigns.heart_rate}
+                        onChange={(e) => setVitalSigns({...vitalSigns, heart_rate: e.target.value})}
+                        className="h-9"
+                      />
                     </div>
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Resp Rate</label>
                       <Input
-                      type="number"
-                      placeholder="16"
-                      className="h-9" />
-
+                        type="number"
+                        placeholder="16"
+                        value={vitalSigns.respiratory_rate}
+                        onChange={(e) => setVitalSigns({...vitalSigns, respiratory_rate: e.target.value})}
+                        className="h-9"
+                      />
                     </div>
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">BP Systolic</label>
                       <Input
-                      type="number"
-                      placeholder="120"
-                      className="h-9" />
-
+                        type="number"
+                        placeholder="120"
+                        value={vitalSigns.bp_systolic}
+                        onChange={(e) => setVitalSigns({...vitalSigns, bp_systolic: e.target.value})}
+                        className="h-9"
+                      />
                     </div>
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">BP Diastolic</label>
                       <Input
-                      type="number"
-                      placeholder="80"
-                      className="h-9" />
-
+                        type="number"
+                        placeholder="80"
+                        value={vitalSigns.bp_diastolic}
+                        onChange={(e) => setVitalSigns({...vitalSigns, bp_diastolic: e.target.value})}
+                        className="h-9"
+                      />
                     </div>
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">O2 Sat (%)</label>
                       <Input
-                      type="number"
-                      placeholder="98"
-                      className="h-9" />
-
+                        type="number"
+                        placeholder="98"
+                        value={vitalSigns.oxygen_saturation}
+                        onChange={(e) => setVitalSigns({...vitalSigns, oxygen_saturation: e.target.value})}
+                        className="h-9"
+                      />
                     </div>
                   </div>
                 </div>
@@ -464,27 +572,99 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               {/* Enhanced Note Display */}
               <Card className="border-green-300 bg-green-50 dark:bg-green-950">
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+                  <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <span className="flex items-center gap-2">
                       <CheckCircle2 className="w-5 h-5 text-green-600" />
-                      Enhanced Compliant Note
+                      {isEditMode ? 'Edit Note' : 'Enhanced Compliant Note'}
                     </span>
-                    <Button
-                    onClick={() => {
-                      navigator.clipboard.writeText(enhancedNote);
-                      toast.success("Enhanced note copied");
-                    }}
-                    variant="outline"
-                    size="sm">
-
-                      Copy Note
-                    </Button>
+                    <div className="flex gap-2">
+                      {!isEditMode && (
+                        <>
+                          <Button
+                            onClick={() => {
+                              setIsEditMode(true);
+                              setEditedNote(enhancedNote);
+                            }}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Edit Note
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              navigator.clipboard.writeText(enhancedNote);
+                              toast.success("Enhanced note copied");
+                            }}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Copy Note
+                          </Button>
+                          {patientData && (
+                            <Button
+                              onClick={saveToPatientRecord}
+                              disabled={savingToPatient}
+                              className="bg-green-600 hover:bg-green-700"
+                              size="sm"
+                            >
+                              {savingToPatient ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                  Saving...
+                                </>
+                              ) : (
+                                'Save to Patient Record'
+                              )}
+                            </Button>
+                          )}
+                        </>
+                      )}
+                      {isEditMode && (
+                        <>
+                          <Button
+                            onClick={recheckCompliance}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Re-check Compliance
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setEnhancedNote(editedNote);
+                              setIsEditMode(false);
+                            }}
+                            className="bg-green-600 hover:bg-green-700"
+                            size="sm"
+                          >
+                            Save Changes
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setEditedNote(enhancedNote);
+                              setIsEditMode(false);
+                            }}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-lg text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
-                    {enhancedNote}
-                  </div>
+                  {isEditMode ? (
+                    <textarea
+                      value={editedNote}
+                      onChange={(e) => setEditedNote(e.target.value)}
+                      className="w-full h-96 p-4 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-green-500"
+                    />
+                  ) : (
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-lg text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
+                      {enhancedNote}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -552,39 +732,11 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               </div>
 
               {/* Quality Feedback */}
-              {complianceResults?.quality_analysis?.suggestions?.length > 0 && (
-                <Card className="border-purple-300 bg-purple-50 dark:bg-purple-950">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Brain className="w-5 h-5 text-purple-600" />
-                      Documentation Quality Improvements
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {complianceResults.quality_analysis.suggestions.map((suggestion, idx) => (
-                      <div key={idx} className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-purple-200">
-                        <div className="flex items-start gap-2 mb-2">
-                          <Badge className={
-                            suggestion.severity === 'critical' ? 'bg-red-600' :
-                            suggestion.severity === 'important' ? 'bg-orange-500' :
-                            'bg-blue-500'
-                          }>
-                            {suggestion.severity}
-                          </Badge>
-                          <Badge variant="outline">{suggestion.category?.replace(/_/g, ' ')}</Badge>
-                        </div>
-                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">
-                          {suggestion.issue}
-                        </p>
-                        <div className="bg-blue-50 dark:bg-blue-900 p-2 rounded">
-                          <p className="text-xs text-blue-800 dark:text-blue-300">
-                            <strong>Recommendation:</strong> {suggestion.recommendation}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
+              {complianceResults?.quality_analysis && (
+                <InteractiveQualitySuggestions
+                  qualityAnalysis={complianceResults.quality_analysis}
+                  onApplySuggestion={applySuggestionToRoughNotes}
+                />
               )}
 
               {/* Medicare Violations */}
@@ -837,18 +989,28 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
               {/* Start Over Button */}
               <Button
-              onClick={() => {
-                setShowResults(false);
-                setEnhancedNote(null);
-                setComplianceResults(null);
-                setMedicareViolations([]);
-                setRegulatoryWarnings([]);
-                setSuggestedTasks([]);
-                setRoughNotes("");
-              }}
-              variant="outline"
-              className="w-full">
-
+                onClick={() => {
+                  setShowResults(false);
+                  setEnhancedNote(null);
+                  setEditedNote("");
+                  setComplianceResults(null);
+                  setMedicareViolations([]);
+                  setRegulatoryWarnings([]);
+                  setSuggestedTasks([]);
+                  setRoughNotes("");
+                  setVitalSigns({
+                    temperature: "",
+                    heart_rate: "",
+                    respiratory_rate: "",
+                    bp_systolic: "",
+                    bp_diastolic: "",
+                    oxygen_saturation: ""
+                  });
+                  setIsEditMode(false);
+                }}
+                variant="outline"
+                className="w-full"
+              >
                 Create Another Note
               </Button>
             </div>

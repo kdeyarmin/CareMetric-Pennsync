@@ -16,7 +16,8 @@ Deno.serve(async (req) => {
       provider_type,
       compliance_prompt,
       custom_rules,
-      patient_id
+      patient_id,
+      vital_signs
     } = await req.json();
 
     console.log('Starting consolidated note enhancement and quality analysis...');
@@ -36,7 +37,9 @@ PROVIDER TYPE: ${provider_type}
 
 ${compliance_prompt}${customRulesText}
 
-ROUGH CLINICAL NOTES:
+${vital_signs && Object.values(vital_signs).some(v => v) ? `VITAL SIGNS:
+${vital_signs.temperature ? `Temperature: ${vital_signs.temperature}°F\n` : ''}${vital_signs.heart_rate ? `Heart Rate: ${vital_signs.heart_rate} bpm\n` : ''}${vital_signs.respiratory_rate ? `Respiratory Rate: ${vital_signs.respiratory_rate}\n` : ''}${vital_signs.bp_systolic && vital_signs.bp_diastolic ? `Blood Pressure: ${vital_signs.bp_systolic}/${vital_signs.bp_diastolic}\n` : ''}${vital_signs.oxygen_saturation ? `O2 Saturation: ${vital_signs.oxygen_saturation}%\n` : ''}
+` : ''}ROUGH CLINICAL NOTES:
 ${rough_notes}
 
 Please provide a comprehensive response that includes:
