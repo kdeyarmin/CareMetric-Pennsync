@@ -38,6 +38,7 @@ import VisitTypeGuidance from "@/components/smartNote/VisitTypeGuidance";
 import CodeSearchInserter from "@/components/smartNote/CodeSearchInserter";
 import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
 import NextBestActionSuggestions from "@/components/smartNote/NextBestActionSuggestions";
+import MedicalCodingAssistant from "@/components/smartNote/MedicalCodingAssistant";
 
 import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryComplianceMonitor";
 import EducationLibraryBrowser from "@/components/education/EducationLibraryBrowser";
