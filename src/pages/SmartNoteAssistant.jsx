@@ -276,9 +276,10 @@ export default function SmartNoteAssistant() {
 
        // Update all state with consolidated results
        console.log('🔵 Updating state...');
+       const finalNote = refinedResponse.data?.enhanced_note || result.enhanced_note;
        setExtractedData(result.extracted_data);
-       setEnhancedNote(result.enhanced_note);
-       setEditedNote(result.enhanced_note);
+       setEnhancedNote(finalNote);
+       setEditedNote(finalNote);
        setComplianceResults({
          ...result.compliance_check,
          quality_analysis: result.quality_analysis
