@@ -462,6 +462,30 @@ export default function SmartNoteAssistant() {
     }
   };
 
+  const generateClinicalInsights = async (note, extractedData) => {
+    setLoadingInsights(true);
+    try {
+      const response = await base44.functions.invoke('generateClinicalInsights', {
+        enhanced_note: note,
+        diagnoses: extractedData?.diagnoses || [selectedDiagnosis],
+        symptoms: extractedData?.symptoms || [],
+        medications: extractedData?.medications || [],
+        vital_signs: vitalSigns,
+        visit_type: visitType,
+        provider_type: currentUser?.credential_type || 'RN',
+        patient_context: patientData ? {
+          age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+          comorbidities: patientData.secondary_diagnoses || []
+        } : {}
+      });
+      setClinicalInsights(response.data);
+    } catch (error) {
+      console.error('Error generating clinical insights:', error);
+    } finally {
+      setLoadingInsights(false);
+    }
+  };
+
   return (
     <div className="min-h-screen p-2 sm:p-4 md:p-6 overflow-x-hidden">
       <div className="max-w-4xl mx-auto space-y-4 w-full">
