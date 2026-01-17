@@ -33,7 +33,6 @@ import {
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
-import MobileQuickAccessMenu from "../components/mobile/MobileQuickAccessMenu";
 import ShareAppButton from "../components/marketing/ShareAppButton";
 import NotificationCenter from "../components/notifications/NotificationCenter";
 import { ThemeProvider } from "../components/theme/ThemeProvider";
@@ -464,18 +463,10 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </main>
 
-      {/* ================= Mobile Floating Buttons (HORIZONTAL) ================= */}
+      {/* ================= Mobile Floating Button ================= */}
       {showNavigationUI &&
         <div className="fixed right-3 bottom-3 z-[9997] lg:hidden">
-          <div className="flex flex-row items-center gap-3">
-            {/* IMPORTANT: scope override so internal fixed FABs become normal-flow */}
-            <div className="cm-fab-scope flex items-center justify-center">
-              <MobileQuickAccessMenu />
-            </div>
-            <div className="cm-fab-scope flex items-center justify-center">
-              <AIChatAssistant />
-            </div>
-          </div>
+          <AIChatAssistant />
         </div>
         }
 
