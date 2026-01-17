@@ -15,6 +15,8 @@ import DataRetentionSettings from "../components/settings/DataRetentionSettings"
 import ReferralCodeDisplay from "../components/referral/ReferralCodeDisplay";
 
 import ProviderTypeSelector from "../components/settings/ProviderTypeSelector";
+import AdvancedAICustomization from "../components/settings/AdvancedAICustomization";
+import OfflineSyncManager from "../components/mobile/OfflineSyncManager";
 import ProviderPracticeInfoManager from "../components/settings/ProviderPracticeInfoManager";
 import ProviderSpecializationManager from "../components/settings/ProviderSpecializationManager";
 
