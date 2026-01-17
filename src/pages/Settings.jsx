@@ -20,6 +20,7 @@ import OfflineSyncManager from "../components/mobile/OfflineSyncManager";
 import ProviderPracticeInfoManager from "../components/settings/ProviderPracticeInfoManager";
 import ProviderSpecializationManager from "../components/settings/ProviderSpecializationManager";
 import BiometricAuth from "../components/auth/BiometricAuth";
+import SecurityAuditLog from "../components/security/SecurityAuditLog";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -409,6 +410,11 @@ export default function Settings() {
             userEmail={currentUser.email}
             onAuthSuccess={() => toast.success('Biometric login successful!')}
           />
+        )}
+
+        {/* Security Audit Log */}
+        {currentUser?.email && (
+          <SecurityAuditLog userEmail={currentUser.email} />
         )}
 
         {/* Professional Specializations - Only for Physicians */}

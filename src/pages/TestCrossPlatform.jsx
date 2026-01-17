@@ -244,6 +244,19 @@ export default function TestCrossPlatform() {
             <Button onClick={testOfflineSave} variant="outline" className="w-full">
               Test Encrypted Offline Save
             </Button>
+
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-xs text-green-800 font-medium mb-2">🔒 Enhanced Security Features:</p>
+              <ul className="text-xs text-green-700 space-y-1">
+                <li>✓ AES-256-GCM encryption (military-grade)</li>
+                <li>✓ PBKDF2 key derivation (100,000 iterations)</li>
+                <li>✓ SHA-256 integrity verification</li>
+                <li>✓ Secure IndexedDB key storage</li>
+                <li>✓ Session-based key management</li>
+                <li>✓ Full audit trail logging</li>
+                <li>✓ HTTPS enforcement in production</li>
+              </ul>
+            </div>
           </CardContent>
         </Card>
 
