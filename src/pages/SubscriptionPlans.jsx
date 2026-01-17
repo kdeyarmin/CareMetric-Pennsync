@@ -1,16 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
+import { toast } from 'sonner';
 
-// IMPORTANT: Replace with your actual Stripe publishable key
-const stripePromise = loadStripe('pk_test_YOUR_PUBLISHABLE_KEY'); 
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_live_51Qr3FJGbdOIAhzqIDXCO08y02eKhABH99Fm3LR5XWrSYbD25zrJ2T3dZHcF2XOGzQOC73vHNLvgVnMnXOuVqbxAF00j7xpRkDv'); 
 
 export default function SubscriptionPlans() {
   const [loadingPriceId, setLoadingPriceId] = useState(null);
+  const [isInIframe, setIsInIframe] = useState(false);
+
+  useEffect(() => {
+    // Check if running in iframe
+    setIsInIframe(window.self !== window.top);
+  }, []);
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['subscriptionSettings'],
@@ -28,21 +35,36 @@ export default function SubscriptionPlans() {
   ];
 
   const handleCheckout = async (priceId) => {
-    if (!priceId) {
-      alert("Stripe price ID is not configured for this plan.");
+    // Block checkout in iframe
+    if (isInIframe) {
+      toast.error('Checkout is only available from the published app, not in preview mode. Please open the full app to complete your purchase.');
       return;
     }
+
+    if (!priceId) {
+      toast.error("This plan is not configured yet. Please contact support.");
+      return;
+    }
+
     setLoadingPriceId(priceId);
     try {
       const { data } = await base44.functions.invoke('createStripeCheckout', { priceId });
+      
+      if (!data?.sessionId) {
+        throw new Error('No session ID returned from server');
+      }
+
       const stripe = await stripePromise;
       const { error } = await stripe.redirectToCheckout({ sessionId: data.sessionId });
+      
       if (error) {
         console.error("Stripe checkout error:", error);
+        toast.error(error.message || 'Failed to redirect to checkout');
         setLoadingPriceId(null);
       }
     } catch (error) {
       console.error("Failed to create checkout session:", error);
+      toast.error(error.message || 'Failed to start checkout. Please try again.');
       setLoadingPriceId(null);
     }
   };
@@ -54,7 +76,16 @@ export default function SubscriptionPlans() {
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <h1 className="text-4xl font-bold text-center mb-4">Our Plans</h1>
-      <p className="text-center text-gray-600 mb-12">Choose the plan that's right for you.</p>
+      <p className="text-center text-gray-600 mb-8">Choose the plan that's right for you.</p>
+
+      {isInIframe && (
+        <Alert className="mb-8 border-amber-200 bg-amber-50">
+          <AlertTriangle className="h-5 w-5 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            You're viewing this in preview mode. To subscribe, please open the full published app.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
         {plans.map((plan) => (

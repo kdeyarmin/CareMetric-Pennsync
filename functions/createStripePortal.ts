@@ -15,6 +15,7 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     
     if (!user) {
+      console.error('[createStripePortal] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -24,19 +25,32 @@ Deno.serve(async (req) => {
     });
     
     if (subscriptions.length === 0 || !subscriptions[0].stripe_customer_id) {
-      return Response.json({ error: 'No subscription found' }, { status: 404 });
+      console.error('[createStripePortal] No subscription found for:', user.email);
+      return Response.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
     // Create portal session
     const session = await stripe.billingPortal.sessions.create({
       customer: subscriptions[0].stripe_customer_id,
-      return_url: `${req.headers.get('origin')}${createPageUrl('Billing')}`,
+      return_url: `${req.headers.get('origin')}${createPageUrl('Settings')}`,
+    });
+
+    console.log('[createStripePortal] Portal session created:', {
+      customerId: subscriptions[0].stripe_customer_id,
+      userEmail: user.email
     });
 
     return Response.json({ url: session.url });
     
   } catch (error) {
-    console.error('Stripe portal error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('[createStripePortal] Error:', {
+      message: error.message,
+      stack: error.stack,
+      type: error.type
+    });
+    return Response.json({ 
+      error: 'Failed to create portal session',
+      details: error.message 
+    }, { status: 500 });
   }
 });
