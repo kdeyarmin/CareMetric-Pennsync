@@ -396,6 +396,12 @@ export default function Settings() {
         {/* Provider Profile */}
         <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
 
+        {/* Advanced AI Customization */}
+        <AdvancedAICustomization currentUser={currentUser} />
+
+        {/* Offline Sync Manager */}
+        <OfflineSyncManager />
+
         {/* Professional Specializations - Only for Physicians */}
         {currentUser && currentUser.credential_type === 'PHYSICIAN' &&
         <ProviderSpecializationManager currentUser={currentUser} />

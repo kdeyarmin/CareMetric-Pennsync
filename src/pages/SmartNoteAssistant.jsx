@@ -48,6 +48,7 @@ import ClinicalInsightsPanel from "@/components/smartNote/ClinicalInsightsPanel"
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
+import OfflineNoteCapture from "@/components/mobile/OfflineNoteCapture";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -517,6 +518,16 @@ export default function SmartNoteAssistant() {
         {/* AI Preferences Panel */}
         {showPreferences && (
           <AIPreferencesPanel currentUser={currentUser} />
+        )}
+
+        {/* Offline Note Capture */}
+        {selectedPatient !== 'no_patient' && !navigator.onLine && (
+          <OfflineNoteCapture
+            patientId={selectedPatient}
+            visitType={visitType}
+            diagnosis={selectedDiagnosis}
+            onNoteSaved={() => toast.success('Note saved locally')}
+          />
         )}
 
         {!showResults ?
