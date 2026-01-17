@@ -828,6 +828,130 @@ export default function UserManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Invite User Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Invite New User</DialogTitle>
+            <DialogDescription>
+              Send an invitation email to a new user. They will create their own account and password when they sign up.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="inviteEmail">Email Address *</Label>
+                <Input
+                  id="inviteEmail"
+                  type="email"
+                  placeholder="user@example.com"
+                  value={inviteData.email}
+                  onChange={(e) => setInviteData({...inviteData, email: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="fullName">Full Name *</Label>
+                <Input
+                  id="fullName"
+                  placeholder="John Doe"
+                  value={inviteData.full_name}
+                  onChange={(e) => setInviteData({...inviteData, full_name: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  placeholder="(555) 123-4567"
+                  value={inviteData.phone}
+                  onChange={(e) => setInviteData({...inviteData, phone: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="credentials">Credentials</Label>
+                <Input
+                  id="credentials"
+                  placeholder="RN, LPN, MSW, etc."
+                  value={inviteData.credentials}
+                  onChange={(e) => setInviteData({...inviteData, credentials: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="inviteRole">Role *</Label>
+                <Select value={inviteData.role} onValueChange={(value) => setInviteData({...inviteData, role: value})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="inviteCareScope">Care Scope *</Label>
+                <Select value={inviteData.care_scope} onValueChange={(value) => setInviteData({...inviteData, care_scope: value})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="home_health">🏠 Home Health Only</SelectItem>
+                    <SelectItem value="hospice">💜 Hospice Only</SelectItem>
+                    <SelectItem value="both">🏥 Both Home Health & Hospice</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Alert className="bg-blue-50 border-blue-200">
+              <Mail className="w-4 h-4 text-blue-600" />
+              <AlertDescription className="text-blue-900">
+                <p className="font-semibold mb-1">What happens next:</p>
+                <ul className="text-sm space-y-1">
+                  <li>✓ Invitation email sent to the user</li>
+                  <li>✓ User creates their own account and password</li>
+                  <li>✓ User gains immediate access upon signup</li>
+                  <li>✓ Invitation expires in 7 days</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateUser}
+              disabled={createUserMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {createUserMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Sending Invitation...
+                </>
+              ) : (
+                <>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Send Invitation
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
