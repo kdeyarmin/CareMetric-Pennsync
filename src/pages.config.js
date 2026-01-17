@@ -94,12 +94,12 @@ import Tasks from './pages/Tasks';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
+import TestCrossPlatform from './pages/TestCrossPlatform';
 import TrainingManagement from './pages/TrainingManagement';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import TestCrossPlatform from './pages/TestCrossPlatform';
 import __Layout from './Layout.jsx';
 
 
@@ -200,12 +200,12 @@ export const PAGES = {
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
+    "TestCrossPlatform": TestCrossPlatform,
     "TrainingManagement": TrainingManagement,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "TestCrossPlatform": TestCrossPlatform,
 }
 
 export const pagesConfig = {
