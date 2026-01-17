@@ -1,14 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+    let user;
     try {
         const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
+        user = await base44.auth.me();
 
         if (!user) {
+            console.error('[logAuditEvent] Unauthorized access attempt');
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const body = await req.json();
         const { 
             action, 
             entity_type, 
@@ -18,9 +21,10 @@ Deno.serve(async (req) => {
             ip_address,
             user_agent,
             description 
-        } = await req.json();
+        } = body;
 
         if (!action || !entity_type) {
+            console.error('[logAuditEvent] Missing required fields: action or entity_type', { action: !!action, entity_type: !!entity_type });
             return Response.json({ error: 'action and entity_type are required' }, { status: 400 });
         }
 
@@ -45,13 +49,22 @@ Deno.serve(async (req) => {
             timestamp: new Date().toISOString()
         });
 
+        console.log('[logAuditEvent] Audit logged:', { action, entity_type, user: user.email });
+
         return Response.json({ 
             success: true, 
             audit_id: auditEntry.id 
         });
 
     } catch (error) {
-        console.error('Audit logging failed:', error);
-        return Response.json({ error: error.message }, { status: 500 });
+        console.error('[logAuditEvent] Error:', {
+            message: error.message,
+            stack: error.stack,
+            userEmail: user?.email
+        });
+        return Response.json({ 
+            error: 'Failed to log audit event',
+            details: error.message 
+        }, { status: 500 });
     }
 });

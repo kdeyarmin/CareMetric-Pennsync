@@ -1,41 +1,52 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let adminUser;
   try {
     const base44 = createClientFromRequest(req);
     
     // Verify admin user
-    const adminUser = await base44.auth.me();
+    adminUser = await base44.auth.me();
     if (!adminUser || adminUser.role !== 'admin') {
+      console.warn('[adminResetPassword] Unauthorized access attempt by user:', adminUser?.email);
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
-    const { user_email, new_password } = await req.json();
+    const body = await req.json();
+    const { user_email, new_password } = body;
 
     if (!user_email || !new_password) {
+      console.error('[adminResetPassword] Missing required fields');
       return Response.json({ error: 'user_email and new_password are required' }, { status: 400 });
     }
 
     // Validate password strength
     if (new_password.length < 8) {
+      console.error('[adminResetPassword] Password too short');
       return Response.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
 
     // Get user by email
     const users = await base44.asServiceRole.entities.User.filter({ email: user_email });
     if (users.length === 0) {
+      console.warn('[adminResetPassword] Target user not found:', user_email);
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
 
     const targetUser = users[0];
 
     // Use Base44's auth API to reset password
-    // Note: This uses service role to update the password
+    const serviceRoleKey = Deno.env.get('BASE44_SERVICE_ROLE_KEY');
+    if (!serviceRoleKey) {
+      console.error('[adminResetPassword] BASE44_SERVICE_ROLE_KEY not set');
+      return Response.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+    
     const response = await fetch(`https://api.base44.com/v1/auth/admin/reset-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('BASE44_SERVICE_ROLE_KEY')}`
+        'Authorization': `Bearer ${serviceRoleKey}`
       },
       body: JSON.stringify({
         app_id: Deno.env.get('BASE44_APP_ID'),
@@ -45,7 +56,9 @@ Deno.serve(async (req) => {
     });
 
     if (!response.ok) {
-      return Response.json({ error: 'Failed to reset password' }, { status: 500 });
+      const errorText = await response.text();
+      console.error('[adminResetPassword] Failed to reset password via API:', response.status, errorText);
+      return Response.json({ error: 'Failed to reset password', details: errorText }, { status: 500 });
     }
 
     // Log the password reset action in both SecurityLog and AuditTrail
@@ -90,13 +103,22 @@ If you did not request this reset, please contact your administrator immediately
       from_name: 'CareMetric AI Admin'
     });
 
+    console.log('[adminResetPassword] Password reset successfully for:', user_email);
+
     return Response.json({ 
       success: true,
       message: 'Password reset successfully and user notified via email'
     });
 
   } catch (error) {
-    console.error('Password reset error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('[adminResetPassword] Error:', {
+      message: error.message,
+      stack: error.stack,
+      adminUser: adminUser?.email
+    });
+    return Response.json({ 
+      error: 'Failed to reset password',
+      details: error.message 
+    }, { status: 500 });
   }
 });
