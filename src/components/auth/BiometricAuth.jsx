@@ -13,13 +13,35 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
   const [authenticating, setAuthenticating] = useState(false);
 
   useEffect(() => {
-    // Check if WebAuthn is supported
-    const supported = window.PublicKeyCredential !== undefined;
-    setIsSupported(supported);
+    const checkSupport = async () => {
+      // Check if WebAuthn is supported
+      const supported = window.PublicKeyCredential !== undefined;
+      
+      if (supported) {
+        // Check if platform authenticator is available
+        try {
+          const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+          setIsSupported(available);
+          
+          if (!available) {
+            console.warn('WebAuthn supported but no platform authenticator available');
+          }
+        } catch (error) {
+          console.error('Error checking authenticator:', error);
+          setIsSupported(false);
+        }
+      } else {
+        setIsSupported(false);
+      }
 
-    // Check if user has registered biometric
-    const registered = localStorage.getItem(`biometric_${userEmail}`) !== null;
-    setIsRegistered(registered);
+      // Check if user has registered biometric
+      const registered = localStorage.getItem(`biometric_${userEmail}`) !== null;
+      setIsRegistered(registered);
+    };
+
+    if (userEmail) {
+      checkSupport();
+    }
   }, [userEmail]);
 
   const registerBiometric = async () => {
@@ -30,6 +52,12 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
 
     setRegistering(true);
     try {
+      // First check if platform authenticator is available
+      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      if (!available) {
+        throw new Error('No biometric authenticator available on this device');
+      }
+
       // Generate challenge
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
@@ -57,18 +85,27 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
           { type: 'public-key', alg: -257 } // RS256
         ],
         authenticatorSelection: {
-          authenticatorAttachment: 'platform', // Use device biometric
+          authenticatorAttachment: 'platform',
+          requireResidentKey: false,
           userVerification: 'required'
         },
         timeout: 60000,
         attestation: 'none'
       };
 
-      console.log('Starting biometric registration with options:', publicKeyOptions);
+      console.log('Starting biometric registration:', {
+        rpId,
+        userEmail,
+        options: publicKeyOptions
+      });
 
       const credential = await navigator.credentials.create({
         publicKey: publicKeyOptions
       });
+
+      if (!credential) {
+        throw new Error('No credential returned');
+      }
 
       console.log('Biometric registration successful:', credential);
 
@@ -83,13 +120,15 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
     } catch (error) {
       console.error('Registration error:', error);
       if (error.name === 'NotAllowedError') {
-        toast.error('Biometric registration cancelled or not available');
+        toast.error('Biometric registration cancelled. Please try again and approve the prompt.');
       } else if (error.name === 'NotSupportedError') {
         toast.error('Biometric authentication not supported on this browser');
       } else if (error.name === 'SecurityError') {
-        toast.error('Security error - biometric registration must be done on HTTPS');
+        toast.error('Security error - please use HTTPS or localhost');
+      } else if (error.message.includes('authenticator')) {
+        toast.error('No biometric sensor detected. Please check your device settings.');
       } else {
-        toast.error(`Failed to register: ${error.message || 'Unknown error'}`);
+        toast.error(`Registration failed: ${error.message || 'Unknown error'}`);
       }
     } finally {
       setRegistering(false);
@@ -105,11 +144,23 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
     setAuthenticating(true);
     try {
       const storedData = JSON.parse(localStorage.getItem(`biometric_${userEmail}`));
+      
+      if (!storedData || !storedData.credentialId) {
+        throw new Error('No stored credential found. Please re-register.');
+      }
+
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
+      // Get proper RP ID
+      let rpId = window.location.hostname;
+      if (rpId === 'localhost' || rpId === '127.0.0.1') {
+        rpId = 'localhost';
+      }
+
       const publicKeyOptions = {
         challenge,
+        rpId,
         allowCredentials: [{
           type: 'public-key',
           id: base64URLDecode(storedData.credentialId),
@@ -119,20 +170,29 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
         timeout: 60000
       };
 
+      console.log('Starting biometric authentication:', publicKeyOptions);
+
       const assertion = await navigator.credentials.get({
         publicKey: publicKeyOptions
       });
 
       if (assertion) {
+        console.log('Biometric authentication successful:', assertion);
         toast.success('Biometric authentication successful!');
         if (onAuthSuccess) onAuthSuccess();
+      } else {
+        throw new Error('No assertion returned');
       }
     } catch (error) {
       console.error('Authentication error:', error);
       if (error.name === 'NotAllowedError') {
-        toast.error('Biometric authentication cancelled');
+        toast.error('Authentication cancelled. Please try again.');
+      } else if (error.message.includes('credential')) {
+        toast.error('Credential not found. Please re-register biometric authentication.');
+        setIsRegistered(false);
+        localStorage.removeItem(`biometric_${userEmail}`);
       } else {
-        toast.error('Biometric authentication failed');
+        toast.error(`Authentication failed: ${error.message || 'Unknown error'}`);
       }
     } finally {
       setAuthenticating(false);
