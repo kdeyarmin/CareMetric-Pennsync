@@ -86,6 +86,8 @@ import PatientRiskAnalysisPanel from "../components/risk/PatientRiskAnalysisPane
 import RiskAlertConfiguration from "../components/risk/RiskAlertConfiguration";
 import ProactiveRiskInterventions from "../components/patient/ProactiveRiskInterventions";
 import HealthMetricsDashboard from "../components/patient/HealthMetricsDashboard";
+import ProactivePatientInsights from "../components/insights/ProactivePatientInsights";
+import EducationTrackingHistory from "../components/education/EducationTrackingHistory";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -357,6 +359,14 @@ export default function PatientDetails() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Proactive Clinical Insights - Before Visit */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <ProactivePatientInsights 
+            patientId={patientId} 
+            patientName={`${patient.first_name} ${patient.last_name}`}
+          />
+        </div>
 
         {/* Health Metrics Dashboard */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
@@ -1190,7 +1200,10 @@ export default function PatientDetails() {
                   </TabsContent>
 
                   <TabsContent value="education">
-                    <PatientEducationGenerator patientId={patientId} patient={patient} />
+                    <div className="space-y-4">
+                      <PatientEducationGenerator patientId={patientId} patient={patient} />
+                      <EducationTrackingHistory patientId={patientId} />
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="progress">
