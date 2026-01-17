@@ -218,6 +218,14 @@ export default function UserManagement() {
     deleteUserMutation.mutate(selectedUser.id);
   };
 
+  const handleCreateUser = () => {
+    if (!inviteData.email || !inviteData.full_name) {
+      alert('Please enter email and full name');
+      return;
+    }
+    createUserMutation.mutate(inviteData);
+  };
+
   // Filter users
   const filteredUsers = allUsers.filter(user => {
     if (roleFilter !== 'all' && user.role !== roleFilter) return false;
