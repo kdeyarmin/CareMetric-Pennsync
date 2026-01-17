@@ -417,7 +417,7 @@ export default function Settings() {
         }
 
         {/* Practice Information */}
-        {currentUser && !['RN', 'LPN'].includes(currentUser.credential_type) &&
+        {currentUser && !['RN', 'LPN', 'THERAPIST'].includes(currentUser.credential_type) &&
         <ProviderPracticeInfoManager userEmail={currentUser.email} credentialType={currentUser.credential_type} />
         }
 
