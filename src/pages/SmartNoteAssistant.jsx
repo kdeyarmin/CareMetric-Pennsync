@@ -46,6 +46,8 @@ import PatientEducationPanel from "@/components/education/PatientEducationPanel"
 import VoiceNoteRecorder from "@/components/smartNote/VoiceNoteRecorder";
 import ClinicalInsightsPanel from "@/components/smartNote/ClinicalInsightsPanel";
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
+import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
+import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1216,7 +1218,26 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
 
 
-              {/* Patient Education Panel */}
+              {/* Personalized AI Education Generator */}
+              <PersonalizedEducationGenerator 
+                diagnosis={selectedDiagnosis}
+                visitType={visitType}
+                clinicalNote={enhancedNote}
+                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                patientContext={patientData ? {
+                  patient_name: `${patientData.first_name} ${patientData.last_name}`,
+                  age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                  primary_diagnosis: patientData.primary_diagnosis,
+                  allergies: patientData.allergies,
+                  current_medications: patientData.current_medications
+                } : null}
+                onMaterialGenerated={(material, method) => {
+                  setProvidedEducation(prev => [...prev, { material, method }]);
+                  toast.success('Education documented - will be added to note');
+                }}
+              />
+
+              {/* Patient Education Panel - Library Browser */}
               <PatientEducationPanel
                 suggestedMaterials={suggestedEducation}
                 patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
@@ -1226,6 +1247,11 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   toast.success('Education documented - will be added to note');
                 }}
               />
+
+              {/* Education Tracking History */}
+              {selectedPatient !== 'no_patient' && (
+                <EducationTrackingHistory patientId={selectedPatient} />
+              )}
 
               {/* Start Over Button */}
               <Button

@@ -1,442 +1,244 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Sparkles,
-  FileText,
-  Download,
-  Mail,
-  Loader2,
-  Copy,
-  CheckCircle2,
-  BookOpen,
-  Heart
-} from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, FileText, Download, Send, CheckCircle2 } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 
-export default function PersonalizedEducationGenerator({ patient, carePlans = [], recentVisits = [] }) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [educationMaterial, setEducationMaterial] = useState(null);
-  const [readingLevel, setReadingLevel] = useState("6th-grade");
-  const [language, setLanguage] = useState("English");
-  const [format, setFormat] = useState("comprehensive");
-  const [copied, setCopied] = useState(false);
-  const [isSending, setIsSending] = useState(false);
+export default function PersonalizedEducationGenerator({ 
+  diagnosis, 
+  visitType, 
+  clinicalNote,
+  patientId,
+  patientContext,
+  onMaterialGenerated 
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [generatedMaterial, setGeneratedMaterial] = useState(null);
+  const [providing, setProviding] = useState(false);
 
   const generateMaterial = async () => {
-    if (!patient) return;
+    if (!diagnosis) {
+      toast.error('Diagnosis required to generate education');
+      return;
+    }
 
-    setIsGenerating(true);
+    setGenerating(true);
     try {
-      const activePlans = carePlans.filter(cp => cp.status === 'active');
-      const latestVisit = recentVisits[0];
-
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a patient education specialist creating easy-to-understand health information for home health patients.
-
-PATIENT INFORMATION:
-Name: ${patient.first_name} ${patient.last_name}
-Primary Diagnosis: ${patient.primary_diagnosis || 'Not specified'}
-Secondary Diagnoses: ${patient.secondary_diagnoses?.join(', ') || 'None'}
-Current Medications: ${patient.current_medications?.map(m => m.name).join(', ') || 'Not documented'}
-Allergies: ${patient.allergies || 'None documented'}
-Cognitive Status: ${patient.functional_status?.cognitive_status || 'Not assessed'}
-Primary Language: ${patient.social_history?.primary_language || 'English'}
-Living Situation: ${patient.social_history?.living_situation || 'Not specified'}
-
-ACTIVE CARE PLAN GOALS:
-${activePlans.map(cp => `• ${cp.problem}: ${cp.goal}`).join('\n') || 'No active care plans'}
-
-RECENT VISIT NOTES (for context):
-${latestVisit?.nurse_notes?.substring(0, 500) || 'No recent visit notes'}...
-
-EDUCATION REQUIREMENTS:
-- Reading Level: ${readingLevel}
-- Language: ${language}
-- Format: ${format}
-- Cognitive Adaptation: ${patient.functional_status?.cognitive_status === 'moderate_impairment' || patient.functional_status?.cognitive_status === 'severe_impairment' ? 'Use very simple language, large text recommendations, visual cues' : 'Standard'}
-
-CREATE PERSONALIZED EDUCATION MATERIAL:
-
-1. **Your Health Conditions**
-   - Explain each diagnosis in simple terms
-   - Why you're getting home health care
-   - What to expect during recovery
-
-2. **Your Medications**
-   - List current medications with:
-     * What it's for (in simple words)
-     * When to take it
-     * Important side effects to know
-     * What to avoid (food/activities)
-   - Include any allergies: ${patient.allergies || 'None'}
-
-3. **Your Daily Care Plan**
-   - What your nurse will help you with
-   - Your care goals in simple language:
-     ${activePlans.map(cp => `* ${cp.goal}`).join('\n')}
-   - How you can help yourself get better
-
-4. **What You Can Do at Home**
-   - Daily self-care activities
-   - Exercises or activities (if any)
-   - Diet recommendations
-   - Safety tips specific to your conditions
-
-5. **Warning Signs - When to Call for Help**
-   - Symptoms that mean call 911 immediately
-   - Symptoms that mean call your nurse today
-   - Symptoms that can wait until next visit
-   - Make these VERY clear with simple language
-
-6. **Your Healthcare Team**
-   - Who's who on your care team
-   - How to reach them
-   - What each person does
-
-7. **Questions You Might Have**
-   - Common questions about your conditions
-   - Simple answers
-   - Encouragement to ask questions
-
-8. **Next Steps**
-   - What to expect in the coming weeks
-   - Follow-up appointments
-   - Goals to work toward
-
-PERSONALIZATION NOTES:
-${patient.functional_status?.cognitive_status === 'moderate_impairment' || patient.functional_status?.cognitive_status === 'severe_impairment' ? '- Use EXTRA simple language, repeat key points, use visual markers' : ''}
-${patient.social_history?.living_situation === 'alone' ? '- Emphasize safety and when to call for help since patient lives alone' : ''}
-${patient.social_history?.interpreter_needed ? `- Note: Interpreter needed for ${patient.social_history.primary_language}` : ''}
-
-FORMAT:
-- Use bullet points and numbered lists
-- Bold important warnings
-- Use ✓ for things to do
-- Use ✗ for things to avoid
-- Keep sentences short and clear
-- Avoid medical jargon or explain it simply
-- Be encouraging and supportive
-
-Return JSON with the complete material:`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            introduction: { type: "string" },
-            sections: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  section_title: { type: "string" },
-                  content: { type: "string" },
-                  key_points: { type: "array", items: { type: "string" } }
-                }
-              }
-            },
-            emergency_contacts: { type: "string" },
-            summary: { type: "string" },
-            teach_back_questions: {
-              type: "array",
-              items: { type: "string" },
-              description: "Questions to verify patient understanding"
-            }
-          }
-        }
+      const response = await base44.functions.invoke('generatePatientEducationMaterial', {
+        patient_id: patientId,
+        diagnosis,
+        topic: diagnosis,
+        visit_type: visitType,
+        clinical_note: clinicalNote,
+        patient_context: patientContext,
+        education_level: 'basic',
+        language: 'English'
       });
 
-      setEducationMaterial(result);
+      const material = response.data;
+      setGeneratedMaterial(material);
+      toast.success('Personalized education material generated!');
     } catch (error) {
-      console.error("Education generation error:", error);
+      console.error('Error generating material:', error);
+      toast.error('Failed to generate education material');
+    } finally {
+      setGenerating(false);
     }
-    setIsGenerating(false);
   };
 
-  const copyToClipboard = () => {
-    if (!educationMaterial) return;
-    
-    const fullText = `${educationMaterial.title}\n\n${educationMaterial.introduction}\n\n` +
-      educationMaterial.sections.map(s => `${s.section_title}\n${s.content}\n`).join('\n') +
-      `\n${educationMaterial.summary}`;
-    
-    navigator.clipboard.writeText(fullText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const markAsProvided = async (method) => {
+    setProviding(true);
+    try {
+      if (patientId && generatedMaterial) {
+        // Create assignment record
+        await base44.entities.PatientEducationAssignment.create({
+          patient_id: patientId,
+          education_material_id: null, // AI-generated, not from library
+          material_title: generatedMaterial.title,
+          assigned_by: (await base44.auth.me()).email,
+          assigned_date: new Date().toISOString(),
+          delivery_method: method,
+          provided_date: new Date().toISOString(),
+          status: 'provided',
+          notes: 'AI-generated personalized education material'
+        });
+      }
+
+      if (onMaterialGenerated) {
+        onMaterialGenerated(generatedMaterial, method);
+      }
+
+      toast.success(`Education marked as provided via ${method}`);
+    } catch (error) {
+      console.error('Error marking as provided:', error);
+      toast.error('Failed to track education');
+    } finally {
+      setProviding(false);
+    }
   };
 
-  const sendToPatient = async () => {
-    if (!educationMaterial || !patient.email) return;
+  const downloadPDF = () => {
+    // Create simple text version for download
+    const content = `
+${generatedMaterial.title}
 
-    setIsSending(true);
-    try {
-      const { generateEmailTemplate } = await import('../utils/branding');
-      
-      const emailContent = `
-        <h2 style="color: #2563eb;">${educationMaterial.title}</h2>
-        <p>${educationMaterial.introduction}</p>
-        
-        ${educationMaterial.sections.map(s => `
-          <div style="margin: 20px 0;">
-            <h3 style="color: #3b82f6; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">${s.section_title}</h3>
-            <div style="white-space: pre-wrap; line-height: 1.8;">${s.content}</div>
-            ${s.key_points && s.key_points.length > 0 ? `
-              <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-top: 10px;">
-                <strong style="color: #2563eb;">Key Points:</strong>
-                <ul style="margin: 10px 0;">
-                  ${s.key_points.map(pt => `<li>${pt}</li>`).join('')}
-                </ul>
-              </div>
-            ` : ''}
-          </div>
-        `).join('')}
-        
-        <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; border-left: 4px solid #22c55e; margin: 20px 0;">
-          <strong style="color: #16a34a;">Remember:</strong>
-          <p style="margin: 10px 0 0 0;">${educationMaterial.summary}</p>
-        </div>
-      `;
+OVERVIEW:
+${generatedMaterial.overview}
 
-      const htmlEmail = generateEmailTemplate(emailContent, {
-        subject: `Your Personal Health Education Guide - ${educationMaterial.title}`
-      });
+KEY POINTS:
+${generatedMaterial.key_points?.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
-      await base44.integrations.Core.SendEmail({
-        to: patient.email,
-        from_name: "CareMetric AI",
-        subject: `Your Personal Health Education Guide - ${educationMaterial.title}`,
-        body: htmlEmail
-      });
+WHAT TO EXPECT:
+${generatedMaterial.what_to_expect}
 
-      alert(`Education material sent to ${patient.email}`);
-    } catch (error) {
-      console.error("Email error:", error);
-      alert("Failed to send email. Please try again.");
-    }
-    setIsSending(false);
+${generatedMaterial.personalized_recommendations ? `PERSONALIZED RECOMMENDATIONS:
+${generatedMaterial.personalized_recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}` : ''}
+
+DAILY CARE TIPS:
+${generatedMaterial.daily_care_tips?.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+${generatedMaterial.medications ? `MEDICATIONS:
+${generatedMaterial.medications}` : ''}
+
+⚠️ WARNING SIGNS:
+${generatedMaterial.warning_signs?.map((w, i) => `${i + 1}. ${w}`).join('\n')}
+
+WHEN TO CALL YOUR HEALTHCARE PROVIDER:
+${generatedMaterial.when_to_call}
+
+${generatedMaterial.follow_up_instructions ? `FOLLOW-UP INSTRUCTIONS:
+${generatedMaterial.follow_up_instructions}` : ''}
+
+HELPFUL RESOURCES:
+${generatedMaterial.helpful_resources?.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+    `;
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${generatedMaterial.title.replace(/\s+/g, '_')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="space-y-4">
-      <Card className="border-2 border-purple-300">
-        <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
-            AI Personalized Education Generator
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-4">
-          <Alert className="bg-blue-50 border-blue-200">
-            <AlertDescription className="text-xs text-blue-900">
-              Generates personalized education materials based on {patient.first_name}'s diagnosis, medications, care plan goals, and cognitive status.
-            </AlertDescription>
-          </Alert>
+    <Card className="border-purple-200 bg-purple-50 dark:bg-purple-950">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-purple-600" />
+            Personalized Patient Education
+          </span>
+          {!generatedMaterial && (
+            <Button 
+              onClick={generateMaterial} 
+              disabled={generating || !diagnosis}
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                'Generate AI Education'
+              )}
+            </Button>
+          )}
+        </CardTitle>
+      </CardHeader>
 
-          <div className="grid grid-cols-2 gap-3">
+      {generatedMaterial && (
+        <CardContent className="space-y-4">
+          <div className="bg-white dark:bg-slate-900 rounded-lg p-4 space-y-4">
             <div>
-              <Label className="text-xs">Reading Level</Label>
-              <Select value={readingLevel} onValueChange={setReadingLevel}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="5th-grade">5th Grade (Very Simple)</SelectItem>
-                  <SelectItem value="6th-grade">6th Grade (Simple)</SelectItem>
-                  <SelectItem value="8th-grade">8th Grade (Standard)</SelectItem>
-                  <SelectItem value="high-school">High School</SelectItem>
-                </SelectContent>
-              </Select>
+              <h3 className="font-bold text-lg mb-2">{generatedMaterial.title}</h3>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{generatedMaterial.overview}</p>
             </div>
 
-            <div>
-              <Label className="text-xs">Format</Label>
-              <Select value={format} onValueChange={setFormat}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="comprehensive">Comprehensive Guide</SelectItem>
-                  <SelectItem value="quick_reference">Quick Reference</SelectItem>
-                  <SelectItem value="caregiver_focused">For Caregivers</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {generatedMaterial.key_points?.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Key Points:</h4>
+                <ul className="list-disc list-inside space-y-1">
+                  {generatedMaterial.key_points.map((point, idx) => (
+                    <li key={idx} className="text-sm text-gray-700 dark:text-gray-300">{point}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {generatedMaterial.personalized_recommendations?.length > 0 && (
+              <div className="bg-blue-50 dark:bg-blue-900 p-3 rounded">
+                <h4 className="font-semibold text-sm mb-2 text-blue-900 dark:text-blue-100">
+                  Personalized for You:
+                </h4>
+                <ul className="list-disc list-inside space-y-1">
+                  {generatedMaterial.personalized_recommendations.map((rec, idx) => (
+                    <li key={idx} className="text-sm text-blue-800 dark:text-blue-200">{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {generatedMaterial.warning_signs?.length > 0 && (
+              <div className="bg-red-50 dark:bg-red-900 p-3 rounded">
+                <h4 className="font-semibold text-sm mb-2 text-red-900 dark:text-red-100">
+                  ⚠️ Warning Signs - Call Your Provider If:
+                </h4>
+                <ul className="list-disc list-inside space-y-1">
+                  {generatedMaterial.warning_signs.map((sign, idx) => (
+                    <li key={idx} className="text-sm text-red-800 dark:text-red-200">{sign}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
-          {patient.functional_status?.cognitive_status && (
-            <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
-              <p className="text-xs text-yellow-900">
-                <strong>Cognitive Status:</strong> {patient.functional_status.cognitive_status} - Material will be adapted accordingly
-              </p>
-            </div>
-          )}
-
-          <Button
-            onClick={generateMaterial}
-            disabled={isGenerating}
-            className="w-full bg-purple-600 hover:bg-purple-700"
-          >
-            {isGenerating ? (
-              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Personalized Material...</>
-            ) : (
-              <><Sparkles className="w-4 h-4 mr-2" /> Generate Education Material</>
+          <div className="flex gap-2 flex-wrap">
+            <Button 
+              onClick={downloadPDF} 
+              variant="outline" 
+              size="sm"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download
+            </Button>
+            <Button 
+              onClick={() => markAsProvided('printed')} 
+              disabled={providing}
+              variant="outline" 
+              size="sm"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Mark as Printed
+            </Button>
+            <Button 
+              onClick={() => markAsProvided('verbal')} 
+              disabled={providing}
+              variant="outline" 
+              size="sm"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Mark as Discussed
+            </Button>
+            {patientId && (
+              <Button 
+                onClick={() => markAsProvided('via_portal')} 
+                disabled={providing}
+                className="bg-green-600 hover:bg-green-700"
+                size="sm"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Send to Patient
+              </Button>
             )}
-          </Button>
+          </div>
         </CardContent>
-      </Card>
-
-      {educationMaterial && (
-        <>
-          <Card className="border-2 border-green-200">
-            <CardHeader className="bg-green-50">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-green-600" />
-                  {educationMaterial.title}
-                </CardTitle>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={copyToClipboard}>
-                    {copied ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                  </Button>
-                  {patient.email && (
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={sendToPatient}
-                      disabled={isSending}
-                    >
-                      {isSending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Mail className="w-4 h-4" />
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <ScrollArea className="h-[600px] pr-4">
-                <div className="space-y-4">
-                  {/* Introduction */}
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <p className="text-sm text-blue-900 leading-relaxed">
-                      {educationMaterial.introduction}
-                    </p>
-                  </div>
-
-                  {/* Sections */}
-                  {educationMaterial.sections?.map((section, idx) => (
-                    <div key={idx} className="bg-white p-4 rounded-lg border-2 border-gray-200">
-                      <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                        <span className="bg-purple-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">
-                          {idx + 1}
-                        </span>
-                        {section.section_title}
-                      </h3>
-                      <div className="prose prose-sm max-w-none">
-                        <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                          {section.content}
-                        </p>
-                      </div>
-                      {section.key_points?.length > 0 && (
-                        <div className="mt-3 bg-purple-50 p-3 rounded border border-purple-200">
-                          <p className="text-xs font-semibold text-purple-800 mb-2">Key Points:</p>
-                          <ul className="space-y-1">
-                            {section.key_points.map((point, i) => (
-                              <li key={i} className="text-xs text-purple-900 flex items-start gap-2">
-                                <CheckCircle2 className="w-3 h-3 text-purple-600 mt-0.5 flex-shrink-0" />
-                                <span>{point}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Emergency Contacts */}
-                  {educationMaterial.emergency_contacts && (
-                    <div className="bg-red-50 p-4 rounded-lg border-2 border-red-300">
-                      <h3 className="font-bold text-red-900 mb-2 flex items-center gap-2">
-                        <Heart className="w-4 h-4" />
-                        Emergency Contacts
-                      </h3>
-                      <p className="text-sm text-red-800 whitespace-pre-wrap">
-                        {educationMaterial.emergency_contacts}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Summary */}
-                  {educationMaterial.summary && (
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-300">
-                      <h3 className="font-bold text-green-900 mb-2">Remember:</h3>
-                      <p className="text-sm text-green-800 leading-relaxed">
-                        {educationMaterial.summary}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Teach-Back Questions */}
-                  {educationMaterial.teach_back_questions?.length > 0 && (
-                    <div className="bg-indigo-50 p-4 rounded-lg border-2 border-indigo-200">
-                      <h3 className="font-bold text-indigo-900 mb-2">
-                        Questions to Check Understanding:
-                      </h3>
-                      <p className="text-xs text-indigo-700 mb-2 italic">
-                        Ask the patient/caregiver these questions to ensure they understand:
-                      </p>
-                      <ul className="space-y-2">
-                        {educationMaterial.teach_back_questions.map((q, i) => (
-                          <li key={i} className="text-sm text-indigo-900">
-                            {i + 1}. {q}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-
-              <div className="flex gap-2 mt-4 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  onClick={copyToClipboard}
-                  className="flex-1"
-                >
-                  {copied ? (
-                    <><CheckCircle2 className="w-4 h-4 mr-2 text-green-600" /> Copied!</>
-                  ) : (
-                    <><Copy className="w-4 h-4 mr-2" /> Copy All</>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => window.print()}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Print
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </>
       )}
-    </div>
+    </Card>
   );
 }
