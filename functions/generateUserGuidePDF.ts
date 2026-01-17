@@ -72,12 +72,12 @@ const FEATURES_GUIDE = [
     importance: "Ensures Medicare compliance with individualized care plan requirements, reduces care plan development time through AI suggestions, improves patient outcomes through coordinated interventions, and demonstrates medical necessity for continued skilled care"
   },
   {
-    title: "Document Generation",
+    title: "Document Generation & Template Library",
     description: "Create professional patient education materials and clinical documentation rapidly using intelligent templates, ensuring accuracy and consistency across all communications.",
     howToUse: [
-      "1. Navigate to Documents section from main menu",
+      "1. Navigate to Documents section or Template Library from main menu",
       "2. Select appropriate document type (patient education, discharge summary, referral letter)",
-      "3. Choose pre-designed template or customize for specific clinical needs",
+      "3. Choose pre-designed template or create custom template for specific clinical needs",
       "4. Allow system to auto-populate fields with relevant patient data",
       "5. Review, edit for clinical accuracy, and transmit via secure channels"
     ],
@@ -86,7 +86,8 @@ const FEATURES_GUIDE = [
       "Perform thorough clinical review of all AI-generated content before distribution",
       "Provide clear explanations in plain language with clinical context",
       "Include comprehensive discharge instructions with follow-up contact information",
-      "Utilize secure patient portal for document transmission to ensure HIPAA compliance"
+      "Utilize secure patient portal for document transmission to ensure HIPAA compliance",
+      "Save frequently-used documents as templates for future efficiency"
     ],
     importance: "Reduces document creation time from hours to minutes, ensures consistency across communications, improves patient understanding and compliance with discharge instructions, and maintains HIPAA-compliant communication standards"
   },
@@ -167,6 +168,63 @@ const FEATURES_GUIDE = [
     importance: "Prevents missed follow-ups and care coordination lapses, reduces administrative task burden, ensures critical clinical actions are completed on time, and improves team communication and accountability"
   },
   {
+    title: "Biometric Authentication",
+    description: "Use your device's fingerprint or face recognition for fast, secure access to CareMetric AI without needing to remember passwords.",
+    howToUse: [
+      "1. Navigate to Settings > Security section",
+      "2. Click 'Enable Biometric Login'",
+      "3. Follow your device's prompts to register your fingerprint or face",
+      "4. Next time you log in, use biometric authentication instead of password",
+      "5. System securely stores credentials on your device only"
+    ],
+    bestPractices: [
+      "Enable biometric authentication on all devices you regularly use",
+      "Keep your device's biometric data updated (re-register if needed)",
+      "Use biometric login for quick access while maintaining security",
+      "Remove biometric authentication before giving away or disposing of device",
+      "Report lost or stolen devices immediately to IT security"
+    ],
+    importance: "Provides faster login (2-3 seconds vs 30+ seconds), improves security through biometric verification, reduces password fatigue, and enables quick access during patient visits"
+  },
+  {
+    title: "Offline Mode with Encryption",
+    description: "Capture clinical notes and patient data even without internet connection, with military-grade AES-256 encryption protecting data until it syncs.",
+    howToUse: [
+      "1. System automatically detects when you go offline",
+      "2. Continue documenting visits and capturing notes normally",
+      "3. All data is encrypted with AES-256 before being stored locally",
+      "4. When internet reconnects, data automatically syncs to secure servers",
+      "5. View pending sync items in Offline Status indicator"
+    ],
+    bestPractices: [
+      "Review pending synced items when connection is restored",
+      "Don't force-close the app while data is syncing",
+      "Ensure device has adequate storage for offline notes",
+      "Sync data before extended offline periods when possible",
+      "Monitor encryption key status in security settings"
+    ],
+    importance: "Enables documentation in areas with poor connectivity, protects patient data with military-grade encryption, prevents data loss during network outages, and ensures continuity of care documentation"
+  },
+  {
+    title: "Real-time Security Monitoring",
+    description: "Continuous monitoring for security breaches, unusual access patterns, compliance violations, and anomalous behavior with automatic alerts and remediation.",
+    howToUse: [
+      "1. System automatically monitors all security events in real-time",
+      "2. Receive immediate alerts for critical security issues",
+      "3. Review Security Audit Log in Settings for detailed activity history",
+      "4. Investigate flagged anomalies and take corrective action",
+      "5. Administrators receive breach alerts and compliance violation reports"
+    ],
+    bestPractices: [
+      "Review security alerts promptly when received",
+      "Report any suspicious activity to IT security immediately",
+      "Conduct regular audit log reviews (weekly for admins)",
+      "Follow up on all flagged compliance violations",
+      "Keep security settings and encryption keys up to date"
+    ],
+    importance: "Prevents data breaches and unauthorized access, ensures HIPAA compliance with audit trail requirements, identifies security threats before damage occurs, and protects patient privacy and organizational reputation"
+  },
+  {
     title: "Patient Risk Alerts",
     description: "Leverage AI-powered predictive analytics to identify high-risk patients early, enabling proactive interventions to prevent adverse events and readmissions.",
     howToUse: [
@@ -182,24 +240,6 @@ const FEATURES_GUIDE = [
       "Document clinical reasoning and clinical decision-making for all alert responses",
       "Implement close monitoring and frequent reassessment following interventions",
       "Conduct timely follow-up within recommended intervals to assess intervention effectiveness"
-    ]
-  },
-  {
-    title: "Risk Factors Assessment",
-    description: "The system automatically evaluates multiple clinical and demographic risk factors to predict patient deterioration, hospitalization risk, and readmission probability.",
-    howToUse: [
-      "Review the Risk Factors section within patient alert or dashboard widget",
-      "Review vital signs for abnormal trends: blood pressure, heart rate, respiratory rate, oxygen saturation, temperature",
-      "Check medication adherence and reconciliation status for completeness",
-      "Assess functional and cognitive status changes from baseline",
-      "Monitor social determinants: living situation, caregiver support, transportation access"
-    ],
-    bestPractices: [
-      "Conduct comprehensive assessment of vital sign trends over time, not isolated measurements",
-      "Document all relevant clinical observations that correlate with identified risk factors",
-      "Ensure medication list is current and accurate, including over-the-counter medications",
-      "Evaluate patient and caregiver understanding of condition and treatment plan",
-      "Identify and address modifiable risk factors through targeted clinical interventions"
     ],
     riskFactorsIncluded: [
       "Vital Sign Changes: Abnormal blood pressure, elevated or low heart rate, respiratory distress, oxygen desaturation, fever",
@@ -212,26 +252,8 @@ const FEATURES_GUIDE = [
       "Mental Health: Depression screening positive, anxiety, behavioral changes, suicidal ideation",
       "Chronic Condition Management: Uncontrolled diabetes, heart failure decompensation, COPD exacerbation risk",
       "Social Factors: Living alone, limited caregiver availability, financial constraints, transportation barriers"
-    ]
-  },
-  {
-    title: "AI Documentation Assistant",
-    description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, and strict access controls.",
-    howToUse: [
-      "1. Access system using secure login with required multi-factor authentication",
-      "2. Access only patient records necessary for direct clinical care provision",
-      "3. Logout immediately upon completion of work or when stepping away from device",
-      "4. Report any suspected security breaches or unauthorized access immediately to IT",
-      "5. Adhere strictly to all organizational data protection policies and HIPAA regulations"
     ],
-    bestPractices: [
-      "Never disclose login credentials or access tokens to any individual",
-      "Utilize VPN for all remote access to protected systems",
-      "Implement password protection on all devices with access to patient data",
-      "Refrain from discussing Protected Health Information in public or unsecured areas",
-      "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
-    ],
-    importance: "Protects patient privacy and prevents costly HIPAA violations and fines, maintains audit compliance and organizational reputation, ensures secure remote access for mobile workforce, and protects sensitive clinical data from unauthorized access"
+    importance: "Reduces hospital readmission rates by 25-30%, prevents Medicare penalties for excess readmissions, improves patient outcomes through proactive intervention, and demonstrates quality of care for value-based reimbursement programs"
   },
   {
     title: "AI Documentation Assistant",
@@ -300,8 +322,65 @@ const FEATURES_GUIDE = [
     importance: "Reduces hospital readmission rates by 25-30%, prevents Medicare penalties for excess readmissions, improves patient outcomes through proactive intervention, and demonstrates quality of care for value-based reimbursement programs."
   },
   {
+    title: "Provider-Specific Customization",
+    description: "Tailored documentation templates, compliance rules, AI prompts, and workflow settings specific to your provider type (RN, LPN, PT, OT, ST, MSW, etc.).",
+    howToUse: [
+      "1. Navigate to Settings > Provider Profile",
+      "2. Select your provider type and enter credentials",
+      "3. Customize AI note preferences and documentation style",
+      "4. Review provider-specific compliance rules and guidelines",
+      "5. Access specialized templates and resources for your discipline"
+    ],
+    bestPractices: [
+      "Keep your provider credentials and licenses current",
+      "Review provider-specific compliance updates regularly",
+      "Customize AI prompts to match your documentation style",
+      "Use discipline-specific templates for efficiency",
+      "Share best practices with colleagues in your discipline"
+    ],
+    importance: "Ensures documentation meets discipline-specific requirements, improves relevance of AI suggestions, streamlines workflow with tailored templates, and maintains scope of practice compliance"
+  },
+  {
+    title: "Referral System",
+    description: "Track referrals, earn rewards, and grow your professional network through the CareMetric AI referral program.",
+    howToUse: [
+      "1. Access your unique referral code in Settings",
+      "2. Share code with colleagues via email or social media",
+      "3. Track referred users and reward status in dashboard",
+      "4. Earn credits for successful referrals who subscribe",
+      "5. Redeem rewards for subscription discounts or premium features"
+    ],
+    bestPractices: [
+      "Share referral code with colleagues who would benefit",
+      "Explain CareMetric AI features when referring",
+      "Follow up with referred users to help them get started",
+      "Track your referrals and reward progress",
+      "Use rewards to enhance your subscription"
+    ],
+    importance: "Helps grow the CareMetric AI community, provides subscription discounts through referrals, builds professional network, and supports colleagues in improving documentation quality"
+  },
+  {
+    title: "Data Retention Management",
+    description: "Customize data retention policies and automatically archive or delete old records per your compliance requirements and organizational policies.",
+    howToUse: [
+      "1. Navigate to Settings > Data Retention",
+      "2. Set retention periods for different data types (visits, notes, patients)",
+      "3. Choose archive or delete action for expired data",
+      "4. Review scheduled retention actions before they execute",
+      "5. Export data before deletion if needed for compliance"
+    ],
+    bestPractices: [
+      "Align retention periods with regulatory requirements (typically 7 years)",
+      "Archive data before deletion when possible",
+      "Export critical data for backup before auto-deletion",
+      "Review retention policies quarterly",
+      "Document retention policy decisions for audit purposes"
+    ],
+    importance: "Ensures compliance with data retention regulations, reduces storage costs, protects patient privacy, and maintains audit trail for regulatory purposes"
+  },
+  {
     title: "HIPAA Compliance & Security",
-    description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, and strict access controls.",
+    description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, audit trails, and strict access controls.",
     howToUse: [
       "Access system using secure login with required multi-factor authentication",
       "Access only patient records necessary for direct clinical care provision",
@@ -321,16 +400,20 @@ const FEATURES_GUIDE = [
 ];
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
 
     if (!user) {
+      console.error('[generateUserGuidePDF] Unauthorized access attempt');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
       });
     }
+
+    console.log('[generateUserGuidePDF] Generating PDF for user:', user.email);
 
     const doc = new jsPDF({
       orientation: 'portrait',
@@ -408,7 +491,7 @@ Deno.serve(async (req) => {
     doc.setFontSize(8);
     doc.text('www.caremetricai.com', margin + 5, yPosition);
 
-    // Add table of contents (optional) - Add feature section heading
+    // Add table of contents
     doc.addPage();
     yPosition = margin + 5;
     
@@ -424,18 +507,16 @@ Deno.serve(async (req) => {
     
     for (let i = 0; i < FEATURES_GUIDE.length; i++) {
       const feature = FEATURES_GUIDE[i];
+      if (yPosition > pageHeight - 20) {
+        doc.addPage();
+        yPosition = margin;
+      }
       doc.text(`${i + 1}. ${feature.title}`, margin + 5, yPosition);
       yPosition += 7;
     }
 
     // Add each feature section
     for (const feature of FEATURES_GUIDE) {
-      // Check if we need a new page
-      if (yPosition > pageHeight - 50) {
-        doc.addPage();
-        yPosition = margin;
-      }
-
       // Add page break before each feature
       doc.addPage();
       yPosition = margin + 5;
@@ -532,7 +613,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Risk Factors section (for Patient Risk Alerts feature only)
+      // Risk Factors section
       if (feature.riskFactorsIncluded && feature.riskFactorsIncluded.length > 0) {
         if (yPosition > pageHeight - 50) {
           doc.addPage();
@@ -585,6 +666,8 @@ Deno.serve(async (req) => {
 
     const pdfBytes = doc.output('arraybuffer');
     
+    console.log('[generateUserGuidePDF] PDF generated successfully');
+    
     return new Response(pdfBytes, {
       status: 200,
       headers: {
@@ -593,8 +676,15 @@ Deno.serve(async (req) => {
       }
     });
   } catch (error) {
-    console.error('Error generating PDF:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error('[generateUserGuidePDF] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
+    return new Response(JSON.stringify({ 
+      error: 'Failed to generate user guide PDF',
+      details: error.message 
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

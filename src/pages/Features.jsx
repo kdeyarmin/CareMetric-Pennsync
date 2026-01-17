@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, Zap, Users, FileText, Brain, Mic, Target, Calendar, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle } from "lucide-react";
+import { Download, Zap, Users, FileText, Brain, Mic, Target, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle, WifiOff } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const FEATURES = [
@@ -31,10 +31,10 @@ const FEATURES = [
   category: "Documents"
 },
 {
-  icon: Calendar,
-  title: "Provider Scheduling",
-  description: "Intelligent scheduling system that optimizes visit timing and route planning for maximum efficiency.",
-  category: "Operations"
+  icon: FileText,
+  title: "Template Library",
+  description: "Create and manage custom document templates for patient education, discharge instructions, and clinical summaries.",
+  category: "Documents"
 },
 {
   icon: Shield,
@@ -67,6 +67,24 @@ const FEATURES = [
   category: "Security"
 },
 {
+  icon: Lock,
+  title: "Biometric Authentication",
+  description: "Fast, secure login using fingerprint or face recognition on supported devices for quick access without passwords.",
+  category: "Security"
+},
+{
+  icon: WifiOff,
+  title: "Offline Mode with Encryption",
+  description: "Capture clinical notes offline with military-grade AES-256 encryption, automatically syncing when connection is restored.",
+  category: "Security"
+},
+{
+  icon: Shield,
+  title: "Real-time Security Monitoring",
+  description: "Continuous breach detection, anomaly alerts, and compliance violation monitoring with automatic remediation.",
+  category: "Security"
+},
+{
   icon: AlertCircle,
   title: "Patient Risk Alerts",
   description: "AI-powered early warning system that identifies patients at risk for readmission or adverse events.",
@@ -89,6 +107,24 @@ const FEATURES = [
   title: "Readmission Risk Prediction",
   description: "AI-powered risk assessment that analyzes patient data to predict readmission probability with actionable intervention recommendations.",
   category: "Clinical"
+},
+{
+  icon: Users,
+  title: "Provider-Specific Customization",
+  description: "Tailored documentation templates, compliance rules, and AI prompts specific to your provider type (RN, PT, OT, etc.).",
+  category: "Operations"
+},
+{
+  icon: Users,
+  title: "Referral System",
+  description: "Track referrals, earn rewards, and grow your professional network through the CareMetric AI referral program.",
+  category: "Operations"
+},
+{
+  icon: Shield,
+  title: "Data Retention Management",
+  description: "Customize data retention policies and automatically archive or delete old records per your compliance requirements.",
+  category: "Compliance"
 }];
 
 
