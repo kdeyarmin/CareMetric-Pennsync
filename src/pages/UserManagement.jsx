@@ -69,8 +69,17 @@ export default function UserManagement() {
   const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [showPasswordResetDialog, setShowPasswordResetDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [resetPasswordResult, setResetPasswordResult] = useState(null);
   const [editedRole, setEditedRole] = useState("");
+  const [inviteData, setInviteData] = useState({
+    email: "",
+    full_name: "",
+    role: "user",
+    care_scope: "home_health",
+    phone: "",
+    credentials: ""
+  });
 
   const queryClient = useQueryClient();
 
