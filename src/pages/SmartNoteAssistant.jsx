@@ -45,6 +45,7 @@ import EducationLibraryBrowser from "@/components/education/EducationLibraryBrow
 import PatientEducationPanel from "@/components/education/PatientEducationPanel";
 import VoiceNoteRecorder from "@/components/smartNote/VoiceNoteRecorder";
 import ClinicalInsightsPanel from "@/components/smartNote/ClinicalInsightsPanel";
+import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -925,43 +926,18 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 )}
               </div>
 
-              {/* Quality Analysis Section */}
-              {complianceResults?.quality_analysis &&
-                <div className="mt-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Brain className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    <h4 className="font-semibold text-blue-900 dark:text-blue-100">Quality Analysis</h4>
-                  </div>
-
-                  {/* Quality Scores */}
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    <div className="bg-white dark:bg-gray-900 p-3 rounded">
-                      <p className="text-xs text-gray-500 mb-1">Overall Quality</p>
-                      <p className="text-xl font-bold text-blue-600">{complianceResults.quality_analysis.overall_quality_score || 0}%</p>
-                    </div>
-                    <div className="bg-white dark:bg-gray-900 p-3 rounded">
-                      <p className="text-xs text-gray-500 mb-1">Clarity</p>
-                      <p className="text-xl font-bold text-blue-600">{complianceResults.quality_analysis.clarity_score || 0}%</p>
-                    </div>
-                    <div className="bg-white dark:bg-gray-900 p-3 rounded">
-                      <p className="text-xs text-gray-500 mb-1">Completeness</p>
-                      <p className="text-xl font-bold text-blue-600">{complianceResults.quality_analysis.completeness_score || 0}%</p>
-                    </div>
-                  </div>
-
-                  {/* Strengths */}
-                  {complianceResults.quality_analysis.strengths?.length > 0 &&
-                    <div className="mb-4">
-                      <h5 className="font-semibold text-green-800 dark:text-green-400 mb-2">✓ Strengths</h5>
-                      <ul className="space-y-1">
-                        {complianceResults.quality_analysis.strengths.map((strength, idx) =>
-                          <li key={idx} className="text-sm text-green-700 dark:text-green-300">• {strength}</li>
-                        )}
-                      </ul>
-                    </div>
-                  }
-                </div>
-              }
+              {/* Documentation Quality Score Component */}
+              {complianceResults?.quality_analysis && (
+                <DocumentationQualityScore 
+                  qualityAnalysis={complianceResults.quality_analysis}
+                  noteText={isEditMode ? editedNote : enhancedNote}
+                  visitType={visitType}
+                  providerType={currentUser?.credential_type}
+                  onFeedbackSubmitted={() => {
+                    toast.success('Your feedback helps improve our AI suggestions!');
+                  }}
+                />
+              )}
 
               {/* Medicare Violations */}
               {medicareViolations && medicareViolations.length > 0 &&
