@@ -192,70 +192,88 @@ class SecureOfflineStorage {
    * Encrypt sensitive data with integrity verification
    */
   async encrypt(data, userEmail) {
-    const key = await this.getEncryptionKey(userEmail);
-    const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for GCM
-    
-    // Add metadata for integrity verification
-    const dataWithMetadata = {
-      data,
-      timestamp: new Date().toISOString(),
-      version: 1,
-      checksum: await this.generateChecksum(JSON.stringify(data))
-    };
-    
-    const encodedData = new TextEncoder().encode(JSON.stringify(dataWithMetadata));
-    
-    const encryptedData = await crypto.subtle.encrypt(
-      {
-        name: 'AES-GCM',
-        iv,
-        tagLength: 128 // 128-bit authentication tag
-      },
-      key,
-      encodedData
-    );
+    try {
+      const key = await this.getEncryptionKey(userEmail);
+      const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for GCM
+      
+      // Add metadata for integrity verification
+      const dataWithMetadata = {
+        data,
+        timestamp: new Date().toISOString(),
+        version: 1,
+        checksum: await this.generateChecksum(JSON.stringify(data))
+      };
+      
+      const encodedData = new TextEncoder().encode(JSON.stringify(dataWithMetadata));
+      
+      const encryptedData = await crypto.subtle.encrypt(
+        {
+          name: 'AES-GCM',
+          iv,
+          tagLength: 128 // 128-bit authentication tag
+        },
+        key,
+        encodedData
+      );
 
-    await this.logAuditEvent(userEmail, 'DATA_ENCRYPTED', { dataSize: encodedData.length });
+      await this.logAuditEvent(userEmail, 'DATA_ENCRYPTED', { dataSize: encodedData.length });
 
-    return {
-      encrypted: Array.from(new Uint8Array(encryptedData)),
-      iv: Array.from(iv),
-      version: 1
-    };
+      return {
+        encrypted: Array.from(new Uint8Array(encryptedData)),
+        iv: Array.from(iv),
+        version: 1
+      };
+    } catch (error) {
+      console.error('Encryption error:', error);
+      await this.logAuditEvent(userEmail, 'ENCRYPTION_ERROR', { error: error.message });
+      throw new Error('Failed to encrypt data: ' + error.message);
+    }
   }
 
   /**
    * Decrypt sensitive data with integrity verification
    */
   async decrypt(encryptedData, userEmail) {
-    const key = await this.getEncryptionKey(userEmail);
-    
-    const decryptedData = await crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: new Uint8Array(encryptedData.iv),
-        tagLength: 128
-      },
-      key,
-      new Uint8Array(encryptedData.encrypted)
-    );
+    try {
+      if (!encryptedData || !encryptedData.encrypted || !encryptedData.iv) {
+        throw new Error('Invalid encrypted data structure');
+      }
 
-    const decodedData = new TextDecoder().decode(decryptedData);
-    const dataWithMetadata = JSON.parse(decodedData);
-    
-    // Verify integrity
-    const expectedChecksum = await this.generateChecksum(JSON.stringify(dataWithMetadata.data));
-    if (dataWithMetadata.checksum !== expectedChecksum) {
-      await this.logAuditEvent(userEmail, 'INTEGRITY_VIOLATION', { 
-        expected: expectedChecksum,
-        actual: dataWithMetadata.checksum 
-      });
-      throw new Error('Data integrity check failed');
+      const key = await this.getEncryptionKey(userEmail);
+      
+      const decryptedData = await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: new Uint8Array(encryptedData.iv),
+          tagLength: 128
+        },
+        key,
+        new Uint8Array(encryptedData.encrypted)
+      );
+
+      const decodedData = new TextDecoder().decode(decryptedData);
+      const dataWithMetadata = JSON.parse(decodedData);
+      
+      // Verify integrity
+      const expectedChecksum = await this.generateChecksum(JSON.stringify(dataWithMetadata.data));
+      if (dataWithMetadata.checksum !== expectedChecksum) {
+        await this.logAuditEvent(userEmail, 'INTEGRITY_VIOLATION', { 
+          expected: expectedChecksum,
+          actual: dataWithMetadata.checksum 
+        });
+        throw new Error('Data integrity check failed - possible tampering detected');
+      }
+
+      await this.logAuditEvent(userEmail, 'DATA_DECRYPTED', { dataVersion: dataWithMetadata.version });
+      
+      return dataWithMetadata.data;
+    } catch (error) {
+      console.error('Decryption error:', error);
+      if (error.message.includes('integrity')) {
+        throw error; // Re-throw integrity errors
+      }
+      throw new Error('Failed to decrypt data: ' + error.message);
     }
-
-    await this.logAuditEvent(userEmail, 'DATA_DECRYPTED', { dataVersion: dataWithMetadata.version });
-    
-    return dataWithMetadata.data;
   }
 
   /**
@@ -273,37 +291,49 @@ class SecureOfflineStorage {
    * Save encrypted note offline with full security
    */
   async saveEncryptedNote(noteData, userEmail) {
-    // Verify HTTPS in production
-    if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
-      throw new Error('Encrypted storage requires HTTPS connection');
+    try {
+      // Verify HTTPS in production
+      if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
+        throw new Error('Encrypted storage requires HTTPS connection');
+      }
+
+      if (!userEmail) {
+        throw new Error('User email required for encryption');
+      }
+
+      const encrypted = await this.encrypt({
+        rough_notes: noteData.rough_notes,
+        enhanced_note: noteData.enhanced_note,
+        patient_id: noteData.patient_id,
+        vital_signs: noteData.vital_signs,
+        diagnosis: noteData.diagnosis,
+        visit_type: noteData.visit_type
+      }, userEmail);
+
+      await offlineStorage.init();
+      const savedNote = await offlineStorage.saveOfflineNote({
+        ...noteData,
+        encrypted_data: encrypted,
+        is_encrypted: true,
+        encryption_version: 1,
+        rough_notes: '[ENCRYPTED - AES-256-GCM]',
+        enhanced_note: '[ENCRYPTED - AES-256-GCM]',
+        vital_signs: {}
+      });
+
+      await this.logAuditEvent(userEmail, 'NOTE_SAVED_ENCRYPTED', { 
+        noteId: savedNote,
+        encryptionVersion: 1 
+      });
+
+      return savedNote;
+    } catch (error) {
+      console.error('Error saving encrypted note:', error);
+      await this.logAuditEvent(userEmail, 'NOTE_SAVE_ERROR', { 
+        error: error.message 
+      });
+      throw error;
     }
-
-    const encrypted = await this.encrypt({
-      rough_notes: noteData.rough_notes,
-      enhanced_note: noteData.enhanced_note,
-      patient_id: noteData.patient_id,
-      vital_signs: noteData.vital_signs,
-      diagnosis: noteData.diagnosis,
-      visit_type: noteData.visit_type
-    }, userEmail);
-
-    await offlineStorage.init();
-    const savedNote = await offlineStorage.saveOfflineNote({
-      ...noteData,
-      encrypted_data: encrypted,
-      is_encrypted: true,
-      encryption_version: 1,
-      rough_notes: '[ENCRYPTED - AES-256-GCM]',
-      enhanced_note: '[ENCRYPTED - AES-256-GCM]',
-      vital_signs: {}
-    });
-
-    await this.logAuditEvent(userEmail, 'NOTE_SAVED_ENCRYPTED', { 
-      noteId: savedNote,
-      encryptionVersion: 1 
-    });
-
-    return savedNote;
   }
 
   /**
@@ -315,16 +345,25 @@ class SecureOfflineStorage {
     const note = notes.find(n => n.local_id === noteId);
 
     if (!note) return null;
-    if (!note.is_encrypted) return note;
+    if (!note.is_encrypted || !note.encrypted_data) return note;
 
-    const decrypted = await this.decrypt(note.encrypted_data, userEmail);
-    
-    await this.logAuditEvent(userEmail, 'NOTE_ACCESSED', { noteId });
+    try {
+      const decrypted = await this.decrypt(note.encrypted_data, userEmail);
+      
+      await this.logAuditEvent(userEmail, 'NOTE_ACCESSED', { noteId });
 
-    return {
-      ...note,
-      ...decrypted
-    };
+      return {
+        ...note,
+        ...decrypted
+      };
+    } catch (error) {
+      console.error('Decryption error:', error);
+      await this.logAuditEvent(userEmail, 'DECRYPTION_ERROR', { 
+        noteId, 
+        error: error.message 
+      });
+      throw new Error('Failed to decrypt note: ' + error.message);
+    }
   }
 
   /**

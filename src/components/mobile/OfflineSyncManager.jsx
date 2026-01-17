@@ -41,6 +41,7 @@ export default function OfflineSyncManager() {
 
   const checkPendingItems = async () => {
     try {
+      await offlineStorage.init();
       const pending = await offlineStorage.getPendingNotes();
       const queue = await offlineStorage.getSyncQueue();
       setPendingItems(pending.length + queue.length);
@@ -62,6 +63,9 @@ export default function OfflineSyncManager() {
     try {
       const user = await base44.auth.me();
       
+      // Initialize databases first
+      await offlineStorage.init();
+      
       // Sync pending notes
       const pendingNotes = await offlineStorage.getPendingNotes();
       
@@ -75,7 +79,7 @@ export default function OfflineSyncManager() {
 
           // Save note to patient history
           if (actualNote.patient_id) {
-            const patient = await base44.entities.Patient.filter({ id: note.patient_id });
+            const patient = await base44.entities.Patient.filter({ id: actualNote.patient_id });
             if (patient.length > 0) {
               const currentHistory = patient[0].enhanced_notes_history || [];
               await base44.entities.Patient.update(actualNote.patient_id, {
