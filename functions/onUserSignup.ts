@@ -93,6 +93,8 @@ Deno.serve(async (req) => {
     📧 Email: ${user.email}
     📅 Signup Date: ${new Date().toLocaleString()}
     🎭 Role: ${user.role || 'user'}
+    👨‍⚕️ Provider Type: ${user.credential_type || 'Not set'}
+    🏥 Work Setting: ${user.service_type || 'Not set'}
     ✅ Status: Auto-approved
 
     The user has been automatically approved and now has access to the system with a 14-day free trial.
