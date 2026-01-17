@@ -1,21 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
     
     // Authenticate user first
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
     if (!user) {
+      console.error('[sendVerificationCode] Unauthorized access attempt');
       return Response.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
     
-    const { phone_number, user_email } = await req.json();
+    const body = await req.json();
+    const { phone_number, user_email } = body;
 
     if (!phone_number || !user_email) {
+      console.error('[sendVerificationCode] Missing required fields', { phone_number: !!phone_number, user_email: !!user_email });
       return Response.json(
         { error: 'Phone number and user email are required' },
         { status: 400 }
@@ -54,6 +58,7 @@ Deno.serve(async (req) => {
     const twilioPhoneNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
 
     if (!accountSid || !authToken || !twilioPhoneNumber) {
+      console.error('[sendVerificationCode] Missing Twilio credentials', { accountSid: !!accountSid, authToken: !!authToken, twilioPhoneNumber: !!twilioPhoneNumber });
       return Response.json(
         { 
           error: 'Twilio credentials not configured',
@@ -65,6 +70,7 @@ Deno.serve(async (req) => {
 
     // Validate Account SID format
     if (!accountSid.startsWith('AC')) {
+      console.error('[sendVerificationCode] Invalid Account SID format');
       return Response.json(
         { 
           error: 'Invalid Twilio Account SID',
@@ -81,7 +87,7 @@ Deno.serve(async (req) => {
     formData.append('From', twilioPhoneNumber);
     formData.append('Body', `Your CareMetric AI verification code is: ${code}. This code expires in 10 minutes.`);
 
-    console.log('Attempting Twilio request with Account SID:', accountSid?.substring(0, 10) + '...');
+    console.log('[sendVerificationCode] Attempting Twilio request with Account SID:', accountSid?.substring(0, 10) + '...');
     
     const twilioResponse = await fetch(twilioUrl, {
       method: 'POST',
@@ -100,7 +106,7 @@ Deno.serve(async (req) => {
       } catch {
         errorData = { raw: errorText };
       }
-      console.error('Twilio error response:', errorData);
+      console.error('[sendVerificationCode] Twilio error response:', errorData);
       return Response.json(
         { 
           error: 'Twilio authentication failed',
@@ -111,13 +117,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log('[sendVerificationCode] Verification code sent successfully to:', phone_number);
+
     return Response.json({
       success: true,
       message: 'Verification code sent successfully'
     });
 
   } catch (error) {
-    console.error('Send verification code error:', error);
+    console.error('[sendVerificationCode] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
     return Response.json(
       { error: 'Failed to send verification code', details: error.message },
       { status: 500 }

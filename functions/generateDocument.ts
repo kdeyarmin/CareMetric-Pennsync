@@ -1,19 +1,30 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
 
     if (!user) {
+      console.error('[generateDocument] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { template, generation_data, custom_text } = await req.json();
+    const body = await req.json();
+    const { template, generation_data, custom_text } = body;
 
     if (!template || !generation_data) {
-      return Response.json({ error: 'Missing required fields' }, { status: 400 });
+      console.error('[generateDocument] Missing required fields', { template: !!template, generation_data: !!generation_data });
+      return Response.json({ error: 'Missing required fields: template and generation_data' }, { status: 400 });
     }
+
+    if (!template.template_content) {
+      console.error('[generateDocument] Template missing template_content');
+      return Response.json({ error: 'Template must have template_content' }, { status: 400 });
+    }
+
+    console.log('[generateDocument] Generating document for patient:', generation_data.patient_id);
 
     // Use InvokeLLM to populate template with patient data
     const populatedContent = await base44.integrations.Core.InvokeLLM({
@@ -50,6 +61,8 @@ Return ONLY the populated HTML document, no explanations.`,
       }
     });
 
+    console.log('[generateDocument] Document generated successfully, ID:', generatedDoc.id);
+
     return Response.json({
       success: true,
       document: generatedDoc,
@@ -57,7 +70,11 @@ Return ONLY the populated HTML document, no explanations.`,
     });
 
   } catch (error) {
-    console.error('Error generating document:', error);
+    console.error('[generateDocument] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
     return Response.json({ 
       error: 'Failed to generate document',
       details: error.message 

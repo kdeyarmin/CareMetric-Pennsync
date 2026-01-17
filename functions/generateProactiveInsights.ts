@@ -1,21 +1,30 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
 
     if (!user) {
+      console.error('[generateProactiveInsights] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { patient_id } = await req.json();
+    const body = await req.json();
+    const { patient_id } = body;
 
-    console.log('Generating proactive insights for patient:', patient_id);
+    if (!patient_id) {
+      console.error('[generateProactiveInsights] Missing patient_id');
+      return Response.json({ error: 'patient_id is required' }, { status: 400 });
+    }
+
+    console.log('[generateProactiveInsights] Generating insights for patient:', patient_id);
 
     // Fetch comprehensive patient data
     const patient = await base44.entities.Patient.filter({ id: patient_id });
     if (!patient || patient.length === 0) {
+      console.error('[generateProactiveInsights] Patient not found:', patient_id);
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
 
@@ -30,6 +39,8 @@ Deno.serve(async (req) => {
     const recentVisits = (patientData.enhanced_notes_history || [])
       .slice(-5)
       .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    console.log('[generateProactiveInsights] Fetched data - Care Plans:', carePlans.length, 'Recent Visits:', recentVisits.length);
 
     // Build comprehensive context for AI analysis
     const analysisPrompt = `You are a clinical analytics AI analyzing patient data to provide proactive insights and risk identification.
@@ -186,7 +197,7 @@ Focus on actionable, evidence-based insights that help clinicians provide proact
       }
     });
 
-    console.log('✅ Proactive insights generated');
+    console.log('[generateProactiveInsights] Insights generated successfully for patient:', patient_id);
 
     return Response.json({
       success: true,
@@ -195,7 +206,14 @@ Focus on actionable, evidence-based insights that help clinicians provide proact
     });
 
   } catch (error) {
-    console.error('Error generating proactive insights:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('[generateProactiveInsights] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
+    return Response.json({ 
+      error: 'Failed to generate proactive insights',
+      details: error.message 
+    }, { status: 500 });
   }
 });
