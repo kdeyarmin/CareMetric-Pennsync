@@ -34,11 +34,18 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
+      // Get proper RP ID - use hostname without port
+      let rpId = window.location.hostname;
+      // For localhost, don't include port
+      if (rpId === 'localhost' || rpId === '127.0.0.1') {
+        rpId = 'localhost';
+      }
+
       const publicKeyOptions = {
         challenge,
         rp: {
           name: 'CareMetric AI',
-          id: window.location.hostname
+          id: rpId
         },
         user: {
           id: new TextEncoder().encode(userEmail),
@@ -57,9 +64,13 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
         attestation: 'none'
       };
 
+      console.log('Starting biometric registration with options:', publicKeyOptions);
+
       const credential = await navigator.credentials.create({
         publicKey: publicKeyOptions
       });
+
+      console.log('Biometric registration successful:', credential);
 
       // Store credential ID locally
       localStorage.setItem(`biometric_${userEmail}`, JSON.stringify({
@@ -72,9 +83,13 @@ export default function BiometricAuth({ userEmail, onAuthSuccess }) {
     } catch (error) {
       console.error('Registration error:', error);
       if (error.name === 'NotAllowedError') {
-        toast.error('Biometric registration cancelled');
+        toast.error('Biometric registration cancelled or not available');
+      } else if (error.name === 'NotSupportedError') {
+        toast.error('Biometric authentication not supported on this browser');
+      } else if (error.name === 'SecurityError') {
+        toast.error('Security error - biometric registration must be done on HTTPS');
       } else {
-        toast.error('Failed to register biometric authentication');
+        toast.error(`Failed to register: ${error.message || 'Unknown error'}`);
       }
     } finally {
       setRegistering(false);
