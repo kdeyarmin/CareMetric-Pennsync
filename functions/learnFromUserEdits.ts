@@ -1,14 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
 
     if (!user) {
+      console.error('[learnFromUserEdits] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const body = await req.json();
     const {
       original_enhanced_note,
       edited_note,
@@ -18,15 +21,20 @@ Deno.serve(async (req) => {
       compliance_issues_after,
       rejected_suggestions = [],
       accepted_suggestions = []
-    } = await req.json();
+    } = body;
 
-    console.log(`Learning from edits for user: ${user.email}`);
+    if (!original_enhanced_note || !edited_note) {
+      console.error('[learnFromUserEdits] Missing required fields', { original: !!original_enhanced_note, edited: !!edited_note });
+      return Response.json({ error: 'original_enhanced_note and edited_note are required' }, { status: 400 });
+    }
+
+    console.log('[learnFromUserEdits] Learning from edits for user:', user.email);
 
     // Analyze the differences between original and edited note
     const patterns = [];
 
     // Extract text patterns from edits
-    if (original_enhanced_note && edited_note && original_enhanced_note !== edited_note) {
+    if (original_enhanced_note !== edited_note) {
       patterns.push(...analyzeTextPatterns(original_enhanced_note, edited_note, visit_type));
     }
 
@@ -43,7 +51,7 @@ Deno.serve(async (req) => {
       await storeLearnedPattern(base44, user.email, provider_type, pattern);
     }
 
-    console.log(`Learned ${patterns.length} patterns from user edits`);
+    console.log('[learnFromUserEdits] Learned', patterns.length, 'patterns from user edits');
 
     return Response.json({
       success: true,
@@ -52,10 +60,14 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Error learning from edits:', error);
+    console.error('[learnFromUserEdits] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
     return Response.json({ 
-      error: error.message || 'Failed to learn from edits',
-      details: error.stack 
+      error: 'Failed to learn from edits',
+      details: error.message
     }, { status: 500 });
   }
 });
@@ -199,7 +211,7 @@ async function storeLearnedPattern(base44, userEmail, providerType, pattern) {
         ),
         last_observed: new Date().toISOString()
       });
-      console.log(`Updated existing pattern for ${userEmail}`);
+      console.log('[learnFromUserEdits] Updated existing pattern for', userEmail);
     } else {
       // Create new pattern
       await base44.entities.UserLearnedPattern.create({
@@ -221,10 +233,10 @@ async function storeLearnedPattern(base44, userEmail, providerType, pattern) {
         last_observed: new Date().toISOString(),
         is_active: true
       });
-      console.log(`Created new learned pattern for ${userEmail}`);
+      console.log('[learnFromUserEdits] Created new learned pattern for', userEmail);
     }
   } catch (error) {
-    console.error('Error storing learned pattern:', error);
+    console.error('[learnFromUserEdits] Error storing learned pattern:', error);
     // Don't throw - learning failures shouldn't block the main flow
   }
 }

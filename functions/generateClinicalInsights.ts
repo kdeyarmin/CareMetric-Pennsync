@@ -1,14 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
 
     if (!user) {
+      console.error('[generateClinicalInsights] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const body = await req.json();
     const {
       enhanced_note,
       diagnoses = [],
@@ -18,18 +21,23 @@ Deno.serve(async (req) => {
       visit_type,
       provider_type,
       patient_context = {}
-    } = await req.json();
+    } = body;
 
-    console.log('Generating proactive clinical insights...');
+    if (!enhanced_note) {
+      console.error('[generateClinicalInsights] Missing enhanced_note');
+      return Response.json({ error: 'enhanced_note is required' }, { status: 400 });
+    }
+
+    console.log('[generateClinicalInsights] Generating insights for user:', user.email);
 
     const prompt = `You are an expert clinical decision support system. Analyze the following patient data and provide proactive clinical guidance focused on care gaps, potential contraindications, and evidence-based best practices.
 
-PATIENT DIAGNOSES: ${diagnoses.join(', ')}
-SYMPTOMS: ${symptoms.join(', ')}
-CURRENT MEDICATIONS: ${medications.join(', ')}
+PATIENT DIAGNOSES: ${diagnoses.join(', ') || 'Not specified'}
+SYMPTOMS: ${symptoms.join(', ') || 'Not specified'}
+CURRENT MEDICATIONS: ${medications.join(', ') || 'None documented'}
 VITAL SIGNS: ${JSON.stringify(vital_signs)}
-VISIT TYPE: ${visit_type}
-PROVIDER TYPE: ${provider_type}
+VISIT TYPE: ${visit_type || 'Not specified'}
+PROVIDER TYPE: ${provider_type || 'Not specified'}
 
 PATIENT AGE/CONTEXT: ${patient_context.age ? `Age ${patient_context.age}` : 'Age unknown'}, ${patient_context.comorbidities ? `Comorbidities: ${patient_context.comorbidities.join(', ')}` : ''}
 
@@ -163,7 +171,7 @@ Return results in JSON format with clear, actionable recommendations and guideli
       }
     });
 
-    console.log('✅ Clinical insights generated successfully');
+    console.log('[generateClinicalInsights] Clinical insights generated successfully');
 
     return Response.json({
       success: true,
@@ -171,10 +179,14 @@ Return results in JSON format with clear, actionable recommendations and guideli
     });
 
   } catch (error) {
-    console.error('Error generating clinical insights:', error);
+    console.error('[generateClinicalInsights] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
     return Response.json({
-      error: error.message || 'Failed to generate clinical insights',
-      details: error.stack
+      error: 'Failed to generate clinical insights',
+      details: error.message
     }, { status: 500 });
   }
 });

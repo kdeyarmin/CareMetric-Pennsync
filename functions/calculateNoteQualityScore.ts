@@ -1,17 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
 
     if (!user) {
+      console.error('[calculateNoteQualityScore] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { noteText, visitType, providerType, patientContext } = await req.json();
+    const body = await req.json();
+    const { noteText, visitType, providerType, patientContext } = body;
 
-    console.log('Calculating quality score for note...');
+    if (!noteText) {
+      console.error('[calculateNoteQualityScore] Missing noteText');
+      return Response.json({ error: 'noteText is required' }, { status: 400 });
+    }
+
+    console.log('[calculateNoteQualityScore] Calculating quality score for user:', user.email, 'visit type:', visitType);
 
     // Build detailed quality analysis prompt
     const prompt = `You are a clinical documentation quality expert specializing in home health and hospice care. Analyze the following clinical note and provide a comprehensive quality assessment.
@@ -119,7 +127,7 @@ Be specific and actionable in your feedback.`;
       }
     });
 
-    console.log('✅ Quality score calculated:', response.overall_score);
+    console.log('[calculateNoteQualityScore] Quality score calculated:', response.overall_score, 'Grade:', response.grade);
 
     return Response.json({
       success: true,
@@ -127,7 +135,14 @@ Be specific and actionable in your feedback.`;
     });
 
   } catch (error) {
-    console.error('Error calculating quality score:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('[calculateNoteQualityScore] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
+    return Response.json({ 
+      error: 'Failed to calculate quality score',
+      details: error.message 
+    }, { status: 500 });
   }
 });

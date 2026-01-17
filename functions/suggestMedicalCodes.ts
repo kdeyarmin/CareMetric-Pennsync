@@ -1,36 +1,41 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  let user;
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    user = await base44.auth.me();
 
     if (!user) {
+      console.error('[suggestMedicalCodes] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Only physicians and NPs can suggest codes
     if (user.credential_type !== 'MD' && user.credential_type !== 'NP') {
+      console.warn('[suggestMedicalCodes] Access denied for credential type:', user.credential_type);
       return Response.json({ 
         error: 'Only physicians and nurse practitioners can use medical coding assistant' 
       }, { status: 403 });
     }
 
+    const body = await req.json();
     const { 
       enhanced_note, 
       diagnosis, 
       visit_type,
       provider_type,
       patient_context
-    } = await req.json();
+    } = body;
 
     if (!enhanced_note || !diagnosis) {
+      console.error('[suggestMedicalCodes] Missing required fields', { enhanced_note: !!enhanced_note, diagnosis: !!diagnosis });
       return Response.json({ 
         error: 'Enhanced note and diagnosis are required' 
       }, { status: 400 });
     }
 
-    console.log('Starting medical code suggestion analysis...');
+    console.log('[suggestMedicalCodes] Starting medical code suggestion for diagnosis:', diagnosis);
 
     const codingPrompt = `You are an expert medical coder, billing compliance specialist, and payer-specific denial prevention expert. Analyze the following clinical note and suggest appropriate medical codes.
 
@@ -38,11 +43,11 @@ CLINICAL NOTE:
 ${enhanced_note}
 
 PRIMARY DIAGNOSIS: ${diagnosis}
-VISIT TYPE: ${visit_type}
-PROVIDER TYPE: ${provider_type}
+VISIT TYPE: ${visit_type || 'Not specified'}
+PROVIDER TYPE: ${provider_type || 'Not specified'}
 
 ${patient_context ? `PATIENT CONTEXT:
-- Patient: ${patient_context.patient_name}
+- Patient: ${patient_context.patient_name || 'Unknown'}
 - Age: ${patient_context.date_of_birth ? new Date().getFullYear() - new Date(patient_context.date_of_birth).getFullYear() : 'Unknown'}
 - Secondary Diagnoses: ${patient_context.secondary_diagnoses?.join(', ') || 'None'}
 - Current Medications: ${patient_context.current_medications?.map(m => m.name || m).join(', ') || 'None'}
@@ -198,7 +203,7 @@ Format your response as JSON with these exact sections.`;
       }
     });
 
-    console.log('Medical code suggestion analysis completed');
+    console.log('[suggestMedicalCodes] Medical code suggestion completed successfully');
 
     return Response.json({
       success: true,
@@ -206,10 +211,14 @@ Format your response as JSON with these exact sections.`;
     });
 
   } catch (error) {
-    console.error('Error in suggestMedicalCodes:', error);
+    console.error('[suggestMedicalCodes] Error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
     return Response.json({ 
-      error: error.message || 'Failed to suggest medical codes',
-      details: error.stack 
+      error: 'Failed to suggest medical codes',
+      details: error.message
     }, { status: 500 });
   }
 });
