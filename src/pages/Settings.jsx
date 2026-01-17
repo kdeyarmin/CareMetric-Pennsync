@@ -19,6 +19,7 @@ import AdvancedAICustomization from "../components/settings/AdvancedAICustomizat
 import OfflineSyncManager from "../components/mobile/OfflineSyncManager";
 import ProviderPracticeInfoManager from "../components/settings/ProviderPracticeInfoManager";
 import ProviderSpecializationManager from "../components/settings/ProviderSpecializationManager";
+import BiometricAuth from "../components/auth/BiometricAuth";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -401,6 +402,14 @@ export default function Settings() {
 
         {/* Offline Sync Manager */}
         <OfflineSyncManager />
+
+        {/* Biometric Authentication */}
+        {currentUser?.email && (
+          <BiometricAuth 
+            userEmail={currentUser.email}
+            onAuthSuccess={() => toast.success('Biometric login successful!')}
+          />
+        )}
 
         {/* Professional Specializations - Only for Physicians */}
         {currentUser && currentUser.credential_type === 'PHYSICIAN' &&

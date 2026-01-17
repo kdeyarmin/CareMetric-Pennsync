@@ -42,6 +42,7 @@ import { SessionManager } from "../components/utils/security";
 import { RealTimeBreachMonitor } from "../components/security/RealTimeBreachAlerts";
 import PushNotificationManager from "../components/notifications/PushNotificationManager";
 import { getAccessiblePages } from "../components/utils/providerAccessControl";
+import PWAInstallPrompt from "../components/mobile/PWAInstallPrompt";
 
 /* =========================
          iOS / Layout Constants
@@ -482,6 +483,7 @@ export default function Layout({ children, currentPageName }) {
 
       {showNavigationUI && <OfflineIndicator />}
       <RealTimeBreachMonitor />
+      <PWAInstallPrompt />
       </div>
       </ThemeProvider>);
 

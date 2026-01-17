@@ -3,9 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { WifiOff, Save, Upload } from 'lucide-react';
+import { WifiOff, Save, Upload, Shield } from 'lucide-react';
 import { offlineStorage } from './EnhancedOfflineStorage';
+import { secureOfflineStorage } from './SecureOfflineStorage';
 import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
 
 export default function OfflineNoteCapture({ 
   patientId, 
@@ -38,6 +40,7 @@ export default function OfflineNoteCapture({
 
     setSaving(true);
     try {
+      const user = await base44.auth.me();
       await offlineStorage.init();
       
       const noteData = {
@@ -46,13 +49,14 @@ export default function OfflineNoteCapture({
         diagnosis: diagnosis,
         rough_notes: notes,
         timestamp: new Date().toISOString(),
-        nurse_email: 'offline_user', // Will be updated when synced
+        nurse_email: user?.email || 'offline_user',
         vital_signs: {}
       };
 
-      await offlineStorage.saveOfflineNote(noteData);
+      // Use encrypted storage for patient data
+      await secureOfflineStorage.saveEncryptedNote(noteData, user?.email);
       
-      toast.success('Note saved offline - will sync when back online');
+      toast.success('Note saved offline with encryption - will sync when back online');
       setNotes('');
       
       if (onNoteSaved) onNoteSaved();
@@ -106,9 +110,15 @@ export default function OfflineNoteCapture({
         </Button>
 
         {!isOnline && (
-          <p className="text-xs text-orange-700 text-center">
-            Note will be synced automatically when connection is restored
-          </p>
+          <div className="space-y-1">
+            <p className="text-xs text-orange-700 text-center">
+              Note will be synced automatically when connection is restored
+            </p>
+            <p className="text-xs text-green-700 text-center flex items-center justify-center gap-1">
+              <Shield className="w-3 h-3" />
+              Encrypted locally for HIPAA compliance
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

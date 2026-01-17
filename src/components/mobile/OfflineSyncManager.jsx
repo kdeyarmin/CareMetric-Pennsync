@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Cloud, CloudOff, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Cloud, CloudOff, RefreshCw, CheckCircle2, AlertCircle, Shield } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { offlineStorage } from './EnhancedOfflineStorage';
+import { secureOfflineStorage } from './SecureOfflineStorage';
 
 export default function OfflineSyncManager() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -59,27 +60,35 @@ export default function OfflineSyncManager() {
     let errorCount = 0;
 
     try {
+      const user = await base44.auth.me();
+      
       // Sync pending notes
       const pendingNotes = await offlineStorage.getPendingNotes();
       
       for (const note of pendingNotes) {
         try {
+          // Decrypt if encrypted
+          let actualNote = note;
+          if (note.is_encrypted && note.encrypted_data) {
+            actualNote = await secureOfflineStorage.getDecryptedNote(note.local_id, user.email);
+          }
+
           // Save note to patient history
-          if (note.patient_id) {
+          if (actualNote.patient_id) {
             const patient = await base44.entities.Patient.filter({ id: note.patient_id });
             if (patient.length > 0) {
               const currentHistory = patient[0].enhanced_notes_history || [];
-              await base44.entities.Patient.update(note.patient_id, {
+              await base44.entities.Patient.update(actualNote.patient_id, {
                 enhanced_notes_history: [...currentHistory, {
-                  date: note.timestamp,
-                  visit_type: note.visit_type,
-                  diagnosis: note.diagnosis,
-                  enhanced_note: note.enhanced_note,
-                  rough_note: note.rough_notes,
-                  quality_score: note.quality_score,
-                  compliance_score: note.compliance_score,
-                  nurse_email: note.nurse_email,
-                  vital_signs: note.vital_signs
+                  date: actualNote.timestamp,
+                  visit_type: actualNote.visit_type,
+                  diagnosis: actualNote.diagnosis,
+                  enhanced_note: actualNote.enhanced_note,
+                  rough_note: actualNote.rough_notes,
+                  quality_score: actualNote.quality_score,
+                  compliance_score: actualNote.compliance_score,
+                  nurse_email: actualNote.nurse_email,
+                  vital_signs: actualNote.vital_signs
                 }]
               });
             }
@@ -185,9 +194,15 @@ export default function OfflineSyncManager() {
         </Button>
 
         {!isOnline && (
-          <div className="bg-orange-50 border border-orange-200 rounded p-3 text-sm">
-            <AlertCircle className="w-4 h-4 text-orange-600 inline mr-2" />
-            Working offline. Changes will sync when connection is restored.
+          <div className="bg-orange-50 border border-orange-200 rounded p-3 text-sm space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-orange-600" />
+              <span className="text-orange-800">Working offline. Changes will sync when connection is restored.</span>
+            </div>
+            <div className="flex items-center gap-2 text-green-700">
+              <Shield className="w-4 h-4" />
+              <span>All offline data encrypted locally</span>
+            </div>
           </div>
         )}
       </CardContent>
