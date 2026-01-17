@@ -110,58 +110,206 @@ export default function Onboarding() {
               >
                 <div className="text-center mb-6">
                   <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
-                    What type of care do you provide?
+                    What's your work setting?
                   </h3>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
-                    This helps us customize your documentation templates and compliance checks
+                    This determines which compliance standards and documentation guidelines apply
                   </p>
                 </div>
 
-                <RadioGroup value={serviceType} onValueChange={setServiceType} className="space-y-4">
-                  <label
-                    className={`flex items-center gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${
-                      serviceType === 'home_health' 
-                        ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
-                        : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
-                    }`}
-                  >
-                    <RadioGroupItem value="home_health" id="home_health" />
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center">
-                        <Stethoscope className="w-6 h-6 text-slate-700 dark:text-slate-300" />
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  <RadioGroup value={serviceType} onValueChange={setServiceType} className="space-y-3">
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'home_health' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="home_health" id="home_health" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🏠</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Home Health</p>
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-slate-900 dark:text-slate-100">Home Health</p>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Skilled nursing care in patients' homes</p>
-                      </div>
-                    </div>
-                    {serviceType === 'home_health' && (
-                      <CheckCircle2 className="w-6 h-6 text-blue-600" />
-                    )}
-                  </label>
+                      {serviceType === 'home_health' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
 
-                  <label
-                    className={`flex items-center gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${
-                      serviceType === 'hospice' 
-                        ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
-                        : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
-                    }`}
-                  >
-                    <RadioGroupItem value="hospice" id="hospice" />
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center">
-                        <Heart className="w-6 h-6 text-slate-700 dark:text-slate-300" />
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'hospice' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="hospice" id="hospice" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🕊️</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Hospice</p>
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-slate-900 dark:text-slate-100">Hospice</p>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">End-of-life comfort care</p>
+                      {serviceType === 'hospice' && <CheckCircle2 className="w-5 h-5 text-purple-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'hospital' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="hospital" id="hospital" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🏥</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Hospital</p>
+                        </div>
                       </div>
-                    </div>
-                    {serviceType === 'hospice' && (
-                      <CheckCircle2 className="w-6 h-6 text-purple-600" />
-                    )}
-                  </label>
-                </RadioGroup>
+                      {serviceType === 'hospital' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'clinic' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="clinic" id="clinic" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🏢</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Clinic / Outpatient</p>
+                        </div>
+                      </div>
+                      {serviceType === 'clinic' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'rehab' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="rehab" id="rehab" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🔄</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Rehabilitation Facility</p>
+                        </div>
+                      </div>
+                      {serviceType === 'rehab' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'ltc' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="ltc" id="ltc" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🏛️</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Long-Term Care / Skilled Nursing</p>
+                        </div>
+                      </div>
+                      {serviceType === 'ltc' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'assisted_living' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="assisted_living" id="assisted_living" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🏘️</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Assisted Living</p>
+                        </div>
+                      </div>
+                      {serviceType === 'assisted_living' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'behavioral_health' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="behavioral_health" id="behavioral_health" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🧠</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Behavioral Health / Mental Health</p>
+                        </div>
+                      </div>
+                      {serviceType === 'behavioral_health' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'school_based' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="school_based" id="school_based" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">🎓</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">School-Based Services</p>
+                        </div>
+                      </div>
+                      {serviceType === 'school_based' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        serviceType === 'other' 
+                          ? 'border-slate-600 dark:border-slate-400 bg-slate-200 dark:bg-slate-800 shadow-lg' 
+                          : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <RadioGroupItem value="other" id="other" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-slate-300 dark:bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-lg">📍</span>
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">Other</p>
+                        </div>
+                      </div>
+                      {serviceType === 'other' && <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />}
+                    </label>
+                  </RadioGroup>
+                </div>
 
                 <div className="flex justify-end pt-4">
                   <Button
