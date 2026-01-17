@@ -289,10 +289,15 @@ Return comprehensive results in the specified JSON format.`;
     });
 
   } catch (error) {
-    console.error('Error in enhanceNoteWithQuality:', error);
+    console.error('[enhanceNoteWithQuality] Error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     return Response.json({ 
-      error: error.message || 'Failed to enhance note',
-      details: error.stack 
+      success: false,
+      error: 'Failed to enhance note',
+      details: error.message 
     }, { status: 500 });
   }
 });
