@@ -60,17 +60,49 @@ Deno.serve(async (req) => {
       
       console.log('Step 4: Sending invitation email...');
       try {
-        const signupUrl = `${Deno.env.get('APP_URL') || 'https://app.base44.app'}`;
+        const signupUrl = 'https://www.caremetricai.com';
         
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: email,
-          subject: 'Invitation to Penn Sync',
-          body: `Hello ${full_name},\n\nYou've been invited to join Penn Sync.\n\nEmail: ${email}\nRole: ${role || 'user'}\n\nPlease visit ${signupUrl} to create your account.\n\n⏰ This invitation expires in 7 days (${expiresAt.toLocaleDateString()}).\n\nWelcome to Penn Sync!`,
-          from_name: 'Penn Sync'
+          subject: 'You\'re Invited to CareMetric AI! 🎉',
+          from_name: 'CareMetric AI',
+          body: `Hello ${full_name},
+
+You've been invited to join CareMetric AI - the intelligent healthcare documentation platform that saves time and ensures compliance.
+
+📧 Your Email: ${email}
+🎭 Role: ${role || 'user'}
+🏥 Care Scope: ${care_scope || 'home_health'}
+
+Get started:
+➡️ Visit ${signupUrl}
+➡️ Sign up using this email address
+➡️ Complete onboarding to customize your experience
+➡️ Start with a 14-day free trial - no credit card required!
+
+⏰ This invitation expires in 7 days (${expiresAt.toLocaleDateString()}).
+
+What you'll get:
+✨ AI-powered Smart Notes Assistant
+🎤 Voice-to-text Visit Scribe
+📋 Automated Care Plan Management
+✅ OASIS & Medicare Compliance Tools
+📊 Real-time Analytics Dashboard
+🎓 Personalized Training Modules
+🔒 HIPAA-compliant Security & Encryption
+
+Questions? Reply to this email or visit our support page.
+
+Welcome to the future of healthcare documentation!
+
+Best regards,
+The CareMetric AI Team`
         });
-        console.log('✓ Invitation email sent');
+        console.log('✓ Invitation email sent to:', email);
       } catch (emailError) {
-        console.error('Email send failed (non-critical):', emailError.message);
+        console.error('Email send failed:', emailError.message);
+        console.error('Email error details:', emailError);
+        // Don't fail the whole operation if email fails
       }
       
       console.log('=== User invitation completed successfully ===');
