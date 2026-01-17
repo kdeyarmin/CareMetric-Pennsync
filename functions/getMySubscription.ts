@@ -6,8 +6,11 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
 
     if (!user) {
+      console.error('[getMySubscription] Unauthorized access attempt');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    console.log('[getMySubscription] Fetching subscription for:', user.email);
 
     console.log('getMySubscription: Fetching subscription for user:', user.email);
 
