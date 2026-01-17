@@ -457,6 +457,13 @@ export default function UserManagement() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Users ({filteredUsers.length})</span>
+            <Button
+              onClick={() => window.location.href = '/admin'}
+              className="bg-blue-600 hover:bg-blue-700 gap-2"
+            >
+              <Mail className="w-4 h-4" />
+              Invite New User
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
