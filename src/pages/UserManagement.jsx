@@ -143,6 +143,30 @@ export default function UserManagement() {
     },
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: async (data) => {
+      return await base44.functions.invoke('createUserWithTempPassword', data);
+    },
+    onSuccess: async () => {
+      alert(`Invitation sent successfully to ${inviteData.email}!\n\nThe user will receive an email with instructions to create their account.\n\nInvitation expires in 7 days.`);
+      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
+      queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
+      setShowInviteDialog(false);
+      setInviteData({ 
+        email: "", 
+        full_name: "", 
+        role: "user", 
+        care_scope: "home_health",
+        phone: "",
+        credentials: ""
+      });
+    },
+    onError: (error) => {
+      console.error('Failed to send invitation:', error);
+      alert('Failed to send invitation: ' + error.message);
+    }
+  });
+
   const handleEditUser = (user) => {
     setSelectedUser(user);
     setEditedRole(user.role);
