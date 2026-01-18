@@ -152,6 +152,17 @@ Deno.serve(async (req) => {
       // Continue execution - don't fail signup if email fails
     }
 
+    // Send welcome email sequence
+    try {
+      await base44.asServiceRole.functions.invoke('sendWelcomeEmailSequence', {
+        user_email: user.email,
+        user_name: user.full_name || 'there'
+      });
+      console.log('Welcome email sent to:', user.email);
+    } catch (emailError) {
+      console.error('Failed to send welcome email:', emailError);
+    }
+
     return Response.json({ 
       success: true, 
       message: `Notification sent to ${admins.length} admin(s)` 

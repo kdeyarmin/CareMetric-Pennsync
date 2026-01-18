@@ -70,6 +70,20 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.Subscription.create(subData);
           console.log('[stripeWebhook] Created subscription for:', user_email);
         }
+
+        // Send thank you email for new active subscription
+        if (subscription.status === 'active') {
+          try {
+            await base44.asServiceRole.functions.invoke('sendSubscriptionThankYou', {
+              user_email,
+              plan_name: plan.nickname || 'CareMetric AI',
+              amount: plan.unit_amount
+            });
+            console.log('[stripeWebhook] Thank you email sent to:', user_email);
+          } catch (emailError) {
+            console.error('[stripeWebhook] Failed to send thank you email:', emailError);
+          }
+        }
         break;
       }
       case 'customer.subscription.updated':
