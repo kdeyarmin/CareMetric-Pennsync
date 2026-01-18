@@ -59,7 +59,9 @@ import {
   Trash2,
   XCircle,
   CheckCircle2,
-  Ban
+  Ban,
+  Upload,
+  Users2
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
@@ -68,15 +70,20 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [invitationStatusFilter, setInvitationStatusFilter] = useState("all");
+  const [invitationSearchQuery, setInvitationSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [showPasswordResetDialog, setShowPasswordResetDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [showBulkInviteDialog, setShowBulkInviteDialog] = useState(false);
   const [resetPasswordResult, setResetPasswordResult] = useState(null);
   const [editedRole, setEditedRole] = useState("");
   const [resendingInvitationId, setResendingInvitationId] = useState(null);
+  const [bulkInviteText, setBulkInviteText] = useState("");
+  const [bulkInviteResults, setBulkInviteResults] = useState(null);
   const [inviteData, setInviteData] = useState({
     email: "",
     full_name: "",
@@ -219,6 +226,20 @@ export default function UserManagement() {
     }
   });
 
+  const bulkInviteMutation = useMutation({
+    mutationFn: async (invitations) => {
+      return await base44.functions.invoke('bulkInviteUsers', { invitations });
+    },
+    onSuccess: (response) => {
+      const results = response?.data?.results;
+      setBulkInviteResults(results);
+      queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
+    },
+    onError: (error) => {
+      alert('Bulk invite failed: ' + error.message);
+    }
+  });
+
   const handleEditUser = (user) => {
     setSelectedUser(user);
     setEditedRole(user.role);
@@ -278,6 +299,40 @@ export default function UserManagement() {
     createUserMutation.mutate(inviteData);
   };
 
+  const handleBulkInvite = () => {
+    if (!bulkInviteText.trim()) {
+      alert('Please enter invitation data');
+      return;
+    }
+
+    try {
+      const lines = bulkInviteText.trim().split('\n').filter(line => line.trim());
+      const invitations = lines.map(line => {
+        const parts = line.split(',').map(p => p.trim());
+        if (parts.length < 2) {
+          throw new Error(`Invalid line: ${line}\nExpected format: email, full_name, role, care_scope`);
+        }
+        return {
+          email: parts[0],
+          full_name: parts[1],
+          role: parts[2] || 'user',
+          care_scope: parts[3] || 'home_health',
+          phone: parts[4] || '',
+          credentials: parts[5] || ''
+        };
+      });
+
+      if (invitations.length === 0) {
+        alert('No valid invitations found');
+        return;
+      }
+
+      bulkInviteMutation.mutate(invitations);
+    } catch (error) {
+      alert('Error parsing invitation data:\n\n' + error.message);
+    }
+  };
+
   // Filter users
   const filteredUsers = allUsers.filter(user => {
     if (roleFilter !== 'all' && user.role !== roleFilter) return false;
@@ -290,6 +345,21 @@ export default function UserManagement() {
       return (
         user.full_name?.toLowerCase().includes(query) ||
         user.email?.toLowerCase().includes(query)
+      );
+    }
+    return true;
+  });
+
+  // Filter invitations
+  const filteredInvitations = invitationsWithStatus.filter(invitation => {
+    if (invitationStatusFilter !== 'all' && invitation.computedStatus !== invitationStatusFilter) {
+      return false;
+    }
+    if (invitationSearchQuery) {
+      const query = invitationSearchQuery.toLowerCase();
+      return (
+        invitation.full_name?.toLowerCase().includes(query) ||
+        invitation.email?.toLowerCase().includes(query)
       );
     }
     return true;
@@ -499,7 +569,7 @@ export default function UserManagement() {
             <CardTitle className="flex items-center justify-between text-lg">
               <div className="flex items-center gap-2">
                 <Mail className="w-5 h-5 text-blue-600" />
-                <span>Invitations</span>
+                <span>Invitations ({filteredInvitations.length})</span>
               </div>
               <div className="flex items-center gap-2 text-sm font-normal">
                 <Badge className="bg-yellow-100 text-yellow-800">
@@ -519,8 +589,37 @@ export default function UserManagement() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Invitation Filters */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Search invitations..."
+                  value={invitationSearchQuery}
+                  onChange={(e) => setInvitationSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={invitationStatusFilter} onValueChange={setInvitationStatusFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="expired">Expired</SelectItem>
+                  <SelectItem value="revoked">Revoked</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
-              {invitationsWithStatus.map((invitation) => {
+              {filteredInvitations.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No invitations match your filters
+                </div>
+              ) : (
+                filteredInvitations.map((invitation) => {
                 const expiresAt = new Date(invitation.expires_at);
                 const hoursUntilExpiry = (expiresAt - now) / (1000 * 60 * 60);
                 const isExpiringSoon = hoursUntilExpiry > 0 && hoursUntilExpiry <= 24;
@@ -631,7 +730,7 @@ export default function UserManagement() {
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </div>
           </CardContent>
         </Card>
@@ -644,13 +743,23 @@ export default function UserManagement() {
         <CardHeader>
           <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <span>Users ({filteredUsers.length})</span>
-            <Button
-              onClick={() => setShowInviteDialog(true)}
-              className="bg-blue-600 hover:bg-blue-700 gap-2 w-full sm:w-auto touch-target"
-            >
-              <Mail className="w-4 h-4" />
-              Invite New User
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                onClick={() => setShowBulkInviteDialog(true)}
+                variant="outline"
+                className="gap-2 flex-1 sm:flex-none touch-target"
+              >
+                <Upload className="w-4 h-4" />
+                Bulk Invite
+              </Button>
+              <Button
+                onClick={() => setShowInviteDialog(true)}
+                className="bg-blue-600 hover:bg-blue-700 gap-2 flex-1 sm:flex-none touch-target"
+              >
+                <Mail className="w-4 h-4" />
+                Invite User
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
@@ -1194,6 +1303,140 @@ export default function UserManagement() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Invite Dialog */}
+      <Dialog open={showBulkInviteDialog} onOpenChange={(open) => {
+        setShowBulkInviteDialog(open);
+        if (!open) {
+          setBulkInviteText("");
+          setBulkInviteResults(null);
+        }
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle>Bulk Invite Users</DialogTitle>
+            <DialogDescription>
+              Invite multiple users at once. Enter one user per line in CSV format.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!bulkInviteResults ? (
+            <>
+              <div className="space-y-4 py-4">
+                <Alert className="bg-blue-50 border-blue-200">
+                  <Users2 className="w-4 h-4 text-blue-600" />
+                  <AlertDescription className="text-blue-900">
+                    <p className="font-semibold mb-2">Format (one per line):</p>
+                    <code className="text-xs bg-white px-2 py-1 rounded block">
+                      email, full_name, role, care_scope, phone, credentials
+                    </code>
+                    <p className="text-xs mt-2">
+                      <strong>Example:</strong><br/>
+                      <code className="bg-white px-2 py-1 rounded">
+                        john@example.com, John Doe, user, home_health, 555-1234, RN<br/>
+                        jane@example.com, Jane Smith, admin, both, 555-5678, LPN
+                      </code>
+                    </p>
+                    <p className="text-xs mt-2">
+                      Role: user/admin | Care Scope: home_health/hospice/both
+                    </p>
+                  </AlertDescription>
+                </Alert>
+
+                <div>
+                  <Label>User Invitations</Label>
+                  <textarea
+                    className="w-full h-64 p-3 border rounded-lg font-mono text-sm"
+                    placeholder="john@example.com, John Doe, user, home_health
+jane@example.com, Jane Smith, admin, both"
+                    value={bulkInviteText}
+                    onChange={(e) => setBulkInviteText(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Lines: {bulkInviteText.split('\n').filter(l => l.trim()).length}
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowBulkInviteDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleBulkInvite}
+                  disabled={bulkInviteMutation.isPending || !bulkInviteText.trim()}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {bulkInviteMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Sending Invitations...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Send Invitations
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-4 py-4">
+                <Alert className={bulkInviteResults.failed?.length > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <AlertDescription>
+                    <p className="font-semibold">Bulk Invite Results:</p>
+                    <ul className="text-sm mt-2 space-y-1">
+                      <li>✅ Created: {bulkInviteResults.created?.length || 0}</li>
+                      <li>🔄 Updated: {bulkInviteResults.updated?.length || 0}</li>
+                      <li>❌ Failed: {bulkInviteResults.failed?.length || 0}</li>
+                      <li>⚠️ Email Failed: {bulkInviteResults.emailsFailed?.length || 0}</li>
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+
+                {bulkInviteResults.failed?.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 text-red-700">Failed Invitations:</h4>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {bulkInviteResults.failed.map((f, i) => (
+                        <div key={i} className="text-xs bg-red-50 p-2 rounded border border-red-200">
+                          <strong>{f.email}</strong>: {f.reason}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {bulkInviteResults.emailsFailed?.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 text-orange-700">Email Send Failed:</h4>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {bulkInviteResults.emailsFailed.map((f, i) => (
+                        <div key={i} className="text-xs bg-orange-50 p-2 rounded border border-orange-200">
+                          <strong>{f.email}</strong>: {f.reason}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button onClick={() => {
+                  setShowBulkInviteDialog(false);
+                  setBulkInviteText("");
+                  setBulkInviteResults(null);
+                }}>
+                  Done
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
