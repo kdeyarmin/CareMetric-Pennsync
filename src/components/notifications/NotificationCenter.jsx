@@ -67,10 +67,27 @@ export default function NotificationCenter() {
   });
 
   const { data: regulatoryUpdates = [] } = useQuery({
-    queryKey: ['recentRegulatoryUpdates'],
-    queryFn: () => base44.entities.RegulatoryUpdate.filter({ 
-      status: 'pending_review'
-    }, '-created_date', 5),
+    queryKey: ['recentRegulatoryUpdates', currentUser?.credential_type, currentUser?.service_type],
+    queryFn: async () => {
+      const updates = await base44.entities.RegulatoryUpdate.filter({ 
+        status: { $in: ['pending_review', 'approved'] }
+      }, '-created_date', 20);
+      
+      // Filter by provider type and care setting
+      return updates.filter(update => {
+        const affectedAreas = update.affected_areas || [];
+        const isRelevantToProvider = affectedAreas.length === 0 || 
+          affectedAreas.includes(currentUser?.credential_type) ||
+          affectedAreas.includes('all');
+        
+        const careType = update.care_type || 'both';
+        const isRelevantToCareType = careType === 'both' || 
+          careType === currentUser?.service_type;
+        
+        return isRelevantToProvider && isRelevantToCareType;
+      }).slice(0, 5);
+    },
+    enabled: !!currentUser?.credential_type,
   });
 
   const { data: announcements = [] } = useQuery({
