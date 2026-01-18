@@ -429,6 +429,17 @@ export default function PatientDetails() {
           </div>
         </div>
 
+        {/* AI Proactive Alert Detection */}
+        <div className="mb-3 sm:mb-4 max-w-full overflow-hidden min-w-0">
+          <ProactiveAlertDetector 
+            patientId={patientId}
+            patientName={`${patient.first_name} ${patient.last_name}`}
+            onAlertCreated={(alert) => {
+              queryClient.invalidateQueries({ queryKey: ["patientActiveAlerts", patientId] });
+            }}
+          />
+        </div>
+
         {/* Automated Task Assignment */}
         {(detectedCarePlanGaps || detectedMedicationIssues || activeAlerts.length > 0) && (
           <div className="mb-3 sm:mb-4 max-w-full overflow-hidden min-w-0">
