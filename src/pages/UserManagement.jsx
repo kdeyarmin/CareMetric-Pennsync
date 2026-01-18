@@ -124,6 +124,24 @@ export default function UserManagement() {
     enabled: currentUser?.role === 'admin' && allUsers.length > 0,
   });
 
+  // Helper function to get invitation status
+  const getInvitationStatus = (invitation) => {
+    const now = new Date();
+    const expiresAt = new Date(invitation.expires_at);
+    
+    if (invitation.status === 'revoked') return 'revoked';
+    if (invitation.status === 'accepted') return 'accepted';
+    if (now > expiresAt) return 'expired';
+    return 'pending';
+  };
+
+  // Stats
+  const now = new Date();
+  const invitationsWithStatus = invitations.map(inv => ({
+    ...inv,
+    computedStatus: getInvitationStatus(inv)
+  }));
+
   const updateUserMutation = useMutation({
     mutationFn: ({ userId, data }) => base44.entities.User.update(userId, data),
     onSuccess: () => {
@@ -377,24 +395,6 @@ export default function UserManagement() {
     return activities[0].created_date;
   };
 
-  // Helper function to get invitation status
-  const getInvitationStatus = (invitation) => {
-    const now = new Date();
-    const expiresAt = new Date(invitation.expires_at);
-    
-    if (invitation.status === 'revoked') return 'revoked';
-    if (invitation.status === 'accepted') return 'accepted';
-    if (now > expiresAt) return 'expired';
-    return 'pending';
-  };
-
-  // Stats
-  const now = new Date();
-  const invitationsWithStatus = invitations.map(inv => ({
-    ...inv,
-    computedStatus: getInvitationStatus(inv)
-  }));
-  
   const pendingInvitations = invitationsWithStatus.filter(i => i.computedStatus === 'pending');
   const revokedInvitations = invitationsWithStatus.filter(i => i.computedStatus === 'revoked');
   const expiredInvitations = invitationsWithStatus.filter(i => i.computedStatus === 'expired');
