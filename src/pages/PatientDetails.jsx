@@ -88,6 +88,8 @@ import ProactiveRiskInterventions from "../components/patient/ProactiveRiskInter
 import HealthMetricsDashboard from "../components/patient/HealthMetricsDashboard";
 import ProactivePatientInsights from "../components/insights/ProactivePatientInsights";
 import EducationTrackingHistory from "../components/education/EducationTrackingHistory";
+import PatientOutcomePredictionModule from "../components/predictive/PatientOutcomePredictionModule";
+import RealTimeAnomalyDetector from "../components/alerts/RealTimeAnomalyDetector";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -367,6 +369,28 @@ export default function PatientDetails() {
             patientName={`${patient.first_name} ${patient.last_name}`}
           />
         </div>
+
+        {/* AI Outcome Predictions */}
+        {currentUser?.credential_type && (
+          <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+            <PatientOutcomePredictionModule 
+              patientId={patientId}
+              careSetting={currentUser.service_type || 'home_health'}
+              providerType={currentUser.credential_type}
+            />
+          </div>
+        )}
+
+        {/* Real-Time Anomaly Detection */}
+        {currentUser?.credential_type && (
+          <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+            <RealTimeAnomalyDetector 
+              patientId={patientId}
+              careSetting={currentUser.service_type || 'home_health'}
+              providerType={currentUser.credential_type}
+            />
+          </div>
+        )}
 
         {/* Health Metrics Dashboard */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
