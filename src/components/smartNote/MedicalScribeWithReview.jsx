@@ -14,6 +14,7 @@ import ComplianceIssueDetector from "../scribe/ComplianceIssueDetector";
 import VisitSummarizer from "../scribe/VisitSummarizer";
 import DictationAccuracyFeedback from "../scribe/DictationAccuracyFeedback";
 import InvoiceGenerator from "../billing/InvoiceGenerator";
+import { ResolveAllIssues } from "./OneClickResolvers";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -45,6 +46,8 @@ export default function MedicalScribeWithReview({
   const [isRecording, setIsRecording] = useState(false);
   const [rawTranscription, setRawTranscription] = useState("");
   const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
+  const [complianceIssues, setComplianceIssues] = useState([]);
+  const [documentationGaps, setDocumentationGaps] = useState([]);
 
   const { data: patientHistory } = useQuery({
     queryKey: ['patientHistory', patientId],
@@ -357,6 +360,19 @@ export default function MedicalScribeWithReview({
               </p>
             </div>
 
+            {/* One-Click Resolve All for Transcription Stage */}
+            <ResolveAllIssues
+              issues={complianceIssues}
+              gaps={documentationGaps}
+              suggestions={[]}
+              noteContent={editedTranscription}
+              visitType={visitType}
+              diagnosis={diagnosis}
+              onResolved={(correctedNote) => {
+                setEditedTranscription(correctedNote);
+              }}
+            />
+
             <div className="flex gap-2">
               <Button
                 onClick={generateNote}
@@ -415,6 +431,10 @@ export default function MedicalScribeWithReview({
               noteContent={editedTranscription}
               diagnosis={diagnosis}
               visitType={visitType}
+              onIssuesDetected={(issues) => setComplianceIssues(issues)}
+              onIssueResolved={(correctedNote) => {
+                setEditedTranscription(correctedNote);
+              }}
             />
           </div>
         </div>
