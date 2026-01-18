@@ -155,8 +155,16 @@ export default function UserManagement() {
     mutationFn: async (data) => {
       return await base44.functions.invoke('createUserWithTempPassword', data);
     },
-    onSuccess: async () => {
-      alert(`Invitation sent successfully to ${inviteData.email}!\n\nThe user will receive an email with instructions to create their account.\n\nInvitation expires in 7 days.`);
+    onSuccess: async (response) => {
+      const result = response?.data;
+      console.log('Invitation response:', result);
+      
+      if (result?.email_sent) {
+        alert(`✅ Invitation sent successfully to ${inviteData.email}!\n\nThe user will receive an email with instructions to create their account.\n\nInvitation expires in 7 days.`);
+      } else {
+        alert(`⚠️ Invitation created but email failed to send to ${inviteData.email}.\n\nError: ${result?.email_error || 'Unknown error'}\n\nPlease manually contact the user with the signup link: https://www.caremetricai.com`);
+      }
+      
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
       setShowInviteDialog(false);
