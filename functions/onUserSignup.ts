@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { Resend } from 'npm:resend@4.0.0';
 
 Deno.serve(async (req) => {
   try {
@@ -107,19 +108,49 @@ Deno.serve(async (req) => {
     CareMetric AI
     `.trim();
 
-    // Send email to all admins
-    const emailPromises = admins.map(admin => 
-      base44.asServiceRole.integrations.Core.SendEmail({
-        to: admin.email,
-        subject: `✅ New User Signup - CareMetric AI`,
-        from_name: 'CareMetric AI',
-        body: `Hello ${admin.full_name || 'Admin'},\n\n${emailBody}`
-      })
-    );
+    // Send email to all admins using Resend
+    try {
+      const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
+      
+      const emailPromises = admins.map(admin => 
+        resend.emails.send({
+          from: 'CareMetric AI <notifications@caremetricai.com>',
+          to: admin.email,
+          subject: '✅ New User Signup - CareMetric AI',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Hello ${admin.full_name || 'Admin'},</h2>
+              
+              <p>A new user has signed up for <strong>CareMetric AI</strong>:</p>
+              
+              <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p style="margin: 5px 0;"><strong>👤 Name:</strong> ${user.full_name || 'Not provided'}</p>
+                <p style="margin: 5px 0;"><strong>📧 Email:</strong> ${user.email}</p>
+                <p style="margin: 5px 0;"><strong>📅 Signup Date:</strong> ${new Date().toLocaleString()}</p>
+                <p style="margin: 5px 0;"><strong>🎭 Role:</strong> ${user.role || 'user'}</p>
+                <p style="margin: 5px 0;"><strong>👨‍⚕️ Provider Type:</strong> ${user.credential_type || 'Not set'}</p>
+                <p style="margin: 5px 0;"><strong>🏥 Work Setting:</strong> ${user.service_type || 'Not set'}</p>
+                <p style="margin: 5px 0;"><strong>✅ Status:</strong> Auto-approved</p>
+              </div>
+              
+              <p>The user has been automatically approved and now has access to the system with a <strong>14-day free trial</strong>.</p>
+              
+              <p>You can view their activity in the Admin Dashboard:</p>
+              <p><a href="https://www.caremetricai.com" style="color: #3b82f6;">➡️ Go to Admin Dashboard</a></p>
+              
+              <p>Best regards,<br>CareMetric AI</p>
+            </div>
+          `
+        })
+      );
 
-    console.log('Sending emails to admins...');
-    await Promise.all(emailPromises);
-    console.log('Signup notification complete');
+      console.log('Sending emails to admins via Resend...');
+      await Promise.all(emailPromises);
+      console.log('Signup notification emails sent successfully');
+    } catch (emailError) {
+      console.error('Failed to send admin notification emails:', emailError);
+      // Continue execution - don't fail signup if email fails
+    }
 
     return Response.json({ 
       success: true, 
