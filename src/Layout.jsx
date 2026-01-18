@@ -173,13 +173,7 @@ export default function Layout({ children, currentPageName }) {
 
   const adminNavItems = currentUser?.role === 'admin' ? [
     { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
-    { name: "User Management", icon: Users, page: "UserManagement" },
-    { name: "Compliance Rules", icon: ShieldAlert, page: "CustomComplianceRules" },
-    { name: "Compliance", icon: ShieldAlert, page: "ComplianceRegulatory" },
-    { name: "Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" },
-    { name: "Training Manager", icon: GraduationCap, page: "TrainingManagement" },
-    { name: "System Monitoring", icon: Activity, page: "SystemMonitoring" },
-    { name: "Audit Trail", icon: FileText, page: "AuditTrail" }
+    { name: "Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" }
   ] : [];
 
   // iOS-safe computed paddings - use max() to ensure minimum height even without safe area

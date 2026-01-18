@@ -27,6 +27,10 @@ import AdvancedReportingDashboard from "../components/admin/AdvancedReportingDas
 import RealTimeSystemHealth from "../components/admin/RealTimeSystemHealth";
 import AIModelManagement from "../components/admin/AIModelManagement";
 import AIKnowledgeBaseManager from "../components/admin/AIKnowledgeBaseManager";
+import DetailedAuditTrailViewer from "../components/admin/DetailedAuditTrailViewer";
+import ComplianceRuleManager from "../components/compliance/ComplianceRuleManager";
+import RegulatoryComplianceManager from "../components/admin/RegulatoryComplianceManager";
+import AgencyTrainingManager from "../components/training/AgencyTrainingManager";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import { motion } from "framer-motion";
 import UserManagement from "../components/admin/UserManagement";
@@ -692,6 +696,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="performance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Performance</TabsTrigger>
             <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Compliance</TabsTrigger>
             <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">Training</TabsTrigger>
+            <TabsTrigger value="audit" className="text-xs sm:text-sm py-2 whitespace-nowrap">Audit Trail</TabsTrigger>
             <TabsTrigger value="feedback" className="text-xs sm:text-sm py-2 whitespace-nowrap">User Feedback</TabsTrigger>
             <TabsTrigger value="pricing" className="text-xs sm:text-sm py-2 whitespace-nowrap">Pricing</TabsTrigger>
             <TabsTrigger value="ai-feedback" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Feedback</TabsTrigger>
@@ -1545,8 +1550,16 @@ export default function AdminDashboard() {
           </Card>
         </TabsContent>
 
+        {/* Audit Trail Tab */}
+        <TabsContent value="audit" className="space-y-6">
+          <DetailedAuditTrailViewer />
+        </TabsContent>
+
         {/* Compliance Tab */}
         <TabsContent value="compliance" className="space-y-6">
+          <ComplianceRuleManager />
+          <RegulatoryComplianceManager />
+          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className={stats.flaggedAudits > 0 ? 'border-2 border-red-300' : ''}>
               <CardContent className="p-6">
@@ -1615,6 +1628,8 @@ export default function AdminDashboard() {
 
         {/* Training Tab */}
         <TabsContent value="training" className="space-y-6">
+          <AgencyTrainingManager />
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
               <CardHeader>

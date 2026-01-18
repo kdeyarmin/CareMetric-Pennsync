@@ -6,7 +6,6 @@ import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
-import AuditTrail from './pages/AuditTrail';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
 import Billing from './pages/Billing';
 import BillingInvoicing from './pages/BillingInvoicing';
@@ -17,8 +16,6 @@ import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
-import ComplianceRegulatory from './pages/ComplianceRegulatory';
-import CustomComplianceRules from './pages/CustomComplianceRules';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentGenerator from './pages/DocumentGenerator';
@@ -89,16 +86,13 @@ import StaffTrainingHub from './pages/StaffTrainingHub';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
-import SystemMonitoring from './pages/SystemMonitoring';
 import Tasks from './pages/Tasks';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
 import TestCrossPlatform from './pages/TestCrossPlatform';
-import TrainingManagement from './pages/TrainingManagement';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
-import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import __Layout from './Layout.jsx';
 
@@ -112,7 +106,6 @@ export const PAGES = {
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
     "AnalyticsDashboard": AnalyticsDashboard,
-    "AuditTrail": AuditTrail,
     "AutomaticCarePlans": AutomaticCarePlans,
     "Billing": Billing,
     "BillingInvoicing": BillingInvoicing,
@@ -123,8 +116,6 @@ export const PAGES = {
     "ClinicalPathwayManager": ClinicalPathwayManager,
     "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
-    "ComplianceRegulatory": ComplianceRegulatory,
-    "CustomComplianceRules": CustomComplianceRules,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
     "DocumentGenerator": DocumentGenerator,
@@ -195,16 +186,13 @@ export const PAGES = {
     "SubscriptionPlans": SubscriptionPlans,
     "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
-    "SystemMonitoring": SystemMonitoring,
     "Tasks": Tasks,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
     "TestCrossPlatform": TestCrossPlatform,
-    "TrainingManagement": TrainingManagement,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
-    "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
 }
 
