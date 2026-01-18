@@ -51,6 +51,8 @@ import CarePlanDraftGenerator from "@/components/smartNote/CarePlanDraftGenerato
 import DocumentationGapDetector from "@/components/smartNote/DocumentationGapDetector";
 import OfflineSyncNotification from "@/components/mobile/OfflineSyncNotification";
 import { useOfflineNotes } from "@/components/mobile/OfflineNoteCache";
+import ProactiveClinicalOrders from "@/components/clinical/ProactiveClinicalOrders";
+import PriorAuthGenerator from "@/components/clinical/PriorAuthGenerator";
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
@@ -853,6 +855,36 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   }}
                   onCarePlanCreated={(plan) => {
                     toast.success('Care plan added to patient record');
+                  }}
+                />
+              )}
+
+              {/* Proactive Clinical Orders */}
+              {enhancedNote && selectedDiagnosis && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'NP' || currentUser?.credential_type === 'PA') && (
+                <ProactiveClinicalOrders
+                  diagnosis={selectedDiagnosis}
+                  noteContent={enhancedNote}
+                  vitalSigns={vitalSigns}
+                  patientContext={patientData ? {
+                    age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                    diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])],
+                    medications: patientData.current_medications,
+                    past_medical_history: patientData.past_medical_history
+                  } : null}
+                  onOrderGenerated={(order) => {
+                    console.log('Order generated:', order);
+                  }}
+                />
+              )}
+
+              {/* Prior Authorization Generator */}
+              {enhancedNote && selectedDiagnosis && (
+                <PriorAuthGenerator
+                  diagnosis={selectedDiagnosis}
+                  noteContent={enhancedNote}
+                  patientContext={patientData}
+                  onAuthGenerated={(auth) => {
+                    console.log('Prior auth generated:', auth);
                   }}
                 />
               )}
