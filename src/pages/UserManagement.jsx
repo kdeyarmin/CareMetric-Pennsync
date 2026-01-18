@@ -437,13 +437,13 @@ export default function UserManagement() {
 
       {/* Filters */}
       <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4 items-center">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 sm:items-center">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-500" />
               <span className="text-sm font-medium">Filters:</span>
             </div>
-            <div className="relative flex-1 max-w-xs">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <Input
                 placeholder="Search users..."
@@ -452,27 +452,29 @@ export default function UserManagement() {
                 className="pl-9"
               />
             </div>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="user">Nurse</SelectItem>
-                <SelectItem value="manager">Manager</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-4">
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="user">Nurse</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -537,24 +539,25 @@ export default function UserManagement() {
                 const StatusIcon = config.icon;
                 
                 return (
-                  <div key={invitation.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
-                    <div className="flex-1">
+                  <div key={invitation.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-white rounded-lg border gap-3">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-gray-900">{invitation.full_name}</p>
-                        <Badge className="text-xs">{invitation.role}</Badge>
-                        <Badge className={`flex items-center gap-1 ${config.badge}`}>
+                        <p className="font-medium text-gray-900 truncate">{invitation.full_name}</p>
+                        <Badge className="text-xs flex-shrink-0">{invitation.role}</Badge>
+                        <Badge className={`flex items-center gap-1 flex-shrink-0 ${config.badge}`}>
                           <StatusIcon className="w-3 h-3" />
                           {config.label}
                         </Badge>
                         {isExpiringSoon && invitation.computedStatus === 'pending' && (
-                          <Badge className="bg-orange-100 text-orange-800 flex items-center gap-1">
+                          <Badge className="bg-orange-100 text-orange-800 flex items-center gap-1 flex-shrink-0">
                             <AlertTriangle className="w-3 h-3" />
-                            Expiring Soon
+                            <span className="hidden sm:inline">Expiring Soon</span>
+                            <span className="sm:hidden">Soon</span>
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600">{invitation.email}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                      <p className="text-sm text-gray-600 truncate">{invitation.email}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {invitation.computedStatus === 'expired' ? 'Expired' : 'Expires'}: {format(expiresAt, 'MMM d, yyyy')}
@@ -564,7 +567,7 @@ export default function UserManagement() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
                       {invitation.computedStatus === 'pending' && (
                         <>
                           <Button
@@ -572,7 +575,7 @@ export default function UserManagement() {
                             variant="outline"
                             onClick={() => resendInvitationMutation.mutate(invitation.id)}
                             disabled={resendInvitationMutation.isPending}
-                            className="flex items-center gap-2"
+                            className="flex items-center gap-1 sm:gap-2 touch-target"
                             title="Resend invitation email"
                           >
                             {resendInvitationMutation.isPending ? (
@@ -580,7 +583,7 @@ export default function UserManagement() {
                             ) : (
                               <Send className="w-4 h-4" />
                             )}
-                            Resend
+                            <span className="hidden sm:inline">Resend</span>
                           </Button>
                           <Button
                             size="sm"
@@ -591,7 +594,7 @@ export default function UserManagement() {
                               }
                             }}
                             disabled={revokeInvitationMutation.isPending}
-                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 touch-target"
                             title="Revoke invitation"
                           >
                             <Ban className="w-4 h-4" />
@@ -607,7 +610,7 @@ export default function UserManagement() {
                           }
                         }}
                         disabled={deleteInvitationMutation.isPending}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 touch-target"
                         title="Delete invitation"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -623,133 +626,231 @@ export default function UserManagement() {
 
 
 
-      {/* Users Table */}
+      {/* Users Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <span>Users ({filteredUsers.length})</span>
             <Button
               onClick={() => setShowInviteDialog(true)}
-              className="bg-blue-600 hover:bg-blue-700 gap-2"
+              className="bg-blue-600 hover:bg-blue-700 gap-2 w-full sm:w-auto touch-target"
             >
               <Mail className="w-4 h-4" />
               Invite New User
             </Button>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 sm:p-6">
           {isLoading ? (
             <div className="text-center py-12 text-gray-500">Loading users...</div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-12 text-gray-500">No users found</div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Activity</TableHead>
-                    <TableHead>Last Active</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.map((user) => {
-                    const activityCount = getUserActivityCount(user.email);
-                    const lastActivity = getUserLastActivity(user.email);
-                    const isActive = user.is_active !== false;
-                    
-                    return (
-                      <TableRow key={user.id} className={!isActive ? 'opacity-50' : ''}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                              {user.full_name?.charAt(0) || 'U'}
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden lg:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>User</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Activity</TableHead>
+                      <TableHead>Last Active</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredUsers.map((user) => {
+                      const activityCount = getUserActivityCount(user.email);
+                      const lastActivity = getUserLastActivity(user.email);
+                      const isActive = user.is_active !== false;
+                      
+                      return (
+                        <TableRow key={user.id} className={!isActive ? 'opacity-50' : ''}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
+                                {user.full_name?.charAt(0) || 'U'}
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">{user.full_name}</p>
+                                {currentUser.email === user.email && (
+                                  <Badge className="text-xs bg-blue-500 text-white">You</Badge>
+                                )}
+                              </div>
                             </div>
-                            <div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 text-sm text-gray-600">
+                              <Mail className="w-3 h-3" />
+                              {user.email}
+                            </div>
+                          </TableCell>
+                          <TableCell>{getRoleBadge(user.role)}</TableCell>
+                          <TableCell>
+                            <Badge className={isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                              {isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {activityCount > 0 ? `${activityCount} actions` : 'No activity'}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-600">
+                            {lastActivity ? (
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {formatEastern(lastActivity, 'MMM d, yyyy')}
+                              </div>
+                            ) : (
+                              'Never'
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditUser(user)}
+                                disabled={currentUser.email === user.email}
+                                title="Edit user role"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleResetPassword(user)}
+                                className="text-orange-600 hover:text-orange-700"
+                                title="Reset password"
+                              >
+                                <Key className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleToggleActive(user)}
+                                disabled={currentUser.email === user.email}
+                                className={isActive ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}
+                                title={isActive ? 'Disable user' : 'Enable user'}
+                              >
+                                {isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteUser(user)}
+                                disabled={currentUser.email === user.email}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete user permanently"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="lg:hidden space-y-3 p-3">
+                {filteredUsers.map((user) => {
+                  const activityCount = getUserActivityCount(user.email);
+                  const lastActivity = getUserLastActivity(user.email);
+                  const isActive = user.is_active !== false;
+                  
+                  return (
+                    <Card key={user.id} className={`${!isActive ? 'opacity-50' : ''}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0">
+                            {user.full_name?.charAt(0) || 'U'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-medium text-gray-900">{user.full_name}</p>
                               {currentUser.email === user.email && (
                                 <Badge className="text-xs bg-blue-500 text-white">You</Badge>
                               )}
                             </div>
+                            <div className="flex items-center gap-1 text-sm text-gray-600 mt-1">
+                              <Mail className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">{user.email}</span>
+                            </div>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Mail className="w-3 h-3" />
-                            {user.email}
-                          </div>
-                        </TableCell>
-                        <TableCell>{getRoleBadge(user.role)}</TableCell>
-                        <TableCell>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap mb-3">
+                          {getRoleBadge(user.role)}
                           <Badge className={isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                             {isActive ? 'Active' : 'Inactive'}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {activityCount > 0 ? `${activityCount} actions` : 'No activity'}
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-600">
-                          {lastActivity ? (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {formatEastern(lastActivity, 'MMM d, yyyy')}
-                            </div>
-                          ) : (
-                            'Never'
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditUser(user)}
-                              disabled={currentUser.email === user.email}
-                              title="Edit user role"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleResetPassword(user)}
-                              className="text-orange-600 hover:text-orange-700"
-                              title="Reset password"
-                            >
-                              <Key className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleActive(user)}
-                              disabled={currentUser.email === user.email}
-                              className={isActive ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}
-                              title={isActive ? 'Disable user' : 'Enable user'}
-                            >
-                              {isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user)}
-                              disabled={currentUser.email === user.email}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title="Delete user permanently"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                          <div>
+                            <p className="text-gray-500 text-xs">Activity</p>
+                            <p className="font-medium">{activityCount > 0 ? `${activityCount} actions` : 'No activity'}</p>
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                          <div>
+                            <p className="text-gray-500 text-xs">Last Active</p>
+                            <p className="font-medium">
+                              {lastActivity ? formatEastern(lastActivity, 'MMM d, yyyy') : 'Never'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditUser(user)}
+                            disabled={currentUser.email === user.email}
+                            className="w-full touch-target"
+                          >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleResetPassword(user)}
+                            className="w-full text-orange-600 hover:text-orange-700 touch-target"
+                          >
+                            <Key className="w-4 h-4 mr-2" />
+                            Reset
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleActive(user)}
+                            disabled={currentUser.email === user.email}
+                            className={`w-full touch-target ${isActive ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}`}
+                          >
+                            {isActive ? <UserX className="w-4 h-4 mr-2" /> : <UserCheck className="w-4 h-4 mr-2" />}
+                            {isActive ? 'Disable' : 'Enable'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteUser(user)}
+                            disabled={currentUser.email === user.email}
+                            className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 touch-target"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -961,7 +1062,7 @@ export default function UserManagement() {
 
       {/* Invite User Dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Invite New User</DialogTitle>
             <DialogDescription>
