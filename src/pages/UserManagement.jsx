@@ -56,7 +56,10 @@ import {
   AlertTriangle,
   Key,
   Loader2,
-  Trash2
+  Trash2,
+  XCircle,
+  CheckCircle2,
+  Ban
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
@@ -123,9 +126,29 @@ export default function UserManagement() {
 
   const resendInvitationMutation = useMutation({
     mutationFn: (invitationId) => base44.functions.invoke('resendInvitation', { invitation_id: invitationId }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      const result = response?.data;
+      if (result?.email_sent) {
+        alert('✅ Invitation resent successfully!');
+      } else {
+        alert(`⚠️ Invitation updated but email failed to send.\n\nError: ${result?.email_error || 'Unknown error'}`);
+      }
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
     },
+    onError: (error) => {
+      alert('Failed to resend invitation: ' + error.message);
+    }
+  });
+
+  const revokeInvitationMutation = useMutation({
+    mutationFn: (invitationId) => base44.entities.UserInvitation.update(invitationId, { status: 'revoked' }),
+    onSuccess: () => {
+      alert('✅ Invitation revoked successfully');
+      queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
+    },
+    onError: (error) => {
+      alert('Failed to revoke invitation: ' + error.message);
+    }
   });
 
   const deleteInvitationMutation = useMutation({
@@ -270,10 +293,27 @@ export default function UserManagement() {
     return activities[0].created_date;
   };
 
+  // Helper function to get invitation status
+  const getInvitationStatus = (invitation) => {
+    const now = new Date();
+    const expiresAt = new Date(invitation.expires_at);
+    
+    if (invitation.status === 'revoked') return 'revoked';
+    if (invitation.status === 'accepted') return 'accepted';
+    if (now > expiresAt) return 'expired';
+    return 'pending';
+  };
+
   // Stats
   const now = new Date();
-  const pendingInvitations = invitations.filter(i => i.status === 'pending');
-  const expiredInvitations = invitations.filter(i => i.status === 'expired' || (i.status === 'pending' && new Date(i.expires_at) < now));
+  const invitationsWithStatus = invitations.map(inv => ({
+    ...inv,
+    computedStatus: getInvitationStatus(inv)
+  }));
+  
+  const pendingInvitations = invitationsWithStatus.filter(i => i.computedStatus === 'pending');
+  const revokedInvitations = invitationsWithStatus.filter(i => i.computedStatus === 'revoked');
+  const expiredInvitations = invitationsWithStatus.filter(i => i.computedStatus === 'expired');
   const expiringSoonInvitations = pendingInvitations.filter(i => {
     const expiresAt = new Date(i.expires_at);
     const hoursUntilExpiry = (expiresAt - now) / (1000 * 60 * 60);
@@ -437,34 +477,78 @@ export default function UserManagement() {
         </CardContent>
       </Card>
 
-      {/* Pending Invitations */}
-      {pendingInvitations.length > 0 && (
-        <Card className="mb-6 border-yellow-200 bg-yellow-50">
+      {/* Invitations Section */}
+      {invitationsWithStatus.length > 0 && (
+        <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-lg">
               <div className="flex items-center gap-2">
-                <Mail className="w-5 h-5 text-yellow-600" />
-                <span>Pending Invitations ({pendingInvitations.length})</span>
+                <Mail className="w-5 h-5 text-blue-600" />
+                <span>Invitations</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm font-normal">
+                <Badge className="bg-yellow-100 text-yellow-800">
+                  {pendingInvitations.length} Pending
+                </Badge>
+                {revokedInvitations.length > 0 && (
+                  <Badge className="bg-gray-100 text-gray-800">
+                    {revokedInvitations.length} Revoked
+                  </Badge>
+                )}
+                {expiredInvitations.length > 0 && (
+                  <Badge className="bg-red-100 text-red-800">
+                    {expiredInvitations.length} Expired
+                  </Badge>
+                )}
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {pendingInvitations.map((invitation) => {
+              {invitationsWithStatus.map((invitation) => {
                 const expiresAt = new Date(invitation.expires_at);
-                const isExpired = now > expiresAt;
                 const hoursUntilExpiry = (expiresAt - now) / (1000 * 60 * 60);
                 const isExpiringSoon = hoursUntilExpiry > 0 && hoursUntilExpiry <= 24;
+                
+                const statusConfig = {
+                  pending: {
+                    badge: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+                    icon: Clock,
+                    label: 'Pending'
+                  },
+                  expired: {
+                    badge: 'bg-red-100 text-red-800 border-red-300',
+                    icon: XCircle,
+                    label: 'Expired'
+                  },
+                  revoked: {
+                    badge: 'bg-gray-100 text-gray-800 border-gray-300',
+                    icon: Ban,
+                    label: 'Revoked'
+                  },
+                  accepted: {
+                    badge: 'bg-green-100 text-green-800 border-green-300',
+                    icon: CheckCircle2,
+                    label: 'Accepted'
+                  }
+                };
+                
+                const config = statusConfig[invitation.computedStatus];
+                const StatusIcon = config.icon;
                 
                 return (
                   <div key={invitation.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-gray-900">{invitation.full_name}</p>
                         <Badge className="text-xs">{invitation.role}</Badge>
-                        {isExpiringSoon && (
+                        <Badge className={`flex items-center gap-1 ${config.badge}`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {config.label}
+                        </Badge>
+                        {isExpiringSoon && invitation.computedStatus === 'pending' && (
                           <Badge className="bg-orange-100 text-orange-800 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
+                            <AlertTriangle className="w-3 h-3" />
                             Expiring Soon
                           </Badge>
                         )}
@@ -473,7 +557,7 @@ export default function UserManagement() {
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          Expires: {format(expiresAt, 'MMM d, yyyy')}
+                          {invitation.computedStatus === 'expired' ? 'Expired' : 'Expires'}: {format(expiresAt, 'MMM d, yyyy')}
                         </span>
                         {invitation.resend_count > 0 && (
                           <span>Resent {invitation.resend_count}x</span>
@@ -481,16 +565,39 @@ export default function UserManagement() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => resendInvitationMutation.mutate(invitation.id)}
-                        disabled={resendInvitationMutation.isPending}
-                        className="flex items-center gap-2"
-                      >
-                        <Send className="w-4 h-4" />
-                        Resend
-                      </Button>
+                      {invitation.computedStatus === 'pending' && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => resendInvitationMutation.mutate(invitation.id)}
+                            disabled={resendInvitationMutation.isPending}
+                            className="flex items-center gap-2"
+                            title="Resend invitation email"
+                          >
+                            {resendInvitationMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                            Resend
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (confirm(`Revoke invitation for ${invitation.full_name}?\n\nThey will not be able to use this invitation to sign up.`)) {
+                                revokeInvitationMutation.mutate(invitation.id);
+                              }
+                            }}
+                            disabled={revokeInvitationMutation.isPending}
+                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                            title="Revoke invitation"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -514,16 +621,7 @@ export default function UserManagement() {
         </Card>
       )}
 
-      {/* Expired Invitations Alert */}
-      {expiredInvitations.length > 0 && (
-        <Alert className="mb-6 border-red-200 bg-red-50">
-          <AlertTriangle className="w-4 h-4 text-red-600" />
-          <AlertDescription className="text-red-900">
-            <strong>{expiredInvitations.length} invitation{expiredInvitations.length > 1 ? 's have' : ' has'} expired.</strong>
-            {' '}These users will need new invitations to sign up.
-          </AlertDescription>
-        </Alert>
-      )}
+
 
       {/* Users Table */}
       <Card>
