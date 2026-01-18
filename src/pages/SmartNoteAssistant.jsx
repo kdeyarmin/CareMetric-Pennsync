@@ -44,6 +44,7 @@ import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryCompli
 import EducationLibraryBrowser from "@/components/education/EducationLibraryBrowser";
 import PatientEducationPanel from "@/components/education/PatientEducationPanel";
 import VoiceNoteRecorder from "@/components/smartNote/VoiceNoteRecorder";
+import VoiceDictationInput from "@/components/smartNote/VoiceDictationInput";
 import ClinicalInsightsPanel from "@/components/smartNote/ClinicalInsightsPanel";
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
@@ -720,32 +721,20 @@ export default function SmartNoteAssistant() {
                   </div>
                 </div>
 
-                {/* Rough Notes Input */}
+                {/* Rough Notes Input with Voice Dictation */}
                 <div>
                   <Label className="text-sm font-medium">Clinical Notes *</Label>
-                  <VoiceNoteRecorder
-                    onTranscriptionComplete={(text) => {
-                      setRoughNotes(prev => prev ? prev + '\n\n' + text : text);
-                    }}
-                  />
-                  <textarea
-                  value={roughNotes}
-                  onChange={(e) => setRoughNotes(e.target.value)}
-                  placeholder="Enter your rough clinical notes here or use voice dictation above...
+                  <p className="text-xs text-slate-500 mb-2">Type or dictate your clinical notes</p>
+                  <VoiceDictationInput
+                    value={roughNotes}
+                    onChange={(e) => setRoughNotes(e.target.value)}
+                    placeholder="Enter your rough clinical notes here or use voice dictation...
 
 Example: Patient reports feeling better, pain level 2/10. Medications reviewed, compliant. Wound healing well, no signs of infection. Patient ambulating with walker..."
 
 
 
-
-
-
-
-
-                  className="w-full h-40 sm:h-48 p-3 border rounded-lg text-sm resize-none mt-2"
                   />
-
-
                 </div>
 
                 {/* Enhance Button */}
