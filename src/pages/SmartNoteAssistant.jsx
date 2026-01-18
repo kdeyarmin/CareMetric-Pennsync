@@ -33,6 +33,7 @@ import {
   getProviderSpecificPromptAdditions,
   getCareLocationPromptAdditions 
 } from "@/components/utils/providerSpecificPrompts";
+import { buildEnhancedPrompt, recordEditForLearning } from "@/components/utils/enhancedAIPrompts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -221,8 +222,17 @@ export default function SmartNoteAssistant() {
      const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
      const providerAdditions = getProviderSpecificPromptAdditions(currentUser?.credential_type || 'RN');
      const locationAdditions = getCareLocationPromptAdditions(careSetting);
-     const fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
-     console.log('✅ Compliance prompt received');
+     let fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
+
+     // Enhance prompt with learned patterns and knowledge base
+     fullCompliancePrompt = await buildEnhancedPrompt({
+       basePrompt: fullCompliancePrompt,
+       visitType,
+       diagnosis: selectedDiagnosis,
+       careSetting,
+       category: 'clinical_documentation'
+     });
+     console.log('✅ Enhanced compliance prompt with learned patterns');
 
      // Filter custom rules applicable to this provider, visit type, and care setting
      const applicableRules = customComplianceRules.filter(rule => {
@@ -509,9 +519,10 @@ export default function SmartNoteAssistant() {
       setMedicareViolations(newComplianceResults);
       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
 
-      // Learn from the edits and suggestions made by the user
+      // Enhanced learning from user edits
       if (enhancedNote !== editedNote) {
         try {
+          // Old learning system
           await base44.functions.invoke('learnFromUserEdits', {
             original_enhanced_note: enhancedNote,
             edited_note: editedNote,
@@ -520,7 +531,21 @@ export default function SmartNoteAssistant() {
             compliance_issues_before: medicareViolations,
             compliance_issues_after: newComplianceResults
           });
-          console.log('✅ Learning from user edits complete');
+
+          // New enhanced learning system
+          await recordEditForLearning({
+            originalText: enhancedNote,
+            editedText: editedNote,
+            context: {
+              visit_type: visitType,
+              diagnosis: selectedDiagnosis,
+              care_setting: careSetting,
+              section: 'full_note',
+              compliance_score: result.compliance_check?.compliance_score || 0,
+              quality_score: result.quality_analysis?.overall_quality_score || 0
+            }
+          });
+          console.log('✅ Enhanced learning from user edits complete');
         } catch (learnError) {
           console.error('Error learning from edits:', learnError);
         }
