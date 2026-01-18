@@ -31,6 +31,7 @@ For each significant change found, provide:
 - Category (documentation/oasis/safety/billing/quality/infection_control/patient_rights/hipaa/staffing)
 - Impact level (critical/high/medium/low)
 - Provider types affected (RN, LPN, PT, OT, ST, MD, DO, NP, etc.)
+- Care setting affected (home_health, hospice, or both)
 - Action required (if any)
 - Compliance deadline (if applicable)
 - Source/regulation reference
@@ -59,6 +60,10 @@ Return JSON array of updates.`;
                 affected_provider_types: {
                   type: "array",
                   items: { type: "string" }
+                },
+                care_type: { 
+                  type: "string",
+                  enum: ["home_health", "hospice", "both"]
                 },
                 action_required: { type: "string" },
                 compliance_deadline: { type: "string" },
@@ -96,7 +101,8 @@ Return JSON array of updates.`;
           required_actions: [update.action_required].filter(Boolean),
           suggested_training: [],
           status: 'pending_review',
-          reference_url: update.reference_url
+          reference_url: update.reference_url,
+          care_type: update.care_type || 'both'
         }))
       ) : [];
 

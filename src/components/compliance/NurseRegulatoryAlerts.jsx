@@ -29,6 +29,11 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
+
   const { data: updates = [] } = useQuery({
     queryKey: ['implementedRegUpdates'],
     queryFn: () => base44.entities.RegulatoryUpdate.filter({ 
@@ -36,10 +41,24 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
     }, '-effective_date'),
   });
 
-  // Filter to recent and unacknowledged updates
+  // Filter to recent, unacknowledged, AND relevant to provider type/service type
   const relevantUpdates = (updates || []).filter(u => {
     const daysSinceImplemented = differenceInDays(new Date(), new Date(u.reviewed_at || u.created_date));
-    return daysSinceImplemented <= 30 && !acknowledgedUpdates.includes(u.id);
+    const isRecent = daysSinceImplemented <= 30;
+    const isUnacknowledged = !acknowledgedUpdates.includes(u.id);
+    
+    // Filter by provider type
+    const affectedAreas = u.affected_areas || [];
+    const isRelevantToProvider = affectedAreas.length === 0 || 
+      affectedAreas.includes(currentUser?.credential_type) ||
+      affectedAreas.includes('all');
+    
+    // Filter by care setting
+    const careType = u.care_type || 'both';
+    const isRelevantToCareType = careType === 'both' || 
+      careType === currentUser?.service_type;
+    
+    return isRecent && isUnacknowledged && isRelevantToProvider && isRelevantToCareType;
   });
 
   const handleAcknowledge = (updateId) => {
