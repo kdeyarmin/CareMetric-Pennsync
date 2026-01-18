@@ -142,7 +142,6 @@ export default function Layout({ children, currentPageName }) {
   const allNavItems = [
   // User items
   { name: "Dashboard", icon: Home, page: "Dashboard" },
-  { name: "Features", icon: Sparkles, page: "Features" },
   { name: "Patients", icon: Users, page: "Patients" },
   { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
   { name: "Visit Scribe", icon: Mic, page: "MedicalScribe" },
@@ -150,6 +149,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Documents", icon: FileText, page: "DocumentGenerator" },
   { name: "Document Analyzer", icon: Brain, page: "DocumentAnalyzer" },
   { name: "Templates", icon: FileText, page: "TemplateLibrary" },
+  { name: "Features", icon: Sparkles, page: "Features" },
   { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
   { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
   { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
