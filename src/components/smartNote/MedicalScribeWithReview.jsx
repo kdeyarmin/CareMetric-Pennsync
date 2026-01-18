@@ -15,6 +15,7 @@ import VisitSummarizer from "../scribe/VisitSummarizer";
 import DictationAccuracyFeedback from "../scribe/DictationAccuracyFeedback";
 import InvoiceGenerator from "../billing/InvoiceGenerator";
 import { ResolveAllIssues } from "./OneClickResolvers";
+import NoteEmailDialog from "../notes/NoteEmailDialog";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -48,6 +49,16 @@ export default function MedicalScribeWithReview({
   const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
   const [complianceIssues, setComplianceIssues] = useState([]);
   const [documentationGaps, setDocumentationGaps] = useState([]);
+
+  const { data: patientData } = useQuery({
+    queryKey: ['patient', patientId],
+    queryFn: async () => {
+      if (!patientId || patientId === 'anonymous') return null;
+      const results = await base44.entities.Patient.filter({ id: patientId });
+      return results[0] || null;
+    },
+    enabled: !!patientId && patientId !== 'anonymous'
+  });
 
   const { data: patientHistory } = useQuery({
     queryKey: ['patientHistory', patientId],
@@ -455,15 +466,23 @@ export default function MedicalScribeWithReview({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
               <label className="text-sm font-medium">Generated Note</label>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => copyToClipboard(generatedNote)}
-              >
-                Copy
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyToClipboard(generatedNote)}
+                >
+                  Copy
+                </Button>
+                <NoteEmailDialog
+                  noteContent={generatedNote}
+                  patientData={patientData}
+                  visitType={visitType}
+                  currentUser={currentUser}
+                />
+              </div>
             </div>
             <div className="bg-white p-4 rounded border border-green-200 max-h-80 overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap">
               {generatedNote}

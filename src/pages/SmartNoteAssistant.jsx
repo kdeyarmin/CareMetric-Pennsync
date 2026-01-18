@@ -69,6 +69,7 @@ import PersonalizedEducationGenerator from "@/components/education/PersonalizedE
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
 import OfflineNoteCapture from "@/components/mobile/OfflineNoteCapture";
 import { ResolveComplianceIssue, ResolveDocumentationGap, ResolveQualitySuggestion, ResolveAllIssues } from "@/components/smartNote/OneClickResolvers";
+import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1017,6 +1018,12 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                           >
                             Copy Note
                           </Button>
+                          <NoteEmailDialog
+                            noteContent={enhancedNote}
+                            patientData={patientData}
+                            visitType={visitType}
+                            currentUser={currentUser}
+                          />
                           {patientData && (
                             <Button
                               onClick={saveToPatientRecord}
