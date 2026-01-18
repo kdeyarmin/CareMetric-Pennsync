@@ -61,6 +61,9 @@ Deno.serve(async (req) => {
       console.log('Step 4: Sending invitation email...');
       const signupUrl = 'https://www.caremetricai.com';
       
+      let emailSent = false;
+      let emailError = null;
+      
       try {
         const emailResult = await base44.asServiceRole.integrations.Core.SendEmail({
           to: email,
@@ -98,18 +101,23 @@ Welcome to the future of healthcare documentation!
 Best regards,
 The CareMetric AI Team`
         });
-        console.log('✓ Email send result:', emailResult);
+        console.log('✓ Email send result:', JSON.stringify(emailResult));
         console.log('✓ Invitation email sent to:', email);
-      } catch (emailError) {
-        console.error('⚠️ Email send failed but continuing:', emailError.message);
-        // Don't fail the whole operation if email fails
+        emailSent = true;
+      } catch (error) {
+        console.error('⚠️ Email send failed:', error);
+        console.error('Email error details:', error.message, error.stack);
+        emailError = error.message;
       }
       
-      console.log('=== User invitation completed successfully ===');
+      console.log('=== User invitation completed ===');
       return Response.json({ 
         success: true, 
-        message: 'Invitation sent successfully',
-        user_email: email
+        message: emailSent ? 'Invitation sent successfully' : 'Invitation created but email failed to send',
+        user_email: email,
+        email_sent: emailSent,
+        email_error: emailError,
+        invitation_id: invitation.id
       });
       
     } catch (dbError) {
