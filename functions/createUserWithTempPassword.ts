@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { Resend } from 'npm:resend@4.0.0';
 
 Deno.serve(async (req) => {
   try {
@@ -58,13 +59,68 @@ Deno.serve(async (req) => {
       });
       console.log('✓ Invitation record created:', invitation.id, 'Expires:', expiresAt.toISOString());
       
-      console.log('Step 4: Note - Cannot auto-send invitation email (platform limitation)');
+      console.log('Step 4: Sending invitation email via Resend...');
       const signupUrl = 'https://www.caremetricai.com';
       
-      // Note: Core.SendEmail can only send to existing app users
-      // For new user invitations, admin must manually share the signup link
-      const emailSent = false;
-      const emailError = 'Automatic email sending not available for new users. Please manually share the signup link.';
+      let emailSent = false;
+      let emailError = null;
+      
+      try {
+        const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
+        
+        const emailResult = await resend.emails.send({
+          from: 'CareMetric AI <onboarding@caremetricai.com>',
+          to: email,
+          subject: 'You\'re Invited to CareMetric AI! 🎉',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Hello ${full_name},</h2>
+              
+              <p>You've been invited to join <strong>CareMetric AI</strong> - the intelligent healthcare documentation platform that saves time and ensures compliance.</p>
+              
+              <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p style="margin: 5px 0;"><strong>📧 Your Email:</strong> ${email}</p>
+                <p style="margin: 5px 0;"><strong>🎭 Role:</strong> ${role || 'user'}</p>
+                <p style="margin: 5px 0;"><strong>🏥 Care Scope:</strong> ${care_scope || 'home_health'}</p>
+              </div>
+              
+              <h3>Get started:</h3>
+              <ol>
+                <li>Visit <a href="${signupUrl}">${signupUrl}</a></li>
+                <li>Sign up using this email address</li>
+                <li>Complete onboarding to customize your experience</li>
+                <li>Start with a 14-day free trial - no credit card required!</li>
+              </ol>
+              
+              <p><strong>⏰ This invitation expires in 7 days</strong> (${expiresAt.toLocaleDateString()}).</p>
+              
+              <h3>What you'll get:</h3>
+              <ul>
+                <li>✨ AI-powered Smart Notes Assistant</li>
+                <li>🎤 Voice-to-text Visit Scribe</li>
+                <li>📋 Automated Care Plan Management</li>
+                <li>✅ OASIS & Medicare Compliance Tools</li>
+                <li>📊 Real-time Analytics Dashboard</li>
+                <li>🎓 Personalized Training Modules</li>
+                <li>🔒 HIPAA-compliant Security & Encryption</li>
+              </ul>
+              
+              <p>Questions? Reply to this email or visit our support page.</p>
+              
+              <p><strong>Welcome to the future of healthcare documentation!</strong></p>
+              
+              <p>Best regards,<br>The CareMetric AI Team</p>
+            </div>
+          `
+        });
+        
+        console.log('✓ Email sent via Resend:', JSON.stringify(emailResult));
+        emailSent = true;
+      } catch (error) {
+        console.error('⚠️ Email send failed:', error);
+        console.error('Email error details:', error.message, error.stack);
+        emailError = error.message;
+      }
       
       console.log('=== User invitation completed ===');
       return Response.json({ 
