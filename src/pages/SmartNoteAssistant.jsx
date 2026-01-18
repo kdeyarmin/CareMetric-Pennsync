@@ -67,6 +67,7 @@ import DocumentationQualityScore from "@/components/smartNote/DocumentationQuali
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
 import OfflineNoteCapture from "@/components/mobile/OfflineNoteCapture";
+import { ResolveComplianceIssue, ResolveDocumentationGap, ResolveQualitySuggestion, ResolveAllIssues } from "@/components/smartNote/OneClickResolvers";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -797,6 +798,9 @@ export default function SmartNoteAssistant() {
                         toast.warning('Critical documentation gaps detected');
                       }
                     }}
+                    onGapResolved={(enhancedNote) => {
+                      setRoughNotes(enhancedNote);
+                    }}
                   />
                 )}
 
@@ -1143,6 +1147,24 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 )}
               </div>
 
+              {/* One-Click Resolve All Issues */}
+              <ResolveAllIssues
+                issues={complianceResults?.issues}
+                gaps={complianceResults?.quality_analysis?.missing_elements}
+                suggestions={complianceResults?.quality_analysis?.suggestions}
+                noteContent={isEditMode ? editedNote : enhancedNote}
+                visitType={visitType}
+                diagnosis={selectedDiagnosis}
+                onResolved={(correctedNote, summary) => {
+                  setEditedNote(correctedNote);
+                  setEnhancedNote(correctedNote);
+                  setIsEditMode(false);
+                  toast.success(summary);
+                  // Re-run compliance check
+                  recheckCompliance();
+                }}
+              />
+
               {/* Documentation Quality Score Component */}
               {complianceResults?.quality_analysis && (
                 <DocumentationQualityScore 
@@ -1272,6 +1294,15 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                                     <strong>Example:</strong> {issue.specific_fix}
                                   </p>
                           }
+                                <ResolveComplianceIssue
+                                  issue={issue}
+                                  noteContent={isEditMode ? editedNote : enhancedNote}
+                                  onResolved={(correctedNote, summary) => {
+                                    setEditedNote(correctedNote);
+                                    setEnhancedNote(correctedNote);
+                                    toast.success(`Fixed: ${summary}`);
+                                  }}
+                                />
                               </div>
                             </div>
                     )}
