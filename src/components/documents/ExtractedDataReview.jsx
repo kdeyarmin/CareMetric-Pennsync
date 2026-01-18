@@ -23,7 +23,8 @@ export default function ExtractedDataReview({ extractedData, patientId, onApply 
     medications: true,
     allergies: true,
     vitals: true,
-    procedures: true
+    procedures: true,
+    clinicalNotes: true
   });
   const [applying, setApplying] = useState(false);
 
@@ -79,6 +80,14 @@ export default function ExtractedDataReview({ extractedData, patientId, onApply 
           ...patient.baseline_vitals,
           ...extractedData.vitals
         };
+      }
+
+      // Clinical Notes
+      if (selected.clinicalNotes && extractedData.clinical_summary) {
+        const currentNotes = patient.clinical_notes || "";
+        const timestamp = new Date().toISOString().split('T')[0] + ' ' + new Date().toTimeString().split(' ')[0];
+        const noteEntry = `\n\n[${timestamp} - Document Analyzer]\n${extractedData.clinical_summary}`;
+        updates.clinical_notes = currentNotes + noteEntry;
       }
 
       await base44.entities.Patient.update(patientId, updates);
@@ -222,6 +231,26 @@ export default function ExtractedDataReview({ extractedData, patientId, onApply 
                 {Object.entries(extractedData.vitals).map(([key, value]) => (
                   <div key={key}>{key.replace(/_/g, ' ')}: {value}</div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Clinical Notes */}
+        {extractedData.clinical_summary && (
+          <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+            <Checkbox
+              checked={selected.clinicalNotes}
+              onCheckedChange={(checked) => setSelected({ ...selected, clinicalNotes: checked })}
+            />
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="w-4 h-4 text-indigo-600" />
+                <span className="font-medium">Clinical Notes</span>
+                <Badge variant="outline">Add to Notes</Badge>
+              </div>
+              <div className="text-sm text-slate-600 dark:text-slate-400 line-clamp-3">
+                {extractedData.clinical_summary}
               </div>
             </div>
           </div>
