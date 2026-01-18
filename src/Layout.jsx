@@ -174,7 +174,8 @@ export default function Layout({ children, currentPageName }) {
 
   const adminNavItems = currentUser?.role === 'admin' ? [
     { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
-    { name: "Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" }
+    { name: "Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" },
+    { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptions" }
   ] : [];
 
   // iOS-safe computed paddings - use max() to ensure minimum height even without safe area
