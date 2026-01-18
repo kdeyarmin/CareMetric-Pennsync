@@ -65,7 +65,8 @@ Deno.serve(async (req) => {
       let emailError = null;
       
       try {
-        const emailResult = await base44.asServiceRole.integrations.Core.SendEmail({
+        console.log('Attempting to send email to:', email);
+        const emailPayload = {
           to: email,
           subject: 'You\'re Invited to CareMetric AI! 🎉',
           from_name: 'CareMetric AI',
