@@ -29,6 +29,7 @@ import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
 import EmptyState from "../components/ui/EmptyState";
 import { motion } from "framer-motion";
 import PullToRefresh from "../components/mobile/PullToRefresh";
+import ClinicalStaffPerformanceInsights from "../components/analytics/ClinicalStaffPerformanceInsights";
 
 import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
 import { getAccessibleWidgets } from "../components/utils/providerAccessControl";
@@ -277,6 +278,17 @@ export default function Dashboard() {
         <SkillGapWidget userEmail={currentUser?.email} />
         <PatientRiskWidget />
       </div>
+
+      {/* AI Performance Insights */}
+      {currentUser?.credential_type && (
+        <div className="mb-6">
+          <ClinicalStaffPerformanceInsights 
+            providerType={currentUser.credential_type}
+            careSetting={currentUser.service_type || 'home_health'}
+            timeRange={30}
+          />
+        </div>
+      )}
 
       {/* My Tasks Widget */}
       {canAccessWidget('tasks') &&
