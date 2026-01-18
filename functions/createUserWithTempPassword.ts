@@ -58,61 +58,13 @@ Deno.serve(async (req) => {
       });
       console.log('✓ Invitation record created:', invitation.id, 'Expires:', expiresAt.toISOString());
       
-      console.log('Step 4: Sending invitation email...');
+      console.log('Step 4: Note - Cannot auto-send invitation email (platform limitation)');
       const signupUrl = 'https://www.caremetricai.com';
       
-      let emailSent = false;
-      let emailError = null;
-      
-      try {
-        console.log('Attempting to send email to:', email);
-        const emailPayload = {
-          to: email,
-          subject: 'You\'re Invited to CareMetric AI! 🎉',
-          from_name: 'CareMetric AI',
-          body: `Hello ${full_name},
-
-You've been invited to join CareMetric AI - the intelligent healthcare documentation platform that saves time and ensures compliance.
-
-📧 Your Email: ${email}
-🎭 Role: ${role || 'user'}
-🏥 Care Scope: ${care_scope || 'home_health'}
-
-Get started:
-➡️ Visit ${signupUrl}
-➡️ Sign up using this email address
-➡️ Complete onboarding to customize your experience
-➡️ Start with a 14-day free trial - no credit card required!
-
-⏰ This invitation expires in 7 days (${expiresAt.toLocaleDateString()}).
-
-What you'll get:
-✨ AI-powered Smart Notes Assistant
-🎤 Voice-to-text Visit Scribe
-📋 Automated Care Plan Management
-✅ OASIS & Medicare Compliance Tools
-📊 Real-time Analytics Dashboard
-🎓 Personalized Training Modules
-🔒 HIPAA-compliant Security & Encryption
-
-Questions? Reply to this email or visit our support page.
-
-Welcome to the future of healthcare documentation!
-
-Best regards,
-The CareMetric AI Team`
-        };
-        console.log('Email payload prepared:', JSON.stringify(emailPayload, null, 2));
-        
-        const emailResult = await base44.asServiceRole.integrations.Core.SendEmail(emailPayload);
-        console.log('✓ Email send result:', JSON.stringify(emailResult));
-        console.log('✓ Invitation email sent to:', email);
-        emailSent = true;
-      } catch (error) {
-        console.error('⚠️ Email send failed:', error);
-        console.error('Email error details:', error.message, error.stack);
-        emailError = error.message;
-      }
+      // Note: Core.SendEmail can only send to existing app users
+      // For new user invitations, admin must manually share the signup link
+      const emailSent = false;
+      const emailError = 'Automatic email sending not available for new users. Please manually share the signup link.';
       
       console.log('=== User invitation completed ===');
       return Response.json({ 
