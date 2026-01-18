@@ -148,6 +148,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Visit Scribe", icon: Mic, page: "MedicalScribe" },
   { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
   { name: "Documents", icon: FileText, page: "DocumentGenerator" },
+  { name: "Document Analyzer", icon: Brain, page: "DocumentAnalyzer" },
   { name: "Templates", icon: FileText, page: "TemplateLibrary" },
   { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
   { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
