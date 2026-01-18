@@ -148,6 +148,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
   { name: "Documents", icon: FileText, page: "DocumentGenerator" },
   { name: "Document Analyzer", icon: Brain, page: "DocumentAnalyzer" },
+  { name: "Analysis History", icon: FileText, page: "DocumentAnalysisHistory" },
   { name: "Templates", icon: FileText, page: "TemplateLibrary" },
   { name: "Features", icon: Sparkles, page: "Features" },
   { name: "OASIS", icon: ShieldAlert, page: "OASIS" },

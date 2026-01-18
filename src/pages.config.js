@@ -96,6 +96,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import AdminSubscriptions from './pages/AdminSubscriptions';
+import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
 import __Layout from './Layout.jsx';
 
 
@@ -198,6 +199,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
     "AdminSubscriptions": AdminSubscriptions,
+    "DocumentAnalysisHistory": DocumentAnalysisHistory,
 }
 
 export const pagesConfig = {
