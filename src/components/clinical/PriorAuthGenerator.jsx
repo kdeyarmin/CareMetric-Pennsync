@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Loader2, FileCheck, Copy, Download, FileText } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -24,10 +31,32 @@ export default function PriorAuthGenerator({
   // Form fields
   const [patientName, setPatientName] = useState("");
   const [insuranceCompany, setInsuranceCompany] = useState("");
+  const [customInsurance, setCustomInsurance] = useState("");
+  const [showCustomInsurance, setShowCustomInsurance] = useState(false);
   const [diagnoses, setDiagnoses] = useState("");
   const [clinicalFindings, setClinicalFindings] = useState("");
   const [medications, setMedications] = useState("");
   const [requestedTreatment, setRequestedTreatment] = useState("");
+
+  // Common US insurance companies
+  const commonInsurers = [
+    "United Healthcare",
+    "Blue Cross Blue Shield",
+    "Aetna",
+    "Cigna",
+    "Humana",
+    "Medicare",
+    "Medicaid",
+    "Kaiser Permanente",
+    "Anthem",
+    "Centene",
+    "Molina Healthcare",
+    "WellCare",
+    "Tricare",
+    "Bright Health",
+    "Oscar Health",
+    "Other/Add New"
+  ];
 
   // Get provider settings for letterhead info
   const { data: currentUser } = useQuery({
@@ -55,8 +84,10 @@ export default function PriorAuthGenerator({
   }, [diagnosis, noteContent, procedure, patientContext]);
 
   const generatePriorAuth = async () => {
+    const finalInsurance = showCustomInsurance ? customInsurance : insuranceCompany;
+    
     // Validate required fields
-    if (!patientName || !insuranceCompany || !diagnoses || !requestedTreatment) {
+    if (!patientName || !finalInsurance || !diagnoses || !requestedTreatment) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -84,7 +115,7 @@ ${providerInfo}
 
 PATIENT INFORMATION:
 Patient Name: ${patientName}
-Insurance Company: ${insuranceCompany}
+Insurance Company: ${finalInsurance}
 
 DIAGNOSES:
 ${diagnoses}
@@ -98,27 +129,29 @@ REQUESTED TREATMENT/MEDICATION/TEST:
 ${requestedTreatment}
 
 INSTRUCTIONS:
-1. Research the medical literature and clinical guidelines for this specific treatment/condition combination
-2. Build a compelling, evidence-based case for medical necessity
-3. Include relevant clinical studies, guidelines, and FDA approvals when applicable
-4. Address common insurance denials and pre-emptively counter them
-5. Cite specific medical criteria that support approval
-6. Include CPT and ICD-10 codes
-7. Explain why alternatives are inadequate or contraindicated
-8. Present expected outcomes with supporting evidence
-9. Format as a professional business letter ready for submission
+1. **CRITICAL: Research ${finalInsurance}'s specific prior authorization requirements, criteria, and policies for this treatment/condition**
+2. Research the medical literature and clinical guidelines for this specific treatment/condition combination
+3. Build a compelling, evidence-based case that specifically addresses ${finalInsurance}'s approval criteria
+4. Include relevant clinical studies, guidelines, and FDA approvals when applicable
+5. Address common ${finalInsurance} denials and pre-emptively counter them with their own criteria
+6. Cite specific medical criteria that ${finalInsurance} requires for approval
+7. Include CPT and ICD-10 codes
+8. Explain why alternatives are inadequate or contraindicated per ${finalInsurance}'s guidelines
+9. Present expected outcomes with supporting evidence that meets ${finalInsurance}'s standards
+10. Format as a professional business letter ready for submission to ${finalInsurance}
 
-Generate a complete prior authorization letter that maximizes the likelihood of approval.`;
+Generate a complete prior authorization letter tailored to ${finalInsurance}'s requirements that maximizes the likelihood of approval.`;
 
       const response = await base44.integrations.Core.InvokeLLM({
         prompt,
-        add_context_from_internet: true, // Enable web search for latest clinical guidelines
+        add_context_from_internet: true, // Enable web search for insurance-specific requirements
         response_json_schema: {
           type: "object",
           properties: {
             procedure_name: { type: "string" },
             cpt_codes: { type: "array", items: { type: "string" } },
             icd10_codes: { type: "array", items: { type: "string" } },
+            insurance_specific_requirements: { type: "string" },
             medical_necessity: { type: "string" },
             clinical_rationale: { type: "string" },
             evidence_based_support: { type: "string" },
@@ -136,7 +169,7 @@ Generate a complete prior authorization letter that maximizes the likelihood of 
       if (onAuthGenerated) {
         onAuthGenerated(response);
       }
-      toast.success('Prior authorization generated with evidence-based research');
+      toast.success(`Prior authorization generated with ${finalInsurance}-specific research`);
     } catch (error) {
       console.error('Error generating prior auth:', error);
       toast.error('Failed to generate prior authorization');
@@ -221,10 +254,23 @@ Generate a complete prior authorization letter that maximizes the likelihood of 
     setPriorAuth(null);
     setPatientName("");
     setInsuranceCompany("");
+    setCustomInsurance("");
+    setShowCustomInsurance(false);
     setDiagnoses("");
     setClinicalFindings("");
     setMedications("");
     setRequestedTreatment("");
+  };
+
+  const handleInsuranceChange = (value) => {
+    if (value === "Other/Add New") {
+      setShowCustomInsurance(true);
+      setInsuranceCompany("");
+    } else {
+      setShowCustomInsurance(false);
+      setInsuranceCompany(value);
+      setCustomInsurance("");
+    }
   };
 
   return (
@@ -252,12 +298,40 @@ Generate a complete prior authorization letter that maximizes the likelihood of 
 
               <div>
                 <Label className="text-xs">Insurance Company *</Label>
-                <Input
-                  placeholder="e.g., United Healthcare, Blue Cross Blue Shield"
-                  value={insuranceCompany}
-                  onChange={(e) => setInsuranceCompany(e.target.value)}
-                  className="text-sm"
-                />
+                {!showCustomInsurance ? (
+                  <Select value={insuranceCompany} onValueChange={handleInsuranceChange}>
+                    <SelectTrigger className="text-sm">
+                      <SelectValue placeholder="Select insurance company" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {commonInsurers.map((insurer) => (
+                        <SelectItem key={insurer} value={insurer}>
+                          {insurer}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Enter insurance company name"
+                      value={customInsurance}
+                      onChange={(e) => setCustomInsurance(e.target.value)}
+                      className="text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowCustomInsurance(false);
+                        setCustomInsurance("");
+                      }}
+                      className="text-xs"
+                    >
+                      Back to list
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -302,13 +376,13 @@ Generate a complete prior authorization letter that maximizes the likelihood of 
 
               <Button
                 onClick={generatePriorAuth}
-                disabled={loading || !patientName || !insuranceCompany || !diagnoses || !requestedTreatment}
+                disabled={loading || !patientName || (!insuranceCompany && !customInsurance) || !diagnoses || !requestedTreatment}
                 className="bg-indigo-600 hover:bg-indigo-700 w-full"
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Researching & Generating...
+                    Researching Insurance Requirements...
                   </>
                 ) : (
                   <>
@@ -318,7 +392,7 @@ Generate a complete prior authorization letter that maximizes the likelihood of 
                 )}
               </Button>
               <p className="text-xs text-slate-600 dark:text-slate-400 text-center">
-                AI will research clinical guidelines and build the strongest case for approval
+                AI will research {showCustomInsurance ? customInsurance : insuranceCompany || "insurance"}'s requirements and build the strongest case
               </p>
             </div>
           </>
@@ -353,6 +427,18 @@ Generate a complete prior authorization letter that maximizes the likelihood of 
                 Duration: {priorAuth.duration_requested}
               </Badge>
             </div>
+
+            {/* Insurance-Specific Requirements */}
+            {priorAuth.insurance_specific_requirements && (
+              <div className="bg-purple-50 dark:bg-purple-900 p-3 rounded-lg border border-purple-200">
+                <p className="text-xs font-medium text-purple-900 dark:text-purple-300 mb-1">
+                  Insurance-Specific Requirements Addressed:
+                </p>
+                <p className="text-xs text-purple-800 dark:text-purple-200">
+                  {priorAuth.insurance_specific_requirements}
+                </p>
+              </div>
+            )}
 
             {/* Evidence-Based Support */}
             {priorAuth.evidence_based_support && (
