@@ -128,6 +128,13 @@ export default function UserManagement() {
     },
   });
 
+  const deleteInvitationMutation = useMutation({
+    mutationFn: (invitationId) => base44.entities.UserInvitation.delete(invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
+    },
+  });
+
   const resetPasswordMutation = useMutation({
     mutationFn: (userEmail) => base44.functions.invoke('resetUserPassword', { userEmail }),
     onSuccess: (data) => {
