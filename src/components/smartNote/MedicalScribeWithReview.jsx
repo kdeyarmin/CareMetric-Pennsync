@@ -526,18 +526,35 @@ export default function MedicalScribeWithReview({
                )}
              </div>
              <div className="lg:col-span-4 space-y-4">
-                <VisitSummarizer
-                  noteContent={generatedNote}
-                  diagnosis={diagnosis}
-                  visitType={visitType}
-                  patientName={patientId ? "patient" : ""}
-                />
-                
-                <ComplianceIssueDetector
-                  noteContent={generatedNote}
-                  diagnosis={diagnosis}
-                  visitType={visitType}
-                />
+               {/* One-Click Resolve All for Final Note */}
+               <ResolveAllIssues
+                 issues={complianceIssues}
+                 gaps={documentationGaps}
+                 suggestions={[]}
+                 noteContent={generatedNote}
+                 visitType={visitType}
+                 diagnosis={diagnosis}
+                 onResolved={(correctedNote) => {
+                   setGeneratedNote(correctedNote);
+                 }}
+               />
+
+               <VisitSummarizer
+                 noteContent={generatedNote}
+                 diagnosis={diagnosis}
+                 visitType={visitType}
+                 patientName={patientId ? "patient" : ""}
+               />
+
+               <ComplianceIssueDetector
+                 noteContent={generatedNote}
+                 diagnosis={diagnosis}
+                 visitType={visitType}
+                 onIssuesDetected={(issues) => setComplianceIssues(issues)}
+                 onIssueResolved={(correctedNote) => {
+                   setGeneratedNote(correctedNote);
+                 }}
+               />
                 
                 <DictationAccuracyFeedback 
                   rawTranscription={rawTranscription}

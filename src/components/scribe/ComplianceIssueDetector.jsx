@@ -4,8 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ResolveComplianceIssue } from '../smartNote/OneClickResolvers';
 
-export default function ComplianceIssueDetector({ noteContent, diagnosis, visitType }) {
+export default function ComplianceIssueDetector({ 
+  noteContent, 
+  diagnosis, 
+  visitType,
+  onIssuesDetected,
+  onIssueResolved 
+}) {
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
@@ -65,8 +72,13 @@ Return as JSON with array of issues. Each issue should have:
         }
       });
 
-      setIssues(response.issues || []);
+      const detectedIssues = response.issues || [];
+      setIssues(detectedIssues);
       setAnalyzed(true);
+      
+      if (onIssuesDetected) {
+        onIssuesDetected(detectedIssues);
+      }
     } catch (error) {
       console.error('Compliance analysis error:', error);
       toast.error('Failed to analyze compliance');
@@ -106,9 +118,20 @@ Return as JSON with array of issues. Each issue should have:
             <p className="text-xs font-semibold text-red-700">🔴 Critical Issues</p>
             {criticalIssues.map((issue, idx) => (
               <Alert key={idx} className="border-red-300 bg-red-50 py-2">
-                <AlertDescription className="text-xs">
+                <AlertDescription className="text-xs space-y-2">
                   <p className="font-medium text-red-800">{issue.issue}</p>
                   <p className="text-red-700 mt-1">💡 {issue.suggestion}</p>
+                  <ResolveComplianceIssue
+                    issue={issue}
+                    noteContent={noteContent}
+                    onResolved={(correctedNote) => {
+                      if (onIssueResolved) {
+                        onIssueResolved(correctedNote);
+                      }
+                      // Remove from issues list
+                      setIssues(prev => prev.filter((_, i) => i !== idx));
+                    }}
+                  />
                 </AlertDescription>
               </Alert>
             ))}
@@ -120,9 +143,19 @@ Return as JSON with array of issues. Each issue should have:
             <p className="text-xs font-semibold text-yellow-700">⚠️ Warnings</p>
             {warnings.map((issue, idx) => (
               <Alert key={idx} className="border-yellow-300 bg-yellow-50 py-2">
-                <AlertDescription className="text-xs">
+                <AlertDescription className="text-xs space-y-2">
                   <p className="font-medium text-yellow-800">{issue.issue}</p>
                   <p className="text-yellow-700 mt-1">💡 {issue.suggestion}</p>
+                  <ResolveComplianceIssue
+                    issue={issue}
+                    noteContent={noteContent}
+                    onResolved={(correctedNote) => {
+                      if (onIssueResolved) {
+                        onIssueResolved(correctedNote);
+                      }
+                      setIssues(prev => prev.filter((_, i) => criticalIssues.length + i !== idx));
+                    }}
+                  />
                 </AlertDescription>
               </Alert>
             ))}
