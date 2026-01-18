@@ -21,21 +21,56 @@ export default function CarePlanDraftGenerator({
   const generateCarePlans = async () => {
     setLoading(true);
     try {
-      const prompt = `Based on the following patient assessment, generate draft care plan goals and interventions:
+      // Build comprehensive patient context
+      const contextDetails = [];
+      if (patientContext?.age) {
+        contextDetails.push(`Age: ${patientContext.age} years`);
+      }
+      if (patientContext?.diagnoses?.length > 0) {
+        contextDetails.push(`Diagnoses: ${patientContext.diagnoses.join(', ')}`);
+      }
+      if (patientContext?.medications?.length > 0) {
+        const medNames = patientContext.medications.map(m => m.name || m).join(', ');
+        contextDetails.push(`Current Medications: ${medNames}`);
+      }
+      if (patientContext?.allergies) {
+        contextDetails.push(`Allergies: ${patientContext.allergies}`);
+      }
+      if (vitalSigns && Object.values(vitalSigns).some(v => v)) {
+        const vitals = Object.entries(vitalSigns)
+          .filter(([k, v]) => v)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ');
+        contextDetails.push(`Vital Signs: ${vitals}`);
+      }
 
-Diagnosis: ${diagnosis}
-Clinical Notes: ${noteContent || 'Not provided'}
-${vitalSigns ? `Vital Signs: ${JSON.stringify(vitalSigns)}` : ''}
-${patientContext ? `Patient History: ${JSON.stringify(patientContext)}` : ''}
+      const prompt = `Based on the following comprehensive patient assessment, generate evidence-based care plan drafts:
 
-Generate 2-4 evidence-based care plans with:
-- Problem/Nursing Diagnosis
-- Measurable Goal (SMART format)
-- Specific Interventions (3-5 per plan)
-- Expected Timeframe
-- Evaluation Criteria
+PRIMARY DIAGNOSIS: ${diagnosis}
 
-Focus on the most critical patient needs based on the diagnosis and assessment.`;
+ENHANCED CLINICAL NOTES:
+${noteContent || 'Not provided'}
+
+PATIENT CONTEXT:
+${contextDetails.join('\n')}
+
+Generate 2-4 prioritized care plans focusing on:
+1. Most critical patient needs based on diagnosis and clinical findings
+2. Comorbidities and risk factors identified
+3. Patient safety concerns
+4. Medication management needs
+5. Functional improvement opportunities
+
+For each care plan provide:
+- Problem/Nursing Diagnosis (specific and measurable)
+- SMART Goal (Specific, Measurable, Achievable, Relevant, Time-bound)
+- Evidence-Based Interventions (3-5 specific actions)
+- Expected Timeframe for goal achievement
+- Evaluation Criteria (how to measure progress)
+- Priority Level (high/medium/low)
+- Clinical Rationale (why this is important for this patient)
+
+Consider the patient's age, comorbidities, current medications, and any safety risks when formulating plans.`;
 
       const response = await base44.integrations.Core.InvokeLLM({
         prompt,

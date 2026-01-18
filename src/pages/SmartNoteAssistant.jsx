@@ -924,10 +924,11 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               {/* Clinical Insights Panel */}
               <ClinicalInsightsPanel insights={clinicalInsights} isLoading={loadingInsights} />
 
-              {/* Care Plan Draft Generator - Provider-specific */}
-              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW' || 
-                               currentUser?.credential_type === 'NP' || currentUser?.credential_type === 'PT' || 
-                               currentUser?.credential_type === 'OT' || currentUser?.credential_type === 'ST') && (
+              {/* AI Care Plan Draft Generator - Excludes Physicians */}
+              {patientData && enhancedNote && 
+               currentUser?.credential_type !== 'MD' && 
+               currentUser?.credential_type !== 'DO' && 
+               currentUser?.credential_type !== 'PHYSICIAN' && (
                 <CarePlanDraftGenerator
                   diagnosis={selectedDiagnosis}
                   noteContent={enhancedNote}
@@ -936,9 +937,13 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   providerType={currentUser?.credential_type}
                   patientContext={{
                     age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                    diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])],
-                    medications: patientData.current_medications,
-                    allergies: patientData.allergies
+                    diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])].filter(Boolean),
+                    medications: patientData.current_medications || [],
+                    allergies: patientData.allergies,
+                    past_medical_history: patientData.past_medical_history || [],
+                    functional_status: patientData.functional_status,
+                    fall_risk: patientData.functional_status?.fall_risk,
+                    cognitive_status: patientData.functional_status?.cognitive_status
                   }}
                   onCarePlanCreated={(plan) => {
                     toast.success('Care plan added to patient record');
