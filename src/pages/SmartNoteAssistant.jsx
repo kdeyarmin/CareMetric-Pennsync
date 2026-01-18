@@ -44,6 +44,7 @@ import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataField
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
 import EnhancedICD10Suggester from "@/components/clinical/EnhancedICD10Suggester";
 import InteractiveQualitySuggestions from "@/components/smartNote/InteractiveQualitySuggestions";
+import { Sparkles } from "lucide-react";
 import VisitTypeGuidance from "@/components/smartNote/VisitTypeGuidance";
 import CodeSearchInserter from "@/components/smartNote/CodeSearchInserter";
 import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
@@ -1174,6 +1175,18 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   providerType={currentUser?.credential_type}
                   onFeedbackSubmitted={() => {
                     toast.success('Your feedback helps improve our AI suggestions!');
+                  }}
+                />
+              )}
+
+              {/* Interactive Quality Suggestions with One-Click Resolvers */}
+              {complianceResults?.quality_analysis && (
+                <InteractiveQualitySuggestions
+                  qualityAnalysis={complianceResults.quality_analysis}
+                  noteContent={isEditMode ? editedNote : enhancedNote}
+                  onApplySuggestion={(improvedNote) => {
+                    setEditedNote(improvedNote);
+                    setEnhancedNote(improvedNote);
                   }}
                 />
               )}

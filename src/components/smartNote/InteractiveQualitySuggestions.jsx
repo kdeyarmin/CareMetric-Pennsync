@@ -7,7 +7,8 @@ import { toast } from "sonner";
 
 export default function InteractiveQualitySuggestions({ 
   qualityAnalysis, 
-  onApplySuggestion 
+  onApplySuggestion,
+  noteContent
 }) {
   const [expandedSuggestion, setExpandedSuggestion] = useState(null);
 
@@ -83,40 +84,33 @@ export default function InteractiveQualitySuggestions({
                     </p>
                   </div>
 
-                  {suggestion.improved_text && (
-                    <div className="bg-green-50 dark:bg-green-900/30 border-l-4 border-green-400 p-2 rounded">
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Suggested improvement:</p>
-                      <p className="text-sm text-gray-800 dark:text-gray-200 mb-3">
-                        "{suggestion.improved_text}"
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-400 p-2 rounded mb-2">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Suggestion:</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {suggestion.suggestion}
+                    </p>
+                  </div>
+
+                  {suggestion.example && (
+                    <div className="bg-green-50 dark:bg-green-900/30 border-l-4 border-green-400 p-2 rounded mb-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Example:</p>
+                      <p className="text-sm text-gray-800 dark:text-gray-200">
+                        {suggestion.example}
                       </p>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onApplySuggestion(suggestion.improved_text, suggestion.excerpt);
-                            toast.success('Suggestion applied');
-                          }}
-                          className="bg-green-600 hover:bg-green-700 text-xs"
-                        >
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Apply to Note
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(suggestion.improved_text);
-                            toast.success('Copied to clipboard');
-                          }}
-                          className="text-xs"
-                        >
-                          <Copy className="w-3 h-3 mr-1" />
-                          Copy
-                        </Button>
-                      </div>
                     </div>
+                  )}
+
+                  {noteContent && (
+                    <ResolveQualitySuggestion
+                      suggestion={suggestion}
+                      noteContent={noteContent}
+                      onResolved={(improvedNote, summary) => {
+                        if (onApplySuggestion) {
+                          onApplySuggestion(improvedNote);
+                        }
+                        toast.success(summary);
+                      }}
+                    />
                   )}
                 </div>
               )}
