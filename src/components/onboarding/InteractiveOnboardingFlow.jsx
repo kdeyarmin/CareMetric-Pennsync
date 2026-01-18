@@ -168,6 +168,11 @@ export default function InteractiveOnboardingFlow({ user, onComplete }) {
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
+      
+      // Navigate to the step's page if specified
+      if (steps[currentStep + 1].page) {
+        navigate(createPageUrl(steps[currentStep + 1].page));
+      }
     } else {
       completeOnboardingMutation.mutate();
     }
@@ -176,6 +181,9 @@ export default function InteractiveOnboardingFlow({ user, onComplete }) {
   const handlePrevious = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      if (steps[currentStep - 1].page) {
+        navigate(createPageUrl(steps[currentStep - 1].page));
+      }
     }
   };
 
@@ -240,17 +248,9 @@ export default function InteractiveOnboardingFlow({ user, onComplete }) {
 
             {step.page && (
               <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-200">
-                <p className="text-sm text-purple-900 mb-3">
-                  📍 Learn more about <strong>{step.page}</strong>
+                <p className="text-sm text-purple-900">
+                  📍 This tutorial will guide you through the <strong>{step.page}</strong> page
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate(createPageUrl(step.page))}
-                  className="w-full"
-                >
-                  Visit {step.page} Page
-                </Button>
               </div>
             )}
           </div>
