@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import RoleBasedOnboarding from "@/components/onboarding/RoleBasedOnboarding";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,12 +65,7 @@ export default function Dashboard() {
 
   const canAccessWidget = (widgetName) => accessibleWidgets.includes(widgetName);
 
-  // Redirect to onboarding if not completed
-  React.useEffect(() => {
-    if (currentUser && !currentUser.onboarding_completed) {
-      navigate(createPageUrl("Onboarding"));
-    }
-  }, [currentUser, navigate]);
+  // Onboarding will show as overlay instead of redirect
 
   // Log page visit with user context
   React.useEffect(() => {
@@ -241,7 +237,12 @@ export default function Dashboard() {
   }
 
   return (
-    <PullToRefresh onRefresh={async () => {
+    <>
+      {currentUser && !currentUser.onboarding_completed && (
+        <RoleBasedOnboarding user={currentUser} />
+      )}
+      
+      <PullToRefresh onRefresh={async () => {
       await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
       queryClient.invalidateQueries({ queryKey: ['myPatients'] }),
@@ -404,6 +405,7 @@ export default function Dashboard() {
           }
 
           </div>
-          </PullToRefresh>);
-
-          }
+          </PullToRefresh>
+    </>
+  );
+}
