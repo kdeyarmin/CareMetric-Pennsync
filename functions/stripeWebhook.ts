@@ -9,13 +9,13 @@ Deno.serve(async (req) => {
     const signature = req.headers.get('stripe-signature');
     if (!signature) {
       console.error('[stripeWebhook] Missing stripe-signature header');
-      return Response.json({ error: 'Missing signature' }, { status: 400 });
+      return Response.json({ received: true }, { status: 200 });
     }
 
     const body = await req.text();
     if (!body) {
       console.error('[stripeWebhook] Empty request body');
-      return Response.json({ error: 'Empty body' }, { status: 400 });
+      return Response.json({ received: true }, { status: 200 });
     }
 
     const base44 = createClientFromRequest(req);
@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
       event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
     } catch (err) {
       console.error('[stripeWebhook] Signature verification failed:', err.message);
-      return Response.json({ error: 'Invalid signature' }, { status: 400 });
+      return Response.json({ received: true }, { status: 200 });
     }
 
     const session = event.data.object;
@@ -38,14 +38,14 @@ Deno.serve(async (req) => {
 
         if (!user_email) {
           console.error('[stripeWebhook] Missing user_email in metadata:', session.id);
-          return Response.json({ error: 'Missing user email' }, { status: 400 });
+          break;
         }
         const stripe_customer_id = session.customer;
         const stripe_subscription_id = session.subscription;
 
         if (!stripe_subscription_id) {
           console.error('[stripeWebhook] Missing subscription ID:', session.id);
-          return Response.json({ error: 'Missing subscription' }, { status: 400 });
+          break;
         }
 
         const subscription = await stripe.subscriptions.retrieve(stripe_subscription_id);
@@ -106,15 +106,12 @@ Deno.serve(async (req) => {
         console.log('[stripeWebhook] Unhandled event type:', event.type);
     }
 
-    return Response.json({ received: true });
+    return Response.json({ received: true }, { status: 200 });
   } catch (error) {
     console.error('[stripeWebhook] Error:', {
       message: error.message,
       stack: error.stack
     });
-    return Response.json({ 
-      error: 'Webhook processing failed',
-      details: error.message 
-    }, { status: 500 });
+    return Response.json({ received: true }, { status: 200 });
   }
 });
