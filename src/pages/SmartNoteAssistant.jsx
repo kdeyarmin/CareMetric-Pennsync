@@ -49,6 +49,8 @@ import ClinicalInsightsPanel from "@/components/smartNote/ClinicalInsightsPanel"
 import OASISFieldSuggester from "@/components/smartNote/OASISFieldSuggester";
 import CarePlanDraftGenerator from "@/components/smartNote/CarePlanDraftGenerator";
 import DocumentationGapDetector from "@/components/smartNote/DocumentationGapDetector";
+import OfflineSyncNotification from "@/components/mobile/OfflineSyncNotification";
+import { useOfflineNotes } from "@/components/mobile/OfflineNoteCache";
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
@@ -94,6 +96,7 @@ export default function SmartNoteAssistant() {
   const [suggestedEducation, setSuggestedEducation] = useState([]);
   const [providedEducation, setProvidedEducation] = useState([]);
   const location = useLocation();
+  const { isOnline, saveOfflineNote } = useOfflineNotes();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -375,21 +378,44 @@ export default function SmartNoteAssistant() {
     }
 
     setSavingToPatient(true);
+    
+    // Build education text for the note
+    let educationText = '';
+    if (providedEducation.length > 0) {
+      educationText = '\n\nPatient Education Provided:\n' + 
+        providedEducation.map(ed => `- ${ed.material.title} (via ${ed.method})`).join('\n');
+    }
+    
+    const noteData = {
+      patientId: patientData.id,
+      visitType,
+      diagnosis: selectedDiagnosis,
+      enhancedNote: (isEditMode ? editedNote : enhancedNote) + educationText,
+      roughNotes,
+      vitalSigns,
+      qualityScore: complianceResults?.quality_analysis?.overall_quality_score,
+      complianceScore: complianceResults?.compliance_score
+    };
+
+    // If offline, save to cache
+    if (!isOnline) {
+      const draftId = saveOfflineNote(noteData);
+      if (draftId) {
+        toast.success("Note saved offline - will sync when online");
+        setSavingToPatient(false);
+        return;
+      }
+    }
+
+    // If online, save directly
     try {
       const currentHistory = patientData.enhanced_notes_history || [];
-      
-      // Build education text for the note
-      let educationText = '';
-      if (providedEducation.length > 0) {
-        educationText = '\n\nPatient Education Provided:\n' + 
-          providedEducation.map(ed => `- ${ed.material.title} (via ${ed.method})`).join('\n');
-      }
       
       const newEntry = {
         date: new Date().toISOString(),
         visit_type: visitType,
         diagnosis: selectedDiagnosis,
-        enhanced_note: (isEditMode ? editedNote : enhancedNote) + educationText,
+        enhanced_note: noteData.enhancedNote,
         rough_note: roughNotes,
         quality_score: complianceResults?.quality_analysis?.overall_quality_score,
         compliance_score: complianceResults?.compliance_score,
@@ -404,7 +430,14 @@ export default function SmartNoteAssistant() {
       toast.success("Note saved to patient record" + (educationText ? " with education documented!" : "!"));
     } catch (error) {
       console.error('Error saving to patient:', error);
-      toast.error("Failed to save note to patient record");
+      
+      // If save fails, cache offline
+      const draftId = saveOfflineNote(noteData);
+      if (draftId) {
+        toast.warning("Saved offline - will sync when connection restored");
+      } else {
+        toast.error("Failed to save note");
+      }
     } finally {
       setSavingToPatient(false);
     }
@@ -498,8 +531,8 @@ export default function SmartNoteAssistant() {
   };
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 md:p-6 overflow-x-hidden">
-      <div className="max-w-4xl mx-auto space-y-4 w-full">
+    <div className="min-h-screen p-2 sm:p-4 md:p-6 pb-20 sm:pb-6 overflow-x-hidden">
+      <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="space-y-1 sm:space-y-2">
@@ -523,6 +556,9 @@ export default function SmartNoteAssistant() {
         {showPreferences && (
           <AIPreferencesPanel currentUser={currentUser} />
         )}
+
+        {/* Offline Sync Status */}
+        <OfflineSyncNotification currentUser={currentUser} />
 
         {/* Offline Note Capture */}
         {selectedPatient !== 'no_patient' && !navigator.onLine && (
@@ -777,7 +813,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 <Button
                 onClick={enhanceNote}
                 disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()}
-                className="w-full h-11 sm:h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-sm sm:text-base"
+                className="w-full h-12 sm:h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-sm sm:text-base touch-target"
                 size="lg">
 
                   {enhancing ?
