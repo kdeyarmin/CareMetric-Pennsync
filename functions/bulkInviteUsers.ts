@@ -20,6 +20,10 @@ Deno.serve(async (req) => {
 
     console.log(`Processing ${invitations.length} invitations...`);
     
+    // Get invitation settings for expiry duration
+    const settings = await base44.asServiceRole.entities.InvitationSettings.list();
+    const expiryDays = settings[0]?.expiry_days || 7;
+    
     const results = {
       created: [],
       updated: [],
@@ -49,7 +53,7 @@ Deno.serve(async (req) => {
         );
 
         const now = new Date();
-        const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
 
         let invitationId;
         let isUpdate = false;
@@ -113,7 +117,7 @@ Deno.serve(async (req) => {
                   <li>Start with a 14-day free trial!</li>
                 </ol>
                 
-                <p><strong>⏰ This invitation expires in 7 days</strong> (${expiresAt.toLocaleDateString()}).</p>
+                <p><strong>⏰ This invitation expires in ${expiryDays} days</strong> (${expiresAt.toLocaleDateString()}).</p>
                 
                 <p>Best regards,<br>The CareMetric AI Team</p>
               </div>

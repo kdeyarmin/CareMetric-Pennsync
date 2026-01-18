@@ -65,6 +65,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
+import InvitationSettings from "@/components/admin/InvitationSettings";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -561,6 +562,9 @@ export default function UserManagement() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Invitation Settings */}
+      <InvitationSettings />
 
       {/* Invitations Section */}
       {invitationsWithStatus.length > 0 && (

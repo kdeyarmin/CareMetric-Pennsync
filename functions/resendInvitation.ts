@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
               <a href="${signupUrl}" style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Sign Up Now</a>
             </div>
             
-            <p><strong>⏰ This invitation expires in 7 days</strong> (${newExpiresAt.toLocaleDateString()}).</p>
+            <p><strong>⏰ This invitation expires in ${expiryDays} days</strong> (${newExpiresAt.toLocaleDateString()}).</p>
             
             <h3>What you'll get:</h3>
             <ul>

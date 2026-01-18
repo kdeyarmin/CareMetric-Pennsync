@@ -39,6 +39,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Email and full name are required' }, { status: 400 });
     }
 
+    // Get invitation settings for expiry duration
+    const settings = await base44.asServiceRole.entities.InvitationSettings.list();
+    const expiryDays = settings[0]?.expiry_days || 7;
+
     // Check if an active invitation already exists for this email
     console.log('Step 3: Checking for existing invitations...');
     const existingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({ 
@@ -54,7 +58,7 @@ Deno.serve(async (req) => {
       
       // Update the existing invitation
       const now = new Date();
-      const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const newExpiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
       
       await base44.asServiceRole.entities.UserInvitation.update(pendingInvitation.id, {
         full_name,
@@ -100,7 +104,7 @@ Deno.serve(async (req) => {
                 <li>Start with a 14-day free trial - no credit card required!</li>
               </ol>
               
-              <p><strong>⏰ This invitation expires in 7 days</strong> (${newExpiresAt.toLocaleDateString()}).</p>
+              <p><strong>⏰ This invitation expires in ${expiryDays} days</strong> (${newExpiresAt.toLocaleDateString()}).</p>
               
               <h3>What you'll get:</h3>
               <ul>
@@ -142,7 +146,7 @@ Deno.serve(async (req) => {
     console.log('Step 4: Creating new invitation record...');
     try {
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+      const expiresAt = new Date(now.getTime() + expiryDays * 24 * 60 * 60 * 1000);
       
       const invitation = await base44.asServiceRole.entities.UserInvitation.create({
         email,
@@ -192,7 +196,7 @@ Deno.serve(async (req) => {
                 <li>Start with a 14-day free trial - no credit card required!</li>
               </ol>
               
-              <p><strong>⏰ This invitation expires in 7 days</strong> (${expiresAt.toLocaleDateString()}).</p>
+              <p><strong>⏰ This invitation expires in ${expiryDays} days</strong> (${expiresAt.toLocaleDateString()}).</p>
               
               <h3>What you'll get:</h3>
               <ul>
