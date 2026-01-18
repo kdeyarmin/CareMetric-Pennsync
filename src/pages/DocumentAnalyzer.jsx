@@ -25,6 +25,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
+import ExtractedDataReview from "../components/documents/ExtractedDataReview";
+import CarePlanSuggestions from "../components/documents/CarePlanSuggestions";
+import ComplianceAuditResults from "../components/documents/ComplianceAuditResults";
 
 export default function DocumentAnalyzer() {
   const [files, setFiles] = useState([]);
@@ -136,8 +139,21 @@ export default function DocumentAnalyzer() {
       setAnalyzing(true);
       setUploadProgress(50);
 
+      // Get patient data if selected for context
+      let patientContext = null;
+      if (selectedPatient) {
+        const patient = patients.find(p => p.id === selectedPatient);
+        patientContext = {
+          name: `${patient.first_name} ${patient.last_name}`,
+          diagnoses: [patient.primary_diagnosis, ...(patient.secondary_diagnoses || [])].filter(Boolean),
+          medications: patient.current_medications || [],
+          allergies: patient.allergies,
+          baseline_vitals: patient.baseline_vitals
+        };
+      }
+
       // Analyze with AI
-      const prompt = buildAnalysisPrompt(providerType, careSetting, files.map(f => f.name), analysisMode, documentType, selectedPatient);
+      const prompt = buildAnalysisPrompt(providerType, careSetting, files.map(f => f.name), analysisMode, documentType, selectedPatient, patientContext);
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
         file_urls: uploadedUrls,
@@ -466,17 +482,47 @@ export default function DocumentAnalyzer() {
                 <FileDown className="w-4 h-4 mr-2" />
                 Download PDF
               </Button>
-              <Button onClick={() => copyToClipboard(JSON.stringify(analysis, null, 2))} variant="outline">
+              <Button onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(analysis, null, 2));
+                toast.success('Copied to clipboard');
+              }} variant="outline">
                 <Copy className="w-4 h-4 mr-2" />
                 Copy All
               </Button>
               {selectedPatient && (
                 <Button onClick={saveToPatient} variant="default" className="bg-green-600 hover:bg-green-700">
                   <Save className="w-4 h-4 mr-2" />
-                  Save to Patient Record
+                  Save Summary to Patient
                 </Button>
               )}
             </div>
+
+            {/* Extracted Data Review */}
+            {analysis.extracted_data && (
+              <ExtractedDataReview 
+                extractedData={analysis.extracted_data}
+                patientId={selectedPatient}
+                onApply={() => {
+                  queryClient.invalidateQueries(['patients']);
+                }}
+              />
+            )}
+
+            {/* Care Plan Suggestions */}
+            {analysis.care_plan_suggestions && (
+              <CarePlanSuggestions
+                suggestions={analysis.care_plan_suggestions}
+                patientId={selectedPatient}
+                onApply={() => {
+                  queryClient.invalidateQueries(['carePlans']);
+                }}
+              />
+            )}
+
+            {/* Compliance Audit */}
+            {analysis.compliance_audit && (
+              <ComplianceAuditResults auditResults={analysis.compliance_audit} />
+            )}
 
             <Card className="border-2 border-green-200 dark:border-green-800">
               <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950">
@@ -562,7 +608,7 @@ export default function DocumentAnalyzer() {
   );
 }
 
-function buildAnalysisPrompt(providerType, careSetting, fileNames, analysisMode, documentType, selectedPatient) {
+function buildAnalysisPrompt(providerType, careSetting, fileNames, analysisMode, documentType, selectedPatient, patientContext) {
   const depthInstructions = {
     quick: 'Provide a concise summary focusing on critical information only.',
     comprehensive: 'Provide a thorough analysis with all relevant clinical details.',
@@ -571,7 +617,9 @@ function buildAnalysisPrompt(providerType, careSetting, fileNames, analysisMode,
   
   const typeInstructions = documentType !== 'auto' ? `\n\nDocument Type: ${documentType.replace(/_/g, ' ')}. Focus your analysis accordingly.` : '';
   
-  const basePrompt = `You are analyzing clinical documents for a ${providerType} working in ${careSetting.replace(/_/g, ' ')}.\n\nDocuments uploaded: ${fileNames.join(', ')}\n\n${depthInstructions[analysisMode]}${typeInstructions}\n\n`;
+  const patientContextStr = patientContext ? `\n\nPATIENT CONTEXT:\n${JSON.stringify(patientContext, null, 2)}\n\nCompare document findings with existing patient data to identify NEW diagnoses, medications, and changes.` : '';
+  
+  const basePrompt = `You are analyzing clinical documents for a ${providerType} working in ${careSetting.replace(/_/g, ' ')}.\n\nDocuments uploaded: ${fileNames.join(', ')}\n\n${depthInstructions[analysisMode]}${typeInstructions}${patientContextStr}\n\nIMPORTANT:\n1. Extract structured patient data (demographics, diagnoses, medications, allergies, vitals)\n2. Suggest care plan updates based on findings\n3. Perform compliance audit - check for missing documentation, regulatory issues\n4. Identify action items and next steps\n\n`;
   
   const prompts = {
     home_health: {
