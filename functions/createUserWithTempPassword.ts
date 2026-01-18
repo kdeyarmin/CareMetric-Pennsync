@@ -101,7 +101,10 @@ Welcome to the future of healthcare documentation!
 
 Best regards,
 The CareMetric AI Team`
-        });
+        };
+        console.log('Email payload prepared:', JSON.stringify(emailPayload, null, 2));
+        
+        const emailResult = await base44.asServiceRole.integrations.Core.SendEmail(emailPayload);
         console.log('✓ Email send result:', JSON.stringify(emailResult));
         console.log('✓ Invitation email sent to:', email);
         emailSent = true;
