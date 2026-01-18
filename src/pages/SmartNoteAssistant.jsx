@@ -46,6 +46,9 @@ import PatientEducationPanel from "@/components/education/PatientEducationPanel"
 import VoiceNoteRecorder from "@/components/smartNote/VoiceNoteRecorder";
 import VoiceDictationInput from "@/components/smartNote/VoiceDictationInput";
 import ClinicalInsightsPanel from "@/components/smartNote/ClinicalInsightsPanel";
+import OASISFieldSuggester from "@/components/smartNote/OASISFieldSuggester";
+import CarePlanDraftGenerator from "@/components/smartNote/CarePlanDraftGenerator";
+import DocumentationGapDetector from "@/components/smartNote/DocumentationGapDetector";
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
@@ -642,6 +645,39 @@ export default function SmartNoteAssistant() {
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
 
+                {/* OASIS Field Suggestions */}
+                {visitType && selectedDiagnosis && (currentUser?.service_type === 'home_health' || currentUser?.service_type === 'hospice') && (
+                  <OASISFieldSuggester
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    noteContent={roughNotes}
+                    patientContext={patientData ? {
+                      age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                      diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])],
+                      medications: patientData.current_medications
+                    } : null}
+                    onFieldsGenerated={(fields) => {
+                      console.log('OASIS fields suggested:', fields);
+                    }}
+                  />
+                )}
+
+                {/* Documentation Gap Detection */}
+                {visitType && selectedDiagnosis && roughNotes && (
+                  <DocumentationGapDetector
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    noteContent={roughNotes}
+                    vitalSigns={vitalSigns}
+                    patientContext={patientData}
+                    onGapIdentified={(gaps) => {
+                      if (gaps.some(g => g.severity === 'critical')) {
+                        toast.warning('Critical documentation gaps detected');
+                      }
+                    }}
+                  />
+                )}
+
                 {/* Code Search & Inserter - Only for Physicians & NPs */}
                 {(currentUser?.credential_type === 'MD' || currentUser?.credential_type === 'NP') && (
                   <CodeSearchInserter
@@ -765,6 +801,25 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
             <div className="space-y-4">
               {/* Clinical Insights Panel */}
               <ClinicalInsightsPanel insights={clinicalInsights} isLoading={loadingInsights} />
+
+              {/* Care Plan Draft Generator */}
+              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') && (
+                <CarePlanDraftGenerator
+                  diagnosis={selectedDiagnosis}
+                  noteContent={enhancedNote}
+                  vitalSigns={vitalSigns}
+                  patientId={patientData.id}
+                  patientContext={{
+                    age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                    diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])],
+                    medications: patientData.current_medications,
+                    allergies: patientData.allergies
+                  }}
+                  onCarePlanCreated={(plan) => {
+                    toast.success('Care plan added to patient record');
+                  }}
+                />
+              )}
 
               {/* Enhanced Note Display */}
               <Card className="border-green-300 bg-green-50 dark:bg-green-950">
