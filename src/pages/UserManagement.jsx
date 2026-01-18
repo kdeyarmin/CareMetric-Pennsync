@@ -159,11 +159,8 @@ export default function UserManagement() {
       const result = response?.data;
       console.log('Invitation response:', result);
       
-      if (result?.email_sent) {
-        alert(`✅ Invitation sent successfully to ${inviteData.email}!\n\nThe user will receive an email with instructions to create their account.\n\nInvitation expires in 7 days.`);
-      } else {
-        alert(`⚠️ Invitation created but email failed to send to ${inviteData.email}.\n\nError: ${result?.email_error || 'Unknown error'}\n\nPlease manually contact the user with the signup link: https://www.caremetricai.com`);
-      }
+      // Show invitation details with signup link to share manually
+      alert(`✅ User invitation created for ${inviteData.full_name}!\n\n📧 Email: ${inviteData.email}\n🎭 Role: ${inviteData.role}\n\n⚠️ Important: Please manually share this signup link with the user:\n\n🔗 https://www.caremetricai.com\n\nThey should sign up using the email: ${inviteData.email}\n\n⏰ Invitation expires in 7 days.`);
       
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
