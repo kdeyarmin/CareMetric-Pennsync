@@ -83,6 +83,7 @@ import PatientSummaryGenerator from "../components/patient/PatientSummaryGenerat
 import PatientEventsTimeline from "../components/patient/PatientEventsTimeline";
 import VitalSignsTrendsChart from "../components/patient/VitalSignsTrendsChart";
 import PatientRiskAnalysisPanel from "../components/risk/PatientRiskAnalysisPanel";
+import ProactiveAlertDetector from "../components/alerts/ProactiveAlertDetector";
 import RiskAlertConfiguration from "../components/risk/RiskAlertConfiguration";
 import ProactiveRiskInterventions from "../components/patient/ProactiveRiskInterventions";
 import HealthMetricsDashboard from "../components/patient/HealthMetricsDashboard";
