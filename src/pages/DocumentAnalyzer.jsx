@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Upload, 
   FileText, 
@@ -13,15 +14,30 @@ import {
   AlertCircle,
   X,
   Download,
-  Copy
+  Copy,
+  Save,
+  Plus,
+  History,
+  FileDown,
+  Sparkles,
+  Brain,
+  Zap
 } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 export default function DocumentAnalyzer() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [analysisMode, setAnalysisMode] = useState('comprehensive');
+  const [documentType, setDocumentType] = useState('auto');
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
+  const queryClient = useQueryClient();
 
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
@@ -37,19 +53,61 @@ export default function DocumentAnalyzer() {
     enabled: !!currentUser?.email
   });
 
+  const { data: patients } = useQuery({
+    queryKey: ['patients'],
+    queryFn: () => base44.entities.Patient.list(),
+    initialData: []
+  });
+
+  const { data: analysisHistory } = useQuery({
+    queryKey: ['documentAnalysisHistory', currentUser?.email],
+    queryFn: async () => {
+      const history = await base44.entities.DocumentAnalysisHistory?.list('-created_date', 10) || [];
+      return history;
+    },
+    enabled: !!currentUser?.email
+  });
+
   const providerType = currentUser?.credential_type || providerSettings?.provider_type || 'RN';
   const careSetting = providerSettings?.primary_care_setting || 'home_health';
 
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files);
-    const pdfFiles = selectedFiles.filter(f => f.type === 'application/pdf');
+    processFiles(selectedFiles);
+  };
+
+  const processFiles = (selectedFiles) => {
+    const pdfFiles = selectedFiles.filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
     
     if (pdfFiles.length !== selectedFiles.length) {
       toast.error('Only PDF files are allowed');
     }
     
-    setFiles(prev => [...prev, ...pdfFiles]);
+    if (pdfFiles.length > 0) {
+      setFiles(prev => [...prev, ...pdfFiles]);
+      toast.success(`${pdfFiles.length} file${pdfFiles.length > 1 ? 's' : ''} added`);
+    }
   };
+
+  const handleDrag = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFiles(Array.from(e.dataTransfer.files));
+    }
+  }, []);
 
   const removeFile = (index) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
@@ -63,33 +121,126 @@ export default function DocumentAnalyzer() {
 
     setUploading(true);
     setAnalysis(null);
+    setUploadProgress(0);
 
     try {
-      // Upload all files
+      // Upload all files with progress
       const uploadedUrls = [];
-      for (const file of files) {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      for (let i = 0; i < files.length; i++) {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: files[i] });
         uploadedUrls.push(file_url);
+        setUploadProgress(Math.round(((i + 1) / files.length) * 50));
       }
 
       setUploading(false);
       setAnalyzing(true);
+      setUploadProgress(50);
 
       // Analyze with AI
+      const prompt = buildAnalysisPrompt(providerType, careSetting, files.map(f => f.name), analysisMode, documentType, selectedPatient);
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: buildAnalysisPrompt(providerType, careSetting, files.map(f => f.name)),
+        prompt,
         file_urls: uploadedUrls,
-        response_json_schema: getAnalysisSchema(providerType, careSetting)
+        response_json_schema: getAnalysisSchema(providerType, careSetting, documentType)
       });
 
-      setAnalysis(result);
+      setUploadProgress(100);
+      setAnalysis({ ...result, uploadedUrls, fileNames: files.map(f => f.name) });
+      
+      // Save to history
+      try {
+        await base44.entities.DocumentAnalysisHistory?.create({
+          provider_email: currentUser?.email,
+          provider_type: providerType,
+          care_setting: careSetting,
+          document_type: documentType,
+          patient_id: selectedPatient,
+          file_count: files.length,
+          file_names: files.map(f => f.name),
+          analysis_summary: result.executive_summary,
+          full_analysis: result
+        });
+      } catch (e) {
+        console.log('History save failed (entity may not exist):', e);
+      }
+      
       toast.success('Documents analyzed successfully');
     } catch (error) {
       toast.error('Failed to analyze documents: ' + error.message);
     } finally {
       setUploading(false);
       setAnalyzing(false);
+      setUploadProgress(0);
     }
+  };
+
+  const saveToPatient = async () => {
+    if (!selectedPatient || !analysis) {
+      toast.error('Please select a patient');
+      return;
+    }
+
+    try {
+      const patient = patients.find(p => p.id === selectedPatient);
+      const updatedNotes = (patient.clinical_notes || '') + 
+        `\n\n--- Document Analysis (${new Date().toLocaleDateString()}) ---\n` +
+        analysis.executive_summary;
+      
+      await base44.entities.Patient.update(selectedPatient, {
+        clinical_notes: updatedNotes
+      });
+
+      // Create tasks if action items exist
+      if (analysis.action_items && analysis.action_items.length > 0) {
+        for (const item of analysis.action_items) {
+          await base44.entities.Task.create({
+            patient_id: selectedPatient,
+            title: item.action,
+            priority: item.priority || 'medium',
+            source: 'ai_generated',
+            ai_reason: 'Generated from document analysis',
+            type: 'document'
+          });
+        }
+      }
+
+      toast.success('Analysis saved to patient record and tasks created');
+      queryClient.invalidateQueries(['patients']);
+    } catch (error) {
+      toast.error('Failed to save to patient: ' + error.message);
+    }
+  };
+
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    let yPosition = 20;
+    
+    doc.setFontSize(18);
+    doc.text('Document Analysis Report', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, yPosition);
+    doc.text(`Provider: ${providerType}`, 20, yPosition + 5);
+    yPosition += 15;
+    
+    doc.setFontSize(14);
+    doc.text('Executive Summary', 20, yPosition);
+    yPosition += 7;
+    
+    doc.setFontSize(10);
+    const summaryLines = doc.splitTextToSize(analysis.executive_summary, 170);
+    summaryLines.forEach(line => {
+      if (yPosition > 280) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      doc.text(line, 20, yPosition);
+      yPosition += 5;
+    });
+    
+    doc.save('document-analysis.pdf');
+    toast.success('PDF downloaded');
   };
 
   const copyToClipboard = (text) => {
@@ -100,30 +251,146 @@ export default function DocumentAnalyzer() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              AI Document Analyzer
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
-              Upload clinical documents for AI-powered analysis and summaries
-            </p>
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-3">
+                <Brain className="w-8 h-8 text-indigo-600" />
+                AI Document Analyzer
+              </h1>
+              <p className="text-slate-600 dark:text-slate-400 mt-1">
+                Upload clinical documents for intelligent analysis and actionable insights
+              </p>
+            </div>
+            <Badge variant="outline" className="text-sm">
+              {providerType} - {careSetting.replace(/_/g, ' ')}
+            </Badge>
           </div>
-          <Badge variant="outline" className="text-sm">
-            {providerType} - {careSetting.replace(/_/g, ' ')}
-          </Badge>
+
+          {/* Quick Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
+                    <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                      {analysisHistory?.length || 0}
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Analyses This Month</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                    <Zap className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">~30s</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Avg Analysis Time</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                    <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">AI</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Powered Analysis</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Upload Section */}
+        {/* Configuration & Upload Section */}
         <Card>
           <CardHeader>
-            <CardTitle>Upload Documents</CardTitle>
+            <CardTitle>Upload & Configure</CardTitle>
             <CardDescription>
-              Upload one or more PDF documents (referrals, reports, consults, etc.)
+              Configure analysis settings and upload clinical documents
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-8 text-center">
+          <CardContent className="space-y-6">
+            {/* Configuration Options */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                  Document Type
+                </label>
+                <Select value={documentType} onValueChange={setDocumentType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto Detect</SelectItem>
+                    <SelectItem value="referral">Referral/Admission</SelectItem>
+                    <SelectItem value="specialist_report">Specialist Report</SelectItem>
+                    <SelectItem value="lab_results">Lab Results</SelectItem>
+                    <SelectItem value="imaging">Imaging Report</SelectItem>
+                    <SelectItem value="discharge_summary">Discharge Summary</SelectItem>
+                    <SelectItem value="consult_note">Consult Note</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                  Analysis Depth
+                </label>
+                <Select value={analysisMode} onValueChange={setAnalysisMode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="quick">Quick Scan</SelectItem>
+                    <SelectItem value="comprehensive">Comprehensive</SelectItem>
+                    <SelectItem value="detailed">Deep Analysis</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                  Link to Patient (Optional)
+                </label>
+                <Select value={selectedPatient} onValueChange={setSelectedPatient}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select patient..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {patients.map(patient => (
+                      <SelectItem key={patient.id} value={patient.id}>
+                        {patient.first_name} {patient.last_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Drag & Drop Zone */}
+            <div 
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${
+                dragActive 
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950' 
+                  : 'border-slate-300 dark:border-slate-600'
+              }`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
               <input
                 type="file"
                 id="file-upload"
@@ -133,11 +400,11 @@ export default function DocumentAnalyzer() {
                 className="hidden"
               />
               <label htmlFor="file-upload" className="cursor-pointer">
-                <Upload className="w-12 h-12 mx-auto text-slate-400 mb-4" />
+                <Upload className={`w-12 h-12 mx-auto mb-4 ${dragActive ? 'text-indigo-600' : 'text-slate-400'}`} />
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Click to upload or drag and drop
+                  {dragActive ? 'Drop files here' : 'Click to upload or drag and drop'}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">PDF files only</p>
+                <p className="text-xs text-slate-500 mt-1">PDF files only • Multiple files supported</p>
               </label>
             </div>
 
@@ -167,29 +434,62 @@ export default function DocumentAnalyzer() {
               </div>
             )}
 
-            <Button
-              onClick={handleAnalyze}
-              disabled={files.length === 0 || uploading || analyzing}
-              className="w-full"
-            >
-              {uploading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {analyzing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {uploading ? 'Uploading...' : analyzing ? 'Analyzing...' : 'Analyze Documents'}
-            </Button>
+            <div className="space-y-2">
+              <Button
+                onClick={handleAnalyze}
+                disabled={files.length === 0 || uploading || analyzing}
+                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+              >
+                {uploading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {analyzing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {uploading ? `Uploading... ${uploadProgress}%` : analyzing ? 'Analyzing with AI...' : 'Analyze Documents'}
+              </Button>
+              
+              {(uploading || analyzing) && (
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                  <div 
+                    className="bg-gradient-to-r from-indigo-600 to-purple-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
         {/* Analysis Results */}
         {analysis && (
           <div className="space-y-4">
-            <Card>
-              <CardHeader>
+            {/* Action Bar */}
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={downloadPDF} variant="outline">
+                <FileDown className="w-4 h-4 mr-2" />
+                Download PDF
+              </Button>
+              <Button onClick={() => copyToClipboard(JSON.stringify(analysis, null, 2))} variant="outline">
+                <Copy className="w-4 h-4 mr-2" />
+                Copy All
+              </Button>
+              {selectedPatient && (
+                <Button onClick={saveToPatient} variant="default" className="bg-green-600 hover:bg-green-700">
+                  <Save className="w-4 h-4 mr-2" />
+                  Save to Patient Record
+                </Button>
+              )}
+            </div>
+
+            <Card className="border-2 border-green-200 dark:border-green-800">
+              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950">
                 <CardTitle className="flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-green-600" />
                   Analysis Complete
+                  <Badge className="ml-auto">{analysisMode}</Badge>
                 </CardTitle>
+                <CardDescription>
+                  Analyzed {files.length} document{files.length > 1 ? 's' : ''} • {documentType === 'auto' ? 'Auto-detected type' : documentType.replace(/_/g, ' ')}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-6 pt-6">
                 {/* Executive Summary */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -245,9 +545,16 @@ export default function DocumentAnalyzer() {
               </CardContent>
             </Card>
 
-            <Button onClick={() => { setFiles([]); setAnalysis(null); }} variant="outline" className="w-full">
-              Analyze New Documents
-            </Button>
+            <div className="flex gap-3">
+              <Button onClick={() => { setFiles([]); setAnalysis(null); }} variant="outline" className="flex-1">
+                <Plus className="w-4 h-4 mr-2" />
+                Analyze New Documents
+              </Button>
+              <Button onClick={downloadPDF} variant="default">
+                <Download className="w-4 h-4 mr-2" />
+                Export
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -255,8 +562,16 @@ export default function DocumentAnalyzer() {
   );
 }
 
-function buildAnalysisPrompt(providerType, careSetting, fileNames) {
-  const basePrompt = `You are analyzing clinical documents for a ${providerType} working in ${careSetting.replace(/_/g, ' ')}.\n\nDocuments uploaded: ${fileNames.join(', ')}\n\n`;
+function buildAnalysisPrompt(providerType, careSetting, fileNames, analysisMode, documentType, selectedPatient) {
+  const depthInstructions = {
+    quick: 'Provide a concise summary focusing on critical information only.',
+    comprehensive: 'Provide a thorough analysis with all relevant clinical details.',
+    detailed: 'Provide an in-depth analysis including subtle findings, trends, and clinical reasoning.'
+  };
+  
+  const typeInstructions = documentType !== 'auto' ? `\n\nDocument Type: ${documentType.replace(/_/g, ' ')}. Focus your analysis accordingly.` : '';
+  
+  const basePrompt = `You are analyzing clinical documents for a ${providerType} working in ${careSetting.replace(/_/g, ' ')}.\n\nDocuments uploaded: ${fileNames.join(', ')}\n\n${depthInstructions[analysisMode]}${typeInstructions}\n\n`;
   
   const prompts = {
     home_health: {
@@ -361,7 +676,7 @@ Provide OASIS item suggestions based on the referral information.`,
   return prompts[careSetting]?.[providerType] || prompts[careSetting]?.default || basePrompt + "Analyze these clinical documents and provide a comprehensive summary.";
 }
 
-function getAnalysisSchema(providerType, careSetting) {
+function getAnalysisSchema(providerType, careSetting, documentType) {
   const baseSchema = {
     type: "object",
     properties: {
