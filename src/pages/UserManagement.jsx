@@ -472,16 +472,32 @@ export default function UserManagement() {
                         )}
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => resendInvitationMutation.mutate(invitation.id)}
-                      disabled={resendInvitationMutation.isPending}
-                      className="flex items-center gap-2"
-                    >
-                      <Send className="w-4 h-4" />
-                      Resend
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => resendInvitationMutation.mutate(invitation.id)}
+                        disabled={resendInvitationMutation.isPending}
+                        className="flex items-center gap-2"
+                      >
+                        <Send className="w-4 h-4" />
+                        Resend
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (confirm(`Delete invitation for ${invitation.full_name}?`)) {
+                            deleteInvitationMutation.mutate(invitation.id);
+                          }
+                        }}
+                        disabled={deleteInvitationMutation.isPending}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        title="Delete invitation"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
