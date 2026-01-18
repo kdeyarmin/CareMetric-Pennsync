@@ -76,6 +76,7 @@ export default function UserManagement() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [resetPasswordResult, setResetPasswordResult] = useState(null);
   const [editedRole, setEditedRole] = useState("");
+  const [resendingInvitationId, setResendingInvitationId] = useState(null);
   const [inviteData, setInviteData] = useState({
     email: "",
     full_name: "",
@@ -125,7 +126,10 @@ export default function UserManagement() {
   });
 
   const resendInvitationMutation = useMutation({
-    mutationFn: (invitationId) => base44.functions.invoke('resendInvitation', { invitation_id: invitationId }),
+    mutationFn: (invitationId) => {
+      setResendingInvitationId(invitationId);
+      return base44.functions.invoke('resendInvitation', { invitation_id: invitationId });
+    },
     onSuccess: (response) => {
       const result = response?.data;
       if (result?.email_sent) {
@@ -134,9 +138,11 @@ export default function UserManagement() {
         alert(`⚠️ Invitation updated but email failed to send.\n\nError: ${result?.email_error || 'Unknown error'}`);
       }
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
+      setResendingInvitationId(null);
     },
     onError: (error) => {
       alert('Failed to resend invitation: ' + error.message);
+      setResendingInvitationId(null);
     }
   });
 
@@ -574,11 +580,11 @@ export default function UserManagement() {
                             size="sm"
                             variant="outline"
                             onClick={() => resendInvitationMutation.mutate(invitation.id)}
-                            disabled={resendInvitationMutation.isPending}
+                            disabled={resendingInvitationId === invitation.id}
                             className="flex items-center gap-1 sm:gap-2 touch-target"
                             title="Resend invitation email"
                           >
-                            {resendInvitationMutation.isPending ? (
+                            {resendingInvitationId === invitation.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <Send className="w-4 h-4" />
