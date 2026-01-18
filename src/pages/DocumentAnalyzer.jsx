@@ -28,6 +28,7 @@ import jsPDF from "jspdf";
 import ExtractedDataReview from "../components/documents/ExtractedDataReview";
 import CarePlanSuggestions from "../components/documents/CarePlanSuggestions";
 import ComplianceAuditResults from "../components/documents/ComplianceAuditResults";
+import AIPatientSummaryGenerator from "../components/documents/AIPatientSummaryGenerator";
 
 export default function DocumentAnalyzer() {
   const [files, setFiles] = useState([]);
@@ -522,6 +523,14 @@ export default function DocumentAnalyzer() {
             {/* Compliance Audit */}
             {analysis.compliance_audit && (
               <ComplianceAuditResults auditResults={analysis.compliance_audit} />
+            )}
+
+            {/* AI Patient Summary Generator */}
+            {selectedPatient && (
+              <AIPatientSummaryGenerator 
+                patientId={selectedPatient}
+                documentAnalysis={analysis}
+              />
             )}
 
             <Card className="border-2 border-green-200 dark:border-green-800">
