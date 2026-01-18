@@ -567,7 +567,7 @@ export default function UserManagement() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
+                    <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
                       {invitation.computedStatus === 'pending' && (
                         <>
                           <Button
