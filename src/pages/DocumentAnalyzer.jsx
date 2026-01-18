@@ -728,7 +728,10 @@ function getAnalysisSchema(providerType, careSetting, documentType) {
   const baseSchema = {
     type: "object",
     properties: {
-      executive_summary: { type: "string" },
+      executive_summary: {
+        type: "string",
+        description: "Brief executive summary of all documents"
+      },
       key_findings: {
         type: "array",
         items: {
@@ -736,6 +739,96 @@ function getAnalysisSchema(providerType, careSetting, documentType) {
           properties: {
             category: { type: "string" },
             finding: { type: "string" }
+          }
+        },
+        description: "Most important clinical findings"
+      },
+      extracted_data: {
+        type: "object",
+        description: "Structured patient data extracted from documents",
+        properties: {
+          demographics: {
+            type: "object",
+            description: "Demographic information found"
+          },
+          diagnoses: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                diagnosis: { type: "string" },
+                icd10_code: { type: "string" },
+                is_new: { type: "boolean" }
+              }
+            }
+          },
+          medications: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                dosage: { type: "string" },
+                frequency: { type: "string" },
+                is_new: { type: "boolean" }
+              }
+            }
+          },
+          allergies: {
+            type: "array",
+            items: { type: "string" }
+          },
+          vitals: {
+            type: "object",
+            description: "Most recent vital signs found"
+          }
+        }
+      },
+      care_plan_suggestions: {
+        type: "array",
+        description: "Recommended care plan updates",
+        items: {
+          type: "object",
+          properties: {
+            problem: { type: "string" },
+            goal: { type: "string" },
+            interventions: {
+              type: "array",
+              items: { type: "string" }
+            },
+            priority: { type: "string", enum: ["high", "medium", "low"] },
+            rationale: { type: "string" },
+            baseline_measurement: { type: "string" },
+            frequency: { type: "string" }
+          }
+        }
+      },
+      compliance_audit: {
+        type: "object",
+        description: "Compliance and quality audit results",
+        properties: {
+          overall_score: { type: "number", description: "0-100 score" },
+          summary: { type: "string" },
+          issues: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
+                category: { type: "string" },
+                description: { type: "string" },
+                recommendation: { type: "string" },
+                regulation_reference: { type: "string" }
+              }
+            }
+          },
+          strengths: {
+            type: "array",
+            items: { type: "string" }
+          },
+          missing_elements: {
+            type: "array",
+            items: { type: "string" }
           }
         }
       },
