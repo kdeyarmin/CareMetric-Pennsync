@@ -188,10 +188,17 @@ export default function UserManagement() {
       const result = response?.data;
       console.log('Invitation response:', result);
       
+      const wasUpdated = result?.updated_existing;
+      const resendCount = result?.resend_count;
+      
       if (result?.email_sent) {
-        alert(`✅ Invitation sent successfully!\n\n📧 Email sent to: ${inviteData.email}\n🎭 Role: ${inviteData.role}\n\nThe user will receive an email with instructions to create their account.\n\n⏰ Invitation expires in 7 days.`);
+        if (wasUpdated) {
+          alert(`✅ Invitation updated and resent!\n\n📧 Email sent to: ${inviteData.email}\n🎭 Role: ${inviteData.role}\n📨 Total times sent: ${resendCount}\n\nThe user will receive an updated email with instructions.\n\n⏰ Invitation expires in 7 days.`);
+        } else {
+          alert(`✅ Invitation sent successfully!\n\n📧 Email sent to: ${inviteData.email}\n🎭 Role: ${inviteData.role}\n\nThe user will receive an email with instructions to create their account.\n\n⏰ Invitation expires in 7 days.`);
+        }
       } else {
-        alert(`⚠️ Invitation created but email failed to send.\n\n📧 Email: ${inviteData.email}\n🎭 Role: ${inviteData.role}\n\nError: ${result?.email_error || 'Unknown error'}\n\nPlease manually share the signup link:\n🔗 https://www.caremetricai.com`);
+        alert(`⚠️ Invitation ${wasUpdated ? 'updated' : 'created'} but email failed to send.\n\n📧 Email: ${inviteData.email}\n🎭 Role: ${inviteData.role}\n\nError: ${result?.email_error || 'Unknown error'}\n\nPlease manually share the signup link:\n🔗 https://www.caremetricai.com`);
       }
       
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });

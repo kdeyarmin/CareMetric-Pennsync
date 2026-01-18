@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       });
       console.log('✓ Invitation record created:', invitation.id, 'Expires:', expiresAt.toISOString());
       
-      console.log('Step 4: Sending invitation email via Resend...');
+      console.log('Step 5: Sending invitation email via Resend...');
       const signupUrl = 'https://www.caremetricai.com';
       
       let emailSent = false;
