@@ -91,6 +91,7 @@ import ProactivePatientInsights from "../components/insights/ProactivePatientIns
 import EducationTrackingHistory from "../components/education/EducationTrackingHistory";
 import PatientOutcomePredictionModule from "../components/predictive/PatientOutcomePredictionModule";
 import RealTimeAnomalyDetector from "../components/alerts/RealTimeAnomalyDetector";
+import ClinicalNotesManager from "../components/patient/ClinicalNotesManager";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -215,6 +216,18 @@ export default function PatientDetails() {
         patient_id: patientId,
         visit_type: newVisit.visit_type,
         visit_date: newVisit.visit_date,
+        page: "PatientDetails"
+      });
+    }
+  });
+
+  const updatePatientMutation = useMutation({
+    mutationFn: (patientData) => base44.entities.Patient.update(patientId, patientData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patients"] });
+      logActivity(ActivityActions.UPDATE, {
+        entity_type: "Patient",
+        entity_id: patientId,
         page: "PatientDetails"
       });
     }
@@ -396,6 +409,14 @@ export default function PatientDetails() {
         {/* Health Metrics Dashboard */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
           <HealthMetricsDashboard patient={patient} visits={visits} />
+        </div>
+
+        {/* Clinical Notes Manager */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <ClinicalNotesManager 
+            patient={patient} 
+            onSave={(data) => updatePatientMutation.mutate(data)}
+          />
         </div>
 
         {/* AI-Generated Recommendations from OASIS */}

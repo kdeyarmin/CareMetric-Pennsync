@@ -18,6 +18,7 @@ import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
+import DocumentAnalyzer from './pages/DocumentAnalyzer';
 import DocumentGenerator from './pages/DocumentGenerator';
 import DocumentVisit from './pages/DocumentVisit';
 import DocumentationTraining from './pages/DocumentationTraining';
@@ -94,7 +95,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import DocumentAnalyzer from './pages/DocumentAnalyzer';
 import __Layout from './Layout.jsx';
 
 
@@ -119,6 +119,7 @@ export const PAGES = {
     "ComplianceDashboard": ComplianceDashboard,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
+    "DocumentAnalyzer": DocumentAnalyzer,
     "DocumentGenerator": DocumentGenerator,
     "DocumentVisit": DocumentVisit,
     "DocumentationTraining": DocumentationTraining,
@@ -195,7 +196,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "DocumentAnalyzer": DocumentAnalyzer,
 }
 
 export const pagesConfig = {
