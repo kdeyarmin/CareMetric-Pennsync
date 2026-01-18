@@ -20,10 +20,19 @@ import {
   Clock,
   Settings
   } from "lucide-react";
-import { getVisitTypesForProvider } from "@/components/utils/providerVisitTypeMapping";
+import { 
+  getVisitTypesForProvider, 
+  getAccessibleCareSettings, 
+  getCareSettingLabel,
+  CARE_SETTINGS 
+} from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
 import { getProviderCompliancePrompt } from "@/components/utils/providerSpecificConfig";
 import { getEnhanceNotePrompt } from "@/components/utils/prompts";
+import { 
+  getProviderSpecificPromptAdditions,
+  getCareLocationPromptAdditions 
+} from "@/components/utils/providerSpecificPrompts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +70,7 @@ import OfflineNoteCapture from "@/components/mobile/OfflineNoteCapture";
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
   const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [careSetting, setCareSetting] = useState("");
   const [visitType, setVisitType] = useState("");
   const [selectedDiagnosis, setSelectedDiagnosis] = useState("");
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
@@ -178,18 +188,23 @@ export default function SmartNoteAssistant() {
   const enhanceNote = async () => {
      console.log('🔵 ENHANCE NOTE STARTED');
      if (!roughNotes.trim()) {
-       toast.error("Please enter clinical notes");
-       return;
+     toast.error("Please enter clinical notes");
+     return;
+     }
+
+     if (!careSetting) {
+     toast.error("Please select a care setting");
+     return;
      }
 
      if (!visitType) {
-       toast.error("Please select a visit type");
-       return;
+     toast.error("Please select a visit type");
+     return;
      }
 
      if (!selectedDiagnosis) {
-       toast.error("Please select a diagnosis");
-       return;
+     toast.error("Please select a diagnosis");
+     return;
      }
 
      const loadingToast = toast.loading("Enhancing note and analyzing quality...");
@@ -202,16 +217,26 @@ export default function SmartNoteAssistant() {
      setSuggestedTasks([]);
 
      try {
-       console.log('🔵 Getting compliance prompt for:', currentUser?.credential_type, visitType);
-       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
-       console.log('✅ Compliance prompt received');
+     console.log('🔵 Getting compliance prompt for:', currentUser?.credential_type, visitType, careSetting);
+     const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
+     const providerAdditions = getProviderSpecificPromptAdditions(currentUser?.credential_type || 'RN');
+     const locationAdditions = getCareLocationPromptAdditions(careSetting);
+     const fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
+     console.log('✅ Compliance prompt received');
 
-       // Filter custom rules applicable to this visit type
-       const applicableRules = customComplianceRules.filter(rule => {
-         if (!rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0) return true;
-         return rule.applies_to_visit_types.includes(visitType);
-       });
-       console.log('✅ Applicable rules:', applicableRules.length);
+     // Filter custom rules applicable to this provider, visit type, and care setting
+     const applicableRules = customComplianceRules.filter(rule => {
+       // Check visit type
+       const visitTypeMatch = !rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0 || 
+                              rule.applies_to_visit_types.includes(visitType);
+
+       // Check care type (home_health, hospice, both)
+       const careTypeMatch = !rule.applies_to_care_type || rule.applies_to_care_type === 'both' ||
+                             rule.applies_to_care_type === careSetting;
+
+       return visitTypeMatch && careTypeMatch;
+     });
+     console.log('✅ Applicable rules:', applicableRules.length);
 
        // Gather enhanced patient context
        let patientContext = null;
@@ -251,7 +276,8 @@ export default function SmartNoteAssistant() {
           visit_type: visitType,
           diagnosis: selectedDiagnosis,
           provider_type: currentUser?.credential_type || 'RN',
-          compliance_prompt: compliancePrompt,
+          care_setting: careSetting,
+          compliance_prompt: fullCompliancePrompt,
           custom_rules: applicableRules,
           patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
           vital_signs: vitalSigns,
@@ -332,32 +358,33 @@ export default function SmartNoteAssistant() {
      }
    };
 
-  const availableVisitTypes = currentUser?.credential_type ?
-  getVisitTypesForProvider(currentUser.credential_type) :
-  [];
+  // Get accessible care settings for current provider
+  const accessibleCareSettings = currentUser?.credential_type ?
+    getAccessibleCareSettings(currentUser.credential_type) : [];
 
-  // Common diagnoses list
-  const commonDiagnoses = [
-  "Congestive Heart Failure (CHF)",
-  "Chronic Obstructive Pulmonary Disease (COPD)",
-  "Diabetes Mellitus Type 2",
-  "Hypertension",
-  "Pneumonia",
-  "Urinary Tract Infection (UTI)",
-  "Wound Care - Pressure Ulcer",
-  "Post-Surgical Care",
-  "Chronic Kidney Disease",
-  "Dementia/Alzheimer's Disease",
-  "Stroke/CVA Recovery",
-  "Cancer Care",
-  "Palliative Care",
-  "Chronic Pain Management",
-  "Sepsis",
-  "Cellulitis",
-  "Dehydration",
-  "Fall Risk/Fall Injury",
-  "Malnutrition",
-  "Depression"];
+  // Get available visit types based on provider and care setting
+  const availableVisitTypes = (currentUser?.credential_type && careSetting) ?
+    getVisitTypesForProvider(currentUser.credential_type, careSetting) :
+    [];
+
+  // Provider-specific diagnoses
+  const PROVIDER_DIAGNOSES = {
+    RN: ["Congestive Heart Failure (CHF)", "COPD", "Diabetes Mellitus Type 2", "Hypertension", "Pneumonia", "UTI", "Wound Care - Pressure Ulcer", "Post-Surgical Care", "Chronic Kidney Disease", "Dementia/Alzheimer's", "Stroke/CVA Recovery", "Cancer Care", "Palliative Care"],
+    LPN: ["Hypertension", "Diabetes Mellitus Type 2", "Wound Care", "Post-Surgical Care", "UTI", "COPD"],
+    NP: ["Diabetes Mellitus Type 2", "Hypertension", "COPD", "CHF", "Acute Bronchitis", "UTI", "Cellulitis", "Pneumonia", "Chronic Pain", "Depression", "Anxiety"],
+    MD: ["Complex CHF", "Advanced COPD", "Multi-system Organ Failure", "Sepsis", "Acute MI", "Stroke", "Cancer", "End-Stage Renal Disease", "Complex Diabetes"],
+    DO: ["Chronic Pain", "Back Pain", "Neck Pain", "Headaches", "Hypertension", "Diabetes", "Musculoskeletal Disorders"],
+    PA: ["Hypertension", "Diabetes", "COPD", "CHF", "Acute Infections", "Minor Injuries", "Follow-up Care"],
+    PT: ["Gait Instability", "Balance Impairment", "Lower Extremity Weakness", "Post-Surgical Mobility", "Fall Risk", "Joint Pain", "Muscle Weakness"],
+    OT: ["ADL Deficits", "Upper Extremity Weakness", "Cognitive Impairment", "Home Safety Concerns", "Fine Motor Deficits"],
+    ST: ["Dysphagia", "Aphasia", "Speech Clarity Issues", "Voice Disorders", "Cognitive-Communication Deficits"],
+    MSW: ["Depression", "Anxiety", "Social Isolation", "Caregiver Stress", "Financial Barriers", "Discharge Planning Needs"],
+    Chiropractor: ["Back Pain", "Neck Pain", "Headaches", "Joint Pain", "Sciatica", "Sports Injuries"]
+  };
+
+  const commonDiagnoses = currentUser?.credential_type ?
+    (PROVIDER_DIAGNOSES[currentUser.credential_type] || PROVIDER_DIAGNOSES.RN) :
+    PROVIDER_DIAGNOSES.RN;
 
 
   const filteredDiagnoses = diagnosisSearch.trim() ?
@@ -449,9 +476,16 @@ export default function SmartNoteAssistant() {
     const loadingToast = toast.loading("Re-checking compliance and quality...");
     try {
       const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
+      const providerAdditions = getProviderSpecificPromptAdditions(currentUser?.credential_type || 'RN');
+      const locationAdditions = getCareLocationPromptAdditions(careSetting);
+      const fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
+      
       const applicableRules = customComplianceRules.filter(rule => {
-        if (!rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0) return true;
-        return rule.applies_to_visit_types.includes(visitType);
+        const visitTypeMatch = !rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0 || 
+                              rule.applies_to_visit_types.includes(visitType);
+        const careTypeMatch = !rule.applies_to_care_type || rule.applies_to_care_type === 'both' ||
+                             rule.applies_to_care_type === careSetting;
+        return visitTypeMatch && careTypeMatch;
       });
 
       const response = await base44.functions.invoke('enhanceNoteWithQuality', {
@@ -459,7 +493,8 @@ export default function SmartNoteAssistant() {
         visit_type: visitType,
         diagnosis: selectedDiagnosis,
         provider_type: currentUser?.credential_type || 'RN',
-        compliance_prompt: compliancePrompt,
+        care_setting: careSetting,
+        compliance_prompt: fullCompliancePrompt,
         custom_rules: applicableRules,
         patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
         vital_signs: vitalSigns
@@ -627,13 +662,37 @@ export default function SmartNoteAssistant() {
                 }
                 </div>
 
-                {/* Visit Type & Diagnosis */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Care Setting, Visit Type & Diagnosis */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Care Setting *</Label>
+                    <Select value={careSetting} onValueChange={(value) => {
+                      setCareSetting(value);
+                      setVisitType(""); // Reset visit type when setting changes
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select care setting..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {accessibleCareSettings.length > 0 ?
+                          accessibleCareSettings.map((setting) => (
+                            <SelectItem key={setting} value={setting}>
+                              {getCareSettingLabel(setting)}
+                            </SelectItem>
+                          )) :
+                          <SelectItem value="no_settings" disabled>
+                            No care settings available
+                          </SelectItem>
+                        }
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <div>
                     <Label className="text-sm font-medium">Visit Type *</Label>
-                    <Select value={visitType} onValueChange={setVisitType}>
+                    <Select value={visitType} onValueChange={setVisitType} disabled={!careSetting}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select visit type..." />
+                        <SelectValue placeholder={careSetting ? "Select visit type..." : "Select care setting first"} />
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
                         {availableVisitTypes.length > 0 ?
@@ -644,7 +703,7 @@ export default function SmartNoteAssistant() {
                       ) :
 
                       <SelectItem value="no_types" disabled>
-                            No visit types available for your provider type
+                            No visit types available
                           </SelectItem>
                       }
                       </SelectContent>
@@ -683,8 +742,8 @@ export default function SmartNoteAssistant() {
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
 
-                {/* OASIS Field Suggestions */}
-                {visitType && selectedDiagnosis && (currentUser?.service_type === 'home_health' || currentUser?.service_type === 'hospice') && (
+                {/* OASIS Field Suggestions - Only for Home Health/Hospice settings */}
+                {visitType && selectedDiagnosis && (careSetting === CARE_SETTINGS.HOME_HEALTH || careSetting === CARE_SETTINGS.HOSPICE) && (
                   <OASISFieldSuggester
                     visitType={visitType}
                     diagnosis={selectedDiagnosis}
@@ -814,7 +873,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 {/* Enhance Button */}
                 <Button
                 onClick={enhanceNote}
-                disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()}
+                disabled={enhancing || !careSetting || !visitType || !selectedDiagnosis || !roughNotes.trim()}
                 className="w-full h-12 sm:h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-sm sm:text-base touch-target"
                 size="lg">
 
@@ -840,13 +899,16 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               {/* Clinical Insights Panel */}
               <ClinicalInsightsPanel insights={clinicalInsights} isLoading={loadingInsights} />
 
-              {/* Care Plan Draft Generator */}
-              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') && (
+              {/* Care Plan Draft Generator - Provider-specific */}
+              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW' || 
+                               currentUser?.credential_type === 'NP' || currentUser?.credential_type === 'PT' || 
+                               currentUser?.credential_type === 'OT' || currentUser?.credential_type === 'ST') && (
                 <CarePlanDraftGenerator
                   diagnosis={selectedDiagnosis}
                   noteContent={enhancedNote}
                   vitalSigns={vitalSigns}
                   patientId={patientData.id}
+                  providerType={currentUser?.credential_type}
                   patientContext={{
                     age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
                     diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])],
@@ -1290,8 +1352,8 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 </Card>
             }
 
-              {/* AI Auto-Populate & Follow-Up Tasks */}
-              {currentUser?.service_type !== 'home_health' && currentUser?.service_type !== 'hospice' && (
+              {/* AI Auto-Populate & Follow-Up Tasks - Only for non-home health/hospice settings */}
+              {careSetting && careSetting !== CARE_SETTINGS.HOME_HEALTH && careSetting !== CARE_SETTINGS.HOSPICE && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 <AutoPopulateDataFields
                 narrative={enhancedNote || roughNotes}
@@ -1327,13 +1389,16 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 currentUser={currentUser}
               />
 
-              {/* Care Plan Suggestions */}
-              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW') &&
+              {/* Care Plan Suggestions - Provider-specific */}
+              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW' ||
+                               currentUser?.credential_type === 'NP' || currentUser?.credential_type === 'PT' || 
+                               currentUser?.credential_type === 'OT' || currentUser?.credential_type === 'ST') &&
             <CarePlanSuggestionsPanel
               patientId={patientData.id}
               visitType={visitType}
               diagnosis={selectedDiagnosis}
-              noteContent={enhancedNote} />
+              noteContent={enhancedNote}
+              providerType={currentUser?.credential_type} />
 
             }
 
