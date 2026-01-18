@@ -137,8 +137,7 @@ export default function AIKnowledgeBaseManager() {
             <Brain className="w-6 h-6 text-purple-600" />
             AI Knowledge Base & Learning Manager
           </CardTitle>
-        </CardTitle>
-      </CardHeader>
+        </CardHeader>
       <CardContent className="space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4">
