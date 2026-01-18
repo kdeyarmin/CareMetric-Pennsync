@@ -1,11 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, FileCheck, Copy, Download } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, FileCheck, Copy, Download, FileText } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 export default function PriorAuthGenerator({ 
   diagnosis, 
@@ -16,32 +20,99 @@ export default function PriorAuthGenerator({
 }) {
   const [loading, setLoading] = useState(false);
   const [priorAuth, setPriorAuth] = useState(null);
-  const [customProcedure, setCustomProcedure] = useState("");
+  
+  // Form fields
+  const [patientName, setPatientName] = useState("");
+  const [insuranceCompany, setInsuranceCompany] = useState("");
+  const [diagnoses, setDiagnoses] = useState("");
+  const [clinicalFindings, setClinicalFindings] = useState("");
+  const [medications, setMedications] = useState("");
+  const [requestedTreatment, setRequestedTreatment] = useState("");
 
-  const generatePriorAuth = async (procedureType) => {
+  // Get provider settings for letterhead info
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me()
+  });
+
+  const { data: providerSettings } = useQuery({
+    queryKey: ["providerSettings", currentUser?.email],
+    queryFn: async () => {
+      const settings = await base44.entities.ProviderSettings.filter({
+        provider_email: currentUser.email
+      });
+      return settings[0];
+    },
+    enabled: !!currentUser?.email
+  });
+
+  // Pre-fill from props if available
+  useEffect(() => {
+    if (diagnosis) setDiagnoses(diagnosis);
+    if (noteContent) setClinicalFindings(noteContent);
+    if (procedure) setRequestedTreatment(procedure);
+    if (patientContext?.name) setPatientName(patientContext.name);
+  }, [diagnosis, noteContent, procedure, patientContext]);
+
+  const generatePriorAuth = async () => {
+    // Validate required fields
+    if (!patientName || !insuranceCompany || !diagnoses || !requestedTreatment) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
     setLoading(true);
     try {
-      const prompt = `Generate a comprehensive prior authorization request for the following:
+      // Build provider information section
+      const providerInfo = providerSettings ? `
+PROVIDER INFORMATION:
+Provider Name: ${currentUser?.full_name || 'Not specified'}
+${providerSettings.practice_name ? `Practice: ${providerSettings.practice_name}` : ''}
+${providerSettings.npi ? `NPI: ${providerSettings.npi}` : ''}
+${providerSettings.tax_id ? `Tax ID: ${providerSettings.tax_id}` : ''}
+${providerSettings.phone ? `Phone: ${providerSettings.phone}` : ''}
+${providerSettings.fax ? `Fax: ${providerSettings.fax}` : ''}
+${providerSettings.address ? `Address: ${providerSettings.address}` : ''}
+` : `
+PROVIDER INFORMATION:
+Provider Name: ${currentUser?.full_name || 'Not specified'}
+`;
 
-Patient Diagnosis: ${diagnosis}
-Procedure/Service: ${procedureType || customProcedure}
-Clinical Documentation: ${noteContent}
-${patientContext ? `Patient History: ${JSON.stringify(patientContext)}` : ''}
+      const prompt = `You are a medical professional writing a prior authorization letter. Research and generate the most clinically sound, evidence-based argument for approval.
 
-Create a complete prior authorization letter that includes:
-1. Patient demographics and insurance information section
-2. Procedure/service details with CPT codes
-3. Medical necessity justification with evidence
-4. Clinical rationale and supporting documentation
-5. Expected outcomes and benefits
-6. Alternative treatments considered
-7. Supporting ICD-10 diagnosis codes
-8. Duration of authorization requested
+${providerInfo}
 
-Format as a professional clinical letter suitable for submission to insurance.`;
+PATIENT INFORMATION:
+Patient Name: ${patientName}
+Insurance Company: ${insuranceCompany}
+
+DIAGNOSES:
+${diagnoses}
+
+CLINICAL FINDINGS & RELEVANT INFORMATION:
+${clinicalFindings || 'See attached clinical documentation'}
+
+${medications ? `CURRENT MEDICATIONS:\n${medications}\n` : ''}
+
+REQUESTED TREATMENT/MEDICATION/TEST:
+${requestedTreatment}
+
+INSTRUCTIONS:
+1. Research the medical literature and clinical guidelines for this specific treatment/condition combination
+2. Build a compelling, evidence-based case for medical necessity
+3. Include relevant clinical studies, guidelines, and FDA approvals when applicable
+4. Address common insurance denials and pre-emptively counter them
+5. Cite specific medical criteria that support approval
+6. Include CPT and ICD-10 codes
+7. Explain why alternatives are inadequate or contraindicated
+8. Present expected outcomes with supporting evidence
+9. Format as a professional business letter ready for submission
+
+Generate a complete prior authorization letter that maximizes the likelihood of approval.`;
 
       const response = await base44.integrations.Core.InvokeLLM({
         prompt,
+        add_context_from_internet: true, // Enable web search for latest clinical guidelines
         response_json_schema: {
           type: "object",
           properties: {
@@ -50,9 +121,11 @@ Format as a professional clinical letter suitable for submission to insurance.`;
             icd10_codes: { type: "array", items: { type: "string" } },
             medical_necessity: { type: "string" },
             clinical_rationale: { type: "string" },
+            evidence_based_support: { type: "string" },
             supporting_documentation: { type: "array", items: { type: "string" } },
             expected_outcomes: { type: "string" },
             alternatives_considered: { type: "string" },
+            why_alternatives_inadequate: { type: "string" },
             duration_requested: { type: "string" },
             full_letter: { type: "string" }
           }
@@ -63,7 +136,7 @@ Format as a professional clinical letter suitable for submission to insurance.`;
       if (onAuthGenerated) {
         onAuthGenerated(response);
       }
-      toast.success('Prior authorization generated');
+      toast.success('Prior authorization generated with evidence-based research');
     } catch (error) {
       console.error('Error generating prior auth:', error);
       toast.error('Failed to generate prior authorization');
@@ -77,31 +150,82 @@ Format as a professional clinical letter suitable for submission to insurance.`;
     toast.success('Prior authorization copied to clipboard');
   };
 
-  const downloadAsDoc = () => {
-    const blob = new Blob([priorAuth.full_letter], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `prior_auth_${Date.now()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success('Downloaded prior authorization');
+  const downloadAsPDF = () => {
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const margin = 20;
+      const maxWidth = pageWidth - (margin * 2);
+      
+      let y = margin;
+
+      // Add provider letterhead if available
+      if (providerSettings?.practice_name) {
+        doc.setFontSize(14);
+        doc.setFont(undefined, 'bold');
+        doc.text(providerSettings.practice_name, margin, y);
+        y += 7;
+        
+        doc.setFontSize(9);
+        doc.setFont(undefined, 'normal');
+        if (providerSettings.address) {
+          const addressLines = doc.splitTextToSize(providerSettings.address, maxWidth);
+          addressLines.forEach(line => {
+            doc.text(line, margin, y);
+            y += 5;
+          });
+        }
+        if (providerSettings.phone) {
+          doc.text(`Phone: ${providerSettings.phone}`, margin, y);
+          y += 5;
+        }
+        if (providerSettings.fax) {
+          doc.text(`Fax: ${providerSettings.fax}`, margin, y);
+          y += 5;
+        }
+        y += 5;
+      }
+
+      // Date
+      doc.setFontSize(10);
+      doc.text(new Date().toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      }), margin, y);
+      y += 10;
+
+      // Letter content
+      doc.setFontSize(10);
+      const letterLines = doc.splitTextToSize(priorAuth.full_letter, maxWidth);
+      
+      letterLines.forEach(line => {
+        if (y > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.text(line, margin, y);
+        y += 5;
+      });
+
+      doc.save(`prior_auth_${patientName.replace(/\s+/g, '_')}_${Date.now()}.pdf`);
+      toast.success('PDF downloaded successfully');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF');
+    }
   };
 
-  const commonProcedures = [
-    { label: 'Home Health Services', value: 'Home Health Skilled Nursing' },
-    { label: 'Physical Therapy', value: 'Physical Therapy Services' },
-    { label: 'Occupational Therapy', value: 'Occupational Therapy Services' },
-    { label: 'Wound Care', value: 'Advanced Wound Care' },
-    { label: 'IV Therapy', value: 'Intravenous Therapy' },
-    { label: 'DME - Wheelchair', value: 'Power Wheelchair' },
-    { label: 'DME - Hospital Bed', value: 'Hospital Bed' },
-    { label: 'Hospice Care', value: 'Hospice Services' }
-  ];
-
-  if (!diagnosis) return null;
+  const resetForm = () => {
+    setPriorAuth(null);
+    setPatientName("");
+    setInsuranceCompany("");
+    setDiagnoses("");
+    setClinicalFindings("");
+    setMedications("");
+    setRequestedTreatment("");
+  };
 
   return (
     <Card className="border-indigo-200 bg-indigo-50 dark:bg-indigo-950">
@@ -111,47 +235,91 @@ Format as a professional clinical letter suitable for submission to insurance.`;
           Prior Authorization Generator
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {!priorAuth ? (
           <>
-            <div>
-              <p className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Select a common procedure or enter custom:
-              </p>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {commonProcedures.map((proc, idx) => (
-                  <Button
-                    key={idx}
-                    size="sm"
-                    variant="outline"
-                    onClick={() => generatePriorAuth(proc.value)}
-                    disabled={loading}
-                    className="text-xs h-auto py-2"
-                  >
-                    {proc.label}
-                  </Button>
-                ))}
+            {/* Patient Information */}
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Patient Name *</Label>
+                <Input
+                  placeholder="Enter patient full name"
+                  value={patientName}
+                  onChange={(e) => setPatientName(e.target.value)}
+                  className="text-sm"
+                />
               </div>
-              
-              <div className="flex gap-2">
+
+              <div>
+                <Label className="text-xs">Insurance Company *</Label>
+                <Input
+                  placeholder="e.g., United Healthcare, Blue Cross Blue Shield"
+                  value={insuranceCompany}
+                  onChange={(e) => setInsuranceCompany(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs">Diagnoses *</Label>
                 <Textarea
-                  placeholder="Or enter custom procedure/service..."
-                  value={customProcedure}
-                  onChange={(e) => setCustomProcedure(e.target.value)}
+                  placeholder="Enter all relevant diagnoses (e.g., Type 2 Diabetes Mellitus, Hypertension, CHF)"
+                  value={diagnoses}
+                  onChange={(e) => setDiagnoses(e.target.value)}
                   className="text-sm h-20"
                 />
-                <Button
-                  onClick={() => generatePriorAuth(customProcedure)}
-                  disabled={loading || !customProcedure.trim()}
-                  className="bg-indigo-600 hover:bg-indigo-700"
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    'Generate'
-                  )}
-                </Button>
               </div>
+
+              <div>
+                <Label className="text-xs">Clinical Findings & Important Information</Label>
+                <Textarea
+                  placeholder="Enter relevant clinical findings, test results, patient history, symptoms, functional limitations, etc."
+                  value={clinicalFindings}
+                  onChange={(e) => setClinicalFindings(e.target.value)}
+                  className="text-sm h-24"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs">Current Medications (if relevant)</Label>
+                <Textarea
+                  placeholder="List current medications, dosages, and relevant history"
+                  value={medications}
+                  onChange={(e) => setMedications(e.target.value)}
+                  className="text-sm h-20"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs">Requested Treatment/Medication/Test *</Label>
+                <Textarea
+                  placeholder="Specify exactly what you're requesting prior authorization for"
+                  value={requestedTreatment}
+                  onChange={(e) => setRequestedTreatment(e.target.value)}
+                  className="text-sm h-20"
+                />
+              </div>
+
+              <Button
+                onClick={generatePriorAuth}
+                disabled={loading || !patientName || !insuranceCompany || !diagnoses || !requestedTreatment}
+                className="bg-indigo-600 hover:bg-indigo-700 w-full"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Researching & Generating...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4 mr-2" />
+                    Generate Evidence-Based Authorization
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-slate-600 dark:text-slate-400 text-center">
+                AI will research clinical guidelines and build the strongest case for approval
+              </p>
             </div>
           </>
         ) : (
@@ -186,6 +354,18 @@ Format as a professional clinical letter suitable for submission to insurance.`;
               </Badge>
             </div>
 
+            {/* Evidence-Based Support */}
+            {priorAuth.evidence_based_support && (
+              <div className="bg-blue-50 dark:bg-blue-900 p-3 rounded-lg border border-blue-200">
+                <p className="text-xs font-medium text-blue-900 dark:text-blue-300 mb-1">
+                  Evidence-Based Support:
+                </p>
+                <p className="text-xs text-blue-800 dark:text-blue-200">
+                  {priorAuth.evidence_based_support}
+                </p>
+              </div>
+            )}
+
             {/* Medical Necessity */}
             <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-indigo-200">
               <p className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -195,6 +375,18 @@ Format as a professional clinical letter suitable for submission to insurance.`;
                 {priorAuth.medical_necessity}
               </p>
             </div>
+
+            {/* Why Alternatives Are Inadequate */}
+            {priorAuth.why_alternatives_inadequate && (
+              <div className="bg-yellow-50 dark:bg-yellow-900 p-3 rounded-lg border border-yellow-200">
+                <p className="text-xs font-medium text-yellow-900 dark:text-yellow-300 mb-1">
+                  Why Alternatives Are Inadequate:
+                </p>
+                <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                  {priorAuth.why_alternatives_inadequate}
+                </p>
+              </div>
+            )}
 
             {/* Expected Outcomes */}
             <div className="bg-green-50 dark:bg-green-900 p-3 rounded-lg">
@@ -219,33 +411,32 @@ Format as a professional clinical letter suitable for submission to insurance.`;
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={copyToClipboard}
-                className="flex-1"
               >
                 <Copy className="w-3 h-3 mr-1" />
-                Copy
+                Copy Text
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={downloadAsDoc}
-                className="flex-1"
+                onClick={downloadAsPDF}
+                className="bg-red-50 hover:bg-red-100"
               >
                 <Download className="w-3 h-3 mr-1" />
-                Download
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setPriorAuth(null)}
-                className="flex-1"
-              >
-                New Request
+                Download PDF
               </Button>
             </div>
+            <Button
+              size="sm"
+              onClick={resetForm}
+              className="w-full bg-indigo-600 hover:bg-indigo-700"
+            >
+              Create New Request
+            </Button>
           </div>
         )}
       </CardContent>
