@@ -23,10 +23,30 @@ export default function AIPatientSummaryGenerator({ patientId, documentAnalysis 
     vitals: false,
     care_plan: false
   });
+  const [dataPoints, setDataPoints] = useState({
+    diagnoses: true,
+    medications: true,
+    lab_results: true,
+    vital_signs: true,
+    allergies: true,
+    care_plans: true
+  });
+  const [attachToChart, setAttachToChart] = useState(true);
+  const [attaching, setAttaching] = useState(false);
 
   const generateSummary = async () => {
     if (!patientId) {
       toast.error('Please select a patient first');
+      return;
+    }
+
+    const selectedDataPoints = Object.keys(dataPoints)
+      .filter(point => dataPoints[point])
+      .map(point => point.replace(/_/g, ' '))
+      .join(', ');
+
+    if (!selectedDataPoints) {
+      toast.error('Please select at least one data point to include');
       return;
     }
 
@@ -39,19 +59,19 @@ export default function AIPatientSummaryGenerator({ patientId, documentAnalysis 
       const recentIncidents = await base44.entities.Incident?.filter({ patient_id: patientId }) || [];
       const activeTasks = await base44.entities.Task?.filter({ patient_id: patientId, status: 'pending' }) || [];
 
-      // Build context
+      // Build context with selected data points only
       const context = {
         patient: {
           name: `${patient.first_name} ${patient.last_name}`,
           age: patient.date_of_birth ? calculateAge(patient.date_of_birth) : null,
-          diagnoses: [patient.primary_diagnosis, ...(patient.secondary_diagnoses || [])].filter(Boolean),
-          medications: patient.current_medications || [],
-          allergies: patient.allergies,
-          baseline_vitals: patient.baseline_vitals,
+          ...(dataPoints.diagnoses && { diagnoses: [patient.primary_diagnosis, ...(patient.secondary_diagnoses || [])].filter(Boolean) }),
+          ...(dataPoints.medications && { medications: patient.current_medications || [] }),
+          ...(dataPoints.allergies && { allergies: patient.allergies }),
+          ...(dataPoints.vital_signs && { baseline_vitals: patient.baseline_vitals }),
           care_type: patient.care_type,
           status: patient.status
         },
-        care_plans: carePlans.slice(0, 5),
+        ...(dataPoints.care_plans && { care_plans: carePlans.slice(0, 5) }),
         recent_visits: recentVisits.slice(0, 3),
         recent_incidents: recentIncidents.slice(0, 3),
         active_tasks: activeTasks.slice(0, 5),
@@ -75,6 +95,7 @@ export default function AIPatientSummaryGenerator({ patientId, documentAnalysis 
         : '';
 
       const prompt = `Generate a professional clinical patient summary for ${patient.first_name} ${patient.last_name}.
+DATA POINTS TO INCLUDE: ${selectedDataPoints}
 
 ${lengthInstructions[summaryLength]}${focusInstruction}
 
@@ -122,7 +143,8 @@ Format as structured text with clear sections.`;
         patient_name: `${patient.first_name} ${patient.last_name}`,
         generated_at: new Date().toISOString(),
         length: summaryLength,
-        focus: selectedFocus
+        focus: selectedFocus,
+        included_data_points: selectedDataPoints
       });
 
       toast.success('Summary generated successfully');
@@ -130,6 +152,32 @@ Format as structured text with clear sections.`;
       toast.error('Failed to generate summary: ' + error.message);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const attachToPatientChart = async () => {
+    if (!summary || !patientId) {
+      toast.error('Cannot attach summary');
+      return;
+    }
+
+    setAttaching(true);
+    try {
+      const patient = await base44.entities.Patient.get(patientId);
+      const timestamp = new Date().toISOString();
+      const noteEntry = `\n\n[${format(new Date(timestamp), 'MMM d, yyyy HH:mm')} - AI Summary]\nData Points: ${summary.included_data_points}\n${summary.summary_text}`;
+      const currentNotes = patient.clinical_notes || '';
+
+      await base44.entities.Patient.update(patientId, {
+        clinical_notes: currentNotes + noteEntry
+      });
+
+      toast.success('Summary attached to patient chart');
+    } catch (error) {
+      console.error('Attach error:', error);
+      toast.error('Failed to attach summary: ' + error.message);
+    } finally {
+      setAttaching(false);
     }
   };
 
@@ -318,6 +366,27 @@ Format as structured text with clear sections.`;
               </div>
             </div>
 
+            {/* Data Points to Include */}
+            <div>
+              <label className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3 block">
+                Data Points to Include
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {Object.keys(dataPoints).map(point => (
+                  <div key={point} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    <Checkbox
+                      id={`datapoint-${point}`}
+                      checked={dataPoints[point]}
+                      onCheckedChange={(checked) => setDataPoints({ ...dataPoints, [point]: checked })}
+                    />
+                    <label htmlFor={`datapoint-${point}`} className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer flex-1">
+                      {point.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Focus Areas */}
             <div>
               <label className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3 block">
@@ -339,14 +408,27 @@ Format as structured text with clear sections.`;
               </div>
             </div>
 
-            <Button 
-              onClick={generateSummary}
-              disabled={generating || !patientId}
-              className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-            >
-              {generating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {generating ? 'Generating Summary...' : 'Generate AI Summary'}
-            </Button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                <Checkbox
+                  id="attach-to-chart"
+                  checked={attachToChart}
+                  onCheckedChange={setAttachToChart}
+                />
+                <label htmlFor="attach-to-chart" className="text-sm text-blue-900 dark:text-blue-100 cursor-pointer flex-1">
+                  Automatically attach summary to patient chart
+                </label>
+              </div>
+
+              <Button
+                onClick={generateSummary}
+                disabled={generating || !patientId || !Object.values(dataPoints).some(Boolean)}
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+              >
+                {generating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {generating ? 'Generating Summary...' : 'Generate AI Summary'}
+              </Button>
+            </div>
           </>
         ) : (
           <>
@@ -393,6 +475,12 @@ Format as structured text with clear sections.`;
                 <Mail className="w-4 h-4 mr-2" />
                 Email
               </Button>
+              {attachToChart && (
+                <Button onClick={attachToPatientChart} disabled={attaching} size="sm" className="bg-green-600 hover:bg-green-700">
+                  {attaching && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  {attaching ? 'Attaching...' : 'Attach to Chart'}
+                </Button>
+              )}
               <Button onClick={() => setSummary(null)} variant="ghost" size="sm" className="ml-auto">
                 Generate New
               </Button>
