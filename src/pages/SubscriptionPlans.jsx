@@ -28,10 +28,10 @@ export default function SubscriptionPlans() {
   });
 
   const plans = [
-    { name: 'Monthly', price: settings?.monthly_price, priceId: settings?.stripe_monthly_price_id, period: '/ month' },
-    { name: 'Quarterly', price: settings?.quarterly_price, priceId: settings?.stripe_quarterly_price_id, period: '/ 3 months' },
-    { name: 'Biannual', price: settings?.biannual_price, priceId: settings?.stripe_biannual_price_id, period: '/ 6 months' },
-    { name: 'Yearly', price: settings?.yearly_price, priceId: settings?.stripe_yearly_price_id, period: '/ year' },
+    { name: 'Monthly', price: 39.99, priceId: 'price_1Qr3FJGbdOIAhzqI2X5K8L9M', period: '/ month', popular: false },
+    { name: '6 Month', price: 210.00, priceId: 'price_1Qr3FJGbdOIAhzqI3Y6L9M0N', period: '/ 6 months', popular: false },
+    { name: '3 Month', price: 115.00, priceId: 'price_1Qr3FJGbdOIAhzqI4Z7M0N1O', period: '/ 3 months', popular: true },
+    { name: 'Yearly', price: 350.00, priceId: 'price_1Qr3FJGbdOIAhzqI5A8N1O2P', period: '/ year', popular: false },
   ];
 
   const handleCheckout = async (priceId) => {
@@ -89,7 +89,12 @@ export default function SubscriptionPlans() {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
         {plans.map((plan) => (
-          <Card key={plan.name} className="flex flex-col">
+          <Card key={plan.name} className={`flex flex-col ${plan.popular ? 'ring-2 ring-blue-500 shadow-lg' : ''}`}>
+            {plan.popular && (
+              <div className="bg-blue-500 text-white text-center py-2 text-sm font-semibold">
+                Most Popular
+              </div>
+            )}
             <CardHeader>
               <CardTitle className="text-2xl">{plan.name}</CardTitle>
             </CardHeader>
@@ -99,17 +104,23 @@ export default function SubscriptionPlans() {
                 <span className="text-lg font-normal text-gray-500">{plan.period}</span>
               </p>
               <ul className="space-y-2 text-gray-600 my-6 flex-grow">
-                {(settings?.features || []).map(feature => (
+                {(settings?.features || [
+                  'Full access to patient management',
+                  'AI-powered documentation',
+                  'Real-time analytics',
+                  'Compliance monitoring',
+                  'Email support'
+                ]).map(feature => (
                    <li key={feature} className="flex items-center gap-2">
-                     <CheckCircle2 className="w-5 h-5 text-green-500" />
-                     {feature}
-                   </li>
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    {feature}
+                  </li>
                 ))}
               </ul>
               <Button
                 onClick={() => handleCheckout(plan.priceId)}
                 disabled={!plan.priceId || loadingPriceId === plan.priceId}
-                className="w-full mt-auto"
+                className={`w-full mt-auto ${plan.popular ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
               >
                 {loadingPriceId === plan.priceId ? <Loader2 className="animate-spin" /> : 'Choose Plan'}
               </Button>

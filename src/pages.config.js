@@ -2,6 +2,7 @@ import About from './pages/About';
 import Admin from './pages/Admin';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
+import AdminSubscriptions from './pages/AdminSubscriptions';
 import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
@@ -18,6 +19,7 @@ import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
+import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
 import DocumentAnalyzer from './pages/DocumentAnalyzer';
 import DocumentGenerator from './pages/DocumentGenerator';
 import DocumentVisit from './pages/DocumentVisit';
@@ -95,8 +97,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AdminSubscriptions from './pages/AdminSubscriptions';
-import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
 import __Layout from './Layout.jsx';
 
 
@@ -105,6 +105,7 @@ export const PAGES = {
     "Admin": Admin,
     "AdminDashboard": AdminDashboard,
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
+    "AdminSubscriptions": AdminSubscriptions,
     "AdminTrainingAnalytics": AdminTrainingAnalytics,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
@@ -121,6 +122,7 @@ export const PAGES = {
     "ComplianceDashboard": ComplianceDashboard,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
+    "DocumentAnalysisHistory": DocumentAnalysisHistory,
     "DocumentAnalyzer": DocumentAnalyzer,
     "DocumentGenerator": DocumentGenerator,
     "DocumentVisit": DocumentVisit,
@@ -198,8 +200,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "AdminSubscriptions": AdminSubscriptions,
-    "DocumentAnalysisHistory": DocumentAnalysisHistory,
 }
 
 export const pagesConfig = {
