@@ -26,6 +26,7 @@ import ComprehensiveDataExport from "../components/admin/ComprehensiveDataExport
 import AdvancedReportingDashboard from "../components/admin/AdvancedReportingDashboard";
 import RealTimeSystemHealth from "../components/admin/RealTimeSystemHealth";
 import AIModelManagement from "../components/admin/AIModelManagement";
+import AIKnowledgeBaseManager from "../components/admin/AIKnowledgeBaseManager";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import { motion } from "framer-motion";
 import UserManagement from "../components/admin/UserManagement";
@@ -685,6 +686,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">System Health</TabsTrigger>
             <TabsTrigger value="advanced-reports" className="text-xs sm:text-sm py-2 whitespace-nowrap">Reports</TabsTrigger>
             <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Models</TabsTrigger>
+            <TabsTrigger value="ai-learning" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Learning</TabsTrigger>
             <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2 whitespace-nowrap">Revenue</TabsTrigger>
             <TabsTrigger value="user-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">User Insights</TabsTrigger>
             <TabsTrigger value="performance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Performance</TabsTrigger>
@@ -1003,6 +1005,11 @@ export default function AdminDashboard() {
           <AIModelManagement 
             noteConversions={allNoteConversions}
           />
+        </TabsContent>
+
+        {/* AI Learning Tab */}
+        <TabsContent value="ai-learning" className="space-y-6">
+          <AIKnowledgeBaseManager />
         </TabsContent>
 
         {/* Export Tab */}
