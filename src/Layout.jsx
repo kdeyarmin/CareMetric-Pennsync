@@ -175,6 +175,7 @@ export default function Layout({ children, currentPageName }) {
     item.page === "SubscriptionPlans" ||
     item.page === "DocumentAnalyzer" ||
     item.page === "DocumentAnalysisHistory" ||
+    item.page === "Telehealth" ||
     accessiblePages.includes(item.page)
   );
 
