@@ -68,6 +68,7 @@ import PatientEducationGenerator from './pages/PatientEducationGenerator';
 import PatientEducationHub from './pages/PatientEducationHub';
 import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import PatientMessaging from './pages/PatientMessaging';
+import PatientOnboarding from './pages/PatientOnboarding';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
 import PatientTelehealth from './pages/PatientTelehealth';
 import Patients from './pages/Patients';
@@ -102,7 +103,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import PatientOnboarding from './pages/PatientOnboarding';
 import __Layout from './Layout.jsx';
 
 
@@ -177,6 +177,7 @@ export const PAGES = {
     "PatientEducationHub": PatientEducationHub,
     "PatientEducationLibrary": PatientEducationLibrary,
     "PatientMessaging": PatientMessaging,
+    "PatientOnboarding": PatientOnboarding,
     "PatientRecordDashboard": PatientRecordDashboard,
     "PatientTelehealth": PatientTelehealth,
     "Patients": Patients,
@@ -211,7 +212,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "PatientOnboarding": PatientOnboarding,
 }
 
 export const pagesConfig = {
