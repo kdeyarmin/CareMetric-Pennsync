@@ -4,7 +4,10 @@ import EnhancedDocumentTemplateManager from "../components/signature/EnhancedDoc
 import SignatureWorkflowAutomation from "../components/signature/SignatureWorkflowAutomation";
 import DocumentAnalyticsDashboard from "../components/documents/DocumentAnalyticsDashboard";
 import DocumentTemplateFiller from "../components/signature/DocumentTemplateFiller";
-import { FileText, Edit, Send } from "lucide-react";
+import DocumentAutomationBuilder from "../components/documents/DocumentAutomationBuilder";
+import DocumentAutomationDashboard from "../components/documents/DocumentAutomationDashboard";
+import DocumentEmbedGenerator from "../components/documents/DocumentEmbedGenerator";
+import { FileText, Edit, Send, Zap, Code } from "lucide-react";
 
 export default function DocumentSignatureTemplates() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
