@@ -75,6 +75,20 @@ export default function UserManagement({ users, currentUser }) {
     initialData: [],
   });
 
+  // Fetch pending invitations
+  const { data: pendingInvitations = [] } = useQuery({
+    queryKey: ['userInvitations'],
+    queryFn: async () => {
+      try {
+        return await base44.entities.UserInvitation.list('-created_date') || [];
+      } catch (error) {
+        console.error('Error fetching invitations:', error);
+        return [];
+      }
+    },
+    initialData: [],
+  });
+
   // Update user mutation
   const updateUserMutation = useMutation({
     mutationFn: ({ userId, data }) => base44.entities.User.update(userId, data),
