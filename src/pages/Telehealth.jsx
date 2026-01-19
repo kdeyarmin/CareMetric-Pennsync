@@ -4,8 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Video, Search } from 'lucide-react';
+import { Video, Search, FileText } from 'lucide-react';
 import EnhancedTelehealthModule from '../components/telehealth/EnhancedTelehealthModule';
+import AITelehealthSummaryGenerator from '../components/telehealth/AITelehealthSummaryGenerator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function TelehealthPage() {
   const [selectedVisit, setSelectedVisit] = useState(null);
@@ -53,13 +55,26 @@ export default function TelehealthPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Telehealth</h1>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Select Visit for Telehealth Session</CardTitle>
-        </CardHeader>
+      <Tabs defaultValue="sessions" className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="sessions">
+            <Video className="w-4 h-4 mr-2" />
+            Sessions
+          </TabsTrigger>
+          <TabsTrigger value="analysis">
+            <FileText className="w-4 h-4 mr-2" />
+            Transcript Analysis
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="sessions">
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Select Visit for Telehealth Session</CardTitle>
+            </CardHeader>
         <CardContent>
           <div className="relative mb-4">
             <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
@@ -103,6 +118,16 @@ export default function TelehealthPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="analysis">
+          <AITelehealthSummaryGenerator
+            onAnalysisComplete={(analysis) => {
+              console.log('Analysis complete:', analysis);
+            }}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
