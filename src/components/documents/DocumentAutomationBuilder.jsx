@@ -13,8 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Edit, Trash2, Play, Zap } from "lucide-react";
+import { Plus, Edit, Trash2, Play, Zap, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
+import ConditionalWorkflowBuilder from "./ConditionalWorkflowBuilder";
 
 export default function DocumentAutomationBuilder() {
   const queryClient = useQueryClient();
