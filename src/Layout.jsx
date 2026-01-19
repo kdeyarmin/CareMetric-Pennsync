@@ -145,6 +145,8 @@ export default function Layout({ children, currentPageName }) {
   { name: "Patients", icon: Users, page: "Patients" },
   { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
   { name: "Visit Scribe", icon: Mic, page: "MedicalScribe" },
+  { name: "Telehealth", icon: Video, page: "Telehealth" },
+  { name: "Clinical Support", icon: Activity, page: "ClinicalDecisionSupport" },
   { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
   { name: "Documents", icon: FileText, page: "DocumentGenerator" },
   { name: "Document Analyzer", icon: Brain, page: "DocumentAnalyzer" },
