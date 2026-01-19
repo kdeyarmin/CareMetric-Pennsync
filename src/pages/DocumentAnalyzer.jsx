@@ -40,8 +40,11 @@ import CarePlanSuggestions from "../components/documents/CarePlanSuggestions";
 import ComplianceAuditResults from "../components/documents/ComplianceAuditResults";
 import AIPatientSummaryGenerator from "../components/documents/AIPatientSummaryGenerator";
 import AutomatedAdminPanel from "../components/admin/AutomatedAdminPanel";
+import AnalysisHistoryDetailModal from "../components/documents/AnalysisHistoryDetailModal";
+import AdvancedDocumentAnalysis from "../components/documents/AdvancedDocumentAnalysis";
 
 export default function DocumentAnalyzer() {
+  const [activeTab, setActiveTab] = useState('analyze');
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -52,6 +55,17 @@ export default function DocumentAnalyzer() {
   const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showAdminTools, setShowAdminTools] = useState(false);
+  
+  // History filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPatientFilter, setSelectedPatientFilter] = useState("all");
+  const [selectedDocType, setSelectedDocType] = useState("all");
+  const [selectedDateRange, setSelectedDateRange] = useState("all");
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedAnalysis, setSelectedAnalysis] = useState(null);
+  const [deletingId, setDeleteId] = useState(null);
+  const [selectedForAdvanced, setSelectedForAdvanced] = useState([]);
+  const [showAdvancedAnalysis, setShowAdvancedAnalysis] = useState(false);
   
   const queryClient = useQueryClient();
 
