@@ -291,6 +291,51 @@ export default function DocumentAnalyzer() {
     toast.success('Copied to clipboard');
   };
 
+  // Filter history
+  const filteredHistory = (analysisHistory || []).filter(item => {
+    if (searchQuery && !item.file_names?.some(name => 
+      name.toLowerCase().includes(searchQuery.toLowerCase())
+    ) && !item.analysis_summary?.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    if (selectedPatientFilter !== "all" && item.patient_id !== selectedPatientFilter) {
+      return false;
+    }
+    if (selectedDocType !== "all" && item.document_type !== selectedDocType) {
+      return false;
+    }
+    if (selectedDateRange !== "all") {
+      const createdDate = new Date(item.created_date);
+      const now = new Date();
+      const daysAgo = parseInt(selectedDateRange);
+      if (createdDate < new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const handleDeleteHistory = async (analysisId) => {
+    setDeleteId(analysisId);
+    try {
+      await base44.entities.DocumentAnalysisHistory.delete(analysisId);
+      toast.success("Analysis deleted");
+      queryClient.invalidateQueries({ queryKey: ['documentAnalysisHistory'] });
+    } catch (error) {
+      toast.error("Failed to delete analysis");
+    } finally {
+      setDeleteId(null);
+    }
+  };
+
+  const toggleSelection = (analysisId) => {
+    setSelectedForAdvanced(prev => 
+      prev.includes(analysisId) 
+        ? prev.filter(id => id !== analysisId)
+        : [...prev, analysisId]
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -299,10 +344,10 @@ export default function DocumentAnalyzer() {
             <div>
               <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-3">
                 <Brain className="w-8 h-8 text-indigo-600" />
-                AI Document Analyzer
+                Document Analyzer
               </h1>
               <p className="text-slate-600 dark:text-slate-400 mt-1">
-                Upload clinical documents for intelligent analysis and actionable insights
+                Upload documents for analysis or review past analyses
               </p>
             </div>
             <div className="flex items-center gap-3">
