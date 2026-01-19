@@ -339,6 +339,34 @@ export default function DocumentAnalyzer() {
     );
   };
 
+  const generateCDSSRecommendations = async () => {
+    if (!analysis) {
+      toast.error('No analysis data available');
+      return;
+    }
+
+    setLoadingCDSS(true);
+    try {
+      const response = await base44.functions.invoke('getClinicalDecisionSupport', {
+        patient_data: selectedPatient ? patients.find(p => p.id === selectedPatient) : null,
+        medications: analysis.extracted_data?.medications || [],
+        diagnoses: analysis.extracted_data?.diagnoses || [],
+        vitals: analysis.extracted_data?.vitals || {},
+        provider_type: providerType,
+        care_setting: careSetting
+      });
+
+      if (response.cdss_recommendations) {
+        setCDSSData(response.cdss_recommendations);
+        toast.success('Clinical Decision Support analysis complete');
+      }
+    } catch (error) {
+      toast.error('Failed to generate CDSS recommendations: ' + error.message);
+    } finally {
+      setLoadingCDSS(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
