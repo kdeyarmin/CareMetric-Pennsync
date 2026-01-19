@@ -226,7 +226,7 @@ export default function DocumentTemplateManager() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  Content * (Use {{'{{'}}placeholder_key{{'}}'}} for dynamic fields)
+                  Content * (Use {"{{placeholder_key}}"} for dynamic fields)
                 </label>
                 <Textarea
                   placeholder="Enter document content with placeholders like {{patient_name}}, {{date}}"
