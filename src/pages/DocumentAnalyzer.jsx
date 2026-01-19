@@ -366,6 +366,17 @@ export default function DocumentAnalyzer() {
             </div>
           </div>
 
+          {/* Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="analyze">Upload & Analyze</TabsTrigger>
+              <TabsTrigger value="history">
+                <History className="w-4 h-4 mr-2" />
+                History
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
           {/* Quick Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <Card>
