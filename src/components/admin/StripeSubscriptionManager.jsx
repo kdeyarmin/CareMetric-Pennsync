@@ -164,11 +164,16 @@ export default function StripeSubscriptionManager() {
         product_id: productId
       });
 
-      if (response?.data?.success) {
+      console.log('Delete response:', response);
+
+      if (response?.success || response?.data?.success) {
         toast.success("Product deleted successfully");
         refetchProducts();
+      } else {
+        toast.error(response?.error || response?.data?.error || "Failed to delete product");
       }
     } catch (error) {
+      console.error('Delete error:', error);
       toast.error(error.message || "Failed to delete product");
     }
   };
