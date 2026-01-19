@@ -29,6 +29,7 @@ import {
   ChevronDown
 } from "lucide-react";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
+import AISuggestionFeedback from "../feedback/AISuggestionFeedback";
 
 export default function AINoteDraftingAssistant({
   vitalSigns,
@@ -50,6 +51,11 @@ export default function AINoteDraftingAssistant({
   const [customPrompt, setCustomPrompt] = useState("");
   const [copied, setCopied] = useState(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  React.useEffect(() => {
+    base44.auth.me().then(setCurrentUser).catch(() => {});
+  }, []);
 
   const generateAssessment = async () => {
     setIsGenerating(true);
@@ -355,6 +361,20 @@ Generate professional, Medicare-compliant clinical documentation based on the re
           <div className="bg-white border rounded-lg p-3">
             <p className="text-sm whitespace-pre-wrap">{generatedContent[type]}</p>
           </div>
+          
+          <AISuggestionFeedback
+            suggestionType="note_enhancement"
+            suggestionContent={generatedContent[type]}
+            userAction="accepted"
+            contextData={{
+              patient_id: patientId,
+              section_type: type,
+              diagnosis: diagnosis,
+              visit_type: 'smart_note'
+            }}
+            compact={true}
+          />
+
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -464,6 +484,20 @@ Generate professional, Medicare-compliant clinical documentation based on the re
                   <div className="bg-white border rounded-lg p-3">
                     <p className="text-sm whitespace-pre-wrap">{generatedContent.custom}</p>
                   </div>
+
+                  <AISuggestionFeedback
+                    suggestionType="note_enhancement"
+                    suggestionContent={generatedContent.custom}
+                    userAction="accepted"
+                    contextData={{
+                      patient_id: patientId,
+                      section_type: 'custom',
+                      custom_prompt: customPrompt,
+                      diagnosis: diagnosis
+                    }}
+                    compact={true}
+                  />
+
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => handleCopy('custom')}>
                       {copied === 'custom' ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}

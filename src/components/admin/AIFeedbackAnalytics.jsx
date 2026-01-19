@@ -1,157 +1,140 @@
-import React from 'react';
-import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Lightbulb, TrendingUp } from 'lucide-react';
-import { toast } from 'sonner';
+import React from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ThumbsUp, ThumbsDown, TrendingUp, BarChart3, MessageSquare } from "lucide-react";
 
 export default function AIFeedbackAnalytics() {
-  const { data: feedbackData = [] } = useQuery({
+  const { data: feedback = [] } = useQuery({
     queryKey: ['aiFeedback'],
-    queryFn: () => base44.entities.AIFeedback.filter({ is_processed: false })
+    queryFn: () => base44.entities.AIFeedback.list('-created_date', 500)
   });
 
-  const processAllFeedback = async () => {
-    try {
-      await base44.functions.invoke('processAIFeedback', {});
-      toast.success('Feedback analysis completed');
-    } catch (error) {
-      toast.error('Failed to process feedback');
-    }
+  const stats = {
+    total: feedback.length,
+    positive: feedback.filter(f => f.helpful_rating >= 4).length,
+    negative: feedback.filter(f => f.helpful_rating <= 2).length,
+    withComments: feedback.filter(f => f.feedback_text).length,
+    accepted: feedback.filter(f => f.user_action === 'accepted').length,
+    rejected: feedback.filter(f => f.user_action === 'rejected').length
   };
 
-  // Analyze feedback patterns
-  const analysis = {
-    by_type: {},
-    by_action: {},
-    avg_ratings: {}
-  };
+  const positiveRate = stats.total > 0 ? ((stats.positive / stats.total) * 100).toFixed(1) : 0;
 
-  feedbackData.forEach(feedback => {
-    // By type
-    if (!analysis.by_type[feedback.ai_suggestion_type]) {
-      analysis.by_type[feedback.ai_suggestion_type] = 0;
-    }
-    analysis.by_type[feedback.ai_suggestion_type]++;
+  const byType = feedback.reduce((acc, f) => {
+    acc[f.ai_suggestion_type] = (acc[f.ai_suggestion_type] || 0) + 1;
+    return acc;
+  }, {});
 
-    // By action
-    if (!analysis.by_action[feedback.user_action]) {
-      analysis.by_action[feedback.user_action] = 0;
-    }
-    analysis.by_action[feedback.user_action]++;
-
-    // Ratings
-    if (!analysis.avg_ratings[feedback.ai_suggestion_type]) {
-      analysis.avg_ratings[feedback.ai_suggestion_type] = {
-        helpful: [],
-        accuracy: []
-      };
-    }
-    if (feedback.helpful_rating) {
-      analysis.avg_ratings[feedback.ai_suggestion_type].helpful.push(feedback.helpful_rating);
-    }
-    if (feedback.accuracy_rating) {
-      analysis.avg_ratings[feedback.ai_suggestion_type].accuracy.push(feedback.accuracy_rating);
-    }
+  const avgRatingByType = {};
+  Object.keys(byType).forEach(type => {
+    const typeFeedback = feedback.filter(f => f.ai_suggestion_type === type);
+    const avg = typeFeedback.reduce((sum, f) => sum + (f.helpful_rating || 0), 0) / typeFeedback.length;
+    avgRatingByType[type] = avg.toFixed(1);
   });
-
-  // Calculate averages
-  Object.keys(analysis.avg_ratings).forEach(type => {
-    const helpful = analysis.avg_ratings[type].helpful;
-    const accuracy = analysis.avg_ratings[type].accuracy;
-    analysis.avg_ratings[type] = {
-      helpful: helpful.length > 0 ? (helpful.reduce((a, b) => a + b) / helpful.length).toFixed(2) : null,
-      accuracy: accuracy.length > 0 ? (accuracy.reduce((a, b) => a + b) / accuracy.length).toFixed(2) : null
-    };
-  });
-
-  const chartData = Object.entries(analysis.by_type).map(([type, count]) => ({
-    name: type,
-    count,
-    helpful: analysis.avg_ratings[type]?.helpful || 0,
-    accuracy: analysis.avg_ratings[type]?.accuracy || 0
-  }));
-
-  const actionData = Object.entries(analysis.by_action).map(([action, count]) => ({
-    name: action,
-    count
-  }));
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Lightbulb className="w-5 h-5 text-blue-600" />
-          <h2 className="text-xl font-bold">AI Feedback Analytics</h2>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-purple-600" />
+          AI Feedback Analytics
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Summary Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Total Feedback</p>
+            <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
+          </div>
+          <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Positive Rate</p>
+            <p className="text-2xl font-bold text-green-600">{positiveRate}%</p>
+          </div>
+          <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Accepted</p>
+            <p className="text-2xl font-bold text-purple-600">{stats.accepted}</p>
+          </div>
+          <div className="p-4 bg-amber-50 dark:bg-amber-950 rounded-lg">
+            <p className="text-sm text-gray-600 dark:text-gray-400">With Comments</p>
+            <p className="text-2xl font-bold text-amber-600">{stats.withComments}</p>
+          </div>
         </div>
-        <Button onClick={processAllFeedback} className="bg-blue-600 hover:bg-blue-700">
-          <TrendingUp className="w-4 h-4 mr-2" />
-          Analyze & Process Feedback
-        </Button>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Total Feedback: {feedbackData.length}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="count" fill="#3b82f6" name="Feedback Count" />
-              <Bar dataKey="helpful" fill="#10b981" name="Avg Helpful Rating" />
-              <Bar dataKey="accuracy" fill="#f59e0b" name="Avg Accuracy Rating" />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+        <Tabs defaultValue="byType">
+          <TabsList>
+            <TabsTrigger value="byType">By Type</TabsTrigger>
+            <TabsTrigger value="recent">Recent</TabsTrigger>
+          </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">User Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={actionData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="#8b5cf6" />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Quality Metrics by Suggestion Type</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {Object.entries(analysis.avg_ratings).map(([type, ratings]) => (
-              <div key={type} className="flex items-center justify-between p-2 border rounded">
-                <span className="font-medium text-sm">{type}</span>
-                <div className="flex gap-2">
-                  <Badge variant="outline">
-                    Helpful: {ratings.helpful || 'N/A'}
+          <TabsContent value="byType" className="space-y-3">
+            <h3 className="text-sm font-semibold">Feedback by AI Feature</h3>
+            {Object.entries(byType).map(([type, count]) => (
+              <div key={type} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="flex-1">
+                  <p className="text-sm font-medium capitalize">
+                    {type.replace(/_/g, ' ')}
+                  </p>
+                  <p className="text-xs text-gray-500">{count} responses</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200">
+                    Avg: {avgRatingByType[type]}/5
                   </Badge>
-                  <Badge variant="outline">
-                    Accuracy: {ratings.accuracy || 'N/A'}
-                  </Badge>
+                  <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                    <div
+                      className="h-2 bg-green-500 rounded-full"
+                      style={{ width: `${(avgRatingByType[type] / 5) * 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </TabsContent>
+
+          <TabsContent value="recent" className="space-y-3">
+            {feedback.slice(0, 10).map((item, idx) => (
+              <Card key={idx} className="border-l-4 border-l-purple-500">
+                <CardContent className="p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <Badge variant="outline" className="text-xs mb-1">
+                        {item.ai_suggestion_type.replace(/_/g, ' ')}
+                      </Badge>
+                      <p className="text-xs text-gray-500">{item.user_email}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {item.helpful_rating >= 4 ? (
+                        <ThumbsUp className="w-4 h-4 text-green-600" />
+                      ) : item.helpful_rating <= 2 ? (
+                        <ThumbsDown className="w-4 h-4 text-red-600" />
+                      ) : null}
+                      <span className="text-sm font-semibold">{item.helpful_rating}/5</span>
+                    </div>
+                  </div>
+                  {item.feedback_text && (
+                    <p className="text-sm text-gray-700 dark:text-gray-300 italic">
+                      "{item.feedback_text}"
+                    </p>
+                  )}
+                  <div className="flex gap-2 mt-2">
+                    <Badge className={
+                      item.user_action === 'accepted' ? 'bg-green-100 text-green-800' :
+                      item.user_action === 'rejected' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }>
+                      {item.user_action}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   );
 }

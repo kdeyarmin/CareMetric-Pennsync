@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Code, Copy, CheckCircle2, AlertCircle, Info, Plus } from "lucide-react";
 import { toast } from "sonner";
+import AISuggestionFeedback from "../feedback/AISuggestionFeedback";
 
 export default function AIMedicalCodingAssistant({ 
   clinicalNote, 
@@ -15,6 +16,11 @@ export default function AIMedicalCodingAssistant({
   const [analyzing, setAnalyzing] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
   const [selectedCodes, setSelectedCodes] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  React.useEffect(() => {
+    base44.auth.me().then(setCurrentUser).catch(() => {});
+  }, []);
 
   const analyzeCodes = async () => {
     setAnalyzing(true);
@@ -325,6 +331,22 @@ Be specific and accurate. Only suggest codes that are clearly supported by the d
                 </div>
               </div>
             )}
+
+            {/* Feedback Section */}
+            <div className="pt-3 border-t">
+              <AISuggestionFeedback
+                suggestionType="medical_coding"
+                suggestionContent={JSON.stringify(suggestions)}
+                userAction={selectedCodes.length > 0 ? 'accepted' : 'ignored'}
+                contextData={{
+                  patient_id: patientData?.id,
+                  visit_type: visitType,
+                  codes_selected: selectedCodes.length,
+                  total_suggestions: (suggestions.icd10_codes?.length || 0) + (suggestions.cpt_codes?.length || 0)
+                }}
+                compact={true}
+              />
+            </div>
 
             {/* Action Buttons */}
             <div className="flex gap-2 pt-2 border-t">
