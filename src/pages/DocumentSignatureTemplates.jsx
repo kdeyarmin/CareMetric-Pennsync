@@ -24,14 +24,20 @@ export default function DocumentSignatureTemplates() {
         </div>
 
         <Tabs defaultValue="manage" className="space-y-6">
-          <TabsList className="grid w-full max-w-2xl grid-cols-2">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="manage" className="gap-2">
               <Edit className="w-4 h-4" />
-              Manage Templates
+              Templates
+            </TabsTrigger>
+            <TabsTrigger value="workflows" className="gap-2">
+              ⚡ Workflows
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="gap-2">
+              📊 Analytics
             </TabsTrigger>
             <TabsTrigger value="use" className="gap-2">
               <Send className="w-4 h-4" />
-              Use Template
+              Use
             </TabsTrigger>
           </TabsList>
 
