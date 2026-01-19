@@ -16,6 +16,8 @@ import DictationAccuracyFeedback from "../scribe/DictationAccuracyFeedback";
 import InvoiceGenerator from "../billing/InvoiceGenerator";
 import { ResolveAllIssues } from "./OneClickResolvers";
 import NoteEmailDialog from "../notes/NoteEmailDialog";
+import NoteFormatSelector from "../notes/NoteFormatSelector";
+import { getFormatPrompt } from "../notes/NoteFormatTemplates";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -53,6 +55,7 @@ export default function MedicalScribeWithReview({
   const [documentationGaps, setDocumentationGaps] = useState([]);
   const [realTimeSuggestions, setRealTimeSuggestions] = useState([]);
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState("soap");
 
   const { data: patientData } = useQuery({
     queryKey: ['patient', patientId],
@@ -199,6 +202,11 @@ export default function MedicalScribeWithReview({
         }))
       };
 
+      const formatPrompt = getFormatPrompt(
+        selectedFormat, 
+        currentUser?.credential_type || currentUser?.provider_type
+      );
+
       const response = await base44.functions.invoke('enhanceNoteOptimized', {
         roughNote: editedTranscription,
         patientId: patientId || null,
@@ -206,7 +214,9 @@ export default function MedicalScribeWithReview({
         diagnosis,
         vitalSigns: {},
         nurseType: currentUser?.provider_type || currentUser?.credential_type || 'RN',
-        contextData
+        contextData,
+        noteFormat: selectedFormat,
+        formatInstructions: formatPrompt
       });
 
       const data = response.data || response;
@@ -428,6 +438,12 @@ Provide specific, actionable suggestions for:
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
+            <NoteFormatSelector
+              selectedFormat={selectedFormat}
+              onFormatChange={setSelectedFormat}
+              specialty={currentUser?.credential_type || currentUser?.provider_type}
+              showDescription={true}
+            />
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Transcribed Text</label>
