@@ -22,9 +22,12 @@ import {
   ExternalLink,
   Copy,
   Download,
-  Star
+  Star,
+  Code
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ClinicalCodeSuggestionPanel from '../billing/ClinicalCodeSuggestionPanel';
 
 export default function EvidenceBasedClinicalReasoning({ 
   patientId,
@@ -297,7 +300,19 @@ export default function EvidenceBasedClinicalReasoning({
       </Card>
 
       {report && (
-        <div className="space-y-4">
+        <Tabs defaultValue="report" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="report">
+              <FileText className="w-4 h-4 mr-2" />
+              Clinical Report
+            </TabsTrigger>
+            <TabsTrigger value="coding">
+              <Code className="w-4 h-4 mr-2" />
+              Code Suggestions
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="report" className="space-y-4">
           {/* Executive Summary */}
           <Card>
             <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
@@ -784,7 +799,20 @@ export default function EvidenceBasedClinicalReasoning({
               </div>
             </CardContent>
           </Card>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="coding">
+            <ClinicalCodeSuggestionPanel
+              clinicalData={clinicalNote || clinicalQuestion}
+              evidenceReport={report}
+              patientId={patientId}
+              onCodesConfirmed={(codes) => {
+                console.log('Codes confirmed:', codes);
+                toast.success('Codes ready for billing submission');
+              }}
+            />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
