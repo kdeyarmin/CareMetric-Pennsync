@@ -13,6 +13,7 @@ import BillingInvoicing from './pages/BillingInvoicing';
 import BillingModule from './pages/BillingModule';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
+import ClinicalDecisionSupport from './pages/ClinicalDecisionSupport';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import Compliance from './pages/Compliance';
@@ -66,6 +67,7 @@ import PatientEducationHub from './pages/PatientEducationHub';
 import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import PatientMessaging from './pages/PatientMessaging';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
+import PatientTelehealth from './pages/PatientTelehealth';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
@@ -90,6 +92,7 @@ import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
+import Telehealth from './pages/Telehealth';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
@@ -97,9 +100,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import Telehealth from './pages/Telehealth';
-import ClinicalDecisionSupport from './pages/ClinicalDecisionSupport';
-import PatientTelehealth from './pages/PatientTelehealth';
 import __Layout from './Layout.jsx';
 
 
@@ -119,6 +119,7 @@ export const PAGES = {
     "BillingModule": BillingModule,
     "CareCoordinationDashboard": CareCoordinationDashboard,
     "CarePlanManagement": CarePlanManagement,
+    "ClinicalDecisionSupport": ClinicalDecisionSupport,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
     "Compliance": Compliance,
@@ -172,6 +173,7 @@ export const PAGES = {
     "PatientEducationLibrary": PatientEducationLibrary,
     "PatientMessaging": PatientMessaging,
     "PatientRecordDashboard": PatientRecordDashboard,
+    "PatientTelehealth": PatientTelehealth,
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
     "PersonalizedLearningPath": PersonalizedLearningPath,
@@ -196,6 +198,7 @@ export const PAGES = {
     "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
+    "Telehealth": Telehealth,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
@@ -203,9 +206,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "Telehealth": Telehealth,
-    "ClinicalDecisionSupport": ClinicalDecisionSupport,
-    "PatientTelehealth": PatientTelehealth,
 }
 
 export const pagesConfig = {

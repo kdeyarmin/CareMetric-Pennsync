@@ -6,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Search, Filter, FileText, Calendar, User, Eye, Trash2, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, Search, Filter, FileText, Calendar, User, Eye, Trash2, Loader2, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import AnalysisHistoryDetailModal from "../components/documents/AnalysisHistoryDetailModal";
+import AdvancedDocumentAnalysis from "../components/documents/AdvancedDocumentAnalysis";
 import { format } from "date-fns";
 
 export default function DocumentAnalysisHistoryPage() {
@@ -22,6 +24,8 @@ export default function DocumentAnalysisHistoryPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [selectedForAdvanced, setSelectedForAdvanced] = useState([]);
+  const [showAdvancedAnalysis, setShowAdvancedAnalysis] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
@@ -93,6 +97,22 @@ export default function DocumentAnalysisHistoryPage() {
     }
   };
 
+  const toggleSelection = (analysisId) => {
+    setSelectedForAdvanced(prev => 
+      prev.includes(analysisId) 
+        ? prev.filter(id => id !== analysisId)
+        : [...prev, analysisId]
+    );
+  };
+
+  const selectAll = () => {
+    setSelectedForAdvanced(filteredHistory.map(a => a.id));
+  };
+
+  const clearSelection = () => {
+    setSelectedForAdvanced([]);
+  };
+
   const docTypeOptions = [
     "clinical_note",
     "lab_report",
@@ -127,14 +147,34 @@ export default function DocumentAnalysisHistoryPage() {
         {/* Header */}
         <Card className="mb-6 border-2 border-blue-200 dark:border-blue-800">
           <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-blue-600" />
                 Analysis History
               </CardTitle>
-              <Badge variant="outline" className="text-sm">
-                {filteredHistory.length} {filteredHistory.length === 1 ? "result" : "results"}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="text-sm">
+                  {filteredHistory.length} {filteredHistory.length === 1 ? "result" : "results"}
+                </Badge>
+                {selectedForAdvanced.length > 0 && (
+                  <>
+                    <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                      {selectedForAdvanced.length} selected
+                    </Badge>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setShowAdvancedAnalysis(true)}
+                      className="bg-gradient-to-r from-purple-600 to-indigo-600"
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Advanced Analysis
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={clearSelection}>
+                      Clear
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </CardHeader>
         </Card>
@@ -142,6 +182,18 @@ export default function DocumentAnalysisHistoryPage() {
         {/* Search and Filters */}
         <Card className="mb-6">
           <CardContent className="p-4 md:p-6 space-y-4">
+            {/* Selection Controls */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <Button size="sm" variant="outline" onClick={selectAll}>
+                Select All ({filteredHistory.length})
+              </Button>
+              {selectedForAdvanced.length > 0 && (
+                <Button size="sm" variant="outline" onClick={clearSelection}>
+                  Clear Selection
+                </Button>
+              )}
+            </div>
+
             {/* Search Bar */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -232,10 +284,30 @@ export default function DocumentAnalysisHistoryPage() {
           <div className="space-y-3">
             {filteredHistory.map(analysis => {
               const patient = patients.find(p => p.id === analysis.patient_id);
+              const isSelected = selectedForAdvanced.includes(analysis.id);
               return (
-                <Card key={analysis.id} className="hover:shadow-md transition-shadow">
+                <Card 
+                  key={analysis.id} 
+                  className={`hover:shadow-md transition-all ${
+                    isSelected ? 'ring-2 ring-purple-500 bg-purple-50 dark:bg-purple-950' : ''
+                  }`}
+                >
                   <CardContent className="p-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Checkbox for selection */}
+                      <div className="absolute top-4 left-4 sm:static sm:col-span-2">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelection(analysis.id)}
+                          />
+                          <label className="text-xs text-slate-600 dark:text-slate-400 cursor-pointer"
+                            onClick={() => toggleSelection(analysis.id)}
+                          >
+                            Select for advanced analysis
+                          </label>
+                        </div>
+                      </div>
                       {/* Left: Main Info */}
                       <div className="space-y-2 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -325,6 +397,29 @@ export default function DocumentAnalysisHistoryPage() {
             setSelectedAnalysis(null);
           }}
         />
+      )}
+
+      {/* Advanced Analysis Modal */}
+      {showAdvancedAnalysis && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="sticky top-0 bg-white dark:bg-slate-900 border-b p-4 flex items-center justify-between z-10">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                Advanced Document Analysis
+              </h2>
+              <Button variant="outline" onClick={() => setShowAdvancedAnalysis(false)}>
+                Close
+              </Button>
+            </div>
+            <div className="p-6">
+              <AdvancedDocumentAnalysis
+                selectedAnalysisIds={selectedForAdvanced}
+                onClose={() => setShowAdvancedAnalysis(false)}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
