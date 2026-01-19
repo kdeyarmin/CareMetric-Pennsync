@@ -16,6 +16,7 @@ import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalDecisionSupport from './pages/ClinicalDecisionSupport';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
+import ClinicalReasoning from './pages/ClinicalReasoning';
 import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import Dashboard from './pages/Dashboard';
@@ -100,7 +101,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import ClinicalReasoning from './pages/ClinicalReasoning';
 import __Layout from './Layout.jsx';
 
 
@@ -123,6 +123,7 @@ export const PAGES = {
     "ClinicalDecisionSupport": ClinicalDecisionSupport,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
+    "ClinicalReasoning": ClinicalReasoning,
     "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
     "Dashboard": Dashboard,
@@ -207,7 +208,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "ClinicalReasoning": ClinicalReasoning,
 }
 
 export const pagesConfig = {

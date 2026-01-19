@@ -57,6 +57,12 @@ import DischargeVisitSummary from "../components/visit/DischargeVisitSummary";
 import ProactiveRiskIdentifier from "../components/alerts/ProactiveRiskIdentifier";
 import MedicalScribeAssistant from "../components/scribe/MedicalScribeAssistant";
 import PatientRiskPredictor from "../components/risk/PatientRiskPredictor";
+import PreVisitPreparation from "../components/visit/PreVisitPreparation";
+import SNOMEDCodeSearch from "../components/clinical/SNOMEDCodeSearch";
+import AdaptiveLearningDashboard from "../components/smartNote/AdaptiveLearningDashboard";
+import RealTimeTaskGenerator from "../components/visit/RealTimeTaskGenerator";
+import QuickPatientHandoutGenerator from "../components/visit/QuickPatientHandoutGenerator";
+import PostConsultationAutomation from "../components/visit/PostConsultationAutomation";
 
 import { 
   canAccessVisit, 
@@ -106,7 +112,8 @@ export default function DocumentVisit() {
   const [aiToolsUsed, setAiToolsUsed] = useState([]);
   const documentationStartTime = useRef(new Date());
   const [scannedDocuments, setScannedDocuments] = useState([]);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine); 
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [selectedSnomedCodes, setSelectedSnomedCodes] = useState([]); 
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -1093,6 +1100,12 @@ Generate the complete clinical narrative based on the audio and context:`;
         </Alert>
       )}
 
+      {/* Pre-Visit Preparation */}
+      <PreVisitPreparation
+        patientId={visit?.patient_id}
+        visitId={visitId}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           <Tabs defaultValue="document" className="space-y-4 sm:space-y-6">
@@ -1362,6 +1375,25 @@ Generate the complete clinical narrative based on the audio and context:`;
                 }}
               />
 
+              {/* Patient Handout Generator */}
+              <QuickPatientHandoutGenerator
+                patientId={visit?.patient_id}
+                visitNotes={narrativeText}
+                diagnosis={patient?.primary_diagnosis}
+                medications={patient?.current_medications}
+              />
+
+              {/* Post-Consultation Automation */}
+              <PostConsultationAutomation
+                patientId={visit?.patient_id}
+                visitId={visitId}
+                visitNotes={narrativeText}
+                diagnosis={patient?.primary_diagnosis}
+                onComplete={(actions) => {
+                  console.log('Completed actions:', actions);
+                }}
+              />
+
               <div className="flex flex-col sm:flex-row sm:justify-between gap-3 pb-8">
                 <div className="flex gap-2">
                   <Button
@@ -1621,6 +1653,28 @@ Generate the complete clinical narrative based on the audio and context:`;
         </div>
 
         <div className="space-y-4 sm:space-y-6">
+          {/* Adaptive Learning Dashboard */}
+          <AdaptiveLearningDashboard userEmail={patient?.created_by} />
+
+          {/* Real-Time Task Generator */}
+          <RealTimeTaskGenerator
+            clinicalContext={narrativeText}
+            patientId={visit?.patient_id}
+            visitId={visitId}
+            autoGenerate={true}
+          />
+
+          {/* SNOMED Code Search */}
+          <SNOMEDCodeSearch
+            selectedCodes={selectedSnomedCodes}
+            onCodeSelect={(code) => {
+              setSelectedSnomedCodes(prev => [...prev, code]);
+              const codeText = `\n\n**SNOMED CODE:** ${code.code} - ${code.description}`;
+              setNarrativeText(prev => prev + codeText);
+              toast.success('Code added to documentation');
+            }}
+          />
+
           {/* Enhanced AI Clinical Decision Support */}
           {patient && (
            <EnhancedClinicalDecisionSupport
