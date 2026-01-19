@@ -441,7 +441,7 @@ export default function DocumentAnalyzer() {
         {/* ANALYZE TAB */}
         {activeTab === 'analyze' && (
           <>
-        {/* Configuration & Upload Section */}
+            {/* Configuration & Upload Section */}
         <Card>
           <CardHeader>
             <CardTitle>Upload & Configure</CardTitle>
