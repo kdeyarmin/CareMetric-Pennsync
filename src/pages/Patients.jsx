@@ -368,15 +368,24 @@ export default function Patients() {
               </Button>
             )}
             <Button
+              onClick={() => navigate(createPageUrl('PatientOnboarding'))}
+              size="sm"
+              className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="text-xs sm:text-sm">Onboard Patient</span>
+            </Button>
+            <Button
               onClick={() => {
                 setEditingPatient(null);
                 setShowForm(true);
               }}
               size="sm"
-              className="flex-1 sm:flex-none bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600"
+              variant="outline"
+              className="flex-1 sm:flex-none"
             >
               <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="text-xs sm:text-sm">Add Patient</span>
+              <span className="text-xs sm:text-sm">Quick Add</span>
             </Button>
           </div>
         </div>
