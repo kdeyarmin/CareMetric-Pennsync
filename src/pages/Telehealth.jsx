@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Video, Search } from 'lucide-react';
-import TelehealthModule from '../components/telehealth/TelehealthModule';
+import EnhancedTelehealthModule from '../components/telehealth/EnhancedTelehealthModule';
 
 export default function TelehealthPage() {
   const [selectedVisit, setSelectedVisit] = useState(null);
@@ -41,8 +41,8 @@ export default function TelehealthPage() {
 
   if (selectedVisit) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
-        <TelehealthModule
+      <div className="p-6 max-w-7xl mx-auto">
+        <EnhancedTelehealthModule
           visitId={selectedVisit.id}
           patientId={selectedVisit.patient_id}
           patientName={getPatientName(selectedVisit.patient_id)}
