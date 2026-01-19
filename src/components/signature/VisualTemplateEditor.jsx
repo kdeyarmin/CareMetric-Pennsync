@@ -257,7 +257,7 @@ export default function VisualTemplateEditor({
                   >
                     <div>
                       <p className="font-medium">{ph.label}</p>
-                      <p className="text-gray-500">{{{{ph.key}}}}</p>
+                      <p className="text-gray-500">{`{{${ph.key}}}`}</p>
                     </div>
                     <Button
                       size="sm"
@@ -442,7 +442,7 @@ export default function VisualTemplateEditor({
               <div className="flex flex-wrap gap-2">
                 {placeholders.map((ph) => (
                   <Badge key={ph.key} variant="secondary" className="text-xs">
-                    {{{{ph.key}}}}
+                    {`{{${ph.key}}}`}
                   </Badge>
                 ))}
               </div>
