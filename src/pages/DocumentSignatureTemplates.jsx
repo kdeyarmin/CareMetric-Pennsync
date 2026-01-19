@@ -57,6 +57,12 @@ export default function DocumentSignatureTemplates() {
           <TabsContent value="workflows">
             <SignatureWorkflowAutomation />
           </TabsContent>
+          <TabsContent value="automation">
+            <DocumentAutomationBuilder />
+          </TabsContent>
+          <TabsContent value="automation-dashboard">
+            <DocumentAutomationDashboard />
+          </TabsContent>
           <TabsContent value="analytics">
             <DocumentAnalyticsDashboard />
           </TabsContent>
