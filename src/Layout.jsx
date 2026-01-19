@@ -168,11 +168,13 @@ export default function Layout({ children, currentPageName }) {
   [];
 
   const userNavItems = allNavItems.filter((item) =>
-  item.page === "Dashboard" ||
-  item.page === "Features" ||
-  item.page === "Settings" ||
-  item.page === "SubscriptionPlans" ||
-  accessiblePages.includes(item.page)
+    item.page === "Dashboard" ||
+    item.page === "Features" ||
+    item.page === "Settings" ||
+    item.page === "SubscriptionPlans" ||
+    item.page === "DocumentAnalyzer" ||
+    item.page === "DocumentAnalysisHistory" ||
+    accessiblePages.includes(item.page)
   );
 
   const adminNavItems = currentUser?.role === 'admin' ? [
