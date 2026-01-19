@@ -723,6 +723,221 @@ export default function DocumentAnalyzer() {
             </div>
           </div>
         )}
+          </>
+        )}
+
+        {/* HISTORY TAB */}
+        {activeTab === 'history' && (
+          <div className="space-y-6">
+            {/* Search and Filters */}
+            <Card>
+              <CardContent className="p-4 md:p-6 space-y-4">
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    placeholder="Search by filename or content..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+
+                {/* Filters */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                      Patient
+                    </label>
+                    <Select value={selectedPatientFilter} onValueChange={setSelectedPatientFilter}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Patients</SelectItem>
+                        {patients.map(patient => (
+                          <SelectItem key={patient.id} value={patient.id}>
+                            {patient.first_name} {patient.last_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                      Document Type
+                    </label>
+                    <Select value={selectedDocType} onValueChange={setSelectedDocType}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="auto">Auto Detect</SelectItem>
+                        <SelectItem value="referral">Referral</SelectItem>
+                        <SelectItem value="specialist_report">Specialist Report</SelectItem>
+                        <SelectItem value="lab_results">Lab Results</SelectItem>
+                        <SelectItem value="imaging">Imaging Report</SelectItem>
+                        <SelectItem value="discharge_summary">Discharge Summary</SelectItem>
+                        <SelectItem value="consult_note">Consult Note</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                      Date Range
+                    </label>
+                    <Select value={selectedDateRange} onValueChange={setSelectedDateRange}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Time</SelectItem>
+                        <SelectItem value="7">Last 7 Days</SelectItem>
+                        <SelectItem value="30">Last 30 Days</SelectItem>
+                        <SelectItem value="90">Last 90 Days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Results */}
+            {filteredHistory.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600 dark:text-slate-400">
+                    {analysisHistory?.length === 0 ? "No analyses yet" : "No analyses match your filters"}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-sm">
+                    {filteredHistory.length} result{filteredHistory.length === 1 ? '' : 's'}
+                  </Badge>
+                  {selectedForAdvanced.length > 0 && (
+                    <Button 
+                      size="sm" 
+                      onClick={() => setShowAdvancedAnalysis(true)}
+                      className="bg-gradient-to-r from-purple-600 to-indigo-600"
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Advanced Analysis ({selectedForAdvanced.length})
+                    </Button>
+                  )}
+                </div>
+                
+                {filteredHistory.map(item => {
+                  const patient = patients.find(p => p.id === item.patient_id);
+                  const isSelected = selectedForAdvanced.includes(item.id);
+                  return (
+                    <Card 
+                      key={item.id} 
+                      className={`hover:shadow-md transition-all ${
+                        isSelected ? 'ring-2 ring-purple-500 bg-purple-50 dark:bg-purple-950' : ''
+                      }`}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSelection(item.id)}
+                              />
+                              <h3 className="font-semibold text-slate-900 dark:text-slate-100">
+                                {item.file_names?.[0]?.split('/').pop() || "Analysis"}
+                              </h3>
+                              <Badge className="text-xs" variant="outline">
+                                {item.file_count} file{item.file_count === 1 ? '' : 's'}
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-slate-600 dark:text-slate-400">
+                              <p>{format(new Date(item.created_date), "MMM d, yyyy HH:mm")}</p>
+                              {patient && <p>{patient.first_name} {patient.last_name}</p>}
+                            </div>
+                            {item.analysis_summary && (
+                              <p className="text-sm text-slate-700 dark:text-slate-300 line-clamp-2">
+                                {item.analysis_summary}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-700"
+                              onClick={() => {
+                                setSelectedAnalysis(item);
+                                setDetailModalOpen(true);
+                              }}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => handleDeleteHistory(item.id)}
+                              disabled={deletingId === item.id}
+                            >
+                              {deletingId === item.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Detail Modal */}
+        {selectedAnalysis && (
+          <AnalysisHistoryDetailModal
+            analysis={selectedAnalysis}
+            isOpen={detailModalOpen}
+            onClose={() => {
+              setDetailModalOpen(false);
+              setSelectedAnalysis(null);
+            }}
+          />
+        )}
+
+        {/* Advanced Analysis Modal */}
+        {showAdvancedAnalysis && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+              <div className="sticky top-0 bg-white dark:bg-slate-900 border-b p-4 flex items-center justify-between z-10">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  Advanced Analysis
+                </h2>
+                <Button variant="outline" onClick={() => setShowAdvancedAnalysis(false)}>
+                  Close
+                </Button>
+              </div>
+              <div className="p-6">
+                <AdvancedDocumentAnalysis
+                  selectedAnalysisIds={selectedForAdvanced}
+                  onClose={() => setShowAdvancedAnalysis(false)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
