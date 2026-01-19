@@ -438,6 +438,9 @@ export default function DocumentAnalyzer() {
           </Card>
         )}
 
+        {/* ANALYZE TAB */}
+        {activeTab === 'analyze' && (
+          <>
         {/* Configuration & Upload Section */}
         <Card>
           <CardHeader>
