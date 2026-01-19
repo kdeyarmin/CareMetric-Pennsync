@@ -340,25 +340,7 @@ const FEATURES_GUIDE = [
     ],
     importance: "Ensures documentation meets discipline-specific requirements, improves relevance of AI suggestions, streamlines workflow with tailored templates, and maintains scope of practice compliance"
   },
-  {
-    title: "Referral System",
-    description: "Track referrals, earn rewards, and grow your professional network through the CareMetric AI referral program.",
-    howToUse: [
-      "1. Access your unique referral code in Settings",
-      "2. Share code with colleagues via email or social media",
-      "3. Track referred users and reward status in dashboard",
-      "4. Earn credits for successful referrals who subscribe",
-      "5. Redeem rewards for subscription discounts or premium features"
-    ],
-    bestPractices: [
-      "Share referral code with colleagues who would benefit",
-      "Explain CareMetric AI features when referring",
-      "Follow up with referred users to help them get started",
-      "Track your referrals and reward progress",
-      "Use rewards to enhance your subscription"
-    ],
-    importance: "Helps grow the CareMetric AI community, provides subscription discounts through referrals, builds professional network, and supports colleagues in improving documentation quality"
-  },
+
   {
     title: "Data Retention Management",
     description: "Customize data retention policies and automatically archive or delete old records per your compliance requirements and organizational policies.",
