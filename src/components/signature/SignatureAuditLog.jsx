@@ -18,6 +18,8 @@ import { toast } from "sonner";
 export default function SignatureAuditLog() {
   const [searchTerm, setSearchTerm] = useState('');
   const [documentTypeFilter, setDocumentTypeFilter] = useState('all');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [mfaFilter, setMfaFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -35,10 +37,16 @@ export default function SignatureAuditLog() {
     
     const matchesType = documentTypeFilter === 'all' || sig.document_type === documentTypeFilter;
     
+    const matchesRole = roleFilter === 'all' || sig.signed_by_role === roleFilter;
+    
+    const matchesMFA = mfaFilter === 'all' || 
+                       (mfaFilter === 'verified' && sig.mfa_verified) ||
+                       (mfaFilter === 'not_verified' && !sig.mfa_verified);
+    
     const matchesDateRange = (!startDate || new Date(sig.created_date) >= new Date(startDate)) &&
                              (!endDate || new Date(sig.created_date) <= new Date(endDate));
 
-    return matchesSearch && matchesType && matchesDateRange;
+    return matchesSearch && matchesType && matchesRole && matchesMFA && matchesDateRange;
   });
 
   const exportAuditLog = async (format) => {
@@ -49,6 +57,8 @@ export default function SignatureAuditLog() {
         start_date: startDate,
         end_date: endDate,
         document_type: documentTypeFilter !== 'all' ? documentTypeFilter : null,
+        signed_by_role: roleFilter !== 'all' ? roleFilter : null,
+        mfa_status: mfaFilter !== 'all' ? mfaFilter : null,
         format
       });
 
@@ -98,7 +108,7 @@ export default function SignatureAuditLog() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
               <Input
@@ -118,6 +128,31 @@ export default function SignatureAuditLog() {
                 <SelectItem value="care_plan">Care Plan</SelectItem>
                 <SelectItem value="visit_note">Visit Note</SelectItem>
                 <SelectItem value="telehealth_consent">Telehealth Consent</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Signer Role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                <SelectItem value="patient">Patient</SelectItem>
+                <SelectItem value="provider">Provider</SelectItem>
+                <SelectItem value="caregiver">Caregiver</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Select value={mfaFilter} onValueChange={setMfaFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="MFA Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All MFA Status</SelectItem>
+                <SelectItem value="verified">MFA Verified</SelectItem>
+                <SelectItem value="not_verified">Not MFA Verified</SelectItem>
               </SelectContent>
             </Select>
             <Input

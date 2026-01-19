@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json();
-    const { signature_ids, start_date, end_date, document_type, format = 'json' } = payload;
+    const { signature_ids, start_date, end_date, document_type, signed_by_role, mfa_status, format = 'json' } = payload;
 
     // Build query filter
     let signatures;
