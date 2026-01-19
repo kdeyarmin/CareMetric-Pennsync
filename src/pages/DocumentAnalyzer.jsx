@@ -42,6 +42,7 @@ import AIPatientSummaryGenerator from "../components/documents/AIPatientSummaryG
 import AutomatedAdminPanel from "../components/admin/AutomatedAdminPanel";
 import AnalysisHistoryDetailModal from "../components/documents/AnalysisHistoryDetailModal";
 import AdvancedDocumentAnalysis from "../components/documents/AdvancedDocumentAnalysis";
+import CDSSWidget from "../components/clinical/CDSSWidget";
 
 export default function DocumentAnalyzer() {
   const [activeTab, setActiveTab] = useState('analyze');
