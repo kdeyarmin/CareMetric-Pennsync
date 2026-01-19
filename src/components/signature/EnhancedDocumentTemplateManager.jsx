@@ -314,10 +314,11 @@ export default function EnhancedDocumentTemplateManager() {
                   </Button>
                 </div>
               </TabsContent>
-            </Tabs>
-          </DialogContent>
-        </Dialog>
-      </div>
+              </Tabs>
+              </DialogContent>
+              </Dialog>
+              </div>
+              </div>
 
       <div className="grid gap-3">
         {templates.length === 0 ? (
