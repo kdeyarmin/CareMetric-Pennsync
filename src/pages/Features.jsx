@@ -115,12 +115,6 @@ const FEATURES = [
   category: "Operations"
 },
 {
-  icon: Users,
-  title: "Referral System",
-  description: "Track referrals, earn rewards, and grow your professional network through the CareMetric AI referral program.",
-  category: "Operations"
-},
-{
   icon: Shield,
   title: "Data Retention Management",
   description: "Customize data retention policies and automatically archive or delete old records per your compliance requirements.",
