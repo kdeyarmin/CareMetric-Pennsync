@@ -370,6 +370,32 @@ export default function DocumentAnalyzer() {
     }
   };
 
+  const generateCrossDocumentAnalysis = async () => {
+    if (files.length < 2) {
+      toast.error('At least 2 documents required for cross-reference analysis');
+      return;
+    }
+
+    setLoadingCrossDoc(true);
+    try {
+      const response = await base44.functions.invoke('analyzeMultipleDocuments', {
+        file_urls: analysis.uploadedUrls,
+        file_names: files.map(f => f.name),
+        provider_type: providerType,
+        care_setting: careSetting
+      });
+
+      if (response.multi_document_analysis) {
+        setCrossDocData(response.multi_document_analysis);
+        toast.success('Cross-document analysis complete');
+      }
+    } catch (error) {
+      toast.error('Failed to generate cross-document analysis: ' + error.message);
+    } finally {
+      setLoadingCrossDoc(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
