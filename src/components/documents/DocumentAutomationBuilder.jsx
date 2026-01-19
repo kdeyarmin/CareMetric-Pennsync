@@ -21,6 +21,7 @@ export default function DocumentAutomationBuilder() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState(null);
+  const [expandedSections, setExpandedSections] = useState({});
   const [formData, setFormData] = useState({
     workflow_name: "",
     description: "",
@@ -29,6 +30,13 @@ export default function DocumentAutomationBuilder() {
     trigger_event: "visit_completed",
     data_sources: [],
     placeholder_mapping: {},
+    conditional_branches: [],
+    ai_enrichment: {
+      enabled: false,
+      extract_summary: false,
+      extract_keywords: false,
+      max_summary_length: 300,
+    },
     signature_settings: {
       auto_sign: false,
       require_signature: [],
