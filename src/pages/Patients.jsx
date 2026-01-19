@@ -60,6 +60,8 @@ export default function Patients() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [patientsToMerge, setPatientsToMerge] = useState({ patient1: null, patient2: null });
   const [showReferralUpload, setShowReferralUpload] = useState(false);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -156,13 +158,17 @@ export default function Patients() {
 
   const deletePatientMutation = useMutation({
     mutationFn: async (patientId) => {
-      await base44.entities.Patient.delete(patientId);
+      const { data } = await base44.functions.invoke('deletePatientData', { patientId });
+      return data;
     },
-    onSuccess: (_, deletedId) => {
+    onSuccess: (data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
+      queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
       setDeleteDialogOpen(false);
       setPatientToDelete(null);
       setIsDeleting(false);
+      toast.success('Patient and all related data deleted');
       
       // Log patient deletion
       logActivity(ActivityActions.DELETE, {
@@ -173,7 +179,27 @@ export default function Patients() {
     },
     onError: async (error) => {
       setIsDeleting(false);
+      toast.error('Failed to delete patient');
       await handleSecureError(error, 'patient_delete', (msg) => toast.error(msg));
+    }
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await base44.functions.invoke('deletePatientData', { deleteAll: true });
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
+      queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
+      setShowBulkDeleteDialog(false);
+      setIsBulkDeleting(false);
+      toast.success(data.message || 'All patients deleted');
+    },
+    onError: (error) => {
+      setIsBulkDeleting(false);
+      toast.error('Failed to delete all patients');
     }
   });
 
@@ -181,6 +207,11 @@ export default function Patients() {
     if (!patientToDelete) return;
     setIsDeleting(true);
     deletePatientMutation.mutate(patientToDelete.id);
+  };
+
+  const handleBulkDelete = () => {
+    setIsBulkDeleting(true);
+    bulkDeleteMutation.mutate();
   };
 
   const handleSubmit = (data) => {
@@ -315,7 +346,7 @@ export default function Patients() {
             </div>
             <FavoriteButton type="page" id="Patients" name="Patients" />
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
             <Button
               onClick={() => setShowReferralUpload(true)}
               variant="outline"
@@ -325,6 +356,17 @@ export default function Patients() {
               <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               <span className="text-xs sm:text-sm">Upload</span>
             </Button>
+            {currentUser?.role === 'admin' && (
+              <Button
+                onClick={() => setShowBulkDeleteDialog(true)}
+                variant="destructive"
+                size="sm"
+                className="flex-1 sm:flex-none"
+              >
+                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                <span className="text-xs sm:text-sm">Delete All</span>
+              </Button>
+            )}
             <Button
               onClick={() => {
                 setEditingPatient(null);
@@ -424,6 +466,10 @@ export default function Patients() {
                   setShowForm(true);
                 }
               }}
+              onPatientDelete={(patient) => {
+                setPatientToDelete(patient);
+                setDeleteDialogOpen(true);
+              }}
             />
           </div>
         )}
@@ -516,6 +562,43 @@ export default function Patients() {
                           className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 text-white"
                         >
                           {isDeleting ? "Deleting..." : "Delete Patient & All Data"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
+                  {/* Bulk Delete Confirmation Dialog */}
+                  <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-red-600">⚠️ Delete ALL Patients?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          <div className="space-y-3">
+                            <p className="font-semibold text-red-600">This is extremely destructive and will delete:</p>
+                            <div className="bg-red-50 border border-red-300 dark:bg-red-900/20 dark:border-red-600 rounded-lg p-3 text-sm text-slate-900 dark:text-slate-100">
+                              <ul className="list-disc list-inside space-y-1 ml-2">
+                                <li><strong>ALL patient profiles</strong> ({patients?.length || 0} patients)</li>
+                                <li><strong>ALL visit notes and documentation</strong></li>
+                                <li><strong>ALL care plans</strong></li>
+                                <li><strong>ALL tasks and alerts</strong></li>
+                                <li><strong>ALL incidents and reports</strong></li>
+                                <li><strong>ALL education assignments</strong></li>
+                                <li><strong>ALL associated data</strong></li>
+                              </ul>
+                              <p className="mt-3 font-bold text-red-600">THIS ACTION CANNOT BE UNDONE!</p>
+                              <p className="mt-1 text-xs">The app cache will also be cleared.</p>
+                            </div>
+                          </div>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isBulkDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleBulkDelete}
+                          disabled={isBulkDeleting}
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                          {isBulkDeleting ? "Deleting All..." : "Yes, Delete Everything"}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
