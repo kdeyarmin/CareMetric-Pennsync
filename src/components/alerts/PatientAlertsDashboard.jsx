@@ -45,8 +45,15 @@ import {
   Send,
   X,
   Filter,
-  Search
+  Search,
+  ListTodo,
+  UserCheck,
+  Phone,
+  FileText,
+  ExternalLink,
+  Sparkles
 } from "lucide-react";
+import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -160,6 +167,35 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
       alertId: alert.id,
       data: { status: 'dismissed' }
     });
+  };
+
+  const createTaskFromAlert = async (alert) => {
+    try {
+      const patient = patientMap[alert.patient_id];
+      const task = await base44.entities.Task.create({
+        patient_id: alert.patient_id,
+        title: alert.title,
+        description: alert.message,
+        type: 'followup',
+        priority: alert.severity === 'critical' ? 'critical' : alert.severity,
+        status: 'pending',
+        source: 'ai_generated',
+        ai_reason: `Generated from alert: ${alert.title}`,
+        assigned_to: currentUser?.email
+      });
+      toast.success('Task created successfully');
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    } catch (error) {
+      toast.error('Failed to create task');
+    }
+  };
+
+  const assignToMe = (alert) => {
+    updateAlertMutation.mutate({
+      alertId: alert.id,
+      data: { assigned_to: currentUser?.email }
+    });
+    toast.success('Alert assigned to you');
   };
 
   const getAlertIcon = (type) => {
@@ -372,28 +408,54 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                             <h3 className="font-semibold text-gray-900">{alert.title}</h3>
                             
                             {patient && (
-                              <Link 
-                                to={`${createPageUrl("PatientDetails")}?id=${patient.id}`}
-                                className="text-sm text-blue-600 hover:underline"
-                              >
-                                {patient.first_name} {patient.last_name}
-                              </Link>
-                            )}
-                            
-                            <p className="text-sm text-gray-600 mt-1 line-clamp-2">{alert.message}</p>
-                            
-                            {alert.risk_score && (
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs text-gray-500">Risk Score:</span>
-                                <div className="flex-1 max-w-[100px] bg-gray-200 rounded-full h-2">
-                                  <div 
-                                    className={`h-2 rounded-full ${alert.risk_score >= 70 ? 'bg-red-500' : alert.risk_score >= 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                                    style={{ width: `${alert.risk_score}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-medium">{alert.risk_score}%</span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Link 
+                                  to={`${createPageUrl("PatientDetails")}?id=${patient.id}`}
+                                  className="text-sm text-blue-600 hover:underline font-medium"
+                                >
+                                  {patient.first_name} {patient.last_name}
+                                </Link>
+                                <span className="text-xs text-gray-400">•</span>
+                                <span className="text-xs text-gray-500">{patient.primary_diagnosis || 'No diagnosis'}</span>
+                                {patient.date_of_birth && (
+                                  <>
+                                    <span className="text-xs text-gray-400">•</span>
+                                    <span className="text-xs text-gray-500">{Math.floor((new Date() - new Date(patient.date_of_birth)) / 31536000000)} yo</span>
+                                  </>
+                                )}
                               </div>
                             )}
+                            
+                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">{alert.message}</p>
+                            
+                            {alert.contributing_factors && alert.contributing_factors.length > 0 && (
+                              <div className="mt-2 text-xs text-gray-500">
+                                <span className="font-medium">Factors:</span> {alert.contributing_factors.slice(0, 2).join(', ')}
+                                {alert.contributing_factors.length > 2 && ` +${alert.contributing_factors.length - 2} more`}
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center gap-3 mt-2 flex-wrap">
+                              {alert.risk_score && (
+                                <div className="flex items-center gap-2">
+                                  <Sparkles className="w-3 h-3 text-purple-500" />
+                                  <span className="text-xs text-gray-500">AI Confidence:</span>
+                                  <div className="flex-1 min-w-[60px] bg-gray-200 rounded-full h-1.5">
+                                    <div 
+                                      className={`h-1.5 rounded-full ${alert.risk_score >= 70 ? 'bg-red-500' : alert.risk_score >= 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                                      style={{ width: `${alert.risk_score}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs font-medium">{alert.risk_score}%</span>
+                                </div>
+                              )}
+                              {alert.assigned_to && (
+                                <div className="flex items-center gap-1 text-xs text-gray-500">
+                                  <UserCheck className="w-3 h-3" />
+                                  <span>{alert.assigned_to.split('@')[0]}</span>
+                                </div>
+                              )}
+                            </div>
                             
                             <p className="text-xs text-gray-400 mt-2">
                               {formatDistanceToNow(new Date(alert.created_date), { addSuffix: true })}
@@ -401,25 +463,47 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                           </div>
                         </div>
                         
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-wrap gap-1 justify-end">
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
                             onClick={() => openDetails(alert)}
+                            title="View details"
                           >
                             <Eye className="w-3 h-3 mr-1" /> View
                           </Button>
                           
                           {alert.status === 'active' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              onClick={() => handleAcknowledge(alert)}
-                            >
-                              <CheckCircle2 className="w-3 h-3 mr-1" /> Ack
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => handleAcknowledge(alert)}
+                                title="Acknowledge"
+                              >
+                                <CheckCircle2 className="w-3 h-3 mr-1" /> Ack
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => createTaskFromAlert(alert)}
+                                title="Create task"
+                              >
+                                <ListTodo className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => assignToMe(alert)}
+                                title="Assign to me"
+                              >
+                                <UserCheck className="w-3 h-3" />
+                              </Button>
+                            </>
                           )}
                           
                           <Button
@@ -427,6 +511,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                             variant={alert.flagged_urgent ? "destructive" : "outline"}
                             className="h-7 text-xs"
                             onClick={() => handleFlagUrgent(alert)}
+                            title={alert.flagged_urgent ? "Unflag" : "Flag as urgent"}
                           >
                             <Flag className="w-3 h-3" />
                           </Button>
@@ -454,6 +539,42 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
               </DialogHeader>
               
               <div className="space-y-4">
+                {/* Patient Context Card */}
+                {patientMap[selectedAlert.patient_id] && (
+                  <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                              {patientMap[selectedAlert.patient_id].first_name} {patientMap[selectedAlert.patient_id].last_name}
+                            </h4>
+                            {patientMap[selectedAlert.patient_id].date_of_birth && (
+                              <span className="text-xs text-gray-600 dark:text-gray-400">
+                                {Math.floor((new Date() - new Date(patientMap[selectedAlert.patient_id].date_of_birth)) / 31536000000)} years old
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">
+                            <span className="font-medium">Dx:</span> {patientMap[selectedAlert.patient_id].primary_diagnosis || 'Not specified'}
+                          </p>
+                          {patientMap[selectedAlert.patient_id].allergies && (
+                            <p className="text-xs text-red-600 dark:text-red-400">
+                              <span className="font-medium">Allergies:</span> {patientMap[selectedAlert.patient_id].allergies}
+                            </p>
+                          )}
+                        </div>
+                        <Link
+                          to={`${createPageUrl("PatientDetails")}?id=${selectedAlert.patient_id}`}
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                        >
+                          View Chart <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className={getSeverityColor(selectedAlert.severity)}>
                     {selectedAlert.severity}
@@ -463,7 +584,9 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                     <Badge className="bg-red-100 text-red-800">🚨 Flagged Urgent</Badge>
                   )}
                   {selectedAlert.risk_score && (
-                    <Badge variant="outline">Risk Score: {selectedAlert.risk_score}%</Badge>
+                    <Badge variant="outline" className="gap-1">
+                      <Sparkles className="w-3 h-3" /> AI Confidence: {selectedAlert.risk_score}%
+                    </Badge>
                   )}
                 </div>
 
@@ -537,9 +660,30 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                 )}
               </div>
 
-              <DialogFooter className="gap-2">
+              <DialogFooter className="gap-2 flex-wrap">
                 {selectedAlert.status !== 'resolved' && selectedAlert.status !== 'dismissed' && (
                   <>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        createTaskFromAlert(selectedAlert);
+                        setDetailsDialogOpen(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <ListTodo className="w-4 h-4 mr-1" /> Create Task
+                    </Button>
+                    {patientMap[selectedAlert.patient_id]?.physician_phone && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          window.location.href = `tel:${patientMap[selectedAlert.patient_id].physician_phone}`;
+                        }}
+                        className="flex-1"
+                      >
+                        <Phone className="w-4 h-4 mr-1" /> Call MD
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       onClick={() => handleDismiss(selectedAlert)}
