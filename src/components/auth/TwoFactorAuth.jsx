@@ -7,6 +7,19 @@ import { base44 } from "@/api/base44Client";
 import { Shield, Loader2, ArrowRight, RefreshCw } from "lucide-react";
 
 export default function TwoFactorAuth({ userEmail, phoneNumber, onVerified }) {
+  // TEMPORARY: 2FA is suspended - bypass verification
+  const TWO_FACTOR_SUSPENDED = true;
+
+  useEffect(() => {
+    if (TWO_FACTOR_SUSPENDED && onVerified) {
+      setTimeout(() => onVerified(), 500);
+    }
+  }, [onVerified]);
+
+  if (TWO_FACTOR_SUSPENDED) {
+    return null;
+  }
+
   const [code, setCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
