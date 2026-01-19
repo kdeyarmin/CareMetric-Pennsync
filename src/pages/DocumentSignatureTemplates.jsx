@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DocumentTemplateManager from "../components/signature/DocumentTemplateManager";
+import EnhancedDocumentTemplateManager from "../components/signature/EnhancedDocumentTemplateManager";
 import DocumentTemplateFiller from "../components/signature/DocumentTemplateFiller";
 import { FileText, Edit, Send } from "lucide-react";
 
@@ -34,7 +34,7 @@ export default function DocumentSignatureTemplates() {
           </TabsList>
 
           <TabsContent value="manage">
-            <DocumentTemplateManager key={refreshTrigger} />
+            <EnhancedDocumentTemplateManager key={refreshTrigger} />
           </TabsContent>
 
           <TabsContent value="use">
