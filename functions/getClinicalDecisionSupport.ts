@@ -9,169 +9,210 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { patientId } = await req.json();
+    const { 
+      patient_data, 
+      medications = [], 
+      diagnoses = [], 
+      vitals = {},
+      provider_type = 'RN',
+      care_setting = 'home_health'
+    } = await req.json();
 
-    if (!patientId) {
-      return Response.json({ error: 'Patient ID required' }, { status: 400 });
-    }
+    // Build comprehensive CDSS prompt
+    const cdssPrompt = buildCDSSPrompt(patient_data, medications, diagnoses, vitals, provider_type, care_setting);
 
-    // Fetch patient data
-    const patient = await base44.entities.Patient.get(patientId);
-    
-    // Fetch recent document analyses
-    const analyses = await base44.entities.DocumentAnalysisHistory.filter({ patient_id: patientId });
-    const recentAnalyses = analyses.slice(0, 3);
-
-    // Fetch recent visits
-    const visits = await base44.entities.Visit.filter({ patient_id: patientId });
-    const recentVisits = visits.slice(0, 5);
-
-    // Build comprehensive patient context
-    const patientContext = {
-      demographics: {
-        age: patient.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : null,
-        gender: patient.gender
-      },
-      diagnoses: {
-        primary: patient.primary_diagnosis,
-        secondary: patient.secondary_diagnoses || []
-      },
-      medications: patient.current_medications || [],
-      allergies: patient.allergies,
-      vitals: patient.baseline_vitals,
-      pastMedicalHistory: patient.past_medical_history || [],
-      recentDocumentFindings: recentAnalyses.map(a => a.analysis_summary).filter(Boolean),
-      recentVisitNotes: recentVisits.map(v => v.nurse_notes).filter(Boolean)
-    };
-
-    // Call LLM for clinical decision support
-    const prompt = `You are an expert clinical decision support system. Analyze the following patient data and provide comprehensive clinical recommendations.
-
-PATIENT DATA:
-${JSON.stringify(patientContext, null, 2)}
-
-Provide a detailed clinical decision support analysis including:
-1. Differential diagnoses based on current symptoms and findings
-2. Evidence-based treatment protocols for confirmed diagnoses
-3. Recommended specialist referrals with rationale
-4. Drug interaction warnings and contraindications
-5. Preventive care recommendations
-6. Red flags or urgent concerns
-
-Be specific, evidence-based, and cite relevant clinical guidelines when appropriate.`;
-
-    const schema = {
-      type: "object",
-      properties: {
-        differential_diagnoses: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              diagnosis: { type: "string" },
-              likelihood: { type: "string", enum: ["high", "moderate", "low"] },
-              supporting_evidence: { type: "array", items: { type: "string" } },
-              recommended_tests: { type: "array", items: { type: "string" } }
-            }
+    // Invoke LLM for clinical decision support
+    const recommendations = await base44.integrations.Core.InvokeLLM({
+      prompt: cdssPrompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          drug_interactions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                drugs_involved: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                interaction_type: { 
+                  type: "string",
+                  enum: ["contraindicated", "major", "moderate", "minor"]
+                },
+                clinical_consequence: { type: "string" },
+                management_strategy: { type: "string" },
+                severity_score: { type: "number", minimum: 1, maximum: 10 }
+              }
+            },
+            description: "Potential drug-drug and drug-disease interactions"
+          },
+          risk_assessments: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                risk_type: { type: "string" },
+                risk_level: {
+                  type: "string",
+                  enum: ["low", "moderate", "high", "critical"]
+                },
+                risk_score: { type: "number", minimum: 0, maximum: 100 },
+                contributing_factors: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                monitoring_recommendations: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                intervention_suggestions: {
+                  type: "array",
+                  items: { type: "string" }
+                }
+              }
+            },
+            description: "Risk stratification across multiple dimensions"
+          },
+          treatment_recommendations: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                clinical_indication: { type: "string" },
+                recommended_approach: { type: "string" },
+                evidence_level: {
+                  type: "string",
+                  enum: ["strong", "moderate", "weak", "insufficient"]
+                },
+                rationale: { type: "string" },
+                alternatives: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                contraindications: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                monitoring_parameters: {
+                  type: "array",
+                  items: { type: "string" }
+                }
+              }
+            },
+            description: "Evidence-based treatment recommendations"
+          },
+          clinical_alerts: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                alert_type: {
+                  type: "string",
+                  enum: ["critical", "urgent", "warning", "info"]
+                },
+                alert_title: { type: "string" },
+                alert_description: { type: "string" },
+                required_action: { type: "string" },
+                timeframe: { type: "string" }
+              }
+            },
+            description: "Critical clinical alerts requiring immediate attention"
+          },
+          compliance_notes: {
+            type: "array",
+            items: { type: "string" },
+            description: "Documentation and regulatory compliance notes"
+          },
+          follow_up_recommendations: {
+            type: "array",
+            items: { type: "string" },
+            description: "Follow-up assessment and monitoring recommendations"
           }
-        },
-        treatment_protocols: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              condition: { type: "string" },
-              protocol: { type: "string" },
-              evidence_level: { type: "string" },
-              guidelines_reference: { type: "string" }
-            }
-          }
-        },
-        specialist_referrals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              specialty: { type: "string" },
-              urgency: { type: "string", enum: ["urgent", "routine", "optional"] },
-              rationale: { type: "string" }
-            }
-          }
-        },
-        drug_interactions: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              medications: { type: "array", items: { type: "string" } },
-              interaction_type: { type: "string" },
-              severity: { type: "string", enum: ["severe", "moderate", "mild"] },
-              recommendation: { type: "string" }
-            }
-          }
-        },
-        contraindications: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              medication: { type: "string" },
-              reason: { type: "string" },
-              alternative: { type: "string" }
-            }
-          }
-        },
-        preventive_care: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              recommendation: { type: "string" },
-              rationale: { type: "string" },
-              timeline: { type: "string" }
-            }
-          }
-        },
-        red_flags: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              concern: { type: "string" },
-              urgency: { type: "string", enum: ["immediate", "urgent", "monitor"] },
-              action_required: { type: "string" }
-            }
-          }
-        },
-        clinical_summary: { type: "string" }
+        }
       }
-    };
-
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt,
-      response_json_schema: schema
-    });
-
-    // Log the clinical decision support request
-    await base44.entities.SecurityLog.create({
-      timestamp: new Date().toISOString(),
-      user_email: user.email,
-      user_role: user.role,
-      action: 'clinical_decision_support_requested',
-      details: { patient_id: patientId }
     });
 
     return Response.json({
       success: true,
-      analysis: result,
-      patient_name: `${patient.first_name} ${patient.last_name}`,
-      generated_at: new Date().toISOString()
+      cdss_recommendations: recommendations,
+      generated_at: new Date().toISOString(),
+      provider_type,
+      care_setting
     });
-
   } catch (error) {
-    console.error('Clinical decision support error:', error);
+    console.error('CDSS Error:', error);
     return Response.json({ 
-      error: error.message || 'Failed to generate clinical decision support' 
+      error: error.message,
+      success: false
     }, { status: 500 });
   }
 });
+
+function buildCDSSPrompt(patientData, medications, diagnoses, vitals, providerType, careSetting) {
+  const medicationsList = medications.map(m => 
+    `${m.name} ${m.dosage ? `(${m.dosage})` : ''} ${m.frequency ? `${m.frequency}` : ''}`
+  ).join('\n');
+
+  const diagnosisList = diagnoses.map(d => 
+    `${d.diagnosis || d}${d.icd10_code ? ` [${d.icd10_code}]` : ''}`
+  ).join('\n');
+
+  const vitalsStr = vitals ? Object.entries(vitals)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('\n') : 'Not provided';
+
+  return `You are an expert Clinical Decision Support System for a ${providerType} in a ${careSetting.replace(/_/g, ' ')} setting.
+
+PATIENT INFORMATION:
+${patientData ? JSON.stringify(patientData, null, 2) : 'Standard adult patient'}
+
+CURRENT MEDICATIONS:
+${medicationsList || 'None listed'}
+
+ACTIVE DIAGNOSES:
+${diagnosisList || 'None documented'}
+
+VITAL SIGNS / KEY MEASUREMENTS:
+${vitalsStr}
+
+CLINICAL DECISION SUPPORT ANALYSIS:
+
+1. DRUG INTERACTION SCREENING
+   - Identify all potential drug-drug interactions
+   - Flag drug-disease contraindications
+   - Assess severity and clinical consequences
+   - Suggest management strategies
+
+2. RISK STRATIFICATION
+   - Readmission risk assessment
+   - Fall risk evaluation
+   - Medication-related problems
+   - Disease-specific complications
+   - Functional decline risk
+   - Infection/sepsis risk
+   - Adverse medication reaction risk
+
+3. EVIDENCE-BASED TREATMENT RECOMMENDATIONS
+   - Align with current clinical guidelines
+   - Consider comorbidities and contraindications
+   - Suggest therapeutic alternatives
+   - Recommend monitoring parameters
+
+4. CLINICAL ALERTS
+   - Flag critical findings requiring immediate action
+   - Highlight concerning trends
+   - Identify potential safety issues
+
+5. COMPLIANCE & DOCUMENTATION
+   - Medicare/regulatory documentation requirements
+   - OASIS-relevant considerations (if home health)
+   - Quality measure considerations
+
+6. FOLLOW-UP PLANNING
+   - Recommend assessment frequency
+   - Suggest monitoring intervals
+   - Identify escalation criteria
+
+Provide actionable, specific recommendations that the ${providerType} can implement immediately. Focus on patient safety and evidence-based care.`;
+}
