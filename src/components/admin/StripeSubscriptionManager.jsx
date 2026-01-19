@@ -159,20 +159,28 @@ export default function StripeSubscriptionManager() {
       return;
     }
 
+    toast.loading("Deleting product...");
+    
     try {
       const response = await base44.functions.invoke('stripeDeleteProduct', {
         product_id: productId
       });
 
-      console.log('Delete response:', response);
-
-      if (response?.success || response?.data?.success) {
+      console.log('Full delete response:', response);
+      
+      toast.dismiss();
+      
+      // Check if deletion was successful
+      if (response?.success === true) {
         toast.success("Product deleted successfully");
-        refetchProducts();
+        await refetchProducts();
       } else {
-        toast.error(response?.error || response?.data?.error || "Failed to delete product");
+        const errorMsg = response?.error || response?.details || "Failed to delete product";
+        console.error('Delete failed:', errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
+      toast.dismiss();
       console.error('Delete error:', error);
       toast.error(error.message || "Failed to delete product");
     }
