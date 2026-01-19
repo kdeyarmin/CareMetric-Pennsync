@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Code, Copy, CheckCircle2, AlertCircle, Info, Plus } from "lucide-react";
 import { toast } from "sonner";
 import AISuggestionFeedback from "../feedback/AISuggestionFeedback";
+import { invokeGemini } from "../utils/geminiHelper";
 
 export default function AIMedicalCodingAssistant({ 
   clinicalNote, 
@@ -25,7 +26,7 @@ export default function AIMedicalCodingAssistant({
   const analyzeCodes = async () => {
     setAnalyzing(true);
     try {
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await invokeGemini({
         prompt: `As a medical coding specialist, analyze this clinical documentation and suggest appropriate ICD-10 and CPT codes.
 
 **Clinical Note:**

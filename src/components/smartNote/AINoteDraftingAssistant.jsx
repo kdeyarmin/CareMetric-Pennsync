@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import AISuggestionFeedback from "../feedback/AISuggestionFeedback";
+import { invokeGemini } from "../utils/geminiHelper";
 
 export default function AINoteDraftingAssistant({
   vitalSigns,
@@ -143,7 +144,7 @@ Use proper medical terminology. Be thorough and context-aware, incorporating pat
         }).filter(Boolean).join('\n') :
         'No previous intervention history';
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeGemini({
         prompt: `Generate appropriate skilled nursing interventions for a home health visit note.
 
 CURRENT DIAGNOSIS: ${diagnosis || 'Not specified'}
@@ -199,7 +200,7 @@ Be specific about skilled interventions performed. Show clinical expertise and j
         `Previous patient response patterns: ${previousVisits[0]?.nurse_notes?.match(/patient (verbalized|demonstrated|states|reports|tolerated).{0,100}/gi)?.join('; ') || 'No previous response documentation'}` :
         'First visit - no previous response data';
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeGemini({
         prompt: `Generate patient response and education documentation for a home health nursing note.
 
 CURRENT DIAGNOSIS: ${diagnosis || 'Not specified'}
@@ -269,7 +270,7 @@ Format as detailed narrative paragraphs suitable for Medicare-compliant clinical
         `Visit ${idx + 1} (${v.visit_date}): ${v.nurse_notes?.substring(0, 250) || 'No notes'}`
       ).join('\n\n') || 'No previous visits';
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeGemini({
         prompt: `You are a clinical documentation assistant for home health nursing with access to complete patient history.
 
 CURRENT PATIENT CONTEXT:
