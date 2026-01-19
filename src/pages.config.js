@@ -104,6 +104,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import DocumentSignatureTemplates from './pages/DocumentSignatureTemplates';
+import DocumentManagement from './pages/DocumentManagement';
 import __Layout from './Layout.jsx';
 
 
@@ -214,6 +215,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
     "DocumentSignatureTemplates": DocumentSignatureTemplates,
+    "DocumentManagement": DocumentManagement,
 }
 
 export const pagesConfig = {
