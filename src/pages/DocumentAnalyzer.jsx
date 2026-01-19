@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
@@ -21,8 +24,15 @@ import {
   FileDown,
   Sparkles,
   Brain,
-  Zap
+  Zap,
+  Search,
+  Filter,
+  Eye,
+  Trash2,
+  Calendar,
+  User
 } from "lucide-react";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import ExtractedDataReview from "../components/documents/ExtractedDataReview";
