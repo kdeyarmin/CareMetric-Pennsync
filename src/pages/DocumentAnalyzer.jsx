@@ -29,6 +29,7 @@ import ExtractedDataReview from "../components/documents/ExtractedDataReview";
 import CarePlanSuggestions from "../components/documents/CarePlanSuggestions";
 import ComplianceAuditResults from "../components/documents/ComplianceAuditResults";
 import AIPatientSummaryGenerator from "../components/documents/AIPatientSummaryGenerator";
+import AutomatedAdminPanel from "../components/admin/AutomatedAdminPanel";
 
 export default function DocumentAnalyzer() {
   const [files, setFiles] = useState([]);
@@ -40,6 +41,7 @@ export default function DocumentAnalyzer() {
   const [documentType, setDocumentType] = useState('auto');
   const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showAdminTools, setShowAdminTools] = useState(false);
   
   const queryClient = useQueryClient();
 
@@ -279,9 +281,20 @@ export default function DocumentAnalyzer() {
                 Upload clinical documents for intelligent analysis and actionable insights
               </p>
             </div>
-            <Badge variant="outline" className="text-sm">
-              {providerType} - {careSetting.replace(/_/g, ' ')}
-            </Badge>
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="text-sm">
+                {providerType} - {careSetting.replace(/_/g, ' ')}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAdminTools(!showAdminTools)}
+                className="gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                {showAdminTools ? 'Hide' : 'Show'} Admin Tools
+              </Button>
+            </div>
           </div>
 
           {/* Quick Stats */}
@@ -329,6 +342,21 @@ export default function DocumentAnalyzer() {
             </Card>
           </div>
         </div>
+
+        {/* Admin Automation Tools */}
+        {showAdminTools && (
+          <Card className="border-2 border-purple-200 dark:border-purple-800">
+            <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950 dark:to-indigo-950">
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                Administrative Automation
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <AutomatedAdminPanel />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Configuration & Upload Section */}
         <Card>
