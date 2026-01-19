@@ -11,6 +11,7 @@ import AutomaticCarePlans from './pages/AutomaticCarePlans';
 import Billing from './pages/Billing';
 import BillingInvoicing from './pages/BillingInvoicing';
 import BillingModule from './pages/BillingModule';
+import BillingOptimization from './pages/BillingOptimization';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalDecisionSupport from './pages/ClinicalDecisionSupport';
@@ -101,7 +102,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import BillingOptimization from './pages/BillingOptimization';
 import __Layout from './Layout.jsx';
 
 
@@ -119,6 +119,7 @@ export const PAGES = {
     "Billing": Billing,
     "BillingInvoicing": BillingInvoicing,
     "BillingModule": BillingModule,
+    "BillingOptimization": BillingOptimization,
     "CareCoordinationDashboard": CareCoordinationDashboard,
     "CarePlanManagement": CarePlanManagement,
     "ClinicalDecisionSupport": ClinicalDecisionSupport,
@@ -209,7 +210,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "BillingOptimization": BillingOptimization,
 }
 
 export const pagesConfig = {
