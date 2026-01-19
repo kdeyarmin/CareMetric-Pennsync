@@ -400,6 +400,102 @@ const FEATURES_GUIDE = [
       "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
     ],
     importance: "Protects patient privacy and prevents costly HIPAA violations and fines, maintains audit compliance and organizational reputation, ensures secure remote access for mobile workforce, and protects sensitive clinical data from unauthorized access"
+  },
+  {
+    title: "Patient Management",
+    description: "Efficiently add, manage, and view comprehensive patient records, ensuring all demographic, clinical, and administrative data is organized and easily accessible.",
+    howToUse: [
+      "1. Navigate to the 'Patients' section from the main menu",
+      "2. Click on 'Add New Patient' or similar button",
+      "3. Fill in required patient information such as demographics, contact details, and initial medical history",
+      "4. Save the new patient record to access their full profile including visits, care plans, and documents",
+      "5. Use the search and filter options to quickly locate existing patient records"
+    ],
+    bestPractices: [
+      "Ensure accurate and complete entry of patient demographics to avoid errors",
+      "Regularly update patient information, especially contact details and insurance",
+      "Utilize patient tags or categories for easier filtering and management of specific patient groups",
+      "Familiarize yourself with patient record layouts for quick data retrieval",
+      "Maintain strict confidentiality and adhere to HIPAA guidelines when accessing or updating patient data"
+    ],
+    importance: "Centralizes patient data for comprehensive care management, reduces administrative errors, enhances care coordination, and ensures compliance with patient record documentation standards"
+  },
+  {
+    title: "Clinical Decision Support",
+    description: "Receive AI-powered recommendations and alerts based on patient data, helping clinicians make informed, evidence-based decisions at the point of care.",
+    howToUse: [
+      "1. Access a patient's record or during a visit documentation session",
+      "2. The system automatically analyzes patient data (diagnoses, medications, vital signs)",
+      "3. Review AI-generated suggestions for care pathways, medication interactions, or potential risks",
+      "4. Consider the recommendations in conjunction with your clinical judgment",
+      "5. Document your decision-making process, including whether you accepted, modified, or rejected AI suggestions"
+    ],
+    bestPractices: [
+      "Always validate AI suggestions with your clinical expertise and patient-specific context",
+      "Use CDS as a safety net to catch potential errors or missed considerations",
+      "Provide feedback on the accuracy and helpfulness of AI suggestions to improve future recommendations",
+      "Stay updated on the latest clinical guidelines to critically evaluate suggestions",
+      "Integrate CDS recommendations into your care planning and documentation process for consistency"
+    ],
+    importance: "Enhances patient safety, reduces medical errors, promotes adherence to best practices, supports evidence-based care, and continuously learns from clinical outcomes to refine recommendations"
+  },
+  {
+    title: "Clinical Reasoning Assistant",
+    description: "An AI-driven tool that assists clinicians in developing robust clinical reasoning by analyzing patient symptoms, history, and assessment findings to suggest differential diagnoses, diagnostic tests, and treatment plans.",
+    howToUse: [
+      "1. Navigate to the 'Clinical Reasoning' section or activate it within a patient's chart",
+      "2. Input or review key patient data, including chief complaints, history of present illness, past medical history, and physical assessment findings",
+      "3. The AI generates a list of potential differential diagnoses with supporting evidence and likelihood",
+      "4. Review suggested diagnostic tests (labs, imaging) and evidence-based treatment options",
+      "5. Use the insights to refine your clinical assessment and care plan"
+    ],
+    bestPractices: [
+      "Ensure all relevant patient data is entered accurately for the most precise AI analysis",
+      "Critically evaluate the AI's suggestions, understanding that it is a support tool, not a replacement for human expertise",
+      "Utilize the tool for complex cases or to explore less common differential diagnoses",
+      "Document your thought process and how AI insights influenced your clinical decisions",
+      "Regularly review the effectiveness of suggested interventions on patient outcomes"
+    ],
+    importance: "Improves diagnostic accuracy, broadens clinical perspectives, reduces cognitive bias, supports teaching and learning for less experienced clinicians, and ultimately leads to more effective patient care"
+  },
+  {
+    title: "Document Analyzer",
+    description: "An AI-powered tool to analyze uploaded clinical documents (PDFs, images) for key information, compliance gaps, and data extraction, transforming unstructured data into actionable insights.",
+    howToUse: [
+      "1. Navigate to the 'Document Analyzer' section",
+      "2. Upload a clinical document (e.g., patient referral, hospital discharge summary, lab results)",
+      "3. The AI processes the document, extracting key entities like diagnoses, medications, and patient demographics",
+      "4. Review the extracted data and identify any potential compliance flags or missing information",
+      "5. Integrate the extracted structured data into the patient's electronic health record or use it for reporting"
+    ],
+    bestPractices: [
+      "Ensure uploaded documents are clear and legible for optimal AI processing",
+      "Always verify the accuracy of extracted data before incorporating it into a patient's record",
+      "Use the analyzer to quickly identify critical information from lengthy documents",
+      "Leverage the tool to ensure external documents meet internal compliance standards",
+      "Provide feedback on extraction accuracy to help the AI continuously improve"
+    ],
+    importance: "Automates data entry from external documents, reduces manual review time, improves data accuracy and completeness, aids in compliance checks, and provides rapid access to critical patient information"
+  },
+  {
+    title: "Billing Optimization",
+    description: "Leverage AI to review documentation for optimal billing codes, identify missed revenue opportunities, and ensure compliance with complex billing regulations, reducing claim denials.",
+    howToUse: [
+      "1. Access the 'Billing Optimization' dashboard or a specific patient's billing section",
+      "2. The AI automatically analyzes clinical notes and documentation",
+      "3. Review suggested CPT, ICD-10, and other billing codes for accuracy and completeness",
+      "4. Identify potential missed charges or under-coding based on documented services",
+      "5. Rectify documentation discrepancies or update billing codes before claim submission",
+      "6. Monitor denial rates and adjust billing practices based on AI insights"
+    ],
+    bestPractices: [
+      "Regularly review AI-suggested codes and rationale to deepen your understanding of billing rules",
+      "Ensure all services rendered are meticulously documented to support proposed billing codes",
+      "Prioritize addressing common reasons for claim denials highlighted by the AI",
+      "Utilize the insights to educate staff on proper documentation for billing purposes",
+      "Cross-reference AI recommendations with current payer guidelines for maximum reimbursement"
+    ],
+    importance: "Maximizes revenue capture, minimizes claim denials and rejections, ensures adherence to complex billing regulations (e.g., Medicare, Medicaid), reduces administrative burden for billing staff, and provides real-time feedback for documentation improvement"
   }
 ];
 
