@@ -92,6 +92,7 @@ import EducationTrackingHistory from "../components/education/EducationTrackingH
 import PatientOutcomePredictionModule from "../components/predictive/PatientOutcomePredictionModule";
 import RealTimeAnomalyDetector from "../components/alerts/RealTimeAnomalyDetector";
 import ClinicalNotesManager from "../components/patient/ClinicalNotesManager";
+import PatientRiskScoreCard from "../components/patient/PatientRiskScoreCard";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -375,6 +376,14 @@ export default function PatientDetails() {
             </div>
           </CardContent>
         </Card>
+
+        {/* AI Risk Score Card - Prominent Position */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <PatientRiskScoreCard 
+            patient={patient}
+            onRefresh={() => queryClient.invalidateQueries({ queryKey: ["patients"] })}
+          />
+        </div>
 
         {/* Proactive Clinical Insights - Before Visit */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
