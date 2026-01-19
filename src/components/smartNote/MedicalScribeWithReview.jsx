@@ -20,6 +20,7 @@ import NoteFormatSelector from "../notes/NoteFormatSelector";
 import { getFormatPrompt } from "../notes/NoteFormatTemplates";
 import SpecialtyTemplateSelector from "../specialty/SpecialtyTemplateSelector";
 import { getSpecialtyTemplate } from "../specialty/SpecialtyTemplateLibrary";
+import AIMedicalCodingAssistant from "../coding/AIMedicalCodingAssistant";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -847,12 +848,21 @@ Provide specific, actionable suggestions for:
                   isLoading={false}
                   roughNote={editedTranscription}
                   providerType={currentUser?.provider_type || currentUser?.credential_type || 'RN'}
-                />
-              </div>
-            </div>
-          </div>
-          );
-          }
+                  />
+
+                  <AIMedicalCodingAssistant
+                  clinicalNote={generatedNote}
+                  patientData={patientData}
+                  visitType={visitType}
+                  onCodesSelected={(codes) => {
+                    toast.success(`${codes.length} codes selected and ready to use`);
+                  }}
+                  />
+                  </div>
+                  </div>
+                  </div>
+                  );
+                  }
 
           return null;
 }
