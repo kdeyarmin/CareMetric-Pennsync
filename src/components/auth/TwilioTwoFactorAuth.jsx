@@ -15,6 +15,19 @@ export default function TwilioTwoFactorAuth({
   title = "Verify Your Phone Number",
   description = "We'll send you a verification code to ensure account security"
 }) {
+  // TEMPORARY: 2FA is suspended - bypass verification
+  const TWO_FACTOR_SUSPENDED = true;
+
+  useEffect(() => {
+    if (TWO_FACTOR_SUSPENDED && onVerificationComplete) {
+      onVerificationComplete(true);
+    }
+  }, [onVerificationComplete]);
+
+  if (TWO_FACTOR_SUSPENDED) {
+    return null;
+  }
+
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
