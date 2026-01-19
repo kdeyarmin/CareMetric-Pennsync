@@ -26,7 +26,7 @@ export default function TelehealthPage() {
     queryKey: ['scheduledVisits'],
     queryFn: async () => {
       const allVisits = await base44.entities.Visit.list();
-      return allVisits.filter(v => v.status === 'scheduled' || v.status === 'in_progress');
+      return allVisits.filter((v) => v.status === 'scheduled' || v.status === 'in_progress');
     }
   });
 
@@ -36,11 +36,11 @@ export default function TelehealthPage() {
   });
 
   const getPatientName = (patientId) => {
-    const patient = patients.find(p => p.id === patientId);
+    const patient = patients.find((p) => p.id === patientId);
     return patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown';
   };
 
-  const filteredVisits = visits.filter(visit => {
+  const filteredVisits = visits.filter((visit) => {
     const patientName = getPatientName(visit.patient_id).toLowerCase();
     return patientName.includes(searchQuery.toLowerCase());
   });
@@ -51,8 +51,8 @@ export default function TelehealthPage() {
         <Button
           onClick={() => setSelectedVisit(null)}
           variant="outline"
-          className="mb-4"
-        >
+          className="mb-4">
+
           ← Back to Sessions
         </Button>
         <SimpleTelehealthRoom
@@ -60,10 +60,10 @@ export default function TelehealthPage() {
           patientId={selectedVisit.patient_id}
           patientName={getPatientName(selectedVisit.patient_id)}
           currentUser={user}
-          onEndCall={() => setSelectedVisit(null)}
-        />
-      </div>
-    );
+          onEndCall={() => setSelectedVisit(null)} />
+
+      </div>);
+
   }
 
   if (showScheduler) {
@@ -75,8 +75,8 @@ export default function TelehealthPage() {
             setSelectedPatientForScheduling('');
           }}
           variant="outline"
-          className="mb-4"
-        >
+          className="mb-4">
+
           ← Back to Sessions
         </Button>
         <TelehealthScheduler
@@ -84,10 +84,10 @@ export default function TelehealthPage() {
           onScheduled={(visit) => {
             setShowScheduler(false);
             setSelectedPatientForScheduling('');
-          }}
-        />
-      </div>
-    );
+          }} />
+
+      </div>);
+
   }
 
   return (
@@ -95,9 +95,9 @@ export default function TelehealthPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl lg:text-3xl font-bold">Telehealth</h1>
         <Button
-          onClick={() => setShowScheduler(true)}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
+          onClick={() => setShowScheduler(true)} className="bg-gray-600 text-slate-100 px-4 py-2 text-sm font-medium rounded-md inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow-sm dark:bg-slate-600 dark:hover:bg-slate-700 h-9 hover:bg-blue-700">
+
+
           <Plus className="w-4 h-4 mr-2" />
           Schedule Visit
         </Button>
@@ -128,26 +128,26 @@ export default function TelehealthPage() {
           <div className="relative mb-4">
             <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="Search patients..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+                  placeholder="Search patients..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10" />
+
           </div>
 
-          {isLoading ? (
-            <div className="text-center py-8 text-gray-600">Loading visits...</div>
-          ) : filteredVisits.length === 0 ? (
-            <div className="text-center py-8 text-gray-600">
+          {isLoading ?
+              <div className="text-center py-8 text-gray-600">Loading visits...</div> :
+              filteredVisits.length === 0 ?
+              <div className="text-center py-8 text-gray-600">
               No scheduled visits found
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredVisits.map(visit => (
+            </div> :
+
+              <div className="space-y-3">
+              {filteredVisits.map((visit) =>
                 <div
                   key={visit.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                >
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+
                   <div>
                     <p className="font-semibold">{getPatientName(visit.patient_id)}</p>
                     <p className="text-sm text-gray-600">
@@ -156,15 +156,15 @@ export default function TelehealthPage() {
                   </div>
                   <Button
                     onClick={() => setSelectedVisit(visit)}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
+                    className="bg-green-600 hover:bg-green-700">
+
                     <Video className="w-4 h-4 mr-2" />
                     Start Call
                   </Button>
                 </div>
-              ))}
+                )}
             </div>
-          )}
+              }
         </CardContent>
       </Card>
         </TabsContent>
@@ -173,32 +173,32 @@ export default function TelehealthPage() {
           <div className="grid gap-4">
             <div>
               <label className="text-sm font-medium mb-2 block">Select Patient</label>
-              <Select 
-                value={selectedPatientForScheduling} 
-                onValueChange={setSelectedPatientForScheduling}
-              >
+              <Select
+                value={selectedPatientForScheduling}
+                onValueChange={setSelectedPatientForScheduling}>
+
                 <SelectTrigger>
                   <SelectValue placeholder="Choose patient..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {patients.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
+                  {patients.map((p) =>
+                  <SelectItem key={p.id} value={p.id}>
                       {p.first_name} {p.last_name}
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
-            {selectedPatientForScheduling && (
-              <TelehealthScheduler
-                patientId={selectedPatientForScheduling}
-                onScheduled={(visit) => {
-                  setSelectedPatientForScheduling('');
-                  toast.success('Visit scheduled successfully');
-                }}
-              />
-            )}
+            {selectedPatientForScheduling &&
+            <TelehealthScheduler
+              patientId={selectedPatientForScheduling}
+              onScheduled={(visit) => {
+                setSelectedPatientForScheduling('');
+                toast.success('Visit scheduled successfully');
+              }} />
+
+            }
           </div>
         </TabsContent>
 
@@ -206,10 +206,10 @@ export default function TelehealthPage() {
           <AITelehealthSummaryGenerator
             onAnalysisComplete={(analysis) => {
               console.log('Analysis complete:', analysis);
-            }}
-          />
+            }} />
+
         </TabsContent>
       </Tabs>
-    </div>
-  );
+    </div>);
+
 }
