@@ -20,13 +20,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Product ID required' }, { status: 400 });
     }
 
+    // Delete the product (this will also archive all associated prices)
     const deletedProduct = await stripe.products.del(product_id);
 
-    console.log('Product deleted:', product_id);
+    console.log('Product deleted:', deletedProduct);
 
     return Response.json({ 
       success: true, 
-      deleted: deletedProduct 
+      deleted: deletedProduct,
+      product_id: product_id
     });
 
   } catch (error) {
