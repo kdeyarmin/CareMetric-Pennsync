@@ -42,6 +42,7 @@ import SkillGapWidget from "../components/dashboard/SkillGapWidget";
 import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
 import ProactiveInsights from "../components/insights/ProactiveInsights";
 import { ErrorBoundary } from "../components/utils/ErrorBoundary";
+import HighRiskPatientsWidget from "../components/dashboard/HighRiskPatientsWidget";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -276,7 +277,7 @@ export default function Dashboard() {
       {/* Skill Gap & Risk Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
         <SkillGapWidget userEmail={currentUser?.email} />
-        <PatientRiskWidget />
+        <HighRiskPatientsWidget />
       </div>
 
       {/* AI Performance Insights */}
