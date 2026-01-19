@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, Zap, Users, FileText, Brain, Mic, Target, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle, WifiOff, GitBranch, Sparkles, CreditCard } from "lucide-react";
+import { Download, Zap, Users, FileText, Brain, Mic, Target, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle, WifiOff, GitBranch, Sparkles, Video } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const FEATURES = [
@@ -139,10 +139,10 @@ const FEATURES = [
   category: "AI"
 },
 {
-  icon: CreditCard,
-  title: "Subscription & Billing Management",
-  description: "Administrators can manage Stripe products, pricing plans, and subscriptions, including archiving and deleting items.",
-  category: "Admin"
+  icon: Video,
+  title: "Telehealth",
+  description: "Secure, HIPAA-compliant video consultations with integrated documentation, real-time transcription, and AI-powered visit summaries.",
+  category: "Clinical"
 }];
 
 
