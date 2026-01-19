@@ -100,6 +100,13 @@ export default function DocumentAutomationBuilder() {
       trigger_event: "visit_completed",
       data_sources: [],
       placeholder_mapping: {},
+      conditional_branches: [],
+      ai_enrichment: {
+        enabled: false,
+        extract_summary: false,
+        extract_keywords: false,
+        max_summary_length: 300,
+      },
       signature_settings: {
         auto_sign: false,
         require_signature: [],
@@ -110,6 +117,7 @@ export default function DocumentAutomationBuilder() {
       is_active: true,
     });
     setEditingWorkflow(null);
+    setExpandedSections({});
   };
 
   const handleSave = () => {
