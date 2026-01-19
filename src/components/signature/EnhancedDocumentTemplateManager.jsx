@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VisualTemplateEditor from "./VisualTemplateEditor";
+import AITemplateGenerator from "./AITemplateGenerator";
 import { FileText, Plus, Edit, Trash2, Copy, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -133,6 +134,15 @@ export default function EnhancedDocumentTemplateManager() {
     resetForm();
   };
 
+  const handleAITemplateComplete = (data) => {
+    setFormData(data);
+    setIsCreateDialogOpen(false);
+    setEditingTemplate(null);
+    
+    // Auto-save the AI-generated template
+    createMutation.mutate(data);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -140,21 +150,37 @@ export default function EnhancedDocumentTemplateManager() {
           <FileText className="w-6 h-6" />
           Document Templates
         </h2>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" />
-              Create Template
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editingTemplate ? "Edit Template" : "Create New Template"}
-              </DialogTitle>
-            </DialogHeader>
+        <div className="flex gap-2">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                ✨ AI Generate
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Generate Template with AI</DialogTitle>
+              </DialogHeader>
+              <AITemplateGenerator
+                onGenerateComplete={handleAITemplateComplete}
+              />
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="w-4 h-4" />
+                Create Template
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingTemplate ? "Edit Template" : "Create New Template"}
+                </DialogTitle>
+              </DialogHeader>
 
-            <Tabs defaultValue="visual">
+              <Tabs defaultValue="visual">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="visual">Visual Editor</TabsTrigger>
                 <TabsTrigger value="basic">Basic Info</TabsTrigger>

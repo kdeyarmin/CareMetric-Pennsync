@@ -25,6 +25,8 @@ import DeleteAccount from './pages/DeleteAccount';
 import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
 import DocumentAnalyzer from './pages/DocumentAnalyzer';
 import DocumentGenerator from './pages/DocumentGenerator';
+import DocumentManagement from './pages/DocumentManagement';
+import DocumentSignatureTemplates from './pages/DocumentSignatureTemplates';
 import DocumentVisit from './pages/DocumentVisit';
 import DocumentationTraining from './pages/DocumentationTraining';
 import DuplicatePatients from './pages/DuplicatePatients';
@@ -103,8 +105,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import DocumentSignatureTemplates from './pages/DocumentSignatureTemplates';
-import DocumentManagement from './pages/DocumentManagement';
 import __Layout from './Layout.jsx';
 
 
@@ -136,6 +136,8 @@ export const PAGES = {
     "DocumentAnalysisHistory": DocumentAnalysisHistory,
     "DocumentAnalyzer": DocumentAnalyzer,
     "DocumentGenerator": DocumentGenerator,
+    "DocumentManagement": DocumentManagement,
+    "DocumentSignatureTemplates": DocumentSignatureTemplates,
     "DocumentVisit": DocumentVisit,
     "DocumentationTraining": DocumentationTraining,
     "DuplicatePatients": DuplicatePatients,
@@ -214,8 +216,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "DocumentSignatureTemplates": DocumentSignatureTemplates,
-    "DocumentManagement": DocumentManagement,
 }
 
 export const pagesConfig = {
