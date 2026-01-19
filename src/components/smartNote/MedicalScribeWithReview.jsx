@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mic, Upload, CheckCircle2, AlertCircle, Loader, Edit3, ArrowRight } from "lucide-react";
+import { Mic, Upload, CheckCircle2, AlertCircle, Loader, Edit3, ArrowRight, Sparkles, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import EnhancedDocumentationAssistant from "./EnhancedDocumentationAssistant";
@@ -23,6 +23,8 @@ export default function MedicalScribeWithReview({
         patientId = "",
         selectedTemplate = null,
         selectedLanguage = "en",
+        patientContext = null,
+        recentVisits = [],
         onNoteGenerated = null
       }) {
         const { data: currentUser } = useQuery({
@@ -49,6 +51,8 @@ export default function MedicalScribeWithReview({
   const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
   const [complianceIssues, setComplianceIssues] = useState([]);
   const [documentationGaps, setDocumentationGaps] = useState([]);
+  const [realTimeSuggestions, setRealTimeSuggestions] = useState([]);
+  const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
 
   const { data: patientData } = useQuery({
     queryKey: ['patient', patientId],
@@ -178,13 +182,31 @@ export default function MedicalScribeWithReview({
     setIsProcessing(true);
 
     try {
+      // Build enhanced context from patient data
+      const contextData = {
+        patient_demographics: patientContext ? {
+          age: patientContext.date_of_birth 
+            ? Math.floor((Date.now() - new Date(patientContext.date_of_birth)) / 31557600000) 
+            : null,
+          primary_diagnosis: patientContext.primary_diagnosis,
+          allergies: patientContext.allergies,
+          current_medications: patientContext.current_medications?.map(m => `${m.name} ${m.dosage}`).join(', ')
+        } : null,
+        recent_visits: recentVisits?.map(v => ({
+          date: v.visit_date,
+          type: v.visit_type,
+          summary: v.nurse_notes?.substring(0, 200)
+        }))
+      };
+
       const response = await base44.functions.invoke('enhanceNoteOptimized', {
         roughNote: editedTranscription,
         patientId: patientId || null,
         visitType,
         diagnosis,
         vitalSigns: {},
-        nurseType: currentUser?.provider_type || currentUser?.credential_type || 'RN'
+        nurseType: currentUser?.provider_type || currentUser?.credential_type || 'RN',
+        contextData
       });
 
       const data = response.data || response;
@@ -251,6 +273,54 @@ export default function MedicalScribeWithReview({
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     toast.success('Copied to clipboard');
+  };
+
+  // Real-time contextual suggestions
+  const generateContextualSuggestions = async () => {
+    if (!editedTranscription.trim() || generatingSuggestions) return;
+
+    setGeneratingSuggestions(true);
+    try {
+      const contextPrompt = `Based on this clinical transcription, provide 3-5 brief contextual suggestions to improve documentation quality:
+
+Transcription: ${editedTranscription}
+
+Visit Type: ${visitType}
+Diagnosis: ${diagnosis}
+${patientContext ? `Patient has: ${patientContext.primary_diagnosis}, Allergies: ${patientContext.allergies || 'None'}` : ''}
+
+Provide specific, actionable suggestions for:
+1. Missing clinical details
+2. Required documentation elements
+3. Compliance improvements
+4. Medical necessity justification`;
+
+      const response = await base44.integrations.Core.InvokeLLM({
+        prompt: contextPrompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            suggestions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  category: { type: "string" },
+                  suggestion: { type: "string" },
+                  priority: { type: "string", enum: ["high", "medium", "low"] }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      setRealTimeSuggestions(response.suggestions || []);
+    } catch (error) {
+      console.error('Failed to generate suggestions:', error);
+    } finally {
+      setGeneratingSuggestions(false);
+    }
   };
 
   // Input stage - recording and file upload
@@ -359,7 +429,27 @@ export default function MedicalScribeWithReview({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Transcribed Text</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Transcribed Text</label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={generateContextualSuggestions}
+                  disabled={generatingSuggestions || !editedTranscription.trim()}
+                >
+                  {generatingSuggestions ? (
+                    <>
+                      <Loader className="w-3 h-3 mr-1 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Get AI Suggestions
+                    </>
+                  )}
+                </Button>
+              </div>
               <Textarea
                 value={editedTranscription}
                 onChange={(e) => setEditedTranscription(e.target.value)}
@@ -370,6 +460,28 @@ export default function MedicalScribeWithReview({
                 {editedTranscription.length} characters
               </p>
             </div>
+
+            {/* Real-time contextual suggestions */}
+            {realTimeSuggestions.length > 0 && (
+              <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200">
+                <Lightbulb className="w-4 h-4 text-blue-600" />
+                <AlertDescription>
+                  <p className="font-semibold text-sm mb-2">AI Suggestions:</p>
+                  <div className="space-y-2">
+                    {realTimeSuggestions.map((item, idx) => (
+                      <div key={idx} className="text-xs">
+                        <span className={`font-semibold ${
+                          item.priority === 'high' ? 'text-red-600' : 
+                          item.priority === 'medium' ? 'text-orange-600' : 'text-blue-600'
+                        }`}>
+                          [{item.category}]
+                        </span> {item.suggestion}
+                      </div>
+                    ))}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* One-Click Resolve All for Transcription Stage */}
             <ResolveAllIssues
