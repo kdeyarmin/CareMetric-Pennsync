@@ -343,6 +343,12 @@ export default function DocumentAutomationBuilder() {
               <span className="text-sm">Workflow is active</span>
             </label>
 
+            {/* Conditional Branches & AI Enrichment */}
+            <ConditionalWorkflowBuilder
+              workflow={formData}
+              onChange={setFormData}
+            />
+
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
