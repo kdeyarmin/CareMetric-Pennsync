@@ -495,14 +495,23 @@ export default function StripeSubscriptionManager() {
                               {price.id}
                             </Badge>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => copyToClipboard(price.id, "Price ID")}
-                            className="flex-shrink-0"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => copyToClipboard(price.id, "Price ID")}
+                            >
+                              <Copy className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDeletePrice(price.id, `${formatPrice(price.unit_amount)}/${getIntervalLabel(price.recurring?.interval, price.recurring?.interval_count || 1)}`)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
