@@ -18,8 +18,11 @@ import {
   RefreshCw,
   Users,
   Activity,
-  Zap
+  Zap,
+  Loader,
+  Sparkles
 } from "lucide-react";
+import { toast } from "sonner";
 
 import PatientAlertsDashboard from "../components/alerts/PatientAlertsDashboard";
 import PatientAlertAnalyzer from "../components/alerts/PatientAlertAnalyzer";
@@ -31,6 +34,7 @@ export default function PatientAlerts() {
   const queryClient = useQueryClient();
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [analysisResults, setAnalysisResults] = useState(null);
+  const [generatingAlerts, setGeneratingAlerts] = useState(false);
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
@@ -44,6 +48,46 @@ export default function PatientAlerts() {
 
   const handleAlertsGenerated = (alerts, results) => {
     setAnalysisResults(results);
+  };
+
+  const generateBulkAlerts = async (autoCreateTasks = false) => {
+    setGeneratingAlerts(true);
+    try {
+      const { data } = await base44.functions.invoke('generatePatientAlerts', {
+        auto_create_tasks: autoCreateTasks
+      });
+
+      toast.success(`Generated ${data.alerts_created} alerts${autoCreateTasks ? ` and ${data.tasks_created} tasks` : ''}`);
+      
+      // Refresh alerts
+      await queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
+    } catch (error) {
+      toast.error('Failed to generate alerts');
+      console.error(error);
+    } finally {
+      setGeneratingAlerts(false);
+    }
+  };
+
+  const generateSinglePatientAlert = async (patientId) => {
+    setGeneratingAlerts(true);
+    try {
+      const { data } = await base44.functions.invoke('generatePatientAlerts', {
+        patient_id: patientId,
+        auto_create_tasks: true
+      });
+
+      toast.success(`Generated ${data.alerts_created} alerts for patient`);
+      
+      // Refresh alerts
+      await queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
+      setAnalysisResults(data);
+    } catch (error) {
+      toast.error('Failed to generate alerts');
+      console.error(error);
+    } finally {
+      setGeneratingAlerts(false);
+    }
   };
 
   return (
@@ -60,10 +104,29 @@ export default function PatientAlerts() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2 sm:gap-3">
-          <Bell className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-slate-700 dark:text-slate-400" />
-          Patient Alerts
-        </h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 sm:gap-3">
+            <Bell className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-slate-700 dark:text-slate-400" />
+            Patient Alerts
+          </h1>
+          <Button 
+            onClick={() => generateBulkAlerts(true)} 
+            disabled={generatingAlerts}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {generatingAlerts ? (
+              <>
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 mr-2" />
+                Scan All Patients
+              </>
+            )}
+          </Button>
+        </div>
         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
           AI-powered proactive identification of critical events and potential deteriorations
         </p>
@@ -101,7 +164,24 @@ export default function PatientAlerts() {
               </Select>
 
               {selectedPatientId && (
-                <div className="mt-4">
+                <div className="mt-4 space-y-3">
+                  <Button 
+                    onClick={() => generateSinglePatientAlert(selectedPatientId)}
+                    disabled={generatingAlerts}
+                    className="w-full"
+                  >
+                    {generatingAlerts ? (
+                      <>
+                        <Loader className="w-4 h-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Brain className="w-4 h-4 mr-2" />
+                        Generate AI Alerts
+                      </>
+                    )}
+                  </Button>
                   <PatientAlertAnalyzer
                     patientId={selectedPatientId}
                     onAlertsGenerated={handleAlertsGenerated}
