@@ -82,9 +82,15 @@ export default function StripeSubscriptionManager() {
 
       if (!response.ok) throw new Error("Failed to create product");
 
-      toast.success("Product created successfully!");
+      const result = await response.json();
+      toast.success("Product created successfully! Now add a price to it.");
       setNewProduct({ name: "", description: "" });
-      refetchProducts();
+      
+      // Refetch products and auto-select the new one
+      await refetchProducts();
+      if (result.product?.id) {
+        setNewPrice({ ...newPrice, productId: result.product.id });
+      }
     } catch (error) {
       toast.error(error.message || "Failed to create product");
     } finally {
@@ -202,16 +208,30 @@ export default function StripeSubscriptionManager() {
         <CardContent className="p-6 space-y-4">
           <div>
             <Label htmlFor="selectProduct">Select Product</Label>
-            <Select value={newPrice.productId} onValueChange={(value) => setNewPrice({ ...newPrice, productId: value })}>
+            <Select 
+              value={newPrice.productId} 
+              onValueChange={(value) => setNewPrice({ ...newPrice, productId: value })}
+              onOpenChange={(open) => {
+                if (open) {
+                  refetchProducts(); // Refresh list when dropdown opens
+                }
+              }}
+            >
               <SelectTrigger className="mt-2">
                 <SelectValue placeholder="Choose a product..." />
               </SelectTrigger>
               <SelectContent>
-                {products.map((product) => (
-                  <SelectItem key={product.id} value={product.id}>
-                    {product.name}
-                  </SelectItem>
-                ))}
+                {loadingProducts ? (
+                  <SelectItem value="loading" disabled>Loading products...</SelectItem>
+                ) : products.length === 0 ? (
+                  <SelectItem value="none" disabled>No products yet - create one above</SelectItem>
+                ) : (
+                  products.map((product) => (
+                    <SelectItem key={product.id} value={product.id}>
+                      {product.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
