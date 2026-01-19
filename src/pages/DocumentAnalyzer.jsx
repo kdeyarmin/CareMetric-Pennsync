@@ -67,6 +67,8 @@ export default function DocumentAnalyzer() {
   const [deletingId, setDeleteId] = useState(null);
   const [selectedForAdvanced, setSelectedForAdvanced] = useState([]);
   const [showAdvancedAnalysis, setShowAdvancedAnalysis] = useState(false);
+  const [cdssData, setCDSSData] = useState(null);
+  const [loadingCDSS, setLoadingCDSS] = useState(false);
   
   const queryClient = useQueryClient();
 
