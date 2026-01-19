@@ -18,6 +18,8 @@ import { ResolveAllIssues } from "./OneClickResolvers";
 import NoteEmailDialog from "../notes/NoteEmailDialog";
 import NoteFormatSelector from "../notes/NoteFormatSelector";
 import { getFormatPrompt } from "../notes/NoteFormatTemplates";
+import SpecialtyTemplateSelector from "../specialty/SpecialtyTemplateSelector";
+import { getSpecialtyTemplate } from "../specialty/SpecialtyTemplateLibrary";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -56,6 +58,8 @@ export default function MedicalScribeWithReview({
   const [realTimeSuggestions, setRealTimeSuggestions] = useState([]);
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState("soap");
+  const [selectedSpecialty, setSelectedSpecialty] = useState("");
+  const [selectedSpecialtyTemplate, setSelectedSpecialtyTemplate] = useState("");
 
   const { data: patientData } = useQuery({
     queryKey: ['patient', patientId],
@@ -207,6 +211,19 @@ export default function MedicalScribeWithReview({
         currentUser?.credential_type || currentUser?.provider_type
       );
 
+      // Get specialty template context if selected
+      const specialtyTemplate = selectedSpecialty && selectedSpecialtyTemplate 
+        ? getSpecialtyTemplate(selectedSpecialty, selectedSpecialtyTemplate)
+        : null;
+
+      const specialtyContext = specialtyTemplate ? {
+        specialty: selectedSpecialty,
+        templateName: selectedSpecialtyTemplate,
+        aiPrompt: specialtyTemplate.aiPrompt,
+        sections: specialtyTemplate.sections,
+        commonCodes: specialtyTemplate.commonCodes
+      } : null;
+
       const response = await base44.functions.invoke('enhanceNoteOptimized', {
         roughNote: editedTranscription,
         patientId: patientId || null,
@@ -216,7 +233,8 @@ export default function MedicalScribeWithReview({
         nurseType: currentUser?.provider_type || currentUser?.credential_type || 'RN',
         contextData,
         noteFormat: selectedFormat,
-        formatInstructions: formatPrompt
+        formatInstructions: formatPrompt,
+        specialtyContext
       });
 
       const data = response.data || response;
@@ -438,12 +456,22 @@ Provide specific, actionable suggestions for:
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <NoteFormatSelector
-              selectedFormat={selectedFormat}
-              onFormatChange={setSelectedFormat}
-              specialty={currentUser?.credential_type || currentUser?.provider_type}
-              showDescription={true}
-            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <NoteFormatSelector
+                selectedFormat={selectedFormat}
+                onFormatChange={setSelectedFormat}
+                specialty={currentUser?.credential_type || currentUser?.provider_type}
+                showDescription={false}
+                compact={true}
+              />
+              <SpecialtyTemplateSelector
+                selectedSpecialty={selectedSpecialty}
+                onSpecialtyChange={setSelectedSpecialty}
+                selectedTemplate={selectedSpecialtyTemplate}
+                onTemplateSelect={setSelectedSpecialtyTemplate}
+                compact={true}
+              />
+            </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Transcribed Text</label>
