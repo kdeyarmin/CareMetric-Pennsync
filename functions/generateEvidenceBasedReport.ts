@@ -66,13 +66,96 @@ Patient Context:
 
     const selectedArticleTypes = article_types.map(t => articleTypeMapping[t] || t).join(', ');
 
-    const prompt = `You are an expert clinical reasoning AI assistant with access to current medical literature, clinical guidelines, and evidence-based medicine databases.
+    // STAGE 1: Structured Note Ingestion
+    const structurePrompt = `Extract and normalize the clinical information into structured components.
+
+Clinical Input:
+${clinical_note || clinical_question}
+
+Extract:
+1. Chief Complaint / Problem List
+2. Key Findings (symptoms, exam findings, labs)
+3. Current Medications
+4. Vital Signs (if mentioned)
+5. Past Medical History
+6. Red Flags / Safety Concerns
+7. Clinical Context`;
+
+    const structuredData = await base44.integrations.Core.InvokeLLM({
+      prompt: structurePrompt,
+      add_context_from_internet: false,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          chief_complaint: { type: "string" },
+          problem_list: { type: "array", items: { type: "string" } },
+          key_findings: {
+            type: "object",
+            properties: {
+              symptoms: { type: "array", items: { type: "string" } },
+              exam_findings: { type: "array", items: { type: "string" } },
+              lab_results: { type: "array", items: { type: "string" } },
+              imaging: { type: "array", items: { type: "string" } }
+            }
+          },
+          medications: { type: "array", items: { type: "string" } },
+          vital_signs: { type: "object" },
+          past_medical_history: { type: "array", items: { type: "string" } },
+          red_flags: { type: "array", items: { type: "string" } },
+          clinical_context: { type: "string" }
+        }
+      }
+    });
+
+    // STAGE 2A: Generate Broad DDx List
+    const ddxPrompt = `Based on this structured clinical data, generate a broad but clinically sensible differential diagnosis list.
+
+${JSON.stringify(structuredData, null, 2)}
+${patientContext}
+
+Generate 8-10 differential diagnoses covering:
+- Most likely diagnoses
+- Life-threatening "can't miss" diagnoses
+- Common mimics
+- Specialty-specific considerations for ${specialty || 'general medicine'}
+
+For each diagnosis, provide initial likelihood assessment.`;
+
+    const broadDDx = await base44.integrations.Core.InvokeLLM({
+      prompt: ddxPrompt,
+      add_context_from_internet: true,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          differential_diagnoses: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                diagnosis: { type: "string" },
+                initial_likelihood: { type: "string", enum: ["high", "moderate", "low", "cant_miss"] },
+                reasoning: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // STAGE 2B: Deep Dive on Top Candidates
+    const topCandidates = broadDDx.differential_diagnoses
+      .filter(d => d.initial_likelihood === 'high' || d.initial_likelihood === 'cant_miss')
+      .slice(0, 5);
+
+    const prompt = `You are an expert clinical reasoning AI with access to current medical literature. Perform deep evidence-based analysis.
+
+STRUCTURED CLINICAL DATA:
+${JSON.stringify(structuredData, null, 2)}
 
 ${patientContext}
 
-Clinical Input:
-${clinical_note ? `SOAP Note:\n${clinical_note}` : ''}
-${clinical_question ? `Clinical Question:\n${clinical_question}` : ''}
+TOP DIFFERENTIAL DIAGNOSES TO ANALYZE:
+${JSON.stringify(topCandidates, null, 2)}
 
 Evidence Retrieval Parameters:
 - Specialty Focus: ${specialty || 'General Medicine'}
@@ -81,7 +164,14 @@ ${selected_journals.length > 0 ? `- Preferred Journals: ${selected_journals.join
 - Year Range: ${year_range_start}-${year_range_end}
 - Article Types: ${selectedArticleTypes}
 
-Generate a comprehensive evidence-based clinical reasoning report with:
+For each top diagnosis, provide:
+- Why it fits this specific patient
+- Why it might NOT be this
+- Next-best diagnostic tests
+- Rule-out steps
+- Don't-miss safety considerations
+
+Generate comprehensive evidence-based clinical reasoning with:
 
 1. **Executive Summary**: Brief clinical synopsis and key recommendations
 2. **Differential Diagnoses**: Top differential diagnoses with likelihood ratings and key distinguishing features
@@ -114,10 +204,23 @@ Search current medical databases, PubMed, clinical practice guidelines, and FDA 
               type: "object",
               properties: {
                 diagnosis: { type: "string" },
-                likelihood: { type: "string", enum: ["high", "moderate", "low"] },
+                likelihood: { type: "string", enum: ["high", "moderate", "low", "cant_miss"] },
+                why_it_fits: { type: "string" },
+                why_it_might_not: { type: "string" },
                 key_features: { type: "array", items: { type: "string" } },
-                distinguishing_factors: { type: "string" },
-                supporting_evidence_score: { type: "number" }
+                next_best_tests: { type: "array", items: { type: "string" } },
+                rule_out_steps: { type: "array", items: { type: "string" } },
+                safety_considerations: { type: "array", items: { type: "string" } },
+                supporting_evidence_score: { type: "number" },
+                evidence_quality_breakdown: {
+                  type: "object",
+                  properties: {
+                    study_quality: { type: "number" },
+                    journal_tier: { type: "number" },
+                    recency: { type: "number" },
+                    applicability: { type: "number" }
+                  }
+                }
               }
             }
           },
@@ -140,8 +243,19 @@ Search current medical databases, PubMed, clinical practice guidelines, and FDA 
                       year: { type: "number" },
                       study_type: { type: "string" },
                       quality_score: { type: "number" },
+                      quality_score_breakdown: {
+                        type: "object",
+                        properties: {
+                          study_design: { type: "number" },
+                          sample_size: { type: "number" },
+                          journal_impact: { type: "number" },
+                          recency: { type: "number" }
+                        }
+                      },
                       key_findings: { type: "string" },
-                      citation: { type: "string" }
+                      why_this_applies: { type: "string" },
+                      citation: { type: "string" },
+                      pubmed_id: { type: "string" }
                     }
                   }
                 },
@@ -209,8 +323,35 @@ Search current medical databases, PubMed, clinical practice guidelines, and FDA 
             items: { type: "string" }
           },
           overall_evidence_quality: { type: "string" },
-          limitations: { type: "array", items: { type: "string" } }
+          limitations: { type: "array", items: { type: "string" } },
+          governance_notes: {
+            type: "object",
+            properties: {
+              disclaimer: { type: "string" },
+              sources_queried: { type: "array", items: { type: "string" } },
+              evidence_tiers_used: { type: "array", items: { type: "string" } }
+            }
+          }
         }
+      }
+    });
+
+    // Audit logging
+    await base44.entities.SecurityLog.create({
+      timestamp: new Date().toISOString(),
+      user_email: user.email,
+      user_role: user.role,
+      action: 'generate_evidence_based_report',
+      details: {
+        patient_id: patient_id || 'none',
+        specialty,
+        authority_level,
+        year_range: `${year_range_start}-${year_range_end}`,
+        article_types: selectedArticleTypes,
+        note_snippet: (clinical_note || clinical_question).substring(0, 200),
+        structured_data: structuredData,
+        top_ddx: topCandidates.map(d => d.diagnosis),
+        sources_accessed: response.governance_notes?.sources_queried || []
       }
     });
 
@@ -233,13 +374,24 @@ Search current medical databases, PubMed, clinical practice guidelines, and FDA 
 
     return Response.json({
       success: true,
-      report: response,
+      report: {
+        ...response,
+        structured_input: structuredData,
+        broad_ddx_generated: broadDDx.differential_diagnoses.length,
+        deep_analysis_count: topCandidates.length
+      },
       generated_at: new Date().toISOString(),
       parameters: {
         specialty,
         authority_level,
         year_range: `${year_range_start}-${year_range_end}`,
         article_types
+      },
+      audit_trail: {
+        user: user.email,
+        timestamp: new Date().toISOString(),
+        note_length: (clinical_note || clinical_question).length,
+        evidence_sources: response.governance_notes?.sources_queried?.length || 0
       }
     });
 

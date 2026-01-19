@@ -344,53 +344,71 @@ export default function EvidenceBasedClinicalReasoning({
           {report.differential_diagnoses?.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Differential Diagnoses</CardTitle>
+                <CardTitle className="text-lg">Differential Diagnoses (Deep Analysis)</CardTitle>
+                <CardDescription className="text-xs">
+                  Two-stage reasoning: {report.broad_ddx_generated || 'Multiple'} candidates → {report.deep_analysis_count || report.differential_diagnoses.length} deep-analyzed
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {report.differential_diagnoses.map((ddx, idx) => (
-                  <div key={idx} className="border-l-4 border-blue-500 pl-4 py-2">
+                  <div key={idx} className={`border-l-4 ${ddx.likelihood === 'cant_miss' ? 'border-red-500 bg-red-50 dark:bg-red-950' : 'border-blue-500'} pl-4 py-3 rounded-r`}>
                     <div className="flex items-start justify-between mb-2">
                       <h4 className="font-semibold text-base">{ddx.diagnosis}</h4>
                       <Badge className={getLikelihoodColor(ddx.likelihood)}>
-                        {ddx.likelihood} likelihood
+                        {ddx.likelihood === 'cant_miss' ? "CAN'T MISS" : `${ddx.likelihood} likelihood`}
                       </Badge>
                     </div>
-                    
-                    {ddx.key_features?.length > 0 && (
+
+                    {ddx.why_it_fits && (
+                      <div className="mb-2 bg-green-50 dark:bg-green-950 p-2 rounded">
+                        <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✓ Why it fits THIS patient:</p>
+                        <p className="text-sm text-green-900 dark:text-green-100">{ddx.why_it_fits}</p>
+                      </div>
+                    )}
+
+                    {ddx.why_it_might_not && (
+                      <div className="mb-2 bg-orange-50 dark:bg-orange-950 p-2 rounded">
+                        <p className="text-xs font-semibold text-orange-800 dark:text-orange-200 mb-1">✗ Why it might NOT be:</p>
+                        <p className="text-sm text-orange-900 dark:text-orange-100">{ddx.why_it_might_not}</p>
+                      </div>
+                    )}
+
+                    {ddx.next_best_tests?.length > 0 && (
                       <div className="mb-2">
-                        <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Key Features:</p>
-                        <ul className="text-sm space-y-0.5">
-                          {ddx.key_features.map((feature, i) => (
-                            <li key={i} className="flex items-start gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-green-600 mt-0.5 flex-shrink-0" />
-                              <span>{feature}</span>
-                            </li>
+                        <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">🔬 Next-Best Diagnostic Tests:</p>
+                        <ul className="text-sm space-y-0.5 ml-4">
+                          {ddx.next_best_tests.map((test, i) => (
+                            <li key={i}>• {test}</li>
                           ))}
                         </ul>
                       </div>
                     )}
 
-                    {ddx.distinguishing_factors && (
-                      <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-                        <span className="font-semibold">Distinguishing:</span> {ddx.distinguishing_factors}
-                      </p>
+                    {ddx.safety_considerations?.length > 0 && (
+                      <div className="mb-2 bg-red-50 dark:bg-red-950 p-2 rounded">
+                        <p className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Safety / Don't Miss:</p>
+                        <ul className="text-sm space-y-0.5">
+                          {ddx.safety_considerations.map((safety, i) => (
+                            <li key={i}>• {safety}</li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
 
-                    {ddx.supporting_evidence_score && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold">Evidence Quality:</span>
-                        <div className="flex items-center gap-1">
-                          {[...Array(10)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`w-3 h-3 ${
-                                i < ddx.supporting_evidence_score
-                                  ? 'fill-yellow-400 text-yellow-400'
-                                  : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
-                          <span className="text-xs ml-1">{ddx.supporting_evidence_score}/10</span>
+                    {ddx.evidence_quality_breakdown && (
+                      <div className="mt-2 pt-2 border-t">
+                        <p className="text-xs font-semibold mb-1">Evidence Quality Breakdown:</p>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>Study Quality: {ddx.evidence_quality_breakdown.study_quality}/10</div>
+                          <div>Journal Tier: {ddx.evidence_quality_breakdown.journal_tier}/10</div>
+                          <div>Recency: {ddx.evidence_quality_breakdown.recency}/10</div>
+                          <div>Applicability: {ddx.evidence_quality_breakdown.applicability}/10</div>
+                        </div>
+                        <div className="mt-1">
+                          <Progress value={ddx.supporting_evidence_score * 10} className="h-2" />
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            Overall: {ddx.supporting_evidence_score}/10
+                          </p>
                         </div>
                       </div>
                     )}
@@ -429,19 +447,46 @@ export default function EvidenceBasedClinicalReasoning({
                         <p className="text-xs font-semibold mb-2">Supporting Evidence:</p>
                         <div className="space-y-2">
                           {tx.supporting_studies.slice(0, 3).map((study, i) => (
-                            <div key={i} className="bg-gray-50 dark:bg-gray-900 p-2 rounded text-xs">
-                              <div className="flex items-start justify-between">
-                                <p className="font-semibold flex-1">{study.title}</p>
-                                <span className={`font-bold ml-2 ${getQualityColor(study.quality_score)}`}>
+                            <div key={i} className="bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-2 border-blue-500">
+                              <div className="flex items-start justify-between mb-2">
+                                <p className="font-semibold flex-1 text-sm">{study.title}</p>
+                                <span className={`font-bold ml-2 text-lg ${getQualityColor(study.quality_score)}`}>
                                   {study.quality_score}/10
                                 </span>
                               </div>
-                              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
                                 {study.journal} ({study.year}) • {study.study_type}
+                                {study.pubmed_id && ` • PMID: ${study.pubmed_id}`}
                               </p>
-                              <p className="mt-1">{study.key_findings}</p>
+                              
+                              {study.quality_score_breakdown && (
+                                <div className="mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                  <p className="text-xs font-semibold mb-1">Quality Factors:</p>
+                                  <div className="grid grid-cols-2 gap-1 text-xs">
+                                    <div>Study Design: {study.quality_score_breakdown.study_design}/10</div>
+                                    <div>Sample Size: {study.quality_score_breakdown.sample_size}/10</div>
+                                    <div>Journal Impact: {study.quality_score_breakdown.journal_impact}/10</div>
+                                    <div>Recency: {study.quality_score_breakdown.recency}/10</div>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              <div className="mb-2">
+                                <p className="text-xs font-semibold mb-1">Key Findings:</p>
+                                <p className="text-sm">{study.key_findings}</p>
+                              </div>
+                              
+                              {study.why_this_applies && (
+                                <div className="bg-blue-50 dark:bg-blue-950 p-2 rounded mb-2">
+                                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                                    Why this applies to YOUR patient:
+                                  </p>
+                                  <p className="text-sm text-blue-900 dark:text-blue-100">{study.why_this_applies}</p>
+                                </div>
+                              )}
+                              
                               {study.citation && (
-                                <p className="text-gray-500 mt-1 italic">{study.citation}</p>
+                                <p className="text-xs text-gray-500 italic">{study.citation}</p>
                               )}
                             </div>
                           ))}
@@ -649,27 +694,94 @@ export default function EvidenceBasedClinicalReasoning({
             </Card>
           )}
 
-          {/* Evidence Quality & Limitations */}
-          <Card>
+          {/* Structured Input Data */}
+          {report.structured_input && (
+            <Card className="border-dashed">
+              <CardHeader>
+                <CardTitle className="text-sm">Structured Clinical Data (AI Parsed)</CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  {report.structured_input.chief_complaint && (
+                    <div className="col-span-2">
+                      <p className="font-semibold">Chief Complaint:</p>
+                      <p>{report.structured_input.chief_complaint}</p>
+                    </div>
+                  )}
+                  {report.structured_input.red_flags?.length > 0 && (
+                    <div className="col-span-2 bg-red-50 dark:bg-red-950 p-2 rounded">
+                      <p className="font-semibold text-red-800 dark:text-red-200">Red Flags Identified:</p>
+                      <ul>{report.structured_input.red_flags.map((rf, i) => <li key={i}>• {rf}</li>)}</ul>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Governance & Audit Trail */}
+          <Card className="bg-gray-50 dark:bg-gray-900">
             <CardHeader>
-              <CardTitle className="text-sm">Evidence Quality & Limitations</CardTitle>
+              <CardTitle className="text-sm">Clinical Decision Support Disclaimer & Audit Trail</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-3 text-xs">
+              <Alert>
+                <AlertDescription>
+                  <p className="font-semibold mb-1">⚠️ Clinical Decision Support Tool - Assistive Only</p>
+                  <p>
+                    This report is generated by AI for clinical decision support purposes only. 
+                    It does NOT constitute medical advice and must be reviewed by a licensed healthcare provider. 
+                    All clinical decisions remain the responsibility of the treating physician.
+                  </p>
+                </AlertDescription>
+              </Alert>
+
+              {report.governance_notes && (
+                <div className="space-y-2">
+                  {report.governance_notes.sources_queried?.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Evidence Sources Queried:</p>
+                      <ul className="ml-4">
+                        {report.governance_notes.sources_queried.map((src, i) => (
+                          <li key={i}>• {src}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {report.governance_notes.evidence_tiers_used?.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Evidence Tiers Used:</p>
+                      <ul className="ml-4">
+                        {report.governance_notes.evidence_tiers_used.map((tier, i) => (
+                          <li key={i}>• {tier}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {report.overall_evidence_quality && (
-                <p className="text-sm">
+                <p>
                   <span className="font-semibold">Overall Evidence Quality:</span> {report.overall_evidence_quality}
                 </p>
               )}
+              
               {report.limitations?.length > 0 && (
                 <div>
-                  <p className="text-sm font-semibold mb-1">Limitations:</p>
-                  <ul className="text-sm space-y-1">
+                  <p className="font-semibold">Limitations:</p>
+                  <ul className="ml-4">
                     {report.limitations.map((lim, idx) => (
                       <li key={idx}>• {lim}</li>
                     ))}
                   </ul>
                 </div>
               )}
+
+              <div className="pt-2 border-t text-gray-500">
+                <p>Report logged for audit: {new Date().toISOString()}</p>
+                <p>User: {report.audit_trail?.user || 'N/A'}</p>
+              </div>
             </CardContent>
           </Card>
         </div>
