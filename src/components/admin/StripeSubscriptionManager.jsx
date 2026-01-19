@@ -186,6 +186,35 @@ export default function StripeSubscriptionManager() {
     }
   };
 
+  const handleDeletePrice = async (priceId, priceLabel) => {
+    if (!confirm(`Are you sure you want to delete this price (${priceLabel})?`)) {
+      return;
+    }
+
+    toast.loading("Deleting price...");
+    
+    try {
+      const response = await base44.functions.invoke('stripeDeletePrice', {
+        price_id: priceId
+      });
+
+      toast.dismiss();
+      
+      if (response?.success === true) {
+        toast.success("Price deleted successfully");
+        await refetchProducts();
+      } else {
+        const errorMsg = response?.error || response?.details || "Failed to delete price";
+        console.error('Delete failed:', errorMsg);
+        toast.error(errorMsg);
+      }
+    } catch (error) {
+      toast.dismiss();
+      console.error('Delete error:', error);
+      toast.error(error.message || "Failed to delete price");
+    }
+  };
+
   const formatPrice = (cents) => {
     return `$${(cents / 100).toFixed(2)}`;
   };
