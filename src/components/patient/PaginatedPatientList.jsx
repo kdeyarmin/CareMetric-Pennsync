@@ -16,7 +16,8 @@ import {
   Search,
   User,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -26,7 +27,8 @@ export default function PaginatedPatientList({
   onPatientSelect,
   showCheckboxes = false,
   selectedPatients = [],
-  onSelectionChange 
+  onSelectionChange,
+  onPatientDelete
 }) {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -181,6 +183,19 @@ export default function PaginatedPatientList({
                         className="text-xs"
                       >
                         Select
+                      </Button>
+                    )}
+                    {onPatientDelete && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPatientDelete(patient);
+                        }}
+                        className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3 h-3" />
                       </Button>
                     )}
                   </div>
