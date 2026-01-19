@@ -34,6 +34,14 @@ Deno.serve(async (req) => {
       if (document_type) {
         signatures = signatures.filter(s => s.document_type === document_type);
       }
+      if (signed_by_role) {
+        signatures = signatures.filter(s => s.signed_by_role === signed_by_role);
+      }
+      if (mfa_status === 'verified') {
+        signatures = signatures.filter(s => s.mfa_verified === true);
+      } else if (mfa_status === 'not_verified') {
+        signatures = signatures.filter(s => !s.mfa_verified);
+      }
     }
 
     // Generate comprehensive audit report
@@ -41,7 +49,7 @@ Deno.serve(async (req) => {
       report_generated: new Date().toISOString(),
       generated_by: user.email,
       total_signatures: signatures.length,
-      filter_criteria: { start_date, end_date, document_type },
+      filter_criteria: { start_date, end_date, document_type, signed_by_role, mfa_status },
       signatures: signatures.map(sig => ({
         signature_id: sig.id,
         document_type: sig.document_type,
@@ -88,7 +96,7 @@ Deno.serve(async (req) => {
     if (format === 'csv') {
       // Generate CSV
       const csvRows = [
-        ['Signature ID', 'Document Type', 'Signer Name', 'Signer Email', 'Date', 'IP Address', 'MFA Verified', 'Status'].join(',')
+        ['Signature ID', 'Document Type', 'Signer Name', 'Signer Email', 'Signer Role', 'Date', 'IP Address', 'MFA Verified', 'MFA Method', 'Status', 'Witness Email'].join(',')
       ];
       
       signatures.forEach(sig => {
@@ -97,10 +105,13 @@ Deno.serve(async (req) => {
           sig.document_type,
           sig.signer_name,
           sig.signer_email,
+          sig.signed_by_role || 'provider',
           sig.created_date,
           sig.ip_address,
           sig.mfa_verified ? 'Yes' : 'No',
-          sig.verification_status
+          sig.mfa_method || 'none',
+          sig.verification_status,
+          sig.witness_email || ''
         ].join(','));
       });
 
