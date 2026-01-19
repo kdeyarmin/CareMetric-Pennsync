@@ -339,7 +339,31 @@ export default function UserManagement({ users, currentUser }) {
             </AlertDescription>
           </Alert>
 
-
+          {/* Pending Invitations Section */}
+          {pendingInvitations.length > 0 && (
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <h3 className="font-semibold text-yellow-900 mb-3 flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Pending Invitations ({pendingInvitations.length})
+              </h3>
+              <div className="space-y-2">
+                {pendingInvitations.map((invitation) => (
+                  <div key={invitation.id} className="flex items-center justify-between p-2 bg-white rounded border border-yellow-100">
+                    <div>
+                      <p className="font-medium text-sm">{invitation.email}</p>
+                      <p className="text-xs text-gray-500">
+                        Invited {invitation.created_date ? format(new Date(invitation.created_date), 'MMM d, yyyy') : 'recently'}
+                        {invitation.expires_at && ` • Expires ${format(new Date(invitation.expires_at), 'MMM d, yyyy')}`}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="border-yellow-300 text-yellow-700">
+                      Pending
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Users Table */}
           <div className="overflow-x-auto">
