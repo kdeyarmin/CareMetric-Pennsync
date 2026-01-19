@@ -70,6 +70,8 @@ export default function DocumentAnalyzer() {
   const [showAdvancedAnalysis, setShowAdvancedAnalysis] = useState(false);
   const [cdssData, setCDSSData] = useState(null);
   const [loadingCDSS, setLoadingCDSS] = useState(false);
+  const [crossDocData, setCrossDocData] = useState(null);
+  const [loadingCrossDoc, setLoadingCrossDoc] = useState(false);
   
   const queryClient = useQueryClient();
 
