@@ -98,6 +98,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import Telehealth from './pages/Telehealth';
+import ClinicalDecisionSupport from './pages/ClinicalDecisionSupport';
 import __Layout from './Layout.jsx';
 
 
@@ -202,6 +203,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
     "Telehealth": Telehealth,
+    "ClinicalDecisionSupport": ClinicalDecisionSupport,
 }
 
 export const pagesConfig = {
