@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, RefreshCw, Trash2, DollarSign, Calendar, Copy, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { base44 } from "@/api/base44Client";
 
 export default function StripeSubscriptionManager() {
   const [newProduct, setNewProduct] = useState({ name: "", description: "" });
@@ -26,12 +27,8 @@ export default function StripeSubscriptionManager() {
     queryKey: ["stripeProducts"],
     queryFn: async () => {
       try {
-        const response = await window.fetch("/api/stripe-list-products", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" }
-        });
-        const result = await response.json();
-        return result.products || [];
+        const response = await base44.functions.invoke('stripeListProducts', {});
+        return response?.data?.products || [];
       } catch (error) {
         console.error("Error fetching products:", error);
         return [];
@@ -46,13 +43,8 @@ export default function StripeSubscriptionManager() {
       const prices = {};
       for (const product of products) {
         try {
-          const response = await window.fetch("/api/stripe-list-prices", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ productId: product.id })
-          });
-          const result = await response.json();
-          prices[product.id] = result.prices || [];
+          const response = await base44.functions.invoke('stripeListPrices', { product_id: product.id });
+          prices[product.id] = response?.data?.prices || [];
         } catch (error) {
           console.error(`Error fetching prices for ${product.id}:`, error);
           prices[product.id] = [];
@@ -71,25 +63,20 @@ export default function StripeSubscriptionManager() {
 
     setIsCreatingProduct(true);
     try {
-      const response = await window.fetch("/api/stripe-create-product", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newProduct.name,
-          description: newProduct.description || undefined
-        })
+      const response = await base44.functions.invoke('stripeCreateProduct', {
+        name: newProduct.name,
+        description: newProduct.description || undefined
       });
 
-      if (!response.ok) throw new Error("Failed to create product");
-
-      const result = await response.json();
-      toast.success("Product created successfully! Now add a price to it.");
-      setNewProduct({ name: "", description: "" });
-      
-      // Refetch products and auto-select the new one
-      await refetchProducts();
-      if (result.product?.id) {
-        setNewPrice({ ...newPrice, productId: result.product.id });
+      if (response?.data?.product?.id) {
+        toast.success("Product created successfully! Now add a price to it.");
+        setNewProduct({ name: "", description: "" });
+        
+        // Refetch products and auto-select the new one
+        await refetchProducts();
+        setNewPrice({ ...newPrice, productId: response.data.product.id });
+      } else {
+        throw new Error("Failed to create product");
       }
     } catch (error) {
       toast.error(error.message || "Failed to create product");
@@ -112,22 +99,21 @@ export default function StripeSubscriptionManager() {
 
     setIsCreatingPrice(true);
     try {
-      const response = await window.fetch("/api/stripe-create-price", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: newPrice.productId,
-          unitAmount: amountCents,
-          recurringInterval: newPrice.interval,
-          recurringIntervalCount: parseInt(newPrice.intervalCount) || 1
-        })
+      const response = await base44.functions.invoke('stripeCreatePrice', {
+        product_id: newPrice.productId,
+        unit_amount: amountCents,
+        recurring_interval: newPrice.interval,
+        recurring_interval_count: parseInt(newPrice.intervalCount) || 1,
+        currency: 'usd'
       });
 
-      if (!response.ok) throw new Error("Failed to create price");
-
-      toast.success("Price created successfully!");
-      setNewPrice({ productId: "", amount: "", interval: "month", intervalCount: 1 });
-      refetchProducts();
+      if (response?.data?.price) {
+        toast.success("Price created successfully!");
+        setNewPrice({ productId: "", amount: "", interval: "month", intervalCount: 1 });
+        refetchProducts();
+      } else {
+        throw new Error("Failed to create price");
+      }
     } catch (error) {
       toast.error(error.message || "Failed to create price");
     } finally {
