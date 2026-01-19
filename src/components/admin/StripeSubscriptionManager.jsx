@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, RefreshCw, Trash2, DollarSign, Calendar, Copy, AlertCircle } from "lucide-react";
+import { Plus, RefreshCw, Trash2, DollarSign, Calendar, Copy, AlertCircle, Edit, Archive } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 
@@ -21,6 +22,8 @@ export default function StripeSubscriptionManager() {
   });
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
   const [isCreatingPrice, setIsCreatingPrice] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editDialog, setEditDialog] = useState(false);
 
   // Fetch all products
   const { data: products = [], isLoading: loadingProducts, refetch: refetchProducts } = useQuery({
@@ -124,6 +127,50 @@ export default function StripeSubscriptionManager() {
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
+  };
+
+  const handleEditProduct = async () => {
+    if (!editingProduct?.name?.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+
+    try {
+      const response = await base44.functions.invoke('stripeUpdateProduct', {
+        product_id: editingProduct.id,
+        name: editingProduct.name,
+        description: editingProduct.description,
+        active: editingProduct.active
+      });
+
+      if (response?.data?.success) {
+        toast.success("Product updated successfully");
+        setEditDialog(false);
+        setEditingProduct(null);
+        refetchProducts();
+      }
+    } catch (error) {
+      toast.error(error.message || "Failed to update product");
+    }
+  };
+
+  const handleDeleteProduct = async (productId, productName) => {
+    if (!confirm(`Are you sure you want to delete "${productName}"? This will also delete all associated prices.`)) {
+      return;
+    }
+
+    try {
+      const response = await base44.functions.invoke('stripeDeleteProduct', {
+        product_id: productId
+      });
+
+      if (response?.data?.success) {
+        toast.success("Product deleted successfully");
+        refetchProducts();
+      }
+    } catch (error) {
+      toast.error(error.message || "Failed to delete product");
+    }
   };
 
   const formatPrice = (cents) => {
@@ -309,14 +356,81 @@ export default function StripeSubscriptionManager() {
                 <CardHeader className="bg-slate-50 dark:bg-slate-900 pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      <CardTitle className="text-lg">{product.name}</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-lg">{product.name}</CardTitle>
+                        <Badge variant={product.active ? "default" : "secondary"}>
+                          {product.active ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
                       {product.description && (
                         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                           {product.description}
                         </p>
                       )}
                     </div>
-                    <Badge variant="outline">{product.id}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Dialog open={editDialog && editingProduct?.id === product.id} onOpenChange={(open) => {
+                        setEditDialog(open);
+                        if (!open) setEditingProduct(null);
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingProduct(product)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Edit Product</DialogTitle>
+                            <DialogDescription>
+                              Update product details
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4 mt-4">
+                            <div>
+                              <Label>Product Name</Label>
+                              <Input
+                                value={editingProduct?.name || ""}
+                                onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                                className="mt-2"
+                              />
+                            </div>
+                            <div>
+                              <Label>Description</Label>
+                              <Input
+                                value={editingProduct?.description || ""}
+                                onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                                className="mt-2"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id="active"
+                                checked={editingProduct?.active ?? true}
+                                onChange={(e) => setEditingProduct({ ...editingProduct, active: e.target.checked })}
+                                className="w-4 h-4"
+                              />
+                              <Label htmlFor="active">Active</Label>
+                            </div>
+                            <Button onClick={handleEditProduct} className="w-full">
+                              Save Changes
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteProduct(product.id, product.name)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4">
