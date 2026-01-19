@@ -667,6 +667,45 @@ export default function DocumentAnalyzer() {
               <ComplianceAuditResults auditResults={analysis.compliance_audit} />
             )}
 
+            {/* Clinical Decision Support System */}
+            <Card className="border-2 border-indigo-200 dark:border-indigo-900">
+              <CardHeader className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950 dark:to-blue-950">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Brain className="w-5 h-5 text-indigo-600" />
+                    Clinical Decision Support System
+                  </CardTitle>
+                  <Button 
+                    onClick={generateCDSSRecommendations}
+                    disabled={loadingCDSS}
+                    className="bg-indigo-600 hover:bg-indigo-700"
+                    size="sm"
+                  >
+                    {loadingCDSS ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
+                    Generate CDSS
+                  </Button>
+                </div>
+                <CardDescription>
+                  AI-powered clinical recommendations, drug interaction screening, and risk assessment
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                {cdssData ? (
+                  <CDSSWidget 
+                    cdssData={cdssData}
+                    onRefresh={generateCDSSRecommendations}
+                  />
+                ) : (
+                  <div className="text-center py-6">
+                    <Brain className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                    <p className="text-slate-600 dark:text-slate-400 text-sm">
+                      Click "Generate CDSS" to receive clinical decision support based on the analyzed documents
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* AI Patient Summary Generator */}
             {selectedPatient && (
               <AIPatientSummaryGenerator 
