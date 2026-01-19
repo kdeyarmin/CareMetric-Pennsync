@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, Zap, Users, FileText, Brain, Mic, Target, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle, WifiOff } from "lucide-react";
+import { Download, Zap, Users, FileText, Brain, Mic, Target, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle, WifiOff, GitBranch, Sparkles, CreditCard } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const FEATURES = [
@@ -125,6 +125,24 @@ const FEATURES = [
   title: "Data Retention Management",
   description: "Customize data retention policies and automatically archive or delete old records per your compliance requirements.",
   category: "Compliance"
+},
+{
+  icon: GitBranch,
+  title: "Conditional Document Automation",
+  description: "Automate document generation with conditional logic, creating dynamic documents and actions based on real-time data and rules.",
+  category: "Automation"
+},
+{
+  icon: Sparkles,
+  title: "AI Document Enrichment",
+  description: "Leverage AI to automatically summarize documents and extract key information, enhancing metadata and searchability.",
+  category: "AI"
+},
+{
+  icon: CreditCard,
+  title: "Subscription & Billing Management",
+  description: "Administrators can manage Stripe products, pricing plans, and subscriptions, including archiving and deleting items.",
+  category: "Admin"
 }];
 
 
