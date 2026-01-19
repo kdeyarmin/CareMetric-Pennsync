@@ -102,6 +102,7 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import PatientOnboarding from './pages/PatientOnboarding';
 import __Layout from './Layout.jsx';
 
 
@@ -210,6 +211,7 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
+    "PatientOnboarding": PatientOnboarding,
 }
 
 export const pagesConfig = {
