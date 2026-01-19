@@ -5,32 +5,33 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-                  Home,
-                  Users,
-                  User,
-                  WifiOff,
-                  GraduationCap,
-                  BarChart3,
-                  Settings,
-                  Menu,
-                  X,
-                  Brain,
-                  Target,
-                  Bell,
-                  LogOut,
-                  ChevronLeft,
-                  ChevronRight,
-                  Sparkles,
-                  Activity,
-                  CreditCard,
-                  Mic,
-                  Video,
-                  UserPlus,
-                  ShieldAlert,
-                  ListTodo,
-                  FileText,
-                  Download } from
-                "lucide-react";
+                        Home,
+                        Users,
+                        User,
+                        WifiOff,
+                        GraduationCap,
+                        BarChart3,
+                        Settings,
+                        Menu,
+                        X,
+                        Brain,
+                        Target,
+                        Bell,
+                        LogOut,
+                        ChevronLeft,
+                        ChevronRight,
+                        Sparkles,
+                        Activity,
+                        CreditCard,
+                        Mic,
+                        Video,
+                        UserPlus,
+                        ShieldAlert,
+                        ListTodo,
+                        FileText,
+                        Download,
+                        TrendingUp } from
+                      "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -162,6 +163,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "My Training", icon: Target, page: "MyTraining" },
   { name: "Tasks", icon: ListTodo, page: "Tasks" },
   { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" },
+  { name: "Billing Optimization", icon: TrendingUp, page: "BillingOptimization" },
   { name: "Settings", icon: Settings, page: "Settings" }];
 
 

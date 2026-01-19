@@ -60,6 +60,8 @@ export default function MedicalScribeWithReview({
   const [selectedFormat, setSelectedFormat] = useState("soap");
   const [selectedSpecialty, setSelectedSpecialty] = useState("");
   const [selectedSpecialtyTemplate, setSelectedSpecialtyTemplate] = useState("");
+  const [differentialDiagnoses, setDifferentialDiagnoses] = useState([]);
+  const [suggestedCodes, setSuggestedCodes] = useState({ icd10: [], cpt: [] });
 
   const { data: patientData } = useQuery({
     queryKey: ['patient', patientId],
@@ -244,7 +246,13 @@ export default function MedicalScribeWithReview({
           }
 
           setGeneratedNote(data.enhanced_note);
-          onNoteGenerated?.(data.enhanced_note);
+          setDifferentialDiagnoses(data.differential_diagnoses || []);
+          setSuggestedCodes(data.suggested_codes || { icd10: [], cpt: [] });
+          onNoteGenerated?.(data.enhanced_note, {
+            differentialDiagnoses: data.differential_diagnoses,
+            suggestedCodes: data.suggested_codes,
+            specialtyApplied: data.specialty_applied
+          });
           setStage('complete');
 
           // Auto-save note to patient history if patient is selected
@@ -296,6 +304,8 @@ export default function MedicalScribeWithReview({
     setEditedTranscription('');
     setGeneratedNote('');
     setRecordingTime(0);
+    setDifferentialDiagnoses([]);
+    setSuggestedCodes({ icd10: [], cpt: [] });
   };
 
   const copyToClipboard = (text) => {
@@ -644,6 +654,97 @@ Provide specific, actionable suggestions for:
               {generatedNote}
             </div>
             </div>
+
+          {/* Differential Diagnoses */}
+          {differentialDiagnoses.length > 0 && (
+            <div className="border rounded-lg p-4 bg-purple-50 dark:bg-purple-950">
+              <p className="font-semibold mb-3 text-purple-900 dark:text-purple-100">
+                Differential Diagnoses to Consider:
+              </p>
+              <div className="space-y-2">
+                {differentialDiagnoses.map((dx, idx) => (
+                  <div key={idx} className="bg-white dark:bg-gray-900 p-3 rounded border">
+                    <div className="flex items-start justify-between mb-1">
+                      <p className="font-medium text-sm">{dx.diagnosis}</p>
+                      <Badge className={
+                        dx.probability === 'high' ? 'bg-red-100 text-red-800' :
+                        dx.probability === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-blue-100 text-blue-800'
+                      }>
+                        {dx.probability}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-gray-600">{dx.reasoning}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suggested Billing Codes */}
+          {(suggestedCodes.icd10?.length > 0 || suggestedCodes.cpt?.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {suggestedCodes.icd10?.length > 0 && (
+                <div className="border rounded-lg p-4 bg-green-50 dark:bg-green-950">
+                  <p className="font-semibold mb-2 text-green-900 dark:text-green-100">
+                    Suggested ICD-10 Codes:
+                  </p>
+                  <div className="space-y-2">
+                    {suggestedCodes.icd10.map((code, idx) => (
+                      <div key={idx} className="bg-white dark:bg-gray-900 p-2 rounded text-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <Badge className="bg-green-600">{code.code}</Badge>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              navigator.clipboard.writeText(code.code);
+                              toast.success('Code copied');
+                            }}
+                            className="h-5 text-xs"
+                          >
+                            Copy
+                          </Button>
+                        </div>
+                        <p className="text-gray-700 dark:text-gray-300">{code.description}</p>
+                        <p className="text-gray-500 mt-1">{code.relevance}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {suggestedCodes.cpt?.length > 0 && (
+                <div className="border rounded-lg p-4 bg-blue-50 dark:bg-blue-950">
+                  <p className="font-semibold mb-2 text-blue-900 dark:text-blue-100">
+                    Suggested CPT Codes:
+                  </p>
+                  <div className="space-y-2">
+                    {suggestedCodes.cpt.map((code, idx) => (
+                      <div key={idx} className="bg-white dark:bg-gray-900 p-2 rounded text-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <Badge className="bg-blue-600">{code.code}</Badge>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              navigator.clipboard.writeText(code.code);
+                              toast.success('Code copied');
+                            }}
+                            className="h-5 text-xs"
+                          >
+                            Copy
+                          </Button>
+                        </div>
+                        <p className="text-gray-700 dark:text-gray-300">{code.description}</p>
+                        <p className="text-gray-500 mt-1">{code.documentation_basis}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <Alert className="bg-blue-50 border-blue-200">
             <AlertCircle className="w-4 h-4 text-blue-600" />

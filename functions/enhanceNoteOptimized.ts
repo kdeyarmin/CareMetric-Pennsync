@@ -1,9 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import OpenAI from 'npm:openai@4.28.0';
-
-const openai = new OpenAI({
-  apiKey: Deno.env.get('OPENAI_API_KEY'),
-});
 
 Deno.serve(async (req) => {
   try {
@@ -14,283 +9,160 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { roughNote, patientId, visitType, visitDate, diagnosis, vitalSigns, nurseType } = await req.json();
+    const payload = await req.json();
+    const {
+      roughNote,
+      visitType,
+      diagnosis,
+      nurseType = 'RN',
+      contextData = {},
+      noteFormat = 'soap',
+      formatInstructions = '',
+      specialtyContext = null
+    } = payload;
 
-    if (!roughNote || !visitType || !diagnosis) {
-      return Response.json({ 
-        success: false, 
-        error: 'Missing required fields: roughNote, visitType, diagnosis' 
-      }, { status: 400 });
-    }
-
-    const providerType = user.credential_type || user.provider_type || 'RN';
-    const isAnonymous = !patientId || patientId === 'anonymous';
-
-    // Parallel fetch: provider settings, patient data, and Medicare compliance rules
-    const [providerSettings, patientData, medicareRules, complianceRules] = await Promise.all([
-      base44.entities.ProviderSettings.filter({
-        provider_type: providerType,
-        is_active: true
-      }),
-      !isAnonymous ? base44.entities.Patient.filter({ id: patientId }) : Promise.resolve([]),
-      base44.entities.MedicareComplianceRule.filter({ is_active: true }),
-      base44.entities.ComplianceRule.filter({ is_active: true })
-    ]);
-
-    const providerConfig = providerSettings[0] || null;
-    const selectedPatient = patientData[0] || null;
+    // Build specialty-enhanced prompt
+    let specialtyPrompt = '';
+    let specialtyCodeGuidance = '';
     
-    // Parallel fetch related patient data
-    const [recentVisits, carePlans] = !isAnonymous ? 
-      await Promise.all([
-        base44.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3),
-        base44.entities.CarePlan.filter({ patient_id: patientId })
-      ]) : [[], []];
+    if (specialtyContext) {
+      specialtyPrompt = `\n\nSPECIALTY CONTEXT - ${specialtyContext.specialty}:
+${specialtyContext.aiPrompt}
 
-    // Build concise patient context
-    const patientContext = selectedPatient ? `
-    PATIENT: ${selectedPatient.first_name} ${selectedPatient.last_name}
-    Dx: ${selectedPatient.primary_diagnosis || diagnosis}
-    Meds: ${selectedPatient.current_medications?.slice(0, 3).map(m => m.name).join(', ') || 'None'}
-    Allergies: ${selectedPatient.allergies || 'None'}
-    ${recentVisits[0] ? `Last visit: ${recentVisits[0].visit_date}` : ''}` : '';
+Required Sections: ${specialtyContext.sections.join(', ')}
 
-    const isLPN = nurseType === 'LPN';
-    const nurseTitle = isLPN ? 'LPN' : 'RN';
+Focus on specialty-specific assessment and documentation standards.`;
 
-    // Build comprehensive Medicare compliance requirements
-    const relevantMedicareRules = medicareRules.filter(rule => 
-      !rule.applies_to_visit_types || 
-      rule.applies_to_visit_types.length === 0 || 
-      rule.applies_to_visit_types.includes(visitType)
-    );
+      if (specialtyContext.commonCodes) {
+        specialtyCodeGuidance = `\n\nCOMMON CODES FOR THIS SPECIALTY:
+ICD-10: ${specialtyContext.commonCodes.icd10?.join(', ') || 'N/A'}
+CPT: ${specialtyContext.commonCodes.cpt?.join(', ') || 'N/A'}
 
-    const medicareRequirements = relevantMedicareRules.map(rule => 
-      `- ${rule.category}: ${rule.required_elements?.join(', ')}`
-    ).join('\n');
-
-    const relevantComplianceRules = complianceRules.filter(rule =>
-      (!rule.applies_to_visit_types || rule.applies_to_visit_types.includes(visitType)) &&
-      (!rule.applies_to_care_type || rule.applies_to_care_type === 'both' || rule.applies_to_care_type === 'home_health')
-    );
-
-    const complianceRequirements = relevantComplianceRules
-      .slice(0, 10)
-      .map(rule => `- ${rule.rule_name}: ${rule.description}`)
-      .join('\n');
-
-    // Build prompt with provider-specific customization
-    let basePrompt = `Transform to Medicare-compliant ${nurseTitle} documentation with STRICT adherence to regulatory requirements.`;
-    if (providerConfig?.ai_note_prompt) {
-      basePrompt = providerConfig.ai_note_prompt.replace('{nurseTitle}', nurseTitle);
+Consider these codes when relevant to the documented visit.`;
+      }
     }
 
-    // Get optimal AI model configuration
-    const modelConfig = await base44.functions.invoke('selectOptimalAIModel', {
-      taskType: 'note_enhancement',
-      providerType,
-      complexity: 'high',
-      requiresWebSearch: false,
-      patientContext: selectedPatient ? true : false
-    });
+    const enhancePrompt = `You are an expert medical documentation assistant specializing in ${nurseType} clinical notes.
 
-    const aiConfig = modelConfig.data?.config || { model: 'gpt-4o', temperature: 0.3, max_tokens: 3000 };
-    const startTime = Date.now();
+${formatInstructions}
+${specialtyPrompt}
 
-    // Use OpenAI ChatGPT for better AI service
-    const prompt = `${basePrompt}
+VISIT INFORMATION:
+- Visit Type: ${visitType}
+- Primary Diagnosis: ${diagnosis}
+- Provider Type: ${nurseType}
+${contextData?.patient_demographics ? `
+PATIENT CONTEXT:
+- Age: ${contextData.patient_demographics.age || 'Not specified'}
+- Primary Diagnosis: ${contextData.patient_demographics.primary_diagnosis || diagnosis}
+- Allergies: ${contextData.patient_demographics.allergies || 'None documented'}
+- Current Medications: ${contextData.patient_demographics.current_medications || 'None documented'}
+` : ''}
 
-${patientContext}
-Visit: ${visitType}, ${visitDate}
-Dx: ${diagnosis}
-Vitals: ${Object.entries(vitalSigns).filter(([k,v]) => v).map(([k,v]) => `${k}: ${v}`).join(', ') || 'None'}
-
-ROUGH NOTE:
+ROUGH NOTES FROM PROVIDER:
 ${roughNote}
 
-CRITICAL: Only use info from rough note or patient data above. Do NOT invent age, DOB, or demographics.
+${specialtyCodeGuidance}
 
-MEDICARE COMPLIANCE REQUIREMENTS:
-${medicareRequirements}
+TASK: Transform the rough notes into a professional, comprehensive clinical note following ${noteFormat.toUpperCase()} format.
 
-REGULATORY COMPLIANCE CHECKS:
-${complianceRequirements}
+Requirements:
+1. Use proper medical terminology and grammar
+2. Follow ${noteFormat.toUpperCase()} structure strictly
+3. Include all relevant clinical details from the rough notes
+4. Add medical necessity justification where appropriate
+5. Ensure Medicare/insurance compliance
+${specialtyContext ? `6. Include specialty-specific assessments and recommendations
+7. Structure according to the ${specialtyContext.templateName} template` : ''}
 
-MANDATORY DOCUMENTATION ELEMENTS:
-1. HOMEBOUND STATUS - Specific mobility restrictions, cannot leave home without considerable/taxing effort
-2. SKILLED NEED - Why ${nurseTitle} skilled services are medically necessary (cannot be performed by non-skilled personnel)
-3. PATIENT RESPONSE - Observable patient response to skilled interventions
-4. FUNCTIONAL STATUS - ADL/IADL capabilities, limitations, safety concerns
-5. SAFETY ASSESSMENT - Fall risk, medication safety, environmental hazards
-6. CARE COORDINATION - Physician orders, care plan alignment, family education
-${isLPN ? '7. RN SUPERVISION - Document RN oversight and supervisory visit schedule' : '7. CARE PLAN PROGRESS - Progress toward goals, barriers, interventions effectiveness'}
-8. VITAL SIGNS - Document all vitals with context and clinical significance
-9. SKILLED INTERVENTION - Specific skilled activities performed (assessment, teaching, wound care, etc.)
-10. PLAN OF CARE - Next visit plan, ongoing interventions, physician communication needs
-${visitType === 'recertification' ? '\n\nRECERTIFICATION REQUIREMENTS:\n- Compare baseline functional status vs current\n- Justify continued need for skilled services\n- Document progress toward goals or reasons for lack of progress\n- Update homebound status\n- Recertify skilled need with new clinical findings' : ''}
-${visitType === 'admission' ? '\n\nADMISSION REQUIREMENTS:\n- Complete baseline assessment\n- Establish homebound criteria\n- Document all medications with reconciliation\n- Initial safety assessment\n- Baseline vital signs and functional status' : ''}
-${visitType === 'discharge' ? '\n\nDISCHARGE REQUIREMENTS:\n- Compare admission vs discharge status\n- Document goal achievement\n- Patient/caregiver education provided\n- Discharge instructions and follow-up plan\n- Reason for discharge (goals met, hospitalization, etc.)' : ''}
+Output the enhanced clinical note only, properly formatted.`;
 
-QUALITY STANDARDS:
-- Use objective, measurable terms
-- Avoid vague language like "tolerated well" without specifics
-- Include direct patient quotes where relevant
-- Document clinical reasoning for interventions
-- Link all activities to physician orders
-- Use proper medical terminology
-- Maintain professional, clinical tone
-
-Return valid JSON with: 
-- rough_compliance_score (0-100)
-- missing_elements (array of strings)
-- enhanced_note (string)
-- enhanced_compliance_score (0-100, must be 85+ to meet Medicare standards)
-- quality_score (0-100)
-- compliance_improvement (number)
-- documentation_gaps (array of {element, reason, priority, regulatory_reference})
-- medicare_violations (array of {violation, severity, cop_reference, remediation})
-- time_saved_minutes (number)
-- regulatory_warnings (array of strings for potential audit flags)
-- suggested_tasks (array of {title, description, priority (critical/high/medium/low), type (call/notify/schedule/order/coordinate/document/safety/followup/other), suggested_due_timeframe (today/24_hours/48_hours/this_week/next_visit), ai_reason})`;
-
-    const taskSystemPrompt = `
-CRITICAL: Based on the clinical note, identify follow-up actions needed. Consider:
-- Physician notifications required (critical changes, new symptoms)
-- Medication management (refills, reconciliation, new orders)
-- Care coordination (referrals, equipment, home health aide)
-- Safety concerns (fall risk interventions, environment modifications)
-- Patient/family education needs
-- Documentation requirements (orders, signatures, updates)
-- Compliance follow-ups (missed elements, required assessments)
-
-For EACH identified action, create a task with:
-- Clear, actionable title
-- Specific description with WHY it's needed
-- Appropriate priority based on clinical urgency
-- Realistic timeframe
-- Clinical reasoning (ai_reason)
-
-ONLY suggest tasks that are clinically necessary based on the note content.`;
-
-    const systemPrompt = aiConfig.system_prompt || 
-      `You are an expert clinical documentation specialist with deep knowledge of:
-- Medicare Conditions of Participation (42 CFR Part 484)
-- OASIS-E documentation requirements
-- CMS compliance standards for home health
-- State-specific regulations and requirements
-- Clinical best practices and evidence-based care
-
-Your role is to transform rough clinical notes into comprehensive, Medicare-compliant documentation that will withstand audits and ensure proper reimbursement. Every note must meet or exceed 85% compliance threshold.
-
-CRITICAL COMPLIANCE REQUIREMENTS:
-1. Homebound status MUST be specific and measurable
-2. Skilled need MUST justify why skilled nursing is medically necessary
-3. Patient response MUST be observable and objective
-4. All interventions MUST tie to physician orders and care plan
-5. Safety assessment MUST be comprehensive
-6. Documentation MUST support medical necessity
-
-Always return valid JSON with all required fields.`;
-
-    const completion = await openai.chat.completions.create({
-      model: aiConfig.model,
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt + '\n\n' + taskSystemPrompt
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: aiConfig.temperature,
-      max_tokens: aiConfig.max_tokens
+    const response = await base44.integrations.Core.InvokeLLM({
+      prompt: enhancePrompt
     });
 
-    const processingTime = Date.now() - startTime;
+    const enhancedNote = typeof response === 'string' ? response : response.content || response.text || '';
 
-    const result = JSON.parse(completion.choices[0].message.content);
+    // Generate specialty-specific differential diagnoses and code suggestions
+    let differentialDiagnoses = [];
+    let suggestedCodes = { icd10: [], cpt: [] };
 
-    // Parallel operations: update patient history, track metrics, record A/B test
-    const updatePromises = [];
+    if (specialtyContext || (nurseType === 'MD' || nurseType === 'DO' || nurseType === 'NP')) {
+      const diagnosticPrompt = `Based on this clinical note, provide specialty-specific differential diagnoses and billing codes:
 
-    if (selectedPatient && !isAnonymous) {
-      const currentHistory = selectedPatient.enhanced_notes_history || [];
-      updatePromises.push(
-        base44.entities.Patient.update(patientId, {
-          enhanced_notes_history: [
-            ...currentHistory,
-            {
-              date: new Date().toISOString(),
-              visit_type: visitType,
-              diagnosis,
-              enhanced_note: result.enhanced_note,
-              rough_note: roughNote,
-              quality_score: result.quality_score,
-              nurse_email: user.email,
-              vital_signs: vitalSigns
+Clinical Note:
+${enhancedNote}
+
+Primary Diagnosis: ${diagnosis}
+${specialtyContext ? `Specialty: ${specialtyContext.specialty}` : `Provider Type: ${nurseType}`}
+
+Provide:
+1. Top 3-5 differential diagnoses to consider
+2. Appropriate ICD-10 codes with descriptions
+3. Recommended CPT codes for documented services`;
+
+      const diagnosticResponse = await base44.integrations.Core.InvokeLLM({
+        prompt: diagnosticPrompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            differential_diagnoses: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  diagnosis: { type: "string" },
+                  reasoning: { type: "string" },
+                  probability: { type: "string", enum: ["high", "moderate", "low"] }
+                }
+              }
+            },
+            icd10_codes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  code: { type: "string" },
+                  description: { type: "string" },
+                  relevance: { type: "string" }
+                }
+              }
+            },
+            cpt_codes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  code: { type: "string" },
+                  description: { type: "string" },
+                  documentation_basis: { type: "string" }
+                }
+              }
             }
-          ].slice(-10)
-        })
-      );
+          }
+        }
+      });
+
+      differentialDiagnoses = diagnosticResponse.differential_diagnoses || [];
+      suggestedCodes = {
+        icd10: diagnosticResponse.icd10_codes || [],
+        cpt: diagnosticResponse.cpt_codes || []
+      };
     }
-
-    updatePromises.push(
-      base44.entities.NoteConversion.create({
-        nurse_email: user.email,
-        patient_id: !isAnonymous ? patientId : null,
-        visit_type: visitType,
-        diagnosis,
-        rough_note_length: roughNote.length,
-        enhanced_note_length: result.enhanced_note.length,
-        quality_score: result.quality_score,
-        rough_note_compliance: result.rough_compliance_score,
-        enhanced_note_compliance: result.enhanced_compliance_score,
-        compliance_improvement: result.compliance_improvement
-      })
-    );
-
-    if (aiConfig.configuration_id) {
-      updatePromises.push(
-        base44.functions.invoke('recordAITestResult', {
-          configuration_id: aiConfig.configuration_id,
-          provider_type: providerType,
-          task_type: 'note_enhancement',
-          ab_test_group: aiConfig.ab_test_group,
-          quality_score: result.quality_score,
-          compliance_score: result.enhanced_compliance_score,
-          processing_time_ms: processingTime,
-          tokens_used: completion.usage?.total_tokens || 0,
-          success: true
-        })
-      );
-    }
-
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
 
     return Response.json({
       success: true,
-      enhanced_note: result.enhanced_note,
-      quality_score: result.quality_score,
-      rough_compliance: result.rough_compliance_score,
-      enhanced_compliance: result.enhanced_compliance_score,
-      compliance_improvement: result.compliance_improvement,
-      documentation_gaps: result.documentation_gaps || [],
-      medicare_violations: result.medicare_violations || [],
-      regulatory_warnings: result.regulatory_warnings || [],
-      suggested_tasks: result.suggested_tasks || [],
-      time_saved: result.time_saved_minutes || 15,
-      compliance_threshold_met: result.enhanced_compliance_score >= 85
+      enhanced_note: enhancedNote,
+      differential_diagnoses: differentialDiagnoses,
+      suggested_codes: suggestedCodes,
+      specialty_applied: specialtyContext?.specialty || null
     });
 
   } catch (error) {
-    console.error('Enhancement error:', error);
-    return Response.json({ 
-      success: false, 
-      error: error.message 
+    console.error('Error enhancing note:', error);
+    return Response.json({
+      success: false,
+      error: error.message
     }, { status: 500 });
   }
 });
