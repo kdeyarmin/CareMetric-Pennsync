@@ -14,6 +14,7 @@ import AvailityEligibilityChecker from "@/components/billing/AvailityEligibility
 import PayerFormDialog from "@/components/billing/PayerFormDialog";
 import PayerDocumentManager from "@/components/billing/PayerDocumentManager";
 import PayerFeedbackWidget from "@/components/billing/PayerFeedbackWidget";
+import PayerDataQualityChecker from "@/components/billing/PayerDataQualityChecker";
 
 export default function PayerDatabase() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -105,6 +106,11 @@ export default function PayerDatabase() {
 
       {/* Availity Eligibility Checker */}
       <AvailityEligibilityChecker />
+
+      {/* AI Data Quality Checker - Admin Only */}
+      {currentUser?.role === 'admin' && (
+        <PayerDataQualityChecker />
+      )}
 
       {/* Filters */}
       <Card>
