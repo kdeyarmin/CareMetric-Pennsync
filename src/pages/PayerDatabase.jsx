@@ -114,6 +114,14 @@ export default function PayerDatabase() {
         <PayerDataQualityChecker />
       )}
 
+      {/* AI Payer Insights Panel */}
+      <PayerInsightsPanel />
+
+      {/* AI Data Quality Checker - Admin Only */}
+      {currentUser?.role === 'admin' && (
+        <PayerDataQualityChecker />
+      )}
+
       {/* Filters */}
       <Card>
         <CardHeader>
