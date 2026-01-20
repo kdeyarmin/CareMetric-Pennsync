@@ -80,6 +80,8 @@ export default function SmartNoteAssistant() {
   const [selectedDiagnosis, setSelectedDiagnosis] = useState("");
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [roughNotes, setRoughNotes] = useState("");
+  const [providerType, setProviderType] = useState("RN");
+  const [selectedNoteType, setSelectedNoteType] = useState("skilled_nursing_visit");
   const [enhancing, setEnhancing] = useState(false);
   const [enhancedNote, setEnhancedNote] = useState(null);
   const [complianceResults, setComplianceResults] = useState(null);
@@ -599,6 +601,30 @@ export default function SmartNoteAssistant() {
   return (
     <div className="min-h-screen p-2 sm:p-4 md:p-6 pb-20 sm:pb-6 overflow-x-hidden">
       <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full">
+        {/* Provider-Specific Documentation Selector */}
+        {!showResults && (
+          <ProviderNoteTypeSelector
+            providerType={currentUser?.credential_type || providerType}
+            onProviderTypeChange={setProviderType}
+            selectedNoteType={selectedNoteType}
+            onNoteTypeChange={setSelectedNoteType}
+            currentNoteContent={roughNotes}
+            showChecklist={roughNotes.length > 50}
+          />
+        )}
+
+        {/* Enhanced Note Checklist */}
+        {showResults && enhancedNote && (
+          <ProviderNoteTypeSelector
+            providerType={currentUser?.credential_type || providerType}
+            onProviderTypeChange={setProviderType}
+            selectedNoteType={selectedNoteType}
+            onNoteTypeChange={setSelectedNoteType}
+            currentNoteContent={isEditMode ? editedNote : enhancedNote}
+            showChecklist={true}
+          />
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="space-y-1 sm:space-y-2">
