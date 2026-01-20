@@ -7,15 +7,23 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Filter, Phone, Globe, Building, CheckCircle, AlertCircle, DollarSign } from "lucide-react";
+import { Search, Filter, Phone, Globe, Building, CheckCircle, AlertCircle, DollarSign, Plus, Edit } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AvailityEligibilityChecker from "@/components/billing/AvailityEligibilityChecker";
+import PayerFormDialog from "@/components/billing/PayerFormDialog";
+import PayerDocumentManager from "@/components/billing/PayerDocumentManager";
+import PayerFeedbackWidget from "@/components/billing/PayerFeedbackWidget";
 
 export default function PayerDatabase() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPayerType, setFilterPayerType] = useState("all");
   const [filterProviderType, setFilterProviderType] = useState("all");
   const [selectedPayer, setSelectedPayer] = useState(null);
+  const [showPayerForm, setShowPayerForm] = useState(false);
+  const [editingPayer, setEditingPayer] = useState(null);
+
+  const queryClient = useQueryClient();
 
   const { data: payers = [], isLoading } = useQuery({
     queryKey: ['payers'],
@@ -57,11 +65,17 @@ export default function PayerDatabase() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Payer Database</h1>
-        <p className="text-slate-600 dark:text-slate-400">
-          Comprehensive database of insurance payers with billing codes, requirements, and contact information
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Payer Database</h1>
+          <p className="text-slate-600 dark:text-slate-400">
+            Comprehensive database of insurance payers with billing codes, requirements, and contact information
+          </p>
+        </div>
+        <Button onClick={() => { setEditingPayer(null); setShowPayerForm(true); }}>
+          <Plus className="w-4 h-4 mr-2" />
+          Add Payer
+        </Button>
       </div>
 
       {/* Availity Eligibility Checker */}
@@ -222,12 +236,27 @@ export default function PayerDatabase() {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="flex justify-end mb-4">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingPayer(selectedPayer);
+                      setShowPayerForm(true);
+                    }}
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Edit Payer
+                  </Button>
+                </div>
                 <Tabs defaultValue="codes" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-6">
                     <TabsTrigger value="codes">Billing Codes</TabsTrigger>
                     <TabsTrigger value="requirements">Requirements</TabsTrigger>
                     <TabsTrigger value="contact">Contact Info</TabsTrigger>
                     <TabsTrigger value="details">Details</TabsTrigger>
+                    <TabsTrigger value="documents">Documents</TabsTrigger>
+                    <TabsTrigger value="feedback">Feedback</TabsTrigger>
                   </TabsList>
 
                   {/* Billing Codes Tab */}
@@ -457,6 +486,16 @@ export default function PayerDatabase() {
                       </CardContent>
                     </Card>
                   </TabsContent>
+
+                  {/* Documents Tab */}
+                  <TabsContent value="documents">
+                    <PayerDocumentManager payerId={selectedPayer.id} />
+                  </TabsContent>
+
+                  {/* Feedback Tab */}
+                  <TabsContent value="feedback">
+                    <PayerFeedbackWidget payerId={selectedPayer.id} payerName={selectedPayer.payer_name} />
+                  </TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
@@ -470,6 +509,18 @@ export default function PayerDatabase() {
           )}
         </div>
       </div>
+
+      {/* Payer Form Dialog */}
+      <PayerFormDialog
+        open={showPayerForm}
+        onOpenChange={setShowPayerForm}
+        payer={editingPayer}
+        onSuccess={() => {
+          queryClient.invalidateQueries(['payers']);
+          setShowPayerForm(false);
+          setEditingPayer(null);
+        }}
+      />
     </div>
   );
 }
