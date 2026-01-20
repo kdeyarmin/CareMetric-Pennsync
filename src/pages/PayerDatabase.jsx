@@ -19,6 +19,7 @@ import PayerInsightsPanel from "@/components/billing/PayerInsightsPanel";
 import AvailityPayerImporter from "@/components/billing/AvailityPayerImporter";
 import DuplicatePayerDetector from "@/components/billing/DuplicatePayerDetector";
 import BillingCodeOptimizer from "@/components/billing/BillingCodeOptimizer";
+import AIPayerWorkflow from "@/components/billing/AIPayerWorkflow";
 
 export default function PayerDatabase() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -115,6 +116,14 @@ export default function PayerDatabase() {
       {currentUser?.role === 'admin' && (
         <PayerDataQualityChecker />
       )}
+
+      {/* AI Payer Workflow - Streamlined Payer Addition */}
+      <AIPayerWorkflow 
+        onPayerCreated={(newPayer) => {
+          setSelectedPayer(newPayer);
+          toast.success('New payer added to database');
+        }}
+      />
 
       {/* AI Payer Insights Panel */}
       <PayerInsightsPanel />
