@@ -19,6 +19,7 @@ export default function PayerDatabase() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPayerType, setFilterPayerType] = useState("all");
   const [filterProviderType, setFilterProviderType] = useState("all");
+  const [filterState, setFilterState] = useState("all");
   const [selectedPayer, setSelectedPayer] = useState(null);
   const [showPayerForm, setShowPayerForm] = useState(false);
   const [editingPayer, setEditingPayer] = useState(null);
@@ -40,17 +41,41 @@ export default function PayerDatabase() {
   const filteredPayers = payers.filter(payer => {
     const matchesSearch = payer.payer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          payer.payer_id?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesPayerType = filterPayerType === "all" || payer.payer_type === filterPayerType;
-    
+
     const matchesProviderType = filterProviderType === "all" || 
-                               payer.applicable_provider_types?.includes(filterProviderType) ||
-                               payer.applicable_provider_types?.includes("All");
-    
+                                payer.applicable_provider_types?.includes(filterProviderType) ||
+                                payer.applicable_provider_types?.includes("All");
+
+    const matchesState = filterState === "all" || 
+                        payer.states?.includes(filterState) ||
+                        payer.states?.includes("All");
+
     const isActive = payer.is_active !== false;
-    
-    return matchesSearch && matchesPayerType && matchesProviderType && isActive;
+
+    return matchesSearch && matchesPayerType && matchesProviderType && matchesState && isActive;
   });
+
+  const usStates = [
+    { code: "AL", name: "Alabama" }, { code: "AK", name: "Alaska" }, { code: "AZ", name: "Arizona" },
+    { code: "AR", name: "Arkansas" }, { code: "CA", name: "California" }, { code: "CO", name: "Colorado" },
+    { code: "CT", name: "Connecticut" }, { code: "DE", name: "Delaware" }, { code: "FL", name: "Florida" },
+    { code: "GA", name: "Georgia" }, { code: "HI", name: "Hawaii" }, { code: "ID", name: "Idaho" },
+    { code: "IL", name: "Illinois" }, { code: "IN", name: "Indiana" }, { code: "IA", name: "Iowa" },
+    { code: "KS", name: "Kansas" }, { code: "KY", name: "Kentucky" }, { code: "LA", name: "Louisiana" },
+    { code: "ME", name: "Maine" }, { code: "MD", name: "Maryland" }, { code: "MA", name: "Massachusetts" },
+    { code: "MI", name: "Michigan" }, { code: "MN", name: "Minnesota" }, { code: "MS", name: "Mississippi" },
+    { code: "MO", name: "Missouri" }, { code: "MT", name: "Montana" }, { code: "NE", name: "Nebraska" },
+    { code: "NV", name: "Nevada" }, { code: "NH", name: "New Hampshire" }, { code: "NJ", name: "New Jersey" },
+    { code: "NM", name: "New Mexico" }, { code: "NY", name: "New York" }, { code: "NC", name: "North Carolina" },
+    { code: "ND", name: "North Dakota" }, { code: "OH", name: "Ohio" }, { code: "OK", name: "Oklahoma" },
+    { code: "OR", name: "Oregon" }, { code: "PA", name: "Pennsylvania" }, { code: "RI", name: "Rhode Island" },
+    { code: "SC", name: "South Carolina" }, { code: "SD", name: "South Dakota" }, { code: "TN", name: "Tennessee" },
+    { code: "TX", name: "Texas" }, { code: "UT", name: "Utah" }, { code: "VT", name: "Vermont" },
+    { code: "VA", name: "Virginia" }, { code: "WA", name: "Washington" }, { code: "WV", name: "West Virginia" },
+    { code: "WI", name: "Wisconsin" }, { code: "WY", name: "Wyoming" }
+  ];
 
   const getPayerTypeColor = (type) => {
     switch (type) {
@@ -90,7 +115,7 @@ export default function PayerDatabase() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <Label>Search Payer</Label>
               <div className="relative">
@@ -102,6 +127,23 @@ export default function PayerDatabase() {
                   className="pl-10"
                 />
               </div>
+            </div>
+
+            <div>
+              <Label>State</Label>
+              <Select value={filterState} onValueChange={setFilterState}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All states" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  <SelectItem value="all">All States</SelectItem>
+                  {usStates.map(state => (
+                    <SelectItem key={state.code} value={state.code}>
+                      {state.name} ({state.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -146,7 +188,7 @@ export default function PayerDatabase() {
 
           <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
             <span>Showing {filteredPayers.length} of {payers.length} payers</span>
-            {(searchTerm || filterPayerType !== "all" || filterProviderType !== "all") && (
+            {(searchTerm || filterPayerType !== "all" || filterProviderType !== "all" || filterState !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -154,6 +196,7 @@ export default function PayerDatabase() {
                   setSearchTerm("");
                   setFilterPayerType("all");
                   setFilterProviderType("all");
+                  setFilterState("all");
                 }}
               >
                 Clear Filters
@@ -198,6 +241,20 @@ export default function PayerDatabase() {
                     </div>
                     {payer.payer_id && (
                       <p className="text-xs text-slate-500">ID: {payer.payer_id}</p>
+                    )}
+                    {payer.states && payer.states.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {payer.states.includes("All") ? (
+                          <Badge variant="secondary" className="text-xs">All States</Badge>
+                        ) : (
+                          payer.states.slice(0, 3).map((state, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{state}</Badge>
+                          ))
+                        )}
+                        {payer.states.length > 3 && !payer.states.includes("All") && (
+                          <Badge variant="secondary" className="text-xs">+{payer.states.length - 3}</Badge>
+                        )}
+                      </div>
                     )}
                     <div className="flex flex-wrap gap-1">
                       {payer.applicable_provider_types?.slice(0, 3).map((type, i) => (
