@@ -696,6 +696,48 @@ export default function DocumentAnalyzer() {
               <ComplianceAuditResults auditResults={analysis.compliance_audit} />
             )}
 
+            {/* Cross-Document Analysis */}
+            {files.length >= 2 && (
+              <Card className="border-2 border-purple-200 dark:border-purple-900">
+                <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-purple-600" />
+                      Cross-Document Analysis
+                    </CardTitle>
+                    <Button 
+                      onClick={generateCrossDocumentAnalysis}
+                      disabled={loadingCrossDoc}
+                      className="bg-purple-600 hover:bg-purple-700"
+                      size="sm"
+                    >
+                      {loadingCrossDoc ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                      Analyze Relations
+                    </Button>
+                  </div>
+                  <CardDescription>
+                    Cross-reference findings, identify discrepancies, and generate follow-up questions
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  {crossDocData ? (
+                    <CrossDocumentAnalysis 
+                      analysisData={crossDocData}
+                      fileNames={files.map(f => f.name)}
+                      onRefresh={generateCrossDocumentAnalysis}
+                    />
+                  ) : (
+                    <div className="text-center py-6">
+                      <FileText className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                      <p className="text-slate-600 dark:text-slate-400 text-sm">
+                        Click "Analyze Relations" to cross-reference findings across all documents
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Clinical Decision Support System */}
             <Card className="border-2 border-indigo-200 dark:border-indigo-900">
               <CardHeader className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950 dark:to-blue-950">
