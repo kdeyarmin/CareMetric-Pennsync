@@ -17,6 +17,8 @@ import PayerFeedbackWidget from "@/components/billing/PayerFeedbackWidget";
 import PayerDataQualityChecker from "@/components/billing/PayerDataQualityChecker";
 import PayerInsightsPanel from "@/components/billing/PayerInsightsPanel";
 import AvailityPayerImporter from "@/components/billing/AvailityPayerImporter";
+import DuplicatePayerDetector from "@/components/billing/DuplicatePayerDetector";
+import BillingCodeOptimizer from "@/components/billing/BillingCodeOptimizer";
 
 export default function PayerDatabase() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -117,10 +119,16 @@ export default function PayerDatabase() {
       {/* AI Payer Insights Panel */}
       <PayerInsightsPanel />
 
-      {/* Availity Payer Importer - Admin Only */}
+      {/* Admin-Only Tools */}
       {currentUser?.role === 'admin' && (
-        <AvailityPayerImporter />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <AvailityPayerImporter />
+          <DuplicatePayerDetector />
+        </div>
       )}
+
+      {/* Billing Code Optimizer */}
+      <BillingCodeOptimizer payerId={selectedPayer?.id} />
 
       {/* Filters */}
       <Card>
