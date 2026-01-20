@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Filter, Phone, Globe, Building, CheckCircle, AlertCircle, DollarSign } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import AvailityEligibilityChecker from "@/components/billing/AvailityEligibilityChecker";
 
 export default function PayerDatabase() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -62,6 +63,9 @@ export default function PayerDatabase() {
           Comprehensive database of insurance payers with billing codes, requirements, and contact information
         </p>
       </div>
+
+      {/* Availity Eligibility Checker */}
+      <AvailityEligibilityChecker />
 
       {/* Filters */}
       <Card>
