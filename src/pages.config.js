@@ -74,6 +74,7 @@ import PatientOnboarding from './pages/PatientOnboarding';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
 import PatientTelehealth from './pages/PatientTelehealth';
 import Patients from './pages/Patients';
+import PayerDatabase from './pages/PayerDatabase';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
@@ -105,7 +106,6 @@ import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import PayerDatabase from './pages/PayerDatabase';
 import __Layout from './Layout.jsx';
 
 
@@ -186,6 +186,7 @@ export const PAGES = {
     "PatientRecordDashboard": PatientRecordDashboard,
     "PatientTelehealth": PatientTelehealth,
     "Patients": Patients,
+    "PayerDatabase": PayerDatabase,
     "PaymentSuccess": PaymentSuccess,
     "PersonalizedLearningPath": PersonalizedLearningPath,
     "PredictiveAnalytics": PredictiveAnalytics,
@@ -217,7 +218,6 @@ export const PAGES = {
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
-    "PayerDatabase": PayerDatabase,
 }
 
 export const pagesConfig = {
