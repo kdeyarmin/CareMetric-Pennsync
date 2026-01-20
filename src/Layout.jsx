@@ -148,7 +148,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
   { name: "Visit Scribe", icon: Mic, page: "MedicalScribe" },
   { name: "Clinical Support", icon: Activity, page: "ClinicalDecisionSupport" },
-  { name: "Clinical Reasoning", icon: Brain, page: "ClinicalReasoning" },
+  { name: "AI Differential Dx", icon: Brain, page: "ClinicalReasoning" },
   { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
   { name: "Documents", icon: FileText, page: "DocumentGenerator" },
   { name: "Document Analyzer", icon: Brain, page: "DocumentAnalyzer" },
