@@ -72,9 +72,7 @@ import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import PatientMessaging from './pages/PatientMessaging';
 import PatientOnboarding from './pages/PatientOnboarding';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
-import PatientTelehealth from './pages/PatientTelehealth';
 import Patients from './pages/Patients';
-import PayerDatabase from './pages/PayerDatabase';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
 import PredictiveAnalytics from './pages/PredictiveAnalytics';
@@ -98,7 +96,6 @@ import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
-import Telehealth from './pages/Telehealth';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
@@ -184,9 +181,7 @@ export const PAGES = {
     "PatientMessaging": PatientMessaging,
     "PatientOnboarding": PatientOnboarding,
     "PatientRecordDashboard": PatientRecordDashboard,
-    "PatientTelehealth": PatientTelehealth,
     "Patients": Patients,
-    "PayerDatabase": PayerDatabase,
     "PaymentSuccess": PaymentSuccess,
     "PersonalizedLearningPath": PersonalizedLearningPath,
     "PredictiveAnalytics": PredictiveAnalytics,
@@ -210,7 +205,6 @@ export const PAGES = {
     "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
-    "Telehealth": Telehealth,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,

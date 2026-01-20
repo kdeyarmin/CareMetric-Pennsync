@@ -30,9 +30,8 @@ import {
                               ListTodo,
                               FileText,
                               Download,
-                              TrendingUp,
-                              Building } from
-                            "lucide-react";
+                              TrendingUp } from
+                              "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
 import AIChatAssistant from "../components/chat/AIChatAssistant";
@@ -148,7 +147,6 @@ export default function Layout({ children, currentPageName }) {
   { name: "Patients", icon: Users, page: "Patients" },
   { name: "Smart Notes", icon: Brain, page: "SmartNoteAssistant" },
   { name: "Visit Scribe", icon: Mic, page: "MedicalScribe" },
-  { name: "Telehealth", icon: Video, page: "Telehealth" },
   { name: "Clinical Support", icon: Activity, page: "ClinicalDecisionSupport" },
   { name: "Clinical Reasoning", icon: Brain, page: "ClinicalReasoning" },
   { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
@@ -164,7 +162,6 @@ export default function Layout({ children, currentPageName }) {
   { name: "Tasks", icon: ListTodo, page: "Tasks" },
   { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" },
   { name: "Billing Optimization", icon: TrendingUp, page: "BillingOptimization" },
-  { name: "Payer Database", icon: Building, page: "PayerDatabase" },
   { name: "Settings", icon: Settings, page: "Settings" }];
 
 
@@ -178,11 +175,9 @@ export default function Layout({ children, currentPageName }) {
     item.page === "Settings" ||
     item.page === "SubscriptionPlans" ||
     item.page === "DocumentAnalyzer" ||
-    item.page === "Telehealth" ||
     item.page === "SmartNoteAssistant" ||
     item.page === "MedicalScribe" ||
     item.page === "ClinicalReasoning" ||
-    item.page === "PayerDatabase" ||
     accessiblePages.includes(item.page)
   );
 
