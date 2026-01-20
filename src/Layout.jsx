@@ -181,6 +181,7 @@ export default function Layout({ children, currentPageName }) {
     item.page === "Telehealth" ||
     item.page === "SmartNoteAssistant" ||
     item.page === "MedicalScribe" ||
+    item.page === "ClinicalReasoning" ||
     accessiblePages.includes(item.page)
   );
 
