@@ -16,7 +16,6 @@ import PayerDocumentManager from "@/components/billing/PayerDocumentManager";
 import PayerFeedbackWidget from "@/components/billing/PayerFeedbackWidget";
 import PayerDataQualityChecker from "@/components/billing/PayerDataQualityChecker";
 import PayerInsightsPanel from "@/components/billing/PayerInsightsPanel";
-import PayerDataQualityChecker from "@/components/billing/PayerDataQualityChecker";
 
 export default function PayerDatabase() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -116,11 +115,6 @@ export default function PayerDatabase() {
 
       {/* AI Payer Insights Panel */}
       <PayerInsightsPanel />
-
-      {/* AI Data Quality Checker - Admin Only */}
-      {currentUser?.role === 'admin' && (
-        <PayerDataQualityChecker />
-      )}
 
       {/* Filters */}
       <Card>
