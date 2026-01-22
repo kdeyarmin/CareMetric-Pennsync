@@ -93,6 +93,8 @@ import PatientOutcomePredictionModule from "../components/predictive/PatientOutc
 import RealTimeAnomalyDetector from "../components/alerts/RealTimeAnomalyDetector";
 import ClinicalNotesManager from "../components/patient/ClinicalNotesManager";
 import PatientRiskScoreCard from "../components/patient/PatientRiskScoreCard";
+import ComprehensiveMedicalHistory from "../components/patient/ComprehensiveMedicalHistory";
+import AIComprehensivePatientAnalysis from "../components/patient/AIComprehensivePatientAnalysis";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -136,7 +138,7 @@ export default function PatientDetails() {
 
   const { data: visits } = useQuery({
     queryKey: ["patientVisits", patientId],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, "-visit_date"),
+    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }),
     initialData: [],
     enabled: !!patientId
   });
@@ -150,7 +152,7 @@ export default function PatientDetails() {
 
   const { data: incidents } = useQuery({
     queryKey: ["patientIncidents", patientId],
-    queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, "-incident_date"),
+    queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }),
     initialData: [],
     enabled: !!patientId
   });
@@ -164,7 +166,7 @@ export default function PatientDetails() {
 
   const { data: patientOASIS = [] } = useQuery({
     queryKey: ["patientOASIS", patientId],
-    queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, "-created_date"),
+    queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }),
     initialData: [],
     enabled: !!patientId
   });
@@ -377,6 +379,16 @@ export default function PatientDetails() {
           </CardContent>
         </Card>
 
+        {/* AI Comprehensive Patient Analysis */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <AIComprehensivePatientAnalysis 
+            patient={patient}
+            visits={visits}
+            carePlans={carePlans}
+            incidents={incidents}
+          />
+        </div>
+
         {/* AI Risk Score Card - Prominent Position */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
           <PatientRiskScoreCard 
@@ -414,6 +426,11 @@ export default function PatientDetails() {
             />
           </div>
         )}
+
+        {/* Comprehensive Medical History */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <ComprehensiveMedicalHistory patient={patient} />
+        </div>
 
         {/* Health Metrics Dashboard */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
