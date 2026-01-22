@@ -104,6 +104,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import WorkflowAutomation from './pages/WorkflowAutomation';
 import UserManagement from './pages/UserManagement';
+import Home from './pages/Home';
 import __Layout from './Layout.jsx';
 
 
@@ -214,6 +215,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "WorkflowAutomation": WorkflowAutomation,
     "UserManagement": UserManagement,
+    "Home": Home,
 }
 
 export const pagesConfig = {
