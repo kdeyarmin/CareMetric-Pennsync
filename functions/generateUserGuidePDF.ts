@@ -535,13 +535,24 @@ Deno.serve(async (req) => {
     doc.setFillColor(255, 255, 255);
     doc.rect(margin - 5, margin, contentWidth + 10, pageHeight - 2 * margin, 'F');
 
-    // Logo area (placeholder - white space for logo)
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.1);
-    doc.rect(margin, margin + 5, 40, 20);
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text('CareMetric Logo', margin + 2, margin + 18);
+    // Add CareMetric AI logo
+    try {
+      const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/1bc6d01c8_caremetricailogo.png';
+      const logoResponse = await fetch(logoUrl);
+      const logoBlob = await logoResponse.blob();
+      const logoBase64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(logoBlob);
+      });
+      doc.addImage(logoBase64, 'PNG', margin, margin + 5, 40, 20);
+    } catch (logoError) {
+      console.warn('[generateUserGuidePDF] Could not load logo:', logoError);
+      // Fallback to text if logo fails to load
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('CareMetric AI', margin + 2, margin + 18);
+    }
 
     // Main title
     yPosition = margin + 35;
