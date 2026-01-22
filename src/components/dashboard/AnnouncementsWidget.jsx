@@ -10,8 +10,7 @@ export default function AnnouncementsWidget() {
   const { data: announcements = [], isLoading } = useQuery({
     queryKey: ['announcements'],
     queryFn: async () => {
-      const result = await base44.entities.Announcement.filter({ is_active: true }, '-created_date');
-      console.log('Active announcements:', result);
+      const result = await base44.entities.Announcement.filter({ is_active: true });
       return result || [];
     },
     initialData: [],
@@ -34,8 +33,6 @@ export default function AnnouncementsWidget() {
       </Card>);
 
   }
-
-  console.log('Announcements to display:', announcements);
 
   if (announcements.length === 0) {
     return (

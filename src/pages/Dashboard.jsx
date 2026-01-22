@@ -84,7 +84,7 @@ export default function Dashboard() {
     queryKey: ['todayVisits'],
     queryFn: async () => {
       const today = todayEastern();
-      return base44.entities.Visit.filter({ visit_date: today }, '-visit_time');
+      return base44.entities.Visit.filter({ visit_date: today });
     },
     initialData: [],
     staleTime: 60000
@@ -92,28 +92,28 @@ export default function Dashboard() {
 
   const { data: patients, error: patientsError } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 500),
+    queryFn: () => base44.entities.Patient.list(500, '-updated_date'),
     initialData: [],
     staleTime: 300000
   });
 
   const { data: carePlans = [] } = useQuery({
     queryKey: ['allCarePlans'],
-    queryFn: () => base44.entities.CarePlan.list('-updated_date', 200),
+    queryFn: () => base44.entities.CarePlan.list(200, '-updated_date'),
     initialData: [],
     staleTime: 300000
   });
 
   const { data: incidents = [] } = useQuery({
     queryKey: ['recentIncidents'],
-    queryFn: () => base44.entities.Incident.filter({}, '-incident_date', 50),
+    queryFn: () => base44.entities.Incident.list(50, '-incident_date'),
     initialData: [],
     staleTime: 180000
   });
 
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['nurseNoteConversions', currentUser?.email],
-    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser?.email }, '-created_date', 10),
+    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser?.email }),
     enabled: !!currentUser?.email,
     initialData: []
   });
@@ -127,7 +127,7 @@ export default function Dashboard() {
 
   const { data: nurseComplianceAudits = [] } = useQuery({
     queryKey: ['nurseComplianceAudits', currentUser?.email],
-    queryFn: () => base44.entities.ComplianceAudit.filter({ nurse_email: currentUser?.email }, '-audit_date', 5),
+    queryFn: () => base44.entities.ComplianceAudit.filter({ nurse_email: currentUser?.email }),
     enabled: !!currentUser?.email,
     initialData: []
   });
@@ -137,14 +137,14 @@ export default function Dashboard() {
     queryFn: () => base44.entities.Task.filter({
       assigned_to: currentUser?.email,
       status: { "$ne": "completed" }
-    }, '-due_date'),
+    }),
     enabled: !!currentUser?.email,
     initialData: []
   });
 
   const { data: nurseActivity = [] } = useQuery({
     queryKey: ['nurseRecentActivity', currentUser?.email],
-    queryFn: () => base44.entities.UserActivity.filter({ user_email: currentUser?.email }, '-created_date', 20),
+    queryFn: () => base44.entities.UserActivity.filter({ user_email: currentUser?.email }),
     enabled: !!currentUser?.email,
     initialData: []
   });

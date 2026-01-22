@@ -71,7 +71,7 @@ export default function UserManagement({ users, currentUser }) {
   // Fetch all subscriptions
   const { data: subscriptions = [] } = useQuery({
     queryKey: ['allSubscriptions'],
-    queryFn: () => base44.entities.Subscription.list('-updated_date'),
+    queryFn: () => base44.entities.Subscription.list(),
     initialData: [],
   });
 
@@ -80,7 +80,7 @@ export default function UserManagement({ users, currentUser }) {
     queryKey: ['userInvitations'],
     queryFn: async () => {
       try {
-        return await base44.entities.UserInvitation.list('-created_date') || [];
+        return await base44.entities.UserInvitation.list() || [];
       } catch (error) {
         console.error('Error fetching invitations:', error);
         return [];
