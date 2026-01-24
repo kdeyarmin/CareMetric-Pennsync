@@ -128,23 +128,37 @@ export default function EnterpriseAdminDashboard() {
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview" className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="providers" className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Providers
-            </TabsTrigger>
-            <TabsTrigger value="ai-config" className="flex items-center gap-2">
-              <Brain className="w-4 h-4" />
-              AI Learning
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center gap-2">
-              <Settings className="w-4 h-4" />
-              Settings
-            </TabsTrigger>
+          <TabsList className="w-full overflow-x-auto">
+            <div className="flex w-max min-w-full gap-2 p-1">
+              <TabsTrigger value="overview" className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="providers" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Providers
+              </TabsTrigger>
+              <TabsTrigger value="ai-config" className="flex items-center gap-2">
+                <Brain className="w-4 h-4" />
+                AI Learning
+              </TabsTrigger>
+              <TabsTrigger value="templates" className="flex items-center gap-2">
+                <Brain className="w-4 h-4" />
+                Phrases
+              </TabsTrigger>
+              <TabsTrigger value="compliance" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Rules
+              </TabsTrigger>
+              <TabsTrigger value="security" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Security
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Settings
+              </TabsTrigger>
+            </div>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -157,6 +171,18 @@ export default function EnterpriseAdminDashboard() {
 
           <TabsContent value="ai-config">
             <AgencyAIConfiguration agencySettings={agencySettings} />
+          </TabsContent>
+
+          <TabsContent value="templates">
+            <SharedPhraseLibrary />
+          </TabsContent>
+
+          <TabsContent value="compliance">
+            <AgencyComplianceEngine />
+          </TabsContent>
+
+          <TabsContent value="security">
+            <BreachDetectionMonitor />
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
