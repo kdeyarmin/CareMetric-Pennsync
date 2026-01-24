@@ -6,6 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Building2, Users, TrendingUp, Settings, Brain } from "lucide-react";
 import ProviderPerformanceTable from "../components/enterprise/ProviderPerformanceTable";
 import AgencyAIConfiguration from "../components/enterprise/AgencyAIConfiguration";
+import AgencyComplianceEngine from "../components/compliance/AgencyComplianceEngine";
+import SharedPhraseLibrary from "../components/templates/SharedPhraseLibrary";
+import BreachDetectionMonitor from "../components/security/BreachDetectionMonitor";
 import AgencyAnalyticsDashboard from "../components/enterprise/AgencyAnalyticsDashboard";
 import EnterpriseSetupPanel from "../components/enterprise/EnterpriseSetupPanel";
 
