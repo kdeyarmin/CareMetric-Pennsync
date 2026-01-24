@@ -20,6 +20,7 @@ import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import ClinicalReasoning from './pages/ClinicalReasoning';
 import Compliance from './pages/Compliance';
 import ComplianceDashboard from './pages/ComplianceDashboard';
+import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
@@ -107,7 +108,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
+import EnterpriseAdminDashboard from './pages/EnterpriseAdminDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -134,6 +135,7 @@ export const PAGES = {
     "ClinicalReasoning": ClinicalReasoning,
     "Compliance": Compliance,
     "ComplianceDashboard": ComplianceDashboard,
+    "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
     "DocumentAnalysisHistory": DocumentAnalysisHistory,
@@ -221,7 +223,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
+    "EnterpriseAdminDashboard": EnterpriseAdminDashboard,
 }
 
 export const pagesConfig = {
