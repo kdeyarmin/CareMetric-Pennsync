@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, ArrowRight, Award, Loader2, BookOpen } from "lucide-react";
+import { CheckCircle, XCircle, ArrowRight, Award, Loader2, BookOpen, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { format } from "date-fns";
 
 export default function InteractiveTrainingViewer({ module, completion, onComplete }) {
   const queryClient = useQueryClient();
