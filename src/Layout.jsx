@@ -186,6 +186,7 @@ export default function Layout({ children, currentPageName }) {
   const adminNavItems = currentUser?.role === 'admin' ? [
     { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
     { name: "Enterprise", icon: Building2, page: "EnterpriseAdminDashboard" },
+    { name: "Training Manager", icon: GraduationCap, page: "AdminTrainingManagement" },
     { name: "Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" },
     { name: "User Management", icon: Users, page: "UserManagement" },
     { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptions" }
