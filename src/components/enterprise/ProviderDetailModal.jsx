@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Award, BookOpen, TrendingUp, AlertCircle } from "lucide-react";
+import ProviderPerformanceHistory from "../analytics/ProviderPerformanceHistory";
 
 export default function ProviderDetailModal({ provider, performanceData, onClose }) {
   // Fetch detailed data
@@ -60,8 +61,9 @@ export default function ProviderDetailModal({ provider, performanceData, onClose
         </DialogHeader>
 
         <Tabs defaultValue="overview" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="history">Performance History</TabsTrigger>
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
             <TabsTrigger value="training">Training</TabsTrigger>
           </TabsList>
@@ -135,6 +137,10 @@ export default function ProviderDetailModal({ provider, performanceData, onClose
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-4">
+            <ProviderPerformanceHistory providerEmail={provider.email} />
           </TabsContent>
 
           <TabsContent value="compliance" className="space-y-4">
