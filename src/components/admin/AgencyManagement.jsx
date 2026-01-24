@@ -8,13 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Building2, Plus, Users, DollarSign, Copy, Edit, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Building2, Plus, Users, DollarSign, Copy, Edit, CheckCircle, XCircle, Clock, Settings as SettingsIcon } from "lucide-react";
 import { format } from "date-fns";
+import AgencyFeatureManager from "./AgencyFeatureManager";
 
 export default function AgencyManagement() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingAgency, setEditingAgency] = useState(null);
+  const [managingFeaturesFor, setManagingFeaturesFor] = useState(null);
   const [formData, setFormData] = useState({
     agency_name: "",
     admin_email: "",
@@ -196,8 +198,22 @@ export default function AgencyManagement() {
         </Card>
       </div>
 
+      {/* Feature Management */}
+      {managingFeaturesFor && (
+        <div className="mb-6">
+          <Button 
+            variant="outline" 
+            onClick={() => setManagingFeaturesFor(null)}
+            className="mb-3"
+          >
+            ← Back to Agencies
+          </Button>
+          <AgencyFeatureManager agency={managingFeaturesFor} />
+        </div>
+      )}
+
       {/* Create/Edit Form */}
-      {showForm && (
+      {showForm && !managingFeaturesFor && (
         <Card>
           <CardHeader>
             <CardTitle>{editingAgency ? 'Edit Agency' : 'Create New Agency'}</CardTitle>
@@ -332,6 +348,7 @@ export default function AgencyManagement() {
       )}
 
       {/* Agencies List */}
+      {!managingFeaturesFor && (
       <div className="space-y-4">
         {agencies.map((agency) => {
           const agencyUsers = allUsers.filter(u => u.agency_code === agency.agency_code);
@@ -362,10 +379,16 @@ export default function AgencyManagement() {
                       {agency.contact_email && <p className="text-xs">{agency.contact_email}</p>}
                     </CardDescription>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => handleEdit(agency)}>
-                    <Edit className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setManagingFeaturesFor(agency)}>
+                      <SettingsIcon className="w-4 h-4 mr-2" />
+                      Features
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleEdit(agency)}>
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -453,6 +476,7 @@ export default function AgencyManagement() {
           </Card>
         )}
       </div>
+      )}
     </div>
   );
 }

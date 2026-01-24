@@ -44,6 +44,7 @@ import { RealTimeBreachMonitor } from "../components/security/RealTimeBreachAler
 import PushNotificationManager from "../components/notifications/PushNotificationManager";
 import { getAccessiblePages } from "../components/utils/providerAccessControl";
 import PWAInstallPrompt from "../components/mobile/PWAInstallPrompt";
+import { useAgencyFeatureAccess } from "../components/utils/useAgencyFeatureAccess";
 
 /* =========================
          iOS / Layout Constants
@@ -171,17 +172,24 @@ export default function Layout({ children, currentPageName }) {
   getAccessiblePages(currentUser.credential_type) :
   [];
 
-  const userNavItems = allNavItems.filter((item) =>
-    item.page === "Dashboard" ||
-    item.page === "Features" ||
-    item.page === "Settings" ||
-    item.page === "SubscriptionPlans" ||
-    item.page === "DocumentAnalyzer" ||
-    item.page === "SmartNoteAssistant" ||
-    item.page === "MedicalScribe" ||
-    item.page === "ClinicalReasoning" ||
-    accessiblePages.includes(item.page)
-  );
+  // Get agency feature access
+  const { hasFeatureAccess } = useAgencyFeatureAccess(currentUser);
+
+  const userNavItems = allNavItems.filter((item) => {
+    // Always allow these core pages
+    if (["Dashboard", "Features", "Settings", "SubscriptionPlans"].includes(item.page)) {
+      return true;
+    }
+    
+    // Check provider credential access
+    const hasCredentialAccess = accessiblePages.includes(item.page) || 
+      ["DocumentAnalyzer", "SmartNoteAssistant", "MedicalScribe", "ClinicalReasoning"].includes(item.page);
+    
+    // Check agency feature access
+    const hasAgencyAccess = hasFeatureAccess(item.page);
+    
+    return hasCredentialAccess && hasAgencyAccess;
+  });
 
   const adminNavItems = currentUser?.role === 'admin' ? [
     { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },

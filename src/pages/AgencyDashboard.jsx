@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Building2, Users, DollarSign, TrendingUp, UserPlus, Mail, Calendar, CreditCard, BarChart3, Settings } from "lucide-react";
 import { format } from "date-fns";
+import AgencyFeatureSettings from "../components/agency/AgencyFeatureSettings";
 
 export default function AgencyDashboard() {
   const queryClient = useQueryClient();
@@ -155,6 +156,7 @@ export default function AgencyDashboard() {
         <TabsList>
           <TabsTrigger value="users">👥 Users</TabsTrigger>
           <TabsTrigger value="billing">💳 Billing</TabsTrigger>
+          <TabsTrigger value="features">⚙️ Features</TabsTrigger>
           <TabsTrigger value="analytics">📊 Analytics</TabsTrigger>
         </TabsList>
 
@@ -261,6 +263,11 @@ export default function AgencyDashboard() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Features Tab */}
+        <TabsContent value="features" className="space-y-4">
+          <AgencyFeatureSettings agency={agency} />
         </TabsContent>
 
         {/* Analytics Tab */}
