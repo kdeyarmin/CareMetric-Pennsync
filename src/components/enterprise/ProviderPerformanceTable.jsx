@@ -159,6 +159,10 @@ export default function ProviderPerformanceTable({ providers }) {
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
                 <p className="text-sm text-slate-500 mt-2">Loading provider data...</p>
               </div>
+            ) : sortedProviders.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                No providers found
+              </div>
             ) : (
               <table className="w-full">
                 <thead className="bg-slate-100 dark:bg-slate-800">
@@ -228,11 +232,6 @@ export default function ProviderPerformanceTable({ providers }) {
                 })}
               </tbody>
             </table>
-            {sortedProviders.length === 0 && (
-              <div className="text-center py-8 text-slate-500">
-                No providers found
-              </div>
-            )}
             )}
           </div>
         </CardContent>
