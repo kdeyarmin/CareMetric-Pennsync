@@ -21,6 +21,10 @@ import AIFeedbackAnalytics from "../components/admin/AIFeedbackAnalytics";
 import { Input } from "@/components/ui/input";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import AdvancedRevenueAnalytics from "../components/admin/AdvancedRevenueAnalytics";
+import AgencyComplianceEngine from "../components/compliance/AgencyComplianceEngine";
+import SharedPhraseLibrary from "../components/templates/SharedPhraseLibrary";
+import BreachDetectionMonitor from "../components/security/BreachDetectionMonitor";
+import OneClickComplianceFixes from "../components/compliance/OneClickComplianceFixes";
 import UserInsightsDashboard from "../components/admin/UserInsightsDashboard";
 import ComprehensiveDataExport from "../components/admin/ComprehensiveDataExport";
 import AdvancedReportingDashboard from "../components/admin/AdvancedReportingDashboard";
@@ -38,6 +42,7 @@ import TrainingFeedbackManager from "../components/admin/TrainingFeedbackManager
 import SubscriptionPricingManager from "../components/admin/SubscriptionPricingManager";
 import AIInsightsPanel from "../components/admin/AIInsightsPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import RealTimeDashboardWidget from "../components/admin/RealTimeDashboardWidget";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
@@ -461,8 +466,11 @@ export default function AdminDashboard() {
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white truncate">Admin Dashboard</h1>
-          <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 truncate">System analytics and user management</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white truncate flex items-center gap-2">
+            <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+            Admin Command Center
+          </h1>
+          <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 truncate">Real-time monitoring and system management</p>
         </div>
         <div className="flex gap-2 flex-wrap w-full sm:w-auto items-center">
           <Select value={filterProvider} onValueChange={setFilterProvider}>
@@ -681,28 +689,59 @@ export default function AdminDashboard() {
         </Card>
       )}
 
+      {/* Quick Action Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <Link to={createPageUrl("UserManagement")}>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-blue-200 bg-blue-50 dark:bg-blue-950 h-full">
+            <CardContent className="p-4 text-center">
+              <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+              <p className="font-medium text-sm">Manage Users</p>
+              <p className="text-xs text-slate-600 mt-1">{stats.pendingUsers} pending</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to={createPageUrl("AgencyTemplates")}>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 bg-purple-50 dark:bg-purple-950 h-full">
+            <CardContent className="p-4 text-center">
+              <FileText className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+              <p className="font-medium text-sm">Agency Templates</p>
+              <p className="text-xs text-slate-600 mt-1">Documentation</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to={createPageUrl("AuditLog")}>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-amber-200 bg-amber-50 dark:bg-amber-950 h-full">
+            <CardContent className="p-4 text-center">
+              <Shield className="w-8 h-8 text-amber-600 mx-auto mb-2" />
+              <p className="font-medium text-sm">Audit Trail</p>
+              <p className="text-xs text-slate-600 mt-1">HIPAA Logs</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to={createPageUrl("EnterpriseAdminDashboard")}>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 bg-green-50 dark:bg-green-950 h-full">
+            <CardContent className="p-4 text-center">
+              <Brain className="w-8 h-8 text-green-600 mx-auto mb-2" />
+              <p className="font-medium text-sm">Enterprise</p>
+              <p className="text-xs text-slate-600 mt-1">Agency Settings</p>
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
       <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
         <div className="w-full overflow-x-auto">
           <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1 sm:p-2">
-            <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">Overview</TabsTrigger>
-            <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">Users</TabsTrigger>
-            <TabsTrigger value="appointments" className="text-xs sm:text-sm py-2 whitespace-nowrap">Appointments</TabsTrigger>
-            <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">System Health</TabsTrigger>
-            <TabsTrigger value="advanced-reports" className="text-xs sm:text-sm py-2 whitespace-nowrap">Reports</TabsTrigger>
-            <TabsTrigger value="ai-models" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Models</TabsTrigger>
-            <TabsTrigger value="ai-learning" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Learning</TabsTrigger>
-            <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2 whitespace-nowrap">Revenue</TabsTrigger>
-            <TabsTrigger value="user-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">User Insights</TabsTrigger>
-            <TabsTrigger value="performance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Performance</TabsTrigger>
-            <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">Compliance</TabsTrigger>
-            <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">Training</TabsTrigger>
-            <TabsTrigger value="audit" className="text-xs sm:text-sm py-2 whitespace-nowrap">Audit Trail</TabsTrigger>
-            <TabsTrigger value="feedback" className="text-xs sm:text-sm py-2 whitespace-nowrap">User Feedback</TabsTrigger>
-            <TabsTrigger value="pricing" className="text-xs sm:text-sm py-2 whitespace-nowrap">Pricing</TabsTrigger>
-            <TabsTrigger value="ai-feedback" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Feedback</TabsTrigger>
-            <TabsTrigger value="activity" className="text-xs sm:text-sm py-2 whitespace-nowrap">Activity</TabsTrigger>
-            <TabsTrigger value="ai-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">AI Insights</TabsTrigger>
-            <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">Export</TabsTrigger>
+            <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">📊 Overview</TabsTrigger>
+            <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2 whitespace-nowrap">💰 Revenue</TabsTrigger>
+            <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">👥 Users</TabsTrigger>
+            <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
+            <TabsTrigger value="security" className="text-xs sm:text-sm py-2 whitespace-nowrap">🔒 Security</TabsTrigger>
+            <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
+            <TabsTrigger value="ai-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">🤖 AI Insights</TabsTrigger>
+            <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">⚡ System</TabsTrigger>
+            <TabsTrigger value="activity" className="text-xs sm:text-sm py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
+            <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">📥 Export</TabsTrigger>
           </TabsList>
         </div>
 
@@ -1165,6 +1204,9 @@ export default function AdminDashboard() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {/* Real-Time Widget */}
+          <RealTimeDashboardWidget stats={stats} />
+
           {/* System Overview Metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
@@ -1413,38 +1455,108 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          {/* Quick Links */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+          {/* Real-Time Monitoring Dashboard */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-blue-600" />
+                  Security Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                  <span className="text-sm font-medium">Active Alerts</span>
+                  <Badge className={stats.criticalAlerts > 0 ? 'bg-red-600' : 'bg-green-600'}>
+                    {stats.criticalAlerts} Critical
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                  <span className="text-sm font-medium">Compliance Score</span>
+                  <Badge className="bg-blue-600">{stats.avgComplianceScore}%</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                  <span className="text-sm font-medium">Flagged Audits</span>
+                  <Badge className={stats.flaggedAudits > 0 ? 'bg-orange-600' : 'bg-green-600'}>
+                    {stats.flaggedAudits}
+                  </Badge>
+                </div>
+                <Link to={createPageUrl("AuditLog")}>
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                    View Full Audit Log
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="w-5 h-5 text-purple-600" />
+                  AI Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                  <span className="text-sm font-medium">Enhancements Today</span>
+                  <Badge className="bg-purple-600">{stats.totalEnhancements}</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                  <span className="text-sm font-medium">Time Saved</span>
+                  <Badge className="bg-purple-600">{stats.totalTimeSaved} min</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                  <span className="text-sm font-medium">AI Adoption</span>
+                  <Badge className="bg-purple-600">{stats.aiAdoptionRate}%</Badge>
+                </div>
+                <Link to={createPageUrl("EnterpriseAdminDashboard")}>
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                    Configure AI Settings
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Quick Action Links */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
             <Link to={createPageUrl("UserManagement")}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full active:scale-95">
                 <CardContent className="p-3 sm:p-4 text-center touch-target flex flex-col items-center justify-center">
                   <Users className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-1 sm:mb-2" />
-                  <p className="font-medium text-xs sm:text-sm">Manage Users</p>
+                  <p className="font-medium text-xs sm:text-sm">Users</p>
                 </CardContent>
               </Card>
             </Link>
-            <Link to={createPageUrl("TrainingManagement")}>
+            <Link to={createPageUrl("AdminTrainingManagement")}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
                 <CardContent className="p-4 text-center">
                   <GraduationCap className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Training Mgmt</p>
+                  <p className="font-medium text-sm">Training</p>
                 </CardContent>
               </Card>
             </Link>
-
-            <Link to={createPageUrl("AuditTrail")}>
+            <Link to={createPageUrl("AuditLog")}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
                 <CardContent className="p-4 text-center">
                   <Activity className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Audit Trail</p>
+                  <p className="font-medium text-sm">Audit Log</p>
                 </CardContent>
               </Card>
             </Link>
-            <Link to={createPageUrl("Test2FA")}>
+            <Link to={createPageUrl("AgencyTemplates")}>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
+                <CardContent className="p-4 text-center">
+                  <FileText className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
+                  <p className="font-medium text-sm">Templates</p>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link to={createPageUrl("EnterpriseAdminDashboard")}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
                 <CardContent className="p-4 text-center">
                   <Shield className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Test 2FA</p>
+                  <p className="font-medium text-sm">Enterprise</p>
                 </CardContent>
               </Card>
             </Link>
@@ -1459,7 +1571,7 @@ export default function AdminDashboard() {
                   <BookOpen className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
                 )}
                 <p className="font-medium text-sm">
-                  {autoFetchGuidelinesMutation.isPending ? 'Fetching...' : 'Update CMS Guidelines'}
+                  {autoFetchGuidelinesMutation.isPending ? 'Updating...' : 'CMS Data'}
                 </p>
               </CardContent>
             </Card>
@@ -1550,13 +1662,15 @@ export default function AdminDashboard() {
           </Card>
         </TabsContent>
 
-        {/* Audit Trail Tab */}
-        <TabsContent value="audit" className="space-y-6">
+        {/* Security Tab */}
+        <TabsContent value="security" className="space-y-6">
+          <BreachDetectionMonitor />
           <DetailedAuditTrailViewer />
         </TabsContent>
 
         {/* Compliance Tab */}
         <TabsContent value="compliance" className="space-y-6">
+          <AgencyComplianceEngine />
           <ComplianceRuleManager />
           <RegulatoryComplianceManager />
           
@@ -1626,8 +1740,15 @@ export default function AdminDashboard() {
           </Card>
         </TabsContent>
 
+        {/* Security Tab */}
+        <TabsContent value="security" className="space-y-6">
+          <BreachDetectionMonitor />
+          <DetailedAuditTrailViewer />
+        </TabsContent>
+
         {/* Training Tab */}
         <TabsContent value="training" className="space-y-6">
+          <SharedPhraseLibrary />
           <AgencyTrainingManager />
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
