@@ -187,6 +187,8 @@ export default function Layout({ children, currentPageName }) {
     { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
     { name: "Enterprise", icon: Building2, page: "EnterpriseAdminDashboard" },
     { name: "Training Manager", icon: GraduationCap, page: "AdminTrainingManagement" },
+    { name: "Agency Templates", icon: FileText, page: "AgencyTemplates" },
+    { name: "Audit Log", icon: ShieldAlert, page: "AuditLog" },
     { name: "Analytics", icon: BarChart3, page: "AdvancedAnalyticsDashboard" },
     { name: "User Management", icon: Users, page: "UserManagement" },
     { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptions" }

@@ -4,6 +4,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import AdminSubscriptions from './pages/AdminSubscriptions';
 import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
+import AdminTrainingManagement from './pages/AdminTrainingManagement';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
@@ -109,7 +110,8 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AdminTrainingManagement from './pages/AdminTrainingManagement';
+import AgencyTemplates from './pages/AgencyTemplates';
+import AuditLog from './pages/AuditLog';
 import __Layout from './Layout.jsx';
 
 
@@ -120,6 +122,7 @@ export const PAGES = {
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
     "AdminSubscriptions": AdminSubscriptions,
     "AdminTrainingAnalytics": AdminTrainingAnalytics,
+    "AdminTrainingManagement": AdminTrainingManagement,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
     "AnalyticsDashboard": AnalyticsDashboard,
@@ -225,7 +228,8 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "AdminTrainingManagement": AdminTrainingManagement,
+    "AgencyTemplates": AgencyTemplates,
+    "AuditLog": AuditLog,
 }
 
 export const pagesConfig = {
