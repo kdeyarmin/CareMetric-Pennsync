@@ -749,6 +749,15 @@ export default function AdminDashboard() {
 
         {/* Agencies Tab */}
         <TabsContent value="agencies" className="space-y-6">
+          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+            <CardContent className="p-6">
+              <h3 className="font-semibold text-lg mb-2">💼 Enterprise Agency Billing</h3>
+              <p className="text-sm text-slate-700">
+                Create and manage enterprise agencies. Each agency gets a unique code that their users enter in Settings to join. 
+                Agencies are billed monthly based on their active user count.
+              </p>
+            </CardContent>
+          </Card>
           <AgencyManagement />
         </TabsContent>
 

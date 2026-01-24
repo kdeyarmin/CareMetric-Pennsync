@@ -403,8 +403,8 @@ export default function Settings() {
         {/* Advanced AI Customization */}
         <AdvancedAICustomization currentUser={currentUser} />
 
-        {/* Agency Code Input */}
-        <AgencyCodeInput currentUser={currentUser} />
+        {/* Agency Code Manager */}
+        <AgencyCodeManager currentUser={currentUser} />
 
         {/* Offline Sync Manager */}
         <OfflineSyncManager />
