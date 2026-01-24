@@ -29,11 +29,10 @@ import {
 } from "@/components/utils/providerVisitTypeMapping";
 import { toast } from "sonner";
 import { getProviderCompliancePrompt } from "@/components/utils/providerSpecificConfig";
-import { getEnhanceNotePrompt } from "@/components/utils/prompts";
 import { 
-  getProviderSpecificPromptAdditions,
-  getCareLocationPromptAdditions 
-} from "@/components/utils/providerSpecificPrompts";
+  getProviderPromptAdditions,
+  getCareSettingPromptAdditions 
+} from "@/components/utils/aiPrompts";
 import { buildEnhancedPrompt, recordEditForLearning } from "@/components/utils/enhancedAIPrompts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -226,8 +225,8 @@ export default function SmartNoteAssistant() {
      try {
      console.log('🔵 Getting compliance prompt for:', currentUser?.credential_type, visitType, careSetting);
      const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
-     const providerAdditions = getProviderSpecificPromptAdditions(currentUser?.credential_type || 'RN');
-     const locationAdditions = getCareLocationPromptAdditions(careSetting);
+     const providerAdditions = getProviderPromptAdditions(currentUser?.credential_type || 'RN');
+     const locationAdditions = getCareSettingPromptAdditions(careSetting);
      let fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
 
      // Enhance prompt with learned patterns and knowledge base
@@ -489,12 +488,12 @@ export default function SmartNoteAssistant() {
   };
 
   const recheckCompliance = async () => {
-    const loadingToast = toast.loading("Re-checking compliance and quality...");
-    try {
-      const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
-      const providerAdditions = getProviderSpecificPromptAdditions(currentUser?.credential_type || 'RN');
-      const locationAdditions = getCareLocationPromptAdditions(careSetting);
-      const fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
+   const loadingToast = toast.loading("Re-checking compliance and quality...");
+   try {
+     const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
+     const providerAdditions = getProviderPromptAdditions(currentUser?.credential_type || 'RN');
+     const locationAdditions = getCareSettingPromptAdditions(careSetting);
+     const fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
       
       const applicableRules = customComplianceRules.filter(rule => {
         const visitTypeMatch = !rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0 || 
