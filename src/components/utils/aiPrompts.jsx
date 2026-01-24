@@ -510,64 +510,7 @@ Check for:
         }
       }
     }
-  }
-};
-
-/**
- * Helper Functions
- */
-
-/**
- * Get a prompt by name with arguments
- */
-export const getPrompt = (promptName, ...args) => {
-  const promptConfig = AI_PROMPTS[promptName];
-  if (!promptConfig) {
-    throw new Error(`Prompt "${promptName}" not found`);
-  }
-  return {
-    prompt: promptConfig.prompt(...args),
-    schema: promptConfig.schema,
-    version: promptConfig.version
-  };
-};
-
-/**
- * Get provider-specific prompt additions
- */
-export const getProviderPromptAdditions = (providerType) => {
-  const context = AI_PROMPTS.PROVIDER_CONTEXT[providerType] || AI_PROMPTS.PROVIDER_CONTEXT.RN;
-  
-  return `
-PROVIDER-SPECIFIC CONTEXT:
-Provider Type: ${providerType}
-Focus Areas: ${context.focusAreas.join(', ')}
-Documentation Style: ${context.documentationStyle}
-Expected Note Structure: ${context.noteStructure}
-Compliance Standard: ${context.complianceEmphasis}
-
-When generating suggestions, prioritize these care plan elements for ${providerType}:
-${context.suggestedCareElements.map(elem => `- ${elem}`).join('\n')}
-
-Apply this provider's scope of practice and standards throughout the documentation.`;
-};
-
-/**
- * Get care location specific prompt additions
- */
-export const getCareSettingPromptAdditions = (serviceType) => {
-  const context = AI_PROMPTS.CARE_SETTING_CONTEXT[serviceType];
-  
-  if (!context) return '';
-  
-  return `
-CARE LOCATION CONTEXT:
-Service Type: ${serviceType}
-Compliance Focus: ${context.complianceEmphasis}
-
-Ensure documentation includes these location-specific elements:
-${context.suggestedElements.map(elem => `- ${elem}`).join('\n')}`;
-};
+  },
 
   // Clinical Insights Prompts
   CLINICAL_INSIGHTS: {
