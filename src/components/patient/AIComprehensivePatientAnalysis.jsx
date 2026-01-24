@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Brain, AlertTriangle, TrendingUp, FileText, Loader2, Sparkles, Heart, Activity } from "lucide-react";
+import { getPrompt, trackPromptUsage } from "../utils/aiPrompts";
 
 export default function AIComprehensivePatientAnalysis({ patient, visits = [], carePlans = [], incidents = [] }) {
   const [analysis, setAnalysis] = useState(null);
@@ -13,6 +14,8 @@ export default function AIComprehensivePatientAnalysis({ patient, visits = [], c
 
   const generateAnalysis = async () => {
     setIsAnalyzing(true);
+    const startTime = Date.now();
+    
     try {
       // Compile all patient data
       const comprehensiveData = {
@@ -48,90 +51,26 @@ export default function AIComprehensivePatientAnalysis({ patient, visits = [], c
         active_alerts: patient.active_alerts || []
       };
 
+      // Get prompt from centralized configuration
+      const { prompt, schema, version } = getPrompt('COMPREHENSIVE_PATIENT_ANALYSIS', comprehensiveData);
+
       const response = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are an expert clinical analyst reviewing a comprehensive patient profile. Analyze the following patient data and provide:
-
-1. **Clinical Summary** (2-3 sentences): Concise overview of the patient's current health status
-2. **Key Health Risks** (bullet points): Identify 3-5 major health risks based on:
-   - Chronic conditions and their severity
-   - Family medical history patterns
-   - Social determinants of health barriers
-   - Recent incidents and trends from visit notes
-   - Medication interactions or gaps
-3. **Social Risk Factors** (bullet points): Critical social determinants affecting care outcomes
-4. **Actionable Recommendations** (bullet points): 3-5 specific interventions to address identified risks
-
-Patient Data:
-${JSON.stringify(comprehensiveData, null, 2)}`,
+        prompt,
         add_context_from_internet: false,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            clinical_summary: {
-              type: "string"
-            },
-            key_health_risks: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  risk: {
-                    type: "string"
-                  },
-                  severity: {
-                    type: "string",
-                    enum: ["low", "moderate", "high", "critical"]
-                  },
-                  rationale: {
-                    type: "string"
-                  }
-                }
-              }
-            },
-            social_risk_factors: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  factor: {
-                    type: "string"
-                  },
-                  impact: {
-                    type: "string",
-                    enum: ["low", "moderate", "high"]
-                  },
-                  description: {
-                    type: "string"
-                  }
-                }
-              }
-            },
-            recommendations: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  action: {
-                    type: "string"
-                  },
-                  priority: {
-                    type: "string",
-                    enum: ["low", "medium", "high", "urgent"]
-                  },
-                  rationale: {
-                    type: "string"
-                  }
-                }
-              }
-            }
-          }
-        }
+        response_json_schema: schema
       });
 
       setAnalysis(response);
+      
+      // Track prompt usage for analytics
+      const responseTime = Date.now() - startTime;
+      trackPromptUsage('COMPREHENSIVE_PATIENT_ANALYSIS', version, true, responseTime);
     } catch (error) {
       console.error('Error generating analysis:', error);
       alert('Failed to generate analysis. Please try again.');
+      
+      const responseTime = Date.now() - startTime;
+      trackPromptUsage('COMPREHENSIVE_PATIENT_ANALYSIS', 'unknown', false, responseTime);
     }
     setIsAnalyzing(false);
   };
