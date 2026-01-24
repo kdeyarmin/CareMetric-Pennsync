@@ -601,7 +601,6 @@ export default function SmartNoteAssistant() {
   return (
     <div className="min-h-screen p-2 sm:p-4 md:p-6 pb-20 sm:pb-6 overflow-x-hidden">
       <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full">
-        {/* Provider-Specific Documentation Selector */}
         {!showResults && (
           <ProviderNoteTypeSelector
             providerType={currentUser?.credential_type || providerType}
