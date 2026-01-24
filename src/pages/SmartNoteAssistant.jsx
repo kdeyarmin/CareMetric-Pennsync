@@ -70,6 +70,7 @@ import EducationTrackingHistory from "@/components/education/EducationTrackingHi
 import OfflineNoteCapture from "@/components/mobile/OfflineNoteCapture";
 import { ResolveComplianceIssue, ResolveDocumentationGap, ResolveQualitySuggestion, ResolveAllIssues } from "@/components/smartNote/OneClickResolvers";
 import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
+import ComplianceBasedTrainingRecommender from "@/components/training/ComplianceBasedTrainingRecommender";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1492,6 +1493,17 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               {/* Education Tracking History */}
               {selectedPatient !== 'no_patient' && (
                 <EducationTrackingHistory patientId={selectedPatient} />
+              )}
+
+              {/* Compliance-Based Training Recommendations */}
+              {currentUser?.email && (
+                <ComplianceBasedTrainingRecommender
+                  complianceResults={complianceResults}
+                  documentationGaps={complianceResults?.quality_analysis?.missing_elements}
+                  visitType={visitType}
+                  providerType={providerType}
+                  nurseEmail={currentUser.email}
+                />
               )}
 
               {/* Start Over Button */}
