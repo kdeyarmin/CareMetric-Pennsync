@@ -35,6 +35,7 @@ import FAQ from './pages/FAQ';
 import Features from './pages/Features';
 import HIPAACompliance from './pages/HIPAACompliance';
 import HealthRecords from './pages/HealthRecords';
+import Home from './pages/Home';
 import HowToGuide from './pages/HowToGuide';
 import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
@@ -96,17 +97,16 @@ import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
+import Telehealth from './pages/Telehealth';
+import TelehealthCall from './pages/TelehealthCall';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
 import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
-import WorkflowAutomation from './pages/WorkflowAutomation';
 import UserManagement from './pages/UserManagement';
-import Home from './pages/Home';
-import Telehealth from './pages/Telehealth';
-import TelehealthCall from './pages/TelehealthCall';
+import WorkflowAutomation from './pages/WorkflowAutomation';
 import __Layout from './Layout.jsx';
 
 
@@ -148,6 +148,7 @@ export const PAGES = {
     "Features": Features,
     "HIPAACompliance": HIPAACompliance,
     "HealthRecords": HealthRecords,
+    "Home": Home,
     "HowToGuide": HowToGuide,
     "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
@@ -209,17 +210,16 @@ export const PAGES = {
     "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
+    "Telehealth": Telehealth,
+    "TelehealthCall": TelehealthCall,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
     "TestCrossPlatform": TestCrossPlatform,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
-    "WorkflowAutomation": WorkflowAutomation,
     "UserManagement": UserManagement,
-    "Home": Home,
-    "Telehealth": Telehealth,
-    "TelehealthCall": TelehealthCall,
+    "WorkflowAutomation": WorkflowAutomation,
 }
 
 export const pagesConfig = {

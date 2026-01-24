@@ -227,6 +227,65 @@ Requirements:
     }
   },
 
+  // Medication Safety Prompts
+  MEDICATION_INTERACTION_CHECK: {
+    version: "1.0",
+    prompt: (medications, allergies, conditions) => `Analyze potential medication interactions and contraindications.
+
+Current Medications: ${JSON.stringify(medications)}
+Known Allergies: ${allergies}
+Medical Conditions: ${JSON.stringify(conditions)}
+
+Provide:
+1. Drug-drug interactions (severity and mechanism)
+2. Drug-allergy contraindications
+3. Drug-condition contraindications
+4. Recommendations for safer alternatives if needed
+5. Monitoring parameters`,
+    schema: {
+      type: "object",
+      properties: {
+        interactions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              drugs: { type: "array", items: { type: "string" } },
+              severity: { type: "string", enum: ["minor", "moderate", "severe", "critical"] },
+              mechanism: { type: "string" },
+              clinical_effects: { type: "string" },
+              management: { type: "string" }
+            }
+          }
+        },
+        contraindications: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              medication: { type: "string" },
+              reason: { type: "string" },
+              type: { type: "string", enum: ["allergy", "condition", "age", "other"] }
+            }
+          }
+        },
+        recommendations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              current_medication: { type: "string" },
+              alternative: { type: "string" },
+              rationale: { type: "string" }
+            }
+          }
+        },
+        monitoring_parameters: { type: "array", items: { type: "string" } },
+        overall_risk_level: { type: "string", enum: ["low", "moderate", "high", "critical"] }
+      }
+    }
+  },
+
   // Compliance & Quality Prompts
   COMPLIANCE_CHECK: {
     version: "1.0",
