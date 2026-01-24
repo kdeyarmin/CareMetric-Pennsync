@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import ProviderNoteTypeSelector from "../components/smartNote/ProviderNoteTypeSelector";
+
 import { useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -601,29 +601,7 @@ export default function SmartNoteAssistant() {
   return (
     <div className="min-h-screen p-2 sm:p-4 md:p-6 pb-20 sm:pb-6 overflow-x-hidden">
       <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full">
-        {/* Provider-Specific Documentation Selector */}
-        {!showResults && (
-          <ProviderNoteTypeSelector
-            providerType={currentUser?.credential_type || providerType}
-            onProviderTypeChange={setProviderType}
-            selectedNoteType={selectedNoteType}
-            onNoteTypeChange={setSelectedNoteType}
-            currentNoteContent={roughNotes}
-            showChecklist={roughNotes.length > 50}
-          />
-        )}
 
-        {/* Enhanced Note Checklist */}
-        {showResults && enhancedNote && (
-          <ProviderNoteTypeSelector
-            providerType={currentUser?.credential_type || providerType}
-            onProviderTypeChange={setProviderType}
-            selectedNoteType={selectedNoteType}
-            onNoteTypeChange={setSelectedNoteType}
-            currentNoteContent={isEditMode ? editedNote : enhancedNote}
-            showChecklist={true}
-          />
-        )}
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
