@@ -74,12 +74,10 @@ import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
   const [showCreatePatient, setShowCreatePatient] = useState(false);
-  const [careSetting, setCareSetting] = useState("");
   const [visitType, setVisitType] = useState("");
   const [selectedDiagnosis, setSelectedDiagnosis] = useState("");
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [roughNotes, setRoughNotes] = useState("");
-  const [providerType, setProviderType] = useState("RN");
   const [selectedNoteType, setSelectedNoteType] = useState("skilled_nursing_visit");
   const [enhancing, setEnhancing] = useState(false);
   const [enhancedNote, setEnhancedNote] = useState(null);
@@ -131,6 +129,10 @@ export default function SmartNoteAssistant() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
+
+  // Auto-set care setting and provider type from user profile
+  const careSetting = currentUser?.service_type || "";
+  const providerType = currentUser?.credential_type || "RN";
 
   const { data: allPatients = [] } = useQuery({
     queryKey: ["allPatients"],
@@ -223,9 +225,9 @@ export default function SmartNoteAssistant() {
      setSuggestedTasks([]);
 
      try {
-     console.log('🔵 Getting compliance prompt for:', currentUser?.credential_type, visitType, careSetting);
-     const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
-     const providerAdditions = getProviderPromptAdditions(currentUser?.credential_type || 'RN');
+     console.log('🔵 Getting compliance prompt for:', providerType, visitType, careSetting);
+     const compliancePrompt = getProviderCompliancePrompt(providerType, visitType);
+     const providerAdditions = getProviderPromptAdditions(providerType);
      const locationAdditions = getCareSettingPromptAdditions(careSetting);
      let fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
 
@@ -290,7 +292,7 @@ export default function SmartNoteAssistant() {
           rough_notes: roughNotes,
           visit_type: visitType,
           diagnosis: selectedDiagnosis,
-          provider_type: currentUser?.credential_type || 'RN',
+          provider_type: providerType,
           care_setting: careSetting,
           compliance_prompt: fullCompliancePrompt,
           custom_rules: applicableRules,
@@ -305,7 +307,7 @@ export default function SmartNoteAssistant() {
         try {
           const preferencesResponse = await base44.functions.invoke('applyLearnedPreferences', {
             enhanced_note: response.data?.enhanced_note || response.enhanced_note,
-            provider_type: currentUser?.credential_type || 'RN',
+            provider_type: providerType,
             visit_type: visitType,
             suggested_suggestions: response.data?.quality_analysis?.suggestions || []
           });
@@ -373,13 +375,9 @@ export default function SmartNoteAssistant() {
      }
    };
 
-  // Get accessible care settings for current provider
-  const accessibleCareSettings = currentUser?.credential_type ?
-    getAccessibleCareSettings(currentUser.credential_type) : [];
-
-  // Get available visit types based on provider and care setting
-  const availableVisitTypes = (currentUser?.credential_type && careSetting) ?
-    getVisitTypesForProvider(currentUser.credential_type, careSetting) :
+  // Get available visit types based on provider and care setting from profile
+  const availableVisitTypes = (providerType && careSetting) ?
+    getVisitTypesForProvider(providerType, careSetting) :
     [];
 
   // Provider-specific diagnoses
@@ -397,9 +395,7 @@ export default function SmartNoteAssistant() {
     Chiropractor: ["Back Pain", "Neck Pain", "Headaches", "Joint Pain", "Sciatica", "Sports Injuries"]
   };
 
-  const commonDiagnoses = currentUser?.credential_type ?
-    (PROVIDER_DIAGNOSES[currentUser.credential_type] || PROVIDER_DIAGNOSES.RN) :
-    PROVIDER_DIAGNOSES.RN;
+  const commonDiagnoses = PROVIDER_DIAGNOSES[providerType] || PROVIDER_DIAGNOSES.RN;
 
 
   const filteredDiagnoses = diagnosisSearch.trim() ?
@@ -490,8 +486,8 @@ export default function SmartNoteAssistant() {
   const recheckCompliance = async () => {
    const loadingToast = toast.loading("Re-checking compliance and quality...");
    try {
-     const compliancePrompt = getProviderCompliancePrompt(currentUser?.credential_type || 'RN', visitType);
-     const providerAdditions = getProviderPromptAdditions(currentUser?.credential_type || 'RN');
+     const compliancePrompt = getProviderCompliancePrompt(providerType, visitType);
+     const providerAdditions = getProviderPromptAdditions(providerType);
      const locationAdditions = getCareSettingPromptAdditions(careSetting);
      const fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
       
@@ -507,7 +503,7 @@ export default function SmartNoteAssistant() {
         rough_notes: editedNote,
         visit_type: visitType,
         diagnosis: selectedDiagnosis,
-        provider_type: currentUser?.credential_type || 'RN',
+        provider_type: providerType,
         care_setting: careSetting,
         compliance_prompt: fullCompliancePrompt,
         custom_rules: applicableRules,
@@ -532,7 +528,7 @@ export default function SmartNoteAssistant() {
             original_enhanced_note: enhancedNote,
             edited_note: editedNote,
             visit_type: visitType,
-            provider_type: currentUser?.credential_type || 'RN',
+            provider_type: providerType,
             compliance_issues_before: medicareViolations,
             compliance_issues_after: newComplianceResults
           });
@@ -583,7 +579,7 @@ export default function SmartNoteAssistant() {
         medications: extractedData?.medications || [],
         vital_signs: vitalSigns,
         visit_type: visitType,
-        provider_type: currentUser?.credential_type || 'RN',
+        provider_type: providerType,
         patient_context: patientData ? {
           age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
           comorbidities: patientData.secondary_diagnoses || []
@@ -602,8 +598,8 @@ export default function SmartNoteAssistant() {
       <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full">
         {!showResults && (
           <ProviderNoteTypeSelector
-            providerType={currentUser?.credential_type || providerType}
-            onProviderTypeChange={setProviderType}
+            providerType={providerType}
+            onProviderTypeChange={() => {}} 
             selectedNoteType={selectedNoteType}
             onNoteTypeChange={setSelectedNoteType}
             currentNoteContent={roughNotes}
@@ -614,8 +610,8 @@ export default function SmartNoteAssistant() {
         {/* Enhanced Note Checklist */}
         {showResults && enhancedNote && (
           <ProviderNoteTypeSelector
-            providerType={currentUser?.credential_type || providerType}
-            onProviderTypeChange={setProviderType}
+            providerType={providerType}
+            onProviderTypeChange={() => {}}
             selectedNoteType={selectedNoteType}
             onNoteTypeChange={setSelectedNoteType}
             currentNoteContent={isEditMode ? editedNote : enhancedNote}
@@ -715,37 +711,13 @@ export default function SmartNoteAssistant() {
                 }
                 </div>
 
-                {/* Care Setting, Visit Type & Diagnosis */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Care Setting *</Label>
-                    <Select value={careSetting} onValueChange={(value) => {
-                      setCareSetting(value);
-                      setVisitType(""); // Reset visit type when setting changes
-                    }}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select care setting..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {accessibleCareSettings.length > 0 ?
-                          accessibleCareSettings.map((setting) => (
-                            <SelectItem key={setting} value={setting}>
-                              {getCareSettingLabel(setting)}
-                            </SelectItem>
-                          )) :
-                          <SelectItem value="no_settings" disabled>
-                            No care settings available
-                          </SelectItem>
-                        }
-                      </SelectContent>
-                    </Select>
-                  </div>
-
+                {/* Visit Type & Diagnosis */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium">Visit Type *</Label>
-                    <Select value={visitType} onValueChange={setVisitType} disabled={!careSetting}>
+                    <Select value={visitType} onValueChange={setVisitType}>
                       <SelectTrigger>
-                        <SelectValue placeholder={careSetting ? "Select visit type..." : "Select care setting first"} />
+                        <SelectValue placeholder="Select visit type..." />
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
                         {availableVisitTypes.length > 0 ?
@@ -754,9 +726,8 @@ export default function SmartNoteAssistant() {
                               {vt.label}
                             </SelectItem>
                       ) :
-
                       <SelectItem value="no_types" disabled>
-                            No visit types available
+                            Configure provider type & care setting in Settings
                           </SelectItem>
                       }
                       </SelectContent>
@@ -781,10 +752,10 @@ export default function SmartNoteAssistant() {
                 </div>
 
                 {/* Template Selector */}
-                {visitType && currentUser?.credential_type &&
+                {visitType && providerType &&
               <NoteTemplateSelector
                 visitType={visitType}
-                providerType={currentUser.credential_type}
+                providerType={providerType}
                 onSelectTemplate={(formattedNote, template) => {
                   setRoughNotes(formattedNote);
                   setSelectedTemplate(template);
@@ -832,7 +803,7 @@ export default function SmartNoteAssistant() {
                 )}
 
                 {/* Code Search & Inserter - Only for Physicians & NPs */}
-                {(currentUser?.credential_type === 'MD' || currentUser?.credential_type === 'NP') && (
+                {(providerType === 'MD' || providerType === 'NP') && (
                   <CodeSearchInserter
                     onInsertCode={(code) => {
                       setRoughNotes(roughNotes + '\n\n' + code);
@@ -929,7 +900,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 {/* Enhance Button */}
                 <Button
                 onClick={enhanceNote}
-                disabled={enhancing || !careSetting || !visitType || !selectedDiagnosis || !roughNotes.trim()}
+                disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()}
                 className="w-full h-12 sm:h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-sm sm:text-base touch-target"
                 size="lg">
 
@@ -957,15 +928,15 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
               {/* AI Care Plan Draft Generator - Excludes Physicians */}
               {patientData && enhancedNote && 
-               currentUser?.credential_type !== 'MD' && 
-               currentUser?.credential_type !== 'DO' && 
-               currentUser?.credential_type !== 'PHYSICIAN' && (
+               providerType !== 'MD' && 
+               providerType !== 'DO' && 
+               providerType !== 'PHYSICIAN' && (
                 <CarePlanDraftGenerator
                   diagnosis={selectedDiagnosis}
                   noteContent={enhancedNote}
                   vitalSigns={vitalSigns}
                   patientId={patientData.id}
-                  providerType={currentUser?.credential_type}
+                  providerType={providerType}
                   patientContext={{
                     age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
                     diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])].filter(Boolean),
@@ -983,7 +954,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               )}
 
               {/* Proactive Clinical Orders */}
-              {enhancedNote && selectedDiagnosis && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'NP' || currentUser?.credential_type === 'PA') && (
+              {enhancedNote && selectedDiagnosis && (providerType === 'RN' || providerType === 'NP' || providerType === 'PA') && (
                 <ProactiveClinicalOrders
                   diagnosis={selectedDiagnosis}
                   noteContent={enhancedNote}
@@ -1204,7 +1175,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   qualityAnalysis={complianceResults.quality_analysis}
                   noteText={isEditMode ? editedNote : enhancedNote}
                   visitType={visitType}
-                  providerType={currentUser?.credential_type}
+                  providerType={providerType}
                   onFeedbackSubmitted={() => {
                     toast.success('Your feedback helps improve our AI suggestions!');
                   }}
@@ -1485,7 +1456,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 enhancedNote={enhancedNote}
                 diagnosis={selectedDiagnosis}
                 visitType={visitType}
-                providerType={currentUser?.credential_type}
+                providerType={providerType}
                 patientContext={patientData ? {
                   patient_name: `${patientData.first_name} ${patientData.last_name}`,
                   primary_diagnosis: patientData.primary_diagnosis,
@@ -1496,15 +1467,15 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               />
 
               {/* Care Plan Suggestions - Provider-specific */}
-              {patientData && (currentUser?.credential_type === 'RN' || currentUser?.credential_type === 'MSW' ||
-                               currentUser?.credential_type === 'NP' || currentUser?.credential_type === 'PT' || 
-                               currentUser?.credential_type === 'OT' || currentUser?.credential_type === 'ST') &&
+              {patientData && (providerType === 'RN' || providerType === 'MSW' ||
+                               providerType === 'NP' || providerType === 'PT' || 
+                               providerType === 'OT' || providerType === 'ST') &&
             <CarePlanSuggestionsPanel
               patientId={patientData.id}
               visitType={visitType}
               diagnosis={selectedDiagnosis}
               noteContent={enhancedNote}
-              providerType={currentUser?.credential_type} />
+              providerType={providerType} />
 
             }
 
