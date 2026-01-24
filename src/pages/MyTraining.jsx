@@ -1,338 +1,239 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Target,
-  BookOpen,
-  Award,
-  TrendingUp,
-  AlertTriangle,
-  CheckCircle2,
-  Sparkles,
-  ArrowRight
-} from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { motion } from "framer-motion";
+import { GraduationCap, Clock, CheckCircle, AlertCircle, PlayCircle, Loader2 } from "lucide-react";
+import { format } from "date-fns";
+import InteractiveTrainingViewer from "../components/training/InteractiveTrainingViewer";
 
 export default function MyTraining() {
-  const { data: currentUser } = useQuery({
-    queryKey: ["currentUser"],
-    queryFn: () => base44.auth.me()
-  });
+  const [selectedTraining, setSelectedTraining] = useState(null);
 
-  const { data: skillGaps = [] } = useQuery({
-    queryKey: ["mySkillGaps", currentUser?.email],
-    queryFn: () =>
-      base44.entities.SkillGap.filter(
-        { user_email: currentUser.email, status: { $ne: "dismissed" } },
-        "-severity,-last_detected"
-      ),
-    enabled: !!currentUser?.email
-  });
-
-  const { data: trainingModules = [] } = useQuery({
-    queryKey: ["trainingModules"],
-    queryFn: () => base44.entities.TrainingModule.filter({ is_active: true })
-  });
-
-  const { data: completions = [] } = useQuery({
-    queryKey: ["trainingCompletions", currentUser?.email],
-    queryFn: () =>
-      base44.entities.TrainingCompletion.filter({
-        nurse_email: currentUser?.email
-      }),
-    enabled: !!currentUser?.email
-  });
-
-  const { data: badges = [] } = useQuery({
-    queryKey: ["providerBadges", currentUser?.email],
-    queryFn: () =>
-      base44.entities.ProviderBadge.filter({
-        provider_email: currentUser?.email
-      }),
-    enabled: !!currentUser?.email
-  });
-
-  const activeGaps = skillGaps.filter((g) => g.status === "identified" || g.status === "in_progress");
-  const completedModuleIds = completions.map((c) => c.training_module_id);
-
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case "critical":
-        return "bg-red-600 text-white";
-      case "high":
-        return "bg-orange-500 text-white";
-      case "medium":
-        return "bg-yellow-500 text-white";
-      default:
-        return "bg-blue-500 text-white";
+  const { data: currentUser, isLoading: userLoading } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        base44.auth.redirectToLogin();
+        return null;
+      }
     }
-  };
+  });
 
-  const getGapTypeIcon = (gapType) => {
-    const icons = {
-      documentation: BookOpen,
-      compliance: AlertTriangle,
-      clinical_knowledge: Target,
-      oasis: Target
-    };
-    return icons[gapType] || Sparkles;
-  };
+  const { data: myTraining = [], isLoading } = useQuery({
+    queryKey: ['myTraining', currentUser?.email],
+    queryFn: () => base44.entities.TrainingCompletion.filter({ nurse_email: currentUser.email }),
+    enabled: !!currentUser?.email
+  });
+
+  const { data: allModules = [] } = useQuery({
+    queryKey: ['trainingModules'],
+    queryFn: () => base44.entities.TrainingModule.list()
+  });
+
+  if (userLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  if (selectedTraining) {
+    const module = allModules.find(m => m.id === selectedTraining.training_module_id);
+    if (!module) return null;
+
+    return (
+      <div className="p-6 max-w-4xl mx-auto">
+        <Button 
+          variant="outline" 
+          onClick={() => setSelectedTraining(null)}
+          className="mb-4"
+        >
+          ← Back to Training
+        </Button>
+        <InteractiveTrainingViewer 
+          module={module}
+          completion={selectedTraining}
+          onComplete={() => setSelectedTraining(null)}
+        />
+      </div>
+    );
+  }
+
+  const assigned = myTraining.filter(t => t.status === 'assigned');
+  const inProgress = myTraining.filter(t => t.status === 'in_progress');
+  const completed = myTraining.filter(t => t.status === 'completed');
+  const overdue = myTraining.filter(t => 
+    t.status !== 'completed' && t.due_date && new Date(t.due_date) < new Date()
+  );
+
+  const completionRate = myTraining.length > 0 
+    ? Math.round((completed.length / myTraining.length) * 100) 
+    : 0;
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
+          <GraduationCap className="w-8 h-8 text-blue-600" />
           My Training
         </h1>
-        <p className="text-slate-600 dark:text-slate-400">
-          AI-driven skill gaps and available training modules
+        <p className="text-slate-600 mt-1">
+          Complete assigned training to improve your skills
         </p>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-6">
-          <Card>
-            <CardContent className="bg-slate-100 dark:bg-slate-800 p-4 text-center">
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {activeGaps.length}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                Skill Gaps
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="bg-slate-100 dark:bg-slate-800 p-4 text-center">
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {completions.length}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                Completed
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="bg-slate-100 dark:bg-slate-800 p-4 text-center">
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {badges.length}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                Badges
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="bg-slate-100 dark:bg-slate-800 p-4 text-center">
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {trainingModules.length}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                Available
-              </p>
-            </CardContent>
-          </Card>
-        </div>
       </div>
 
-      <Tabs defaultValue="gaps" className="space-y-4 sm:space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-sm text-slate-500">Completion Rate</p>
+              <p className="text-3xl font-bold text-blue-600">{completionRate}%</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-sm text-slate-500">Assigned</p>
+              <p className="text-3xl font-bold text-slate-900">{assigned.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-sm text-slate-500">Completed</p>
+              <p className="text-3xl font-bold text-green-600">{completed.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-sm text-slate-500">Overdue</p>
+              <p className="text-3xl font-bold text-red-600">{overdue.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Training Tabs */}
+      <Tabs defaultValue="assigned">
         <TabsList>
-          <TabsTrigger value="gaps">
-            <Target className="w-4 h-4 mr-2" />
-            Skill Gaps
+          <TabsTrigger value="assigned">
+            Assigned ({assigned.length + inProgress.length})
           </TabsTrigger>
-          <TabsTrigger value="modules">
-            <BookOpen className="w-4 h-4 mr-2" />
-            Modules
-          </TabsTrigger>
-          <TabsTrigger value="progress">
-            <TrendingUp className="w-4 h-4 mr-2" />
-            Progress
+          <TabsTrigger value="completed">
+            Completed ({completed.length})
           </TabsTrigger>
         </TabsList>
 
-        {/* Skill Gaps Tab */}
-        <TabsContent value="gaps" className="space-y-4">
-          {activeGaps.length > 0 ? (
-            <div className="space-y-4">
-              {activeGaps.map((gap, idx) => {
-                const GapIcon = getGapTypeIcon(gap.gap_type);
-                return (
-                  <motion.div
-                    key={gap.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                  >
-                    <Card className="border-l-4 border-l-blue-600">
-                      <CardHeader>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3 flex-1">
-                            <GapIcon className="w-5 h-5 text-blue-600 mt-1 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                <CardTitle className="text-lg">
-                                  {gap.skill_area}
-                                </CardTitle>
-                                <Badge className={getSeverityColor(gap.severity)}>
-                                  {gap.severity}
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-slate-600 dark:text-slate-400">
-                                {gap.ai_reasoning}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="flex-shrink-0"
-                            onClick={() => {
-                              base44.entities.SkillGap.update(gap.id, {
-                                status: "in_progress"
-                              });
-                            }}
-                          >
-                            Start
-                          </Button>
-                        </div>
-                      </CardHeader>
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : (
+        <TabsContent value="assigned" className="space-y-4 mt-4">
+          {[...assigned, ...inProgress].map(training => {
+            const module = allModules.find(m => m.id === training.training_module_id);
+            if (!module) return null;
+
+            const isOverdue = training.due_date && new Date(training.due_date) < new Date();
+
+            return (
+              <Card key={training.id} className={isOverdue ? "border-red-200" : ""}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CardTitle className="text-lg">{module.title}</CardTitle>
+                        {training.status === 'in_progress' && (
+                          <Badge className="bg-blue-100 text-blue-800">In Progress</Badge>
+                        )}
+                        {isOverdue && (
+                          <Badge className="bg-red-100 text-red-800">Overdue</Badge>
+                        )}
+                      </div>
+                      <CardDescription>{module.description}</CardDescription>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {module.duration_minutes} min
+                        </span>
+                        {training.due_date && (
+                          <span className={isOverdue ? "text-red-600 font-medium" : ""}>
+                            Due: {format(new Date(training.due_date), 'MMM d, yyyy')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={() => setSelectedTraining(training)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <PlayCircle className="w-4 h-4 mr-2" />
+                      {training.status === 'in_progress' ? 'Continue' : 'Start'}
+                    </Button>
+                  </div>
+                </CardHeader>
+              </Card>
+            );
+          })}
+
+          {assigned.length === 0 && inProgress.length === 0 && (
             <Card>
-              <CardContent className="p-12 text-center">
-                <CheckCircle2 className="w-16 h-16 text-green-600 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                  No Active Skill Gaps
-                </h3>
-                <p className="text-slate-600 dark:text-slate-400">
-                  Great work! Continue with available training modules.
-                </p>
+              <CardContent className="py-12 text-center">
+                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                <p className="text-slate-600">All caught up! No pending training.</p>
               </CardContent>
             </Card>
           )}
         </TabsContent>
 
-        {/* Modules Tab */}
-        <TabsContent value="modules" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {trainingModules.map((module) => {
-              const isCompleted = completedModuleIds.includes(module.id);
-              return (
-                <Card
-                  key={module.id}
-                  className={
-                    isCompleted
-                      ? "border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800"
-                      : ""
-                  }
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
+        <TabsContent value="completed" className="space-y-4 mt-4">
+          {completed.map(training => {
+            const module = allModules.find(m => m.id === training.training_module_id);
+            if (!module) return null;
+
+            return (
+              <Card key={training.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
                         <CardTitle className="text-lg">{module.title}</CardTitle>
-                        <Badge className="mt-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                          {module.category}
+                        <Badge className="bg-green-100 text-green-800">
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Completed
                         </Badge>
                       </div>
-                      {isCompleted && (
-                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-1" />
-                      )}
+                      <div className="flex items-center gap-4 text-xs text-slate-500">
+                        <span>
+                          Completed: {format(new Date(training.completion_date), 'MMM d, yyyy')}
+                        </span>
+                        {training.score && (
+                          <span className="font-medium text-green-600">
+                            Score: {training.score}%
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <p className="text-sm text-slate-600 dark:text-slate-400">
-                      {module.description}
-                    </p>
-                    <div className="flex gap-4 text-xs text-slate-600 dark:text-slate-400">
-                      <span>⏱ {module.duration_minutes || module.duration} min</span>
-                      <span>📊 {module.difficulty_level || module.difficulty}</span>
-                    </div>
-                    <Button className="w-full" variant={isCompleted ? "outline" : "default"}>
-                      {isCompleted ? (
-                        <>
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          Completed
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Start Module
-                        </>
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
+                  </div>
+                </CardHeader>
+              </Card>
+            );
+          })}
 
-        {/* Progress Tab */}
-        <TabsContent value="progress" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Your Progress
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Completion Rate
-                  </p>
-                  <span className="text-lg font-bold text-blue-600">
-                    {trainingModules.length > 0
-                      ? Math.round(
-                          (completions.length / trainingModules.length) * 100
-                        )
-                      : 0}
-                    %
-                  </span>
-                </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all"
-                    style={{
-                      width:
-                        trainingModules.length > 0
-                          ? `${(completions.length / trainingModules.length) * 100}%`
-                          : "0%"
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-600 mb-1">
-                    {completions.length}
-                  </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Modules Completed
-                  </p>
-                </div>
-                <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg">
-                  <p className="text-2xl font-bold text-green-600 mb-1">
-                    {badges.length}
-                  </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Badges Earned
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {completed.length === 0 && (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                <p className="text-slate-600">No completed training yet.</p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
