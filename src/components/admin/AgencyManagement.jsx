@@ -8,13 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Building2, Plus, Users, DollarSign, Copy, Edit, CheckCircle, XCircle, Clock, Settings as SettingsIcon } from "lucide-react";
+import { Building2, Plus, Users, DollarSign, Copy, Edit, CheckCircle, XCircle, Clock, Settings as SettingsIcon, Sparkles } from "lucide-react";
 import { format } from "date-fns";
 import AgencyFeatureManager from "./AgencyFeatureManager";
+import AgencyOnboardingWizard from "../agency/AgencyOnboardingWizard";
 
 export default function AgencyManagement() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const [editingAgency, setEditingAgency] = useState(null);
   const [managingFeaturesFor, setManagingFeaturesFor] = useState(null);
   const [formData, setFormData] = useState({
@@ -149,10 +151,16 @@ export default function AgencyManagement() {
           </h2>
           <p className="text-slate-600">Manage enterprise agencies and billing</p>
         </div>
-        <Button onClick={() => setShowForm(true)} className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="w-4 h-4 mr-2" />
-          New Agency
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowWizard(true)} className="bg-blue-600 hover:bg-blue-700">
+            <Sparkles className="w-4 h-4 mr-2" />
+            Guided Setup
+          </Button>
+          <Button onClick={() => setShowForm(true)} variant="outline">
+            <Plus className="w-4 h-4 mr-2" />
+            Quick Add
+          </Button>
+        </div>
       </div>
 
       {/* Key Metrics */}
@@ -198,8 +206,27 @@ export default function AgencyManagement() {
         </Card>
       </div>
 
+      {/* Onboarding Wizard */}
+      {showWizard && !managingFeaturesFor && (
+        <div className="mb-6">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowWizard(false)}
+            className="mb-3"
+          >
+            ← Cancel
+          </Button>
+          <AgencyOnboardingWizard 
+            onComplete={(agency) => {
+              setShowWizard(false);
+              queryClient.invalidateQueries({ queryKey: ['agencies'] });
+            }}
+          />
+        </div>
+      )}
+
       {/* Feature Management */}
-      {managingFeaturesFor && (
+      {managingFeaturesFor && !showWizard && (
         <div className="mb-6">
           <Button 
             variant="outline" 
@@ -213,7 +240,7 @@ export default function AgencyManagement() {
       )}
 
       {/* Create/Edit Form */}
-      {showForm && !managingFeaturesFor && (
+      {showForm && !managingFeaturesFor && !showWizard && (
         <Card>
           <CardHeader>
             <CardTitle>{editingAgency ? 'Edit Agency' : 'Create New Agency'}</CardTitle>
@@ -348,7 +375,7 @@ export default function AgencyManagement() {
       )}
 
       {/* Agencies List */}
-      {!managingFeaturesFor && (
+      {!managingFeaturesFor && !showWizard && (
       <div className="space-y-4">
         {agencies.map((agency) => {
           const agencyUsers = allUsers.filter(u => u.agency_code === agency.agency_code);

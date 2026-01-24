@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { Building2, Users, DollarSign, TrendingUp, UserPlus, Mail, Calendar, CreditCard, BarChart3, Settings } from "lucide-react";
 import { format } from "date-fns";
 import AgencyFeatureSettings from "../components/agency/AgencyFeatureSettings";
+import AgencyGuidedSetup from "../components/agency/AgencyGuidedSetup";
+import AgencyRoleBasedAccess from "../components/agency/AgencyRoleBasedAccess";
 
 export default function AgencyDashboard() {
   const queryClient = useQueryClient();
@@ -157,6 +159,7 @@ export default function AgencyDashboard() {
           <TabsTrigger value="users">👥 Users</TabsTrigger>
           <TabsTrigger value="billing">💳 Billing</TabsTrigger>
           <TabsTrigger value="features">⚙️ Features</TabsTrigger>
+          <TabsTrigger value="settings">⚙️ Settings</TabsTrigger>
           <TabsTrigger value="analytics">📊 Analytics</TabsTrigger>
         </TabsList>
 
@@ -268,6 +271,12 @@ export default function AgencyDashboard() {
         {/* Features Tab */}
         <TabsContent value="features" className="space-y-4">
           <AgencyFeatureSettings agency={agency} />
+          <AgencyRoleBasedAccess agency={agency} />
+        </TabsContent>
+
+        {/* Settings Tab */}
+        <TabsContent value="settings" className="space-y-4">
+          <AgencyGuidedSetup agency={agency} />
         </TabsContent>
 
         {/* Analytics Tab */}

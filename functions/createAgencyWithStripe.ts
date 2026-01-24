@@ -94,6 +94,33 @@ Deno.serve(async (req) => {
 
     console.log('Created agency:', agency.id);
 
+    // Create initial AgencySettings if compliance/style preferences were provided
+    if (agencyData.custom_compliance_rules || agencyData.custom_documentation_style) {
+      await base44.asServiceRole.entities.AgencySettings.create({
+        agency_code: code,
+        office_name: agencyData.agency_name,
+        custom_compliance_rules: agencyData.custom_compliance_rules || "",
+        custom_documentation_style: agencyData.custom_documentation_style || "",
+        agency_manager_email: agencyData.admin_email
+      });
+    }
+
+    // Send invitations to initial users if provided
+    if (agencyData.initial_users && agencyData.initial_users.length > 0) {
+      for (const email of agencyData.initial_users) {
+        try {
+          await base44.asServiceRole.users.inviteUser(email, 'user');
+          await base44.asServiceRole.integrations.Core.SendEmail({
+            to: email,
+            subject: `Join ${agencyData.agency_name} on CareMetric AI`,
+            body: `You've been invited to join ${agencyData.agency_name} on CareMetric AI.\n\nYour agency code is: ${code}\n\nAfter you sign up, go to Settings and enter this code to join the agency.\n\nGet started: ${Deno.env.get('BASE44_APP_URL') || 'https://app.base44.com'}`
+          });
+        } catch (inviteError) {
+          console.error('Failed to invite user:', email, inviteError);
+        }
+      }
+    }
+
     return Response.json({
       success: true,
       agency,
