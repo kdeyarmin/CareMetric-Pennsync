@@ -12,71 +12,81 @@ Deno.serve(async (req) => {
     const { agency_code } = await req.json();
 
     if (!agency_code) {
-      return Response.json({ error: 'agency_code is required' }, { status: 400 });
+      return Response.json({ 
+        success: false, 
+        message: 'Agency code is required' 
+      }, { status: 400 });
     }
 
     // Find agency with this code
-    const agencies = await base44.asServiceRole.entities.AgencySettings.filter({
-      agency_code: agency_code.trim().toUpperCase(),
-      is_enterprise: true
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ 
+      agency_code: agency_code.toUpperCase() 
     });
 
     if (agencies.length === 0) {
-      return Response.json({ error: 'Invalid agency code' }, { status: 404 });
+      return Response.json({ 
+        success: false, 
+        message: 'Invalid agency code. Please check and try again.' 
+      });
     }
 
     const agency = agencies[0];
 
-    // Update user's agency_id and agency_code
-    await base44.auth.updateMe({
-      agency_id: agency.id,
-      agency_code: agency_code.trim().toUpperCase()
+    // Check if agency is active
+    if (agency.status !== 'active' && agency.status !== 'trial') {
+      return Response.json({ 
+        success: false, 
+        message: 'This agency is not currently active' 
+      });
+    }
+
+    // Check if agency has reached max users
+    const agencyUsers = await base44.asServiceRole.entities.User.filter({ 
+      agency_code: agency.agency_code 
     });
 
-    // Log the action
-    await base44.asServiceRole.entities.UserActivity.create({
+    if (agencyUsers.length >= agency.max_users) {
+      return Response.json({ 
+        success: false, 
+        message: `This agency has reached its maximum user limit (${agency.max_users})` 
+      });
+    }
+
+    // Join the agency
+    await base44.auth.updateMe({
+      agency_code: agency.agency_code,
+      agency_name: agency.agency_name,
+      joined_agency_date: new Date().toISOString().split('T')[0]
+    });
+
+    // Update agency user count
+    await base44.asServiceRole.entities.Agency.update(agency.id, {
+      current_user_count: agencyUsers.length + 1
+    });
+
+    // Log the activity
+    await base44.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'joined_agency',
       details: {
-        agency_id: agency.id,
-        agency_name: agency.office_name,
-        agency_code: agency_code.trim().toUpperCase()
+        agency_code: agency.agency_code,
+        agency_name: agency.agency_name
       },
       page: 'settings'
     });
 
-    // Notify agency manager
-    try {
-      await base44.asServiceRole.integrations.Core.SendEmail({
-        to: agency.agency_manager_email,
-        subject: `New Provider Joined Your Agency`,
-        from_name: 'CareMetric AI',
-        body: `
-<h2>New Provider Added</h2>
-
-<p><strong>${user.full_name}</strong> (${user.email}) has joined your agency using the agency code.</p>
-
-<p><strong>Provider Type:</strong> ${user.credential_type || 'Not specified'}</p>
-
-<p>You can now view their performance metrics and configure personalized settings in the Enterprise Dashboard.</p>
-
-<p>Best regards,<br>
-The CareMetric AI Team</p>
-        `
-      });
-    } catch (emailError) {
-      console.error('Error sending notification email:', emailError);
-    }
-
-    return Response.json({
-      success: true,
-      agency_name: agency.office_name,
-      message: 'Successfully joined agency'
+    return Response.json({ 
+      success: true, 
+      agency_name: agency.agency_name,
+      message: `Successfully joined ${agency.agency_name}` 
     });
 
   } catch (error) {
-    console.error('Error joining agency:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Join agency error:', error);
+    return Response.json({ 
+      success: false,
+      error: error.message 
+    }, { status: 500 });
   }
 });

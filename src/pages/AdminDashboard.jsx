@@ -43,6 +43,7 @@ import SubscriptionPricingManager from "../components/admin/SubscriptionPricingM
 import AIInsightsPanel from "../components/admin/AIInsightsPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import RealTimeDashboardWidget from "../components/admin/RealTimeDashboardWidget";
+import AgencyManagement from "../components/admin/AgencyManagement";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
@@ -733,6 +734,7 @@ export default function AdminDashboard() {
         <div className="w-full overflow-x-auto">
           <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1 sm:p-2">
             <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">📊 Overview</TabsTrigger>
+            <TabsTrigger value="agencies" className="text-xs sm:text-sm py-2 whitespace-nowrap">🏢 Agencies</TabsTrigger>
             <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2 whitespace-nowrap">💰 Revenue</TabsTrigger>
             <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">👥 Users</TabsTrigger>
             <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
@@ -744,6 +746,11 @@ export default function AdminDashboard() {
             <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">📥 Export</TabsTrigger>
           </TabsList>
         </div>
+
+        {/* Agencies Tab */}
+        <TabsContent value="agencies" className="space-y-6">
+          <AgencyManagement />
+        </TabsContent>
 
         {/* Revenue Tab */}
         <TabsContent value="revenue" className="space-y-6">

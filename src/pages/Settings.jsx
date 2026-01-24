@@ -22,6 +22,7 @@ import ProviderSpecializationManager from "../components/settings/ProviderSpecia
 import BiometricAuth from "../components/auth/BiometricAuth";
 import SecurityAuditLog from "../components/security/SecurityAuditLog";
 import AgencyCodeInput from "../components/settings/AgencyCodeInput";
+import AgencyCodeManager from "../components/settings/AgencyCodeManager";
 
 export default function Settings() {
   const queryClient = useQueryClient();
