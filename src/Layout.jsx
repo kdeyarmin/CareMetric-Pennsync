@@ -194,6 +194,22 @@ export default function Layout({ children, currentPageName }) {
     { name: "Subscriptions", icon: CreditCard, page: "AdminSubscriptions" }
   ] : [];
 
+  // Check if user is an agency admin
+  const { data: isAgencyAdmin } = useQuery({
+    queryKey: ['isAgencyAdmin', currentUser?.email],
+    queryFn: async () => {
+      if (!currentUser) return false;
+      const agencies = await base44.entities.Agency.filter({ admin_email: currentUser.email });
+      return agencies.length > 0;
+    },
+    enabled: !!currentUser && currentUser.role !== 'admin'
+  });
+
+  // Agency admin nav items (only shown if user is agency admin but not super admin)
+  const agencyAdminNavItems = isAgencyAdmin && currentUser?.role !== 'admin' ? [
+    { name: "Agency Dashboard", icon: Building2, page: "AgencyDashboard" }
+  ] : [];
+
   // iOS-safe computed paddings - use max() to ensure minimum height even without safe area
   const mobileHeaderTotalHeight = `calc(${HEADER_BAR_HEIGHT_REM}rem + max(env(safe-area-inset-top), 0px))`;
 
@@ -289,6 +305,26 @@ export default function Layout({ children, currentPageName }) {
             )}
 
 
+
+            {agencyAdminNavItems.length > 0 &&
+            <>
+                <div className="h-px bg-blue-200 dark:bg-blue-900 my-3 mx-2"></div>
+                {agencyAdminNavItems.map((item) =>
+              <Link
+                key={item.page}
+                to={createPageUrl(item.page)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                isActive(item.page) ?
+                "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-200 font-medium" :
+                "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`
+                }>
+
+                    <item.icon className="w-4 h-4" />
+                    {!sidebarCollapsed && item.name}
+                  </Link>
+              )}
+              </>
+            }
 
             {adminNavItems.length > 0 &&
             <>
@@ -421,6 +457,23 @@ export default function Layout({ children, currentPageName }) {
                   {item.name}
                   </Link>
               )}
+
+              {agencyAdminNavItems.length > 0 &&
+              <>
+                  <div className="h-px bg-slate-200 dark:bg-slate-700 my-3 mx-2"></div>
+                  {agencyAdminNavItems.map((item) =>
+                <Link
+                  key={item.page}
+                  to={createPageUrl(item.page)}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 text-sm text-slate-900 dark:text-slate-100">
+
+                      <item.icon className="w-4 h-4" />
+                      {item.name}
+                    </Link>
+                )}
+                </>
+              }
 
               {adminNavItems.length > 0 &&
               <>
