@@ -7,7 +7,9 @@ import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdminTrainingManagement from './pages/AdminTrainingManagement';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
+import AgencyTemplates from './pages/AgencyTemplates';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import AuditLog from './pages/AuditLog';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
 import Billing from './pages/Billing';
 import BillingInvoicing from './pages/BillingInvoicing';
@@ -110,8 +112,7 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AgencyTemplates from './pages/AgencyTemplates';
-import AuditLog from './pages/AuditLog';
+import AgencyDashboard from './pages/AgencyDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -125,7 +126,9 @@ export const PAGES = {
     "AdminTrainingManagement": AdminTrainingManagement,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
+    "AgencyTemplates": AgencyTemplates,
     "AnalyticsDashboard": AnalyticsDashboard,
+    "AuditLog": AuditLog,
     "AutomaticCarePlans": AutomaticCarePlans,
     "Billing": Billing,
     "BillingInvoicing": BillingInvoicing,
@@ -228,8 +231,7 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "AgencyTemplates": AgencyTemplates,
-    "AuditLog": AuditLog,
+    "AgencyDashboard": AgencyDashboard,
 }
 
 export const pagesConfig = {

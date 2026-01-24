@@ -17,6 +17,7 @@ export default function AgencyManagement() {
   const [editingAgency, setEditingAgency] = useState(null);
   const [formData, setFormData] = useState({
     agency_name: "",
+    admin_email: "",
     contact_name: "",
     contact_email: "",
     contact_phone: "",
@@ -24,7 +25,9 @@ export default function AgencyManagement() {
     max_users: 10,
     price_per_user: 29.99,
     billing_cycle: "monthly",
-    status: "active"
+    status: "active",
+    auto_billing_enabled: true,
+    enabled_features: ["SmartNoteAssistant", "MedicalScribe", "ClinicalDecisionSupport", "OASIS", "Compliance", "CarePlanManagement", "DocumentGenerator", "BillingOptimization"]
   });
 
   const { data: agencies = [] } = useQuery({
@@ -39,19 +42,20 @@ export default function AgencyManagement() {
 
   const createAgencyMutation = useMutation({
     mutationFn: async (data) => {
-      // Generate unique agency code
-      const code = `AG${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      return base44.entities.Agency.create({
-        ...data,
-        agency_code: code,
-        current_user_count: 0,
-        next_billing_date: format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
-      });
+      const response = await base44.functions.invoke('createAgencyWithStripe', data);
+      return response.data || response;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['agencies'] });
-      toast.success('Agency created successfully');
+      if (data.success) {
+        toast.success('Agency created with Stripe billing setup');
+      } else {
+        toast.error(data.error || 'Failed to create agency');
+      }
       resetForm();
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to create agency');
     }
   });
 
@@ -67,6 +71,7 @@ export default function AgencyManagement() {
   const resetForm = () => {
     setFormData({
       agency_name: "",
+      admin_email: "",
       contact_name: "",
       contact_email: "",
       contact_phone: "",
@@ -74,7 +79,9 @@ export default function AgencyManagement() {
       max_users: 10,
       price_per_user: 29.99,
       billing_cycle: "monthly",
-      status: "active"
+      status: "active",
+      auto_billing_enabled: true,
+      enabled_features: ["SmartNoteAssistant", "MedicalScribe", "ClinicalDecisionSupport", "OASIS", "Compliance", "CarePlanManagement", "DocumentGenerator", "BillingOptimization"]
     });
     setEditingAgency(null);
     setShowForm(false);
@@ -84,6 +91,7 @@ export default function AgencyManagement() {
     setEditingAgency(agency);
     setFormData({
       agency_name: agency.agency_name,
+      admin_email: agency.admin_email || "",
       contact_name: agency.contact_name || "",
       contact_email: agency.contact_email || "",
       contact_phone: agency.contact_phone || "",
@@ -91,7 +99,9 @@ export default function AgencyManagement() {
       max_users: agency.max_users,
       price_per_user: agency.price_per_user,
       billing_cycle: agency.billing_cycle,
-      status: agency.status
+      status: agency.status,
+      auto_billing_enabled: agency.auto_billing_enabled !== false,
+      enabled_features: agency.enabled_features || []
     });
     setShowForm(true);
   };
@@ -203,12 +213,34 @@ export default function AgencyManagement() {
                 />
               </div>
               <div>
+                <Label>Agency Admin Email *</Label>
+                <Input
+                  type="email"
+                  value={formData.admin_email}
+                  onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
+                  placeholder="admin@agency.com"
+                />
+                <p className="text-xs text-slate-500 mt-1">This user can access the Agency Dashboard</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
                 <Label>Contact Name</Label>
                 <Input
                   value={formData.contact_name}
                   onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
                   placeholder="John Doe"
                 />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.auto_billing_enabled}
+                  onChange={(e) => setFormData({ ...formData, auto_billing_enabled: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <Label>Enable Automatic Stripe Billing</Label>
               </div>
             </div>
 
