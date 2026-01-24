@@ -228,13 +228,11 @@ export default function ProviderPerformanceTable({ providers }) {
                 })}
               </tbody>
             </table>
-
-              {sortedProviders.length === 0 && (
-                <div className="text-center py-8 text-slate-500">
-                  No providers found
-                </div>
-              )}
-            </table>
+            {sortedProviders.length === 0 && (
+              <div className="text-center py-8 text-slate-500">
+                No providers found
+              </div>
+            )}
             )}
           </div>
         </CardContent>
