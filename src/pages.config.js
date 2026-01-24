@@ -32,6 +32,7 @@ import DocumentVisit from './pages/DocumentVisit';
 import DocumentationTraining from './pages/DocumentationTraining';
 import DuplicatePatients from './pages/DuplicatePatients';
 import EULA from './pages/EULA';
+import EnterpriseAdminDashboard from './pages/EnterpriseAdminDashboard';
 import FAQ from './pages/FAQ';
 import Features from './pages/Features';
 import HIPAACompliance from './pages/HIPAACompliance';
@@ -108,7 +109,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import EnterpriseAdminDashboard from './pages/EnterpriseAdminDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -147,6 +147,7 @@ export const PAGES = {
     "DocumentationTraining": DocumentationTraining,
     "DuplicatePatients": DuplicatePatients,
     "EULA": EULA,
+    "EnterpriseAdminDashboard": EnterpriseAdminDashboard,
     "FAQ": FAQ,
     "Features": Features,
     "HIPAACompliance": HIPAACompliance,
@@ -223,7 +224,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "EnterpriseAdminDashboard": EnterpriseAdminDashboard,
 }
 
 export const pagesConfig = {
