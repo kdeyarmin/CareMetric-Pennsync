@@ -569,6 +569,389 @@ Ensure documentation includes these location-specific elements:
 ${context.suggestedElements.map(elem => `- ${elem}`).join('\n')}`;
 };
 
+  // Clinical Insights Prompts
+  CLINICAL_INSIGHTS: {
+    version: "1.0",
+    prompt: (noteContent, diagnoses, symptoms, medications, vitalSigns) => `Analyze this clinical documentation and provide actionable clinical insights.
+
+Clinical Note: ${noteContent}
+Diagnoses: ${JSON.stringify(diagnoses)}
+Symptoms: ${JSON.stringify(symptoms)}
+Medications: ${JSON.stringify(medications)}
+Vital Signs: ${JSON.stringify(vitalSigns)}
+
+Provide:
+1. Key clinical findings and their significance
+2. Potential concerns or red flags
+3. Recommended clinical actions
+4. Patient education priorities`,
+    schema: {
+      type: "object",
+      properties: {
+        key_findings: { type: "array", items: { type: "string" } },
+        concerns: { 
+          type: "array", 
+          items: {
+            type: "object",
+            properties: {
+              concern: { type: "string" },
+              severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
+              recommendation: { type: "string" }
+            }
+          }
+        },
+        clinical_actions: { type: "array", items: { type: "string" } },
+        education_priorities: { type: "array", items: { type: "string" } }
+      }
+    }
+  },
+
+  // Follow-Up Tasks Generation
+  FOLLOW_UP_TASKS: {
+    version: "1.0",
+    prompt: (visitNotes, patientName, vitalSigns) => `Based on this clinical visit, suggest follow-up tasks.
+
+Patient: ${patientName}
+Visit Notes: ${visitNotes}
+Vital Signs: ${JSON.stringify(vitalSigns)}
+
+Generate tasks for:
+- Required follow-up actions
+- Physician notifications needed
+- Care coordination needs
+- Patient education to reinforce
+- Monitoring parameters`,
+    schema: {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
+              type: { type: "string" },
+              suggested_due_timeframe: { type: "string" },
+              ai_reason: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  // OASIS Field Suggestions
+  OASIS_FIELD_SUGGESTIONS: {
+    version: "1.0",
+    prompt: (visitType, diagnosis, noteContent) => `Suggest OASIS field values based on clinical documentation.
+
+Visit Type: ${visitType}
+Diagnosis: ${diagnosis}
+Clinical Note: ${noteContent}
+
+Provide suggested values for key OASIS items with rationale.`,
+    schema: {
+      type: "object",
+      properties: {
+        suggested_fields: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              oasis_item: { type: "string" },
+              suggested_value: { type: "string" },
+              rationale: { type: "string" },
+              confidence: { type: "string", enum: ["high", "medium", "low"] }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  // Training Recommendations
+  TRAINING_RECOMMENDATIONS: {
+    version: "1.0",
+    prompt: (skillGaps, performanceMetrics, providerType) => `Generate personalized training recommendations.
+
+Provider Type: ${providerType}
+Identified Skill Gaps: ${JSON.stringify(skillGaps)}
+Performance Metrics: ${JSON.stringify(performanceMetrics)}
+
+Recommend:
+1. Specific training modules to address gaps
+2. Priority order based on impact
+3. Estimated time to complete
+4. Expected outcomes`,
+    schema: {
+      type: "object",
+      properties: {
+        recommendations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              training_topic: { type: "string" },
+              priority: { type: "string", enum: ["urgent", "high", "medium", "low"] },
+              rationale: { type: "string" },
+              estimated_duration_minutes: { type: "number" },
+              expected_outcomes: { type: "array", items: { type: "string" } }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  // Care Plan Optimization
+  CARE_PLAN_OPTIMIZATION: {
+    version: "1.0",
+    prompt: (currentCarePlans, progressNotes, patientGoals) => `Optimize existing care plans based on patient progress.
+
+Current Care Plans: ${JSON.stringify(currentCarePlans)}
+Recent Progress Notes: ${JSON.stringify(progressNotes)}
+Patient Goals: ${patientGoals}
+
+Analyze:
+- Which goals are being met/not met
+- Interventions that should be modified
+- New problems that emerged
+- Recommended adjustments`,
+    schema: {
+      type: "object",
+      properties: {
+        optimization_recommendations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              care_plan_id: { type: "string" },
+              current_status: { type: "string" },
+              recommended_action: { type: "string", enum: ["continue", "modify", "discontinue", "escalate"] },
+              rationale: { type: "string" },
+              suggested_modifications: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  // Documentation Gap Detection
+  DOCUMENTATION_GAPS: {
+    version: "1.0",
+    prompt: (noteContent, visitType, requiredElements) => `Identify documentation gaps in this clinical note.
+
+Visit Type: ${visitType}
+Note Content: ${noteContent}
+Required Elements: ${JSON.stringify(requiredElements)}
+
+Check for missing or incomplete documentation of required elements.`,
+    schema: {
+      type: "object",
+      properties: {
+        gaps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              element: { type: "string" },
+              severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
+              issue: { type: "string" },
+              suggestion: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  // Telehealth Visit Summary
+  TELEHEALTH_SUMMARY: {
+    version: "1.0",
+    prompt: (callTranscript, duration, participantNotes) => `Generate a clinical summary from this telehealth visit.
+
+Call Duration: ${duration} minutes
+Transcript: ${callTranscript}
+Provider Notes: ${participantNotes}
+
+Create a structured visit summary with:
+- Chief complaint
+- Assessment findings
+- Clinical decisions made
+- Follow-up plan
+- Patient education provided`,
+    schema: {
+      type: "object",
+      properties: {
+        chief_complaint: { type: "string" },
+        assessment: { type: "string" },
+        clinical_decisions: { type: "array", items: { type: "string" } },
+        follow_up_plan: { type: "string" },
+        education_provided: { type: "array", items: { type: "string" } }
+      }
+    }
+  },
+
+  // Risk Stratification
+  RISK_STRATIFICATION: {
+    version: "1.0",
+    prompt: (patientData, recentVisits, alerts) => `Perform comprehensive risk stratification for this patient.
+
+Patient Data: ${JSON.stringify(patientData)}
+Recent Visits: ${JSON.stringify(recentVisits)}
+Active Alerts: ${JSON.stringify(alerts)}
+
+Assess risks for:
+- Hospital readmission
+- Falls
+- Medication non-adherence
+- Clinical deterioration
+- Social factors`,
+    schema: {
+      type: "object",
+      properties: {
+        overall_risk_score: { type: "number" },
+        risk_level: { type: "string", enum: ["low", "moderate", "high", "critical"] },
+        risk_categories: {
+          type: "object",
+          properties: {
+            readmission: { type: "object" },
+            falls: { type: "object" },
+            medication: { type: "object" },
+            clinical: { type: "object" },
+            social: { type: "object" }
+          }
+        },
+        interventions: { type: "array", items: { type: "string" } }
+      }
+    }
+  },
+
+  // Billing Code Suggestions
+  BILLING_CODE_SUGGESTIONS: {
+    version: "1.0",
+    prompt: (noteContent, visitType, providerType, duration) => `Suggest appropriate billing codes for this visit.
+
+Provider Type: ${providerType}
+Visit Type: ${visitType}
+Duration: ${duration} minutes
+Clinical Note: ${noteContent}
+
+Provide CPT codes, ICD-10 codes, and modifiers with medical necessity justification.`,
+    schema: {
+      type: "object",
+      properties: {
+        cpt_codes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              code: { type: "string" },
+              description: { type: "string" },
+              units: { type: "number" },
+              justification: { type: "string" }
+            }
+          }
+        },
+        icd10_codes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              code: { type: "string" },
+              description: { type: "string" },
+              supported_by: { type: "string" }
+            }
+          }
+        },
+        modifiers: { type: "array", items: { type: "string" } },
+        medical_necessity: { type: "string" }
+      }
+    }
+  },
+
+  // Prior Authorization Generation
+  PRIOR_AUTHORIZATION: {
+    version: "1.0",
+    prompt: (diagnosis, treatment, clinicalJustification, patientHistory) => `Generate a prior authorization request.
+
+Diagnosis: ${diagnosis}
+Requested Treatment: ${treatment}
+Clinical Justification: ${clinicalJustification}
+Patient History: ${patientHistory}
+
+Create a compelling prior authorization letter with medical necessity documentation.`,
+    schema: {
+      type: "object",
+      properties: {
+        authorization_letter: { type: "string" },
+        key_justifications: { type: "array", items: { type: "string" } },
+        supporting_evidence: { type: "array", items: { type: "string" } },
+        expected_outcomes: { type: "string" }
+      }
+    }
+  }
+};
+
+/**
+ * Helper Functions
+ */
+
+/**
+ * Get a prompt by name with arguments
+ */
+export const getPrompt = (promptName, ...args) => {
+  const promptConfig = AI_PROMPTS[promptName];
+  if (!promptConfig) {
+    throw new Error(`Prompt "${promptName}" not found`);
+  }
+  return {
+    prompt: promptConfig.prompt(...args),
+    schema: promptConfig.schema,
+    version: promptConfig.version
+  };
+};
+
+/**
+ * Get provider-specific prompt additions
+ */
+export const getProviderPromptAdditions = (providerType) => {
+  const context = AI_PROMPTS.PROVIDER_CONTEXT[providerType] || AI_PROMPTS.PROVIDER_CONTEXT.RN;
+  
+  return `
+PROVIDER-SPECIFIC CONTEXT:
+Provider Type: ${providerType}
+Focus Areas: ${context.focusAreas.join(', ')}
+Documentation Style: ${context.documentationStyle}
+Expected Note Structure: ${context.noteStructure}
+Compliance Standard: ${context.complianceEmphasis}
+
+When generating suggestions, prioritize these care plan elements for ${providerType}:
+${context.suggestedCareElements.map(elem => `- ${elem}`).join('\n')}
+
+Apply this provider's scope of practice and standards throughout the documentation.`;
+};
+
+/**
+ * Get care location specific prompt additions
+ */
+export const getCareSettingPromptAdditions = (serviceType) => {
+  const context = AI_PROMPTS.CARE_SETTING_CONTEXT[serviceType];
+  
+  if (!context) return '';
+  
+  return `
+CARE LOCATION CONTEXT:
+Service Type: ${serviceType}
+Compliance Focus: ${context.complianceEmphasis}
+
+Ensure documentation includes these location-specific elements:
+${context.suggestedElements.map(elem => `- ${elem}`).join('\n')}`;
+};
+
 /**
  * Track prompt usage for analytics and optimization
  */
@@ -590,4 +973,13 @@ export const trackPromptUsage = async (promptName, version, success, responseTim
     console.error('Failed to track prompt usage:', err);
   }
   */
+};
+
+/**
+ * Get all available prompt names for reference
+ */
+export const getAvailablePrompts = () => {
+  return Object.keys(AI_PROMPTS).filter(key => 
+    !['PROVIDER_CONTEXT', 'CARE_SETTING_CONTEXT'].includes(key)
+  );
 };
