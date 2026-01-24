@@ -30,7 +30,8 @@ import {
                               ListTodo,
                               FileText,
                               Download,
-                              TrendingUp } from
+                              TrendingUp,
+                              Building2 } from
                               "lucide-react";
 
 import OfflineIndicator from "../components/mobile/OfflineIndicator";
