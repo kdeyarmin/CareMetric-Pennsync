@@ -7,6 +7,7 @@ import { Building2, Users, TrendingUp, Settings, Brain } from "lucide-react";
 import ProviderPerformanceTable from "../components/enterprise/ProviderPerformanceTable";
 import AgencyAIConfiguration from "../components/enterprise/AgencyAIConfiguration";
 import AgencyAnalyticsDashboard from "../components/enterprise/AgencyAnalyticsDashboard";
+import EnterpriseSetupPanel from "../components/enterprise/EnterpriseSetupPanel";
 
 export default function EnterpriseAdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -155,17 +156,25 @@ export default function EnterpriseAdminDashboard() {
             <AgencyAIConfiguration agencySettings={agencySettings} />
           </TabsContent>
 
-          <TabsContent value="settings">
+          <TabsContent value="settings" className="space-y-6">
+            <EnterpriseSetupPanel 
+              agencySettings={agencySettings}
+              onSetupComplete={() => {
+                // Refresh agency settings
+                window.location.reload();
+              }}
+            />
+            
             <Card>
               <CardHeader>
-                <CardTitle>Agency Settings</CardTitle>
+                <CardTitle>Additional Agency Settings</CardTitle>
                 <CardDescription>
                   Configure agency-wide preferences and policies
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Settings configuration coming soon...
+                  More settings coming soon...
                 </p>
               </CardContent>
             </Card>

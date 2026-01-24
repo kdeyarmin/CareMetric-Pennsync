@@ -21,6 +21,7 @@ import ProviderPracticeInfoManager from "../components/settings/ProviderPractice
 import ProviderSpecializationManager from "../components/settings/ProviderSpecializationManager";
 import BiometricAuth from "../components/auth/BiometricAuth";
 import SecurityAuditLog from "../components/security/SecurityAuditLog";
+import AgencyCodeInput from "../components/settings/AgencyCodeInput";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -400,6 +401,9 @@ export default function Settings() {
 
         {/* Advanced AI Customization */}
         <AdvancedAICustomization currentUser={currentUser} />
+
+        {/* Agency Code Input */}
+        <AgencyCodeInput currentUser={currentUser} />
 
         {/* Offline Sync Manager */}
         <OfflineSyncManager />

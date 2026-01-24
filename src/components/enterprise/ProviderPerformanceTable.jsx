@@ -13,7 +13,7 @@ export default function ProviderPerformanceTable({ providers }) {
   const [selectedProvider, setSelectedProvider] = useState(null);
 
   // Fetch performance data for all providers
-  const { data: performanceData = {} } = useQuery({
+  const { data: performanceData = {}, isLoading } = useQuery({
     queryKey: ['providerPerformance', providers.map(p => p.email)],
     queryFn: async () => {
       const data = {};
@@ -154,12 +154,18 @@ export default function ProviderPerformanceTable({ providers }) {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-100 dark:bg-slate-800">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    Provider
-                  </th>
+            {isLoading ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+                <p className="text-sm text-slate-500 mt-2">Loading provider data...</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-slate-100 dark:bg-slate-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Provider
+                    </th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 dark:text-slate-100">
                     Compliance
                   </th>
@@ -223,10 +229,12 @@ export default function ProviderPerformanceTable({ providers }) {
               </tbody>
             </table>
 
-            {sortedProviders.length === 0 && (
-              <div className="text-center py-8 text-slate-500">
-                No providers found
-              </div>
+              {sortedProviders.length === 0 && (
+                <div className="text-center py-8 text-slate-500">
+                  No providers found
+                </div>
+              )}
+            </table>
             )}
           </div>
         </CardContent>
