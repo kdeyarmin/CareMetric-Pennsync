@@ -78,7 +78,6 @@ export default function SmartNoteAssistant() {
   const [selectedDiagnosis, setSelectedDiagnosis] = useState("");
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [roughNotes, setRoughNotes] = useState("");
-  const [selectedNoteType, setSelectedNoteType] = useState("skilled_nursing_visit");
   const [enhancing, setEnhancing] = useState(false);
   const [enhancedNote, setEnhancedNote] = useState(null);
   const [complianceResults, setComplianceResults] = useState(null);
@@ -600,8 +599,8 @@ export default function SmartNoteAssistant() {
           <ProviderNoteTypeSelector
             providerType={providerType}
             onProviderTypeChange={() => {}} 
-            selectedNoteType={selectedNoteType}
-            onNoteTypeChange={setSelectedNoteType}
+            selectedNoteType={visitType}
+            onNoteTypeChange={setVisitType}
             currentNoteContent={roughNotes}
             showChecklist={roughNotes.length > 50}
           />
@@ -612,8 +611,8 @@ export default function SmartNoteAssistant() {
           <ProviderNoteTypeSelector
             providerType={providerType}
             onProviderTypeChange={() => {}}
-            selectedNoteType={selectedNoteType}
-            onNoteTypeChange={setSelectedNoteType}
+            selectedNoteType={visitType}
+            onNoteTypeChange={setVisitType}
             currentNoteContent={isEditMode ? editedNote : enhancedNote}
             showChecklist={true}
           />
@@ -711,44 +710,21 @@ export default function SmartNoteAssistant() {
                 }
                 </div>
 
-                {/* Visit Type & Diagnosis */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Visit Type *</Label>
-                    <Select value={visitType} onValueChange={setVisitType}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select visit type..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {availableVisitTypes.length > 0 ?
-                      availableVisitTypes.map((vt) =>
-                      <SelectItem key={vt.id} value={vt.id}>
-                              {vt.label}
-                            </SelectItem>
-                      ) :
-                      <SelectItem value="no_types" disabled>
-                            Configure provider type & care setting in Settings
-                          </SelectItem>
-                      }
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label className="text-sm font-medium">Primary Diagnosis *</Label>
-                    <Select value={selectedDiagnosis} onValueChange={setSelectedDiagnosis}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select diagnosis..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {commonDiagnoses.map((diagnosis, idx) =>
+                {/* Diagnosis Selection */}
+                <div>
+                  <Label className="text-sm font-medium">Primary Diagnosis *</Label>
+                  <Select value={selectedDiagnosis} onValueChange={setSelectedDiagnosis}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select diagnosis..." />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {commonDiagnoses.map((diagnosis, idx) =>
                       <SelectItem key={idx} value={diagnosis}>
                             {diagnosis}
                           </SelectItem>
                       )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Template Selector */}
