@@ -5,116 +5,104 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
-    if (user?.role !== 'admin') {
-      return Response.json({ error: 'Unauthorized' }, { status: 403 });
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('Processing AI feedback for model improvement...');
+    const { output_type, period_days = 30 } = await req.json();
 
-    // Get unprocessed feedback
-    const unprocessedFeedback = await base44.asServiceRole.entities.AIFeedback.filter({
-      is_processed: false
-    });
+    // Aggregate feedback for specific output type
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - period_days);
 
-    console.log(`Found ${unprocessedFeedback.length} unprocessed feedback items`);
+    const allFeedback = await base44.asServiceRole.entities.AIFeedback.filter(
+      {
+        user_email: user.email,
+        output_type: output_type || undefined
+      },
+      '-created_date',
+      200
+    );
 
-    // Analyze patterns
-    const feedbackAnalysis = {
-      by_type: {},
-      by_action: {},
-      avg_ratings: {},
-      improvement_areas: []
-    };
+    const recentFeedback = allFeedback.filter(
+      f => new Date(f.created_date) >= cutoffDate
+    );
 
-    unprocessedFeedback.forEach(feedback => {
-      // Track by suggestion type
-      if (!feedbackAnalysis.by_type[feedback.ai_suggestion_type]) {
-        feedbackAnalysis.by_type[feedback.ai_suggestion_type] = {
-          count: 0,
-          accepted: 0,
-          edited: 0,
-          rejected: 0
-        };
-      }
-      feedbackAnalysis.by_type[feedback.ai_suggestion_type].count++;
-      feedbackAnalysis.by_type[feedback.ai_suggestion_type][feedback.user_action]++;
+    // Calculate metrics
+    const totalFeedback = recentFeedback.length;
+    const helpfulCount = recentFeedback.filter(f => f.rating === 'helpful').length;
+    const notHelpfulCount = recentFeedback.filter(f => f.rating === 'not_helpful').length;
+    const flaggedCount = recentFeedback.filter(f => f.rating === 'flagged').length;
 
-      // Calculate average ratings
-      if (!feedbackAnalysis.avg_ratings[feedback.ai_suggestion_type]) {
-        feedbackAnalysis.avg_ratings[feedback.ai_suggestion_type] = {
-          helpful: [],
-          accuracy: []
-        };
-      }
-      if (feedback.helpful_rating) {
-        feedbackAnalysis.avg_ratings[feedback.ai_suggestion_type].helpful.push(feedback.helpful_rating);
-      }
-      if (feedback.accuracy_rating) {
-        feedbackAnalysis.avg_ratings[feedback.ai_suggestion_type].accuracy.push(feedback.accuracy_rating);
-      }
-    });
+    const helpfulRate = totalFeedback > 0 ? (helpfulCount / totalFeedback) * 100 : 0;
 
-    // Calculate averages
-    Object.keys(feedbackAnalysis.avg_ratings).forEach(type => {
-      const helpful = feedbackAnalysis.avg_ratings[type].helpful;
-      const accuracy = feedbackAnalysis.avg_ratings[type].accuracy;
+    // Analyze common issues from flagged/not helpful feedback
+    const negativeWithText = recentFeedback.filter(
+      f => (f.rating === 'flagged' || f.rating === 'not_helpful') && f.feedback_text
+    );
 
-      feedbackAnalysis.avg_ratings[type] = {
-        helpful_avg: helpful.length > 0 ? (helpful.reduce((a, b) => a + b) / helpful.length).toFixed(2) : null,
-        accuracy_avg: accuracy.length > 0 ? (accuracy.reduce((a, b) => a + b) / accuracy.length).toFixed(2) : null
-      };
-
-      // Flag for improvement if rating is below 3
-      if ((feedbackAnalysis.avg_ratings[type].helpful_avg && feedbackAnalysis.avg_ratings[type].helpful_avg < 3) ||
-          (feedbackAnalysis.avg_ratings[type].accuracy_avg && feedbackAnalysis.avg_ratings[type].accuracy_avg < 3)) {
-        feedbackAnalysis.improvement_areas.push({
-          suggestion_type: type,
-          issue: 'Low user satisfaction ratings',
-          helpful_avg: feedbackAnalysis.avg_ratings[type].helpful_avg,
-          accuracy_avg: feedbackAnalysis.avg_ratings[type].accuracy_avg,
-          recommended_action: 'Review prompt engineering and model parameters'
-        });
-      }
-    });
-
-    // Mark feedback as processed
-    for (const feedback of unprocessedFeedback) {
+    let commonIssues = [];
+    if (negativeWithText.length > 0) {
+      // Use AI to extract patterns from negative feedback
+      const feedbackTexts = negativeWithText.map(f => f.feedback_text).join('\n---\n');
+      
       try {
-        await base44.asServiceRole.entities.AIFeedback.update(feedback.id, {
-          is_processed: true
+        const analysis = await base44.integrations.Core.InvokeLLM({
+          prompt: `Analyze these provider feedback comments about AI suggestions and identify the top 3-5 common issues or patterns:
+
+${feedbackTexts}
+
+Extract recurring themes, complaints, or improvement areas.`,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              common_issues: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    issue: { type: "string" },
+                    frequency: { type: "string" },
+                    suggested_fix: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
         });
-      } catch (e) {
-        console.error(`Error marking feedback ${feedback.id} as processed:`, e);
+
+        commonIssues = analysis.common_issues;
+      } catch (error) {
+        console.error('Error analyzing feedback:', error);
       }
     }
 
-    // Create admin task if improvements needed
-    if (feedbackAnalysis.improvement_areas.length > 0) {
-      try {
-        await base44.asServiceRole.entities.Task.create({
-          title: 'AI Model Improvement Required',
-          description: `Analysis of ${unprocessedFeedback.length} user feedback items indicates ${feedbackAnalysis.improvement_areas.length} areas for AI model improvement. Details: ${JSON.stringify(feedbackAnalysis.improvement_areas)}`,
-          priority: 'medium',
-          status: 'pending',
-          assigned_to: user.email,
-          type: 'document',
-          source: 'ai_generated'
-        });
-      } catch (e) {
-        console.error('Error creating improvement task:', e);
-      }
-    }
+    // Track improvement over time
+    const oldFeedback = allFeedback.filter(
+      f => new Date(f.created_date) < cutoffDate
+    );
+    const oldHelpfulRate = oldFeedback.length > 0 
+      ? (oldFeedback.filter(f => f.rating === 'helpful').length / oldFeedback.length) * 100 
+      : 0;
 
-    console.log('✅ AI feedback processing complete');
+    const improvementTrend = helpfulRate - oldHelpfulRate;
 
     return Response.json({
-      success: true,
-      feedback_processed: unprocessedFeedback.length,
-      analysis: feedbackAnalysis
+      summary: {
+        total_feedback: totalFeedback,
+        helpful_count: helpfulCount,
+        not_helpful_count: notHelpfulCount,
+        flagged_count: flaggedCount,
+        helpful_rate: Math.round(helpfulRate),
+        improvement_trend: Math.round(improvementTrend)
+      },
+      common_issues: commonIssues,
+      recommendations: commonIssues.map(issue => issue.suggested_fix),
+      period_days
     });
 
   } catch (error) {
-    console.error('Error in processAIFeedback:', error);
+    console.error('Error processing AI feedback:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

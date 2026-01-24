@@ -9,6 +9,7 @@ import { GraduationCap, Brain, CheckCircle, AlertCircle, Loader2, ExternalLink, 
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import AIOutputRating from "@/components/feedback/AIOutputRating";
 
 export default function ComplianceBasedTrainingRecommender({ 
   complianceResults, 
@@ -270,37 +271,67 @@ For each recommendation, provide:
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mt-3">
-                    <Link to={createPageUrl('MyTraining')} className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full">
-                        <GraduationCap className="w-4 h-4 mr-1" />
-                        Start Training
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const existing = await base44.entities.TrainingRecommendation.filter({
-                            nurse_email: nurseEmail,
-                            recommendation_text: rec.training_topic,
-                            addressed: false
-                          });
-                          
-                          if (existing.length > 0) {
-                            await base44.entities.TrainingRecommendation.update(existing[0].id, {
-                              addressed: true
+                  <div className="space-y-2 mt-3">
+                    <div className="flex gap-2">
+                      <Link to={createPageUrl('MyTraining')} className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full">
+                          <GraduationCap className="w-4 h-4 mr-1" />
+                          Start Training
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const existing = await base44.entities.TrainingRecommendation.filter({
+                              nurse_email: nurseEmail,
+                              recommendation_text: rec.training_topic,
+                              addressed: false
                             });
-                            toast.success('Marked as addressed');
+                            
+                            if (existing.length > 0) {
+                              await base44.entities.TrainingRecommendation.update(existing[0].id, {
+                                addressed: true
+                              });
+                              toast.success('Marked as addressed');
+                            }
+                          } catch (error) {
+                            console.error(error);
                           }
-                        } catch (error) {
-                          console.error(error);
-                        }
+                        }}
+                      >
+                        Mark as Done
+                      </Button>
+                    </div>
+
+                    <AIOutputRating
+                      outputType="training_recommendation"
+                      outputContent={rec.training_topic}
+                      outputMetadata={{
+                        reason: rec.reason,
+                        urgency: rec.urgency,
+                        estimated_minutes: rec.estimated_minutes,
+                        visit_type: visitType,
+                        provider_type: providerType
                       }}
-                    >
-                      Mark as Done
-                    </Button>
+                      userEmail={nurseEmail}
+                      onFeedbackSubmitted={(rating, feedback) => {
+                        // Update recommendation with feedback
+                        base44.entities.TrainingRecommendation.filter({
+                          nurse_email: nurseEmail,
+                          recommendation_text: rec.training_topic,
+                          addressed: false
+                        }).then(existing => {
+                          if (existing.length > 0) {
+                            base44.entities.TrainingRecommendation.update(existing[0].id, {
+                              feedback_rating: rating,
+                              feedback_text: feedback
+                            });
+                          }
+                        });
+                      }}
+                    />
                   </div>
                 </div>
               ))}

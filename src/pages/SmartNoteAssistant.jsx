@@ -71,6 +71,7 @@ import OfflineNoteCapture from "@/components/mobile/OfflineNoteCapture";
 import { ResolveComplianceIssue, ResolveDocumentationGap, ResolveQualitySuggestion, ResolveAllIssues } from "@/components/smartNote/OneClickResolvers";
 import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
 import ComplianceBasedTrainingRecommender from "@/components/training/ComplianceBasedTrainingRecommender";
+import AIOutputRating from "@/components/feedback/AIOutputRating";
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -111,6 +112,7 @@ export default function SmartNoteAssistant() {
   const [showPreferences, setShowPreferences] = useState(false);
   const [suggestedEducation, setSuggestedEducation] = useState([]);
   const [providedEducation, setProvidedEducation] = useState([]);
+  const [noteRating, setNoteRating] = useState(null);
   const location = useLocation();
   const { isOnline, saveOfflineNote } = useOfflineNotes();
 
@@ -533,7 +535,7 @@ export default function SmartNoteAssistant() {
             compliance_issues_after: newComplianceResults
           });
 
-          // New enhanced learning system
+          // New enhanced learning system with explicit rating
           await recordEditForLearning({
             originalText: enhancedNote,
             editedText: editedNote,
@@ -543,7 +545,9 @@ export default function SmartNoteAssistant() {
               care_setting: careSetting,
               section: 'full_note',
               compliance_score: result.compliance_check?.compliance_score || 0,
-              quality_score: result.quality_analysis?.overall_quality_score || 0
+              quality_score: result.quality_analysis?.overall_quality_score || 0,
+              explicit_rating: noteRating?.rating || null,
+              explicit_feedback: noteRating?.feedback || null
             }
           });
           console.log('✅ Enhanced learning from user edits complete');
@@ -901,7 +905,12 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
             {/* Results Page */}
             <div className="space-y-4">
               {/* Clinical Insights Panel */}
-              <ClinicalInsightsPanel insights={clinicalInsights} isLoading={loadingInsights} />
+              <ClinicalInsightsPanel 
+                insights={clinicalInsights} 
+                isLoading={loadingInsights}
+                visitType={visitType}
+                providerType={providerType}
+              />
 
               {/* AI Care Plan Draft Generator - Excludes Physicians */}
               {patientData && enhancedNote && 
@@ -962,12 +971,44 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
               {/* Enhanced Note Display */}
               <Card className="border-green-300 bg-green-50 dark:bg-green-950">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="flex items-center gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-green-600" />
-                      {isEditMode ? 'Edit Note' : 'Enhanced Compliant Note'}
-                    </span>
+               <CardHeader>
+                 <CardTitle className="flex items-center justify-between flex-wrap gap-2">
+                   <div className="flex flex-col gap-2 flex-1">
+                     <span className="flex items-center gap-2">
+                       <CheckCircle2 className="w-5 h-5 text-green-600" />
+                       {isEditMode ? 'Edit Note' : 'Enhanced Compliant Note'}
+                     </span>
+                     {!isEditMode && currentUser?.email && (
+                       <AIOutputRating
+                         outputType="note_enhancement"
+                         outputContent={enhancedNote}
+                         outputMetadata={{
+                           visit_type: visitType,
+                           diagnosis: selectedDiagnosis,
+                           provider_type: providerType,
+                           compliance_score: complianceResults?.compliance_score,
+                           quality_score: complianceResults?.quality_analysis?.overall_quality_score
+                         }}
+                         userEmail={currentUser.email}
+                         onFeedbackSubmitted={(rating, feedback) => {
+                           setNoteRating({ rating, feedback });
+                           // Learn from explicit feedback
+                           if (rating === 'not_helpful' || rating === 'flagged') {
+                             base44.functions.invoke('learnFromUserEdits', {
+                               original_enhanced_note: enhancedNote,
+                               edited_note: editedNote || enhancedNote,
+                               visit_type: visitType,
+                               provider_type: providerType,
+                               compliance_issues_before: medicareViolations,
+                               compliance_issues_after: [],
+                               explicit_rating: rating,
+                               explicit_feedback: feedback
+                             }).catch(console.error);
+                           }
+                         }}
+                       />
+                     )}
+                   </div>
                     <div className="flex gap-2">
                       {!isEditMode && (
                         <>
