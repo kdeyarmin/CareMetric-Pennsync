@@ -42,7 +42,7 @@ export default function StripeSubscriptionManager() {
 
   // Fetch all prices for each product
   const { data: pricesByProduct = {}, refetch: refetchPrices } = useQuery({
-    queryKey: ["stripePrices", products],
+    queryKey: ["stripePrices"],
     queryFn: async () => {
       const prices = {};
       for (const product of products) {
@@ -57,7 +57,8 @@ export default function StripeSubscriptionManager() {
       return prices;
     },
     enabled: products.length > 0,
-    staleTime: 0 // Always fetch fresh data
+    staleTime: 0,
+    cacheTime: 0
   });
 
   const handleCreateProduct = async () => {
@@ -193,28 +194,28 @@ export default function StripeSubscriptionManager() {
       return;
     }
 
-    toast.loading("Deleting price...");
+    const toastId = toast.loading("Deleting price...");
     
     try {
       const response = await base44.functions.invoke('stripeDeletePrice', {
         price_id: priceId
       });
 
-      toast.dismiss();
+      console.log('Delete price response:', response);
       
       if (response?.data?.success === true || response?.success === true) {
-        toast.success("Price deleted successfully");
-        // Force complete refetch of prices
+        toast.success("Price deleted successfully", { id: toastId });
+        // Clear cache and force refetch
+        queryClient.resetQueries({ queryKey: ['stripePrices'] });
         await refetchPrices();
       } else {
         const errorMsg = response?.data?.error || response?.error || response?.details || "Failed to delete price";
-        console.error('Delete failed:', errorMsg);
-        toast.error(errorMsg);
+        console.error('Delete failed:', response);
+        toast.error(errorMsg, { id: toastId });
       }
     } catch (error) {
-      toast.dismiss();
       console.error('Delete error:', error);
-      toast.error(error.message || "Failed to delete price");
+      toast.error(error.message || "Failed to delete price", { id: toastId });
     }
   };
 
