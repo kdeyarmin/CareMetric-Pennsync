@@ -13,7 +13,7 @@ export default function UserManagementPage() {
 
   const { data: allUsers = [], isLoading: usersLoading } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list('-created_date', 1000),
+    queryFn: () => base44.asServiceRole.entities.User.list('-created_date', 1000),
     enabled: !!currentUser && currentUser.role === 'admin'
   });
 
