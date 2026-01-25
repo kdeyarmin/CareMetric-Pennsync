@@ -15,16 +15,19 @@ Deno.serve(async (req) => {
 
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
-    const params = { active: true, limit: 100 };
+    const params = { limit: 100 };
     if (product_id) {
       params.product = product_id;
     }
 
     const prices = await stripe.prices.list(params);
+    
+    // Filter to only show active prices
+    const activePrices = prices.data.filter(price => price.active === true);
 
     return Response.json({
       success: true,
-      prices: prices.data
+      prices: activePrices
     });
   } catch (error) {
     console.error('[stripeListPrices] Error:', error.message);
