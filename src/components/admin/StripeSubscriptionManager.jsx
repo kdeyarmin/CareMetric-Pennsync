@@ -41,7 +41,7 @@ export default function StripeSubscriptionManager() {
   });
 
   // Fetch all prices for each product
-  const { data: pricesByProduct = {} } = useQuery({
+  const { data: pricesByProduct = {}, refetch: refetchPrices } = useQuery({
     queryKey: ["stripePrices", products],
     queryFn: async () => {
       const prices = {};
@@ -56,7 +56,8 @@ export default function StripeSubscriptionManager() {
       }
       return prices;
     },
-    enabled: products.length > 0
+    enabled: products.length > 0,
+    staleTime: 0 // Always fetch fresh data
   });
 
   const handleCreateProduct = async () => {
@@ -203,9 +204,8 @@ export default function StripeSubscriptionManager() {
       
       if (response?.data?.success === true || response?.success === true) {
         toast.success("Price deleted successfully");
-        // Invalidate and refetch prices - use refetch pattern to ensure fresh data
-        queryClient.removeQueries({ queryKey: ['stripePrices'] });
-        await refetchProducts();
+        // Force complete refetch of prices
+        await refetchPrices();
       } else {
         const errorMsg = response?.data?.error || response?.error || response?.details || "Failed to delete price";
         console.error('Delete failed:', errorMsg);
@@ -373,7 +373,10 @@ export default function StripeSubscriptionManager() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => refetchProducts()}
+            onClick={async () => {
+              await refetchProducts();
+              await refetchPrices();
+            }}
             disabled={loadingProducts}
             className="gap-2"
           >
