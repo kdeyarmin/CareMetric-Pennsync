@@ -9,6 +9,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SubscriptionPlanSwitcher from '../components/subscription/SubscriptionPlanSwitcher';
+import CustomerPortal from '../components/subscription/CustomerPortal';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_live_51Qr3FJGbdOIAhzqIDXCO08y02eKhABH99Fm3LR5XWrSYbD25zrJ2T3dZHcF2XOGzQOC73vHNLvgVnMnXOuVqbxAF00j7xpRkDv'); 
 
@@ -111,15 +112,22 @@ export default function SubscriptionPlans() {
         </Alert>
       )}
 
-      <Tabs defaultValue={subscription?.status === 'active' ? 'manage' : 'plans'} className="w-full">
-        <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+      <Tabs defaultValue={subscription?.status === 'active' ? 'portal' : 'plans'} className="w-full">
+        <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-3 mb-8">
           <TabsTrigger value="plans">Available Plans</TabsTrigger>
-          <TabsTrigger value="manage" disabled={!subscription || subscription?.status !== 'active'}>
-            Manage Subscription
+          <TabsTrigger value="portal" disabled={!subscription}>
+            My Subscription
+          </TabsTrigger>
+          <TabsTrigger value="switch" disabled={!subscription || subscription?.status !== 'active'}>
+            Switch Plan
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="manage">
+        <TabsContent value="portal">
+          <CustomerPortal currentUser={currentUser} />
+        </TabsContent>
+
+        <TabsContent value="switch">
           <SubscriptionPlanSwitcher currentUser={currentUser} />
         </TabsContent>
 
