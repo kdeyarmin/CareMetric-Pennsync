@@ -223,10 +223,7 @@ export default function AdminDashboard() {
       activeCarePlans: allCarePlans.filter(cp => cp.status === 'active').length,
       completedGoals: allCarePlans.filter(cp => cp.status === 'met').length,
       
-      // AI adoption
-      aiAdoptionRate: allUsers.length > 0
-        ? ((inRangeConversions.map(c => c.nurse_email).filter((v, i, a) => a.indexOf(v) === i).length / allUsers.filter(u => u.is_approved).length) * 100).toFixed(0)
-        : 0
+
     };
   }, [allUsers, allPatients, allVisits, allNoteConversions, allComplianceAudits, allTrainingCompletions, allIncidents, allTasks, allAlerts, allAppointments, allCarePlans, dateRange]);
 
@@ -401,21 +398,7 @@ export default function AdminDashboard() {
     });
   }, [allComplianceAudits]);
 
-  // AI Feature Usage breakdown
-  const aiFeatureUsage = useMemo(() => {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - dateRange);
-    
-    const recentActivity = allActivity.filter(a => new Date(a.created_date) >= cutoffDate);
-    
-    return [
-      { name: "Note Enhancements", value: allNoteConversions.filter(n => new Date(n.created_date) >= cutoffDate).length, color: "#3B82F6" },
-      { name: "Voice Dictation", value: recentActivity.filter(a => a.action === 'voice_dictation_used').length, color: "#8B5CF6" },
-      { name: "AI Care Plans", value: recentActivity.filter(a => a.action === 'ai_care_plan_generated').length, color: "#10B981" },
-      { name: "Compliance Checks", value: allComplianceAudits.filter(a => new Date(a.audit_date) >= cutoffDate).length, color: "#F59E0B" },
-      { name: "Patient Analysis", value: recentActivity.filter(a => a.action === 'ai_patient_analysis').length, color: "#EF4444" }
-    ];
-  }, [allNoteConversions, allActivity, allComplianceAudits, dateRange]);
+
 
   // Visit types breakdown
   const visitTypeData = useMemo(() => {
@@ -561,11 +544,8 @@ export default function AdminDashboard() {
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
           <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.aiAdoptionRate}%</Badge>
-            </div>
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalEnhancements}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">AI Enhancements</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.activeCarePlans}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">Active Care Plans</p>
           </CardContent>
         </Card>
         </motion.div>
@@ -573,8 +553,8 @@ export default function AdminDashboard() {
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
           <CardContent className="p-3">
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalTimeSaved}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">Minutes Saved</p>
+            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalIncidents}</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">Total Incidents</p>
           </CardContent>
         </Card>
         </motion.div>
@@ -1391,53 +1371,6 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          {/* AI Feature Usage */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="w-5 h-5 text-slate-700 dark:text-slate-400" />
-                AI Feature Usage Breakdown
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={aiFeatureUsage}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {aiFeatureUsage.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-3">
-                  {aiFeatureUsage.map((feature, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-200 dark:bg-slate-800 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-4 h-4 rounded"
-                          style={{ backgroundColor: feature.color }}
-                        />
-                        <span className="text-sm font-medium">{feature.name}</span>
-                      </div>
-                      <Badge variant="outline">{feature.value}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Visit Types Chart */}
           <Card>
             <CardHeader>
@@ -1508,26 +1441,26 @@ export default function AdminDashboard() {
             <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-purple-600" />
-                  AI Performance
+                  <GraduationCap className="w-5 h-5 text-purple-600" />
+                  Training Overview
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-white rounded-lg">
-                  <span className="text-sm font-medium">Enhancements Today</span>
-                  <Badge className="bg-purple-600">{stats.totalEnhancements}</Badge>
+                  <span className="text-sm font-medium">Completed Modules</span>
+                  <Badge className="bg-purple-600">{stats.totalTrainingCompleted}</Badge>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-white rounded-lg">
-                  <span className="text-sm font-medium">Time Saved</span>
-                  <Badge className="bg-purple-600">{stats.totalTimeSaved} min</Badge>
+                  <span className="text-sm font-medium">Average Score</span>
+                  <Badge className="bg-purple-600">{stats.avgTrainingScore}%</Badge>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-white rounded-lg">
-                  <span className="text-sm font-medium">AI Adoption</span>
-                  <Badge className="bg-purple-600">{stats.aiAdoptionRate}%</Badge>
+                  <span className="text-sm font-medium">Active Users</span>
+                  <Badge className="bg-purple-600">{stats.activeUsers}</Badge>
                 </div>
-                <Link to={createPageUrl("EnterpriseAdminDashboard")}>
+                <Link to={createPageUrl("AdminTrainingManagement")}>
                   <Button className="w-full bg-purple-600 hover:bg-purple-700">
-                    Configure AI Settings
+                    Manage Training
                   </Button>
                 </Link>
               </CardContent>

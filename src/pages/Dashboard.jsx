@@ -280,17 +280,6 @@ export default function Dashboard() {
         <HighRiskPatientsWidget />
       </div>
 
-      {/* AI Performance Insights */}
-      {currentUser?.credential_type && (
-        <div className="mb-6">
-          <ClinicalStaffPerformanceInsights 
-            providerType={currentUser.credential_type}
-            careSetting={currentUser.service_type || 'home_health'}
-            timeRange={30}
-          />
-        </div>
-      )}
-
       {/* My Tasks Widget */}
       {canAccessWidget('tasks') &&
         <Card className="hover-lift">

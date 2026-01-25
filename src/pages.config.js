@@ -8,6 +8,7 @@ import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdminTrainingManagement from './pages/AdminTrainingManagement';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
+import AgencyCollaboration from './pages/AgencyCollaboration';
 import AgencyDashboard from './pages/AgencyDashboard';
 import AgencyTemplates from './pages/AgencyTemplates';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
@@ -104,17 +105,16 @@ import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
-import Test2FA from './pages/Test2FA';
 import Telehealth from './pages/Telehealth';
 import TelehealthCall from './pages/TelehealthCall';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
+import Test2FA from './pages/Test2FA';
 import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AgencyCollaboration from './pages/AgencyCollaboration';
 import __Layout from './Layout.jsx';
 
 
@@ -129,6 +129,7 @@ export const PAGES = {
     "AdminTrainingManagement": AdminTrainingManagement,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
+    "AgencyCollaboration": AgencyCollaboration,
     "AgencyDashboard": AgencyDashboard,
     "AgencyTemplates": AgencyTemplates,
     "AnalyticsDashboard": AnalyticsDashboard,
@@ -225,17 +226,16 @@ export const PAGES = {
     "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
-    "Test2FA": Test2FA,
     "Telehealth": Telehealth,
     "TelehealthCall": TelehealthCall,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
+    "Test2FA": Test2FA,
     "TestCrossPlatform": TestCrossPlatform,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "AgencyCollaboration": AgencyCollaboration,
 }
 
 export const pagesConfig = {
