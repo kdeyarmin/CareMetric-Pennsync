@@ -44,7 +44,10 @@ import {
   Loader2,
   Clock,
   Download,
-  CreditCard
+  CreditCard,
+  Eye,
+  FileText,
+  Activity
 } from "lucide-react";
 import { format } from "date-fns";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
@@ -55,8 +58,10 @@ export default function UserManagement({ users, currentUser }) {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
+  const [showUserDetailsDialog, setShowUserDetailsDialog] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [editingSubscription, setEditingSubscription] = useState(null);
+  const [viewingUser, setViewingUser] = useState(null);
   const [isDownloadingRoster, setIsDownloadingRoster] = useState(false);
   
   const [inviteData, setInviteData] = useState({
@@ -87,6 +92,24 @@ export default function UserManagement({ users, currentUser }) {
       }
     },
     initialData: [],
+  });
+
+  // Fetch user details (patients, visits, activity)
+  const { data: userDetails, isLoading: userDetailsLoading } = useQuery({
+    queryKey: ['userDetails', viewingUser?.id],
+    queryFn: async () => {
+      if (!viewingUser) return null;
+      
+      const [patients, visits, activity, noteConversions] = await Promise.all([
+        base44.entities.Patient.filter({ created_by: viewingUser.email }).catch(() => []),
+        base44.entities.Visit.filter({ created_by: viewingUser.email }).catch(() => []),
+        base44.entities.UserActivity.filter({ user_email: viewingUser.email }).catch(() => []),
+        base44.entities.NoteConversion.filter({ nurse_email: viewingUser.email }).catch(() => [])
+      ]);
+
+      return { patients, visits, activity, noteConversions };
+    },
+    enabled: !!viewingUser
   });
 
   // Update user mutation
@@ -266,6 +289,11 @@ export default function UserManagement({ users, currentUser }) {
 
   const pendingUsers = users.filter(u => !u.is_approved && u.role !== 'admin');
   const approvedUsers = users.filter(u => u.is_approved || u.role === 'admin');
+
+  const handleViewUserDetails = (user) => {
+    setViewingUser(user);
+    setShowUserDetailsDialog(true);
+  };
 
   const downloadUserRoster = async () => {
     setIsDownloadingRoster(true);
@@ -486,6 +514,14 @@ export default function UserManagement({ users, currentUser }) {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleViewUserDetails(user)}
+                          title="View all details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -884,6 +920,176 @@ export default function UserManagement({ users, currentUser }) {
               ) : (
                 'Save Changes'
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* User Details Dialog */}
+      <Dialog open={showUserDetailsDialog} onOpenChange={setShowUserDetailsDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Complete User Profile
+            </DialogTitle>
+            <DialogDescription>
+              View and manage all information for {viewingUser?.full_name || viewingUser?.email}
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingUser && (
+            <div className="space-y-6 py-4">
+              {/* Basic Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Basic Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-gray-500">Full Name</Label>
+                    <p className="font-medium">{viewingUser.full_name || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Email</Label>
+                    <p className="font-medium">{viewingUser.email}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Phone</Label>
+                    <p className="font-medium">{viewingUser.phone || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Role</Label>
+                    <Badge className={viewingUser.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}>
+                      {viewingUser.role}
+                    </Badge>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Credential Type</Label>
+                    <p className="font-medium">{viewingUser.credential_type || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">License Number</Label>
+                    <p className="font-medium">{viewingUser.license_number || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Care Scope</Label>
+                    <p className="font-medium">{viewingUser.care_scope || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Agency Code</Label>
+                    <p className="font-medium">{viewingUser.agency_code || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">User ID</Label>
+                    <p className="font-mono text-xs">{viewingUser.id}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Joined</Label>
+                    <p className="font-medium">
+                      {viewingUser.created_date ? format(new Date(viewingUser.created_date), 'MMM d, yyyy h:mm a') : 'N/A'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Activity Stats */}
+              {userDetailsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                </div>
+              ) : userDetails && (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Activity className="w-4 h-4" />
+                        Activity Summary
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                          <p className="text-2xl font-bold text-blue-600">{userDetails.patients?.length || 0}</p>
+                          <p className="text-sm text-gray-600">Patients Created</p>
+                        </div>
+                        <div className="bg-green-50 p-4 rounded-lg">
+                          <p className="text-2xl font-bold text-green-600">{userDetails.visits?.length || 0}</p>
+                          <p className="text-sm text-gray-600">Visits Documented</p>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-lg">
+                          <p className="text-2xl font-bold text-purple-600">{userDetails.noteConversions?.length || 0}</p>
+                          <p className="text-sm text-gray-600">AI Notes Generated</p>
+                        </div>
+                        <div className="bg-orange-50 p-4 rounded-lg">
+                          <p className="text-2xl font-bold text-orange-600">{userDetails.activity?.length || 0}</p>
+                          <p className="text-sm text-gray-600">Total Activities</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Recent Activity */}
+                  {userDetails.activity && userDetails.activity.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          Recent Activity (Last 10)
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {userDetails.activity.slice(0, 10).map((act) => (
+                            <div key={act.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                              <div>
+                                <p className="font-medium text-sm">{act.action}</p>
+                                <p className="text-xs text-gray-500">{act.page || 'N/A'}</p>
+                              </div>
+                              <p className="text-xs text-gray-400">
+                                {act.created_date ? format(new Date(act.created_date), 'MMM d, h:mm a') : 'N/A'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              )}
+
+              {/* Quick Actions */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  onClick={() => {
+                    setShowUserDetailsDialog(false);
+                    handleEditUser(viewingUser);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit User
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowUserDetailsDialog(false);
+                    handleManageSubscription(viewingUser);
+                  }}
+                >
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Manage Subscription
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUserDetailsDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
