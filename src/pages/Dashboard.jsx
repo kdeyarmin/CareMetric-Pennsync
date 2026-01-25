@@ -51,12 +51,7 @@ export default function Dashboard() {
   const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
-      try {
-        return await base44.auth.me();
-      } catch (error) {
-        base44.auth.redirectToLogin();
-        return null;
-      }
+      return await base44.auth.me();
     }
   });
 
