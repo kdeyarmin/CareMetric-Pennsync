@@ -330,10 +330,10 @@ export default function NotificationCenter() {
   };
 
   const markAllAsRead = async () => {
-    const itemsToMark = filteredNotifications.filter(n => !n.read);
+    const itemsToMark = notifications.filter(n => !n.read);
     
     if (itemsToMark.length === 0) {
-      toast.info('No unread notifications to mark');
+      toast.info('No unread notifications to dismiss');
       return;
     }
 
@@ -355,28 +355,26 @@ export default function NotificationCenter() {
         await base44.entities.TrainingRecommendation.update(id, { addressed: true });
       }
 
-      // Update tasks to completed
-      for (const id of taskIds) {
-        await base44.entities.Task.update(id, { status: 'completed' });
-      }
+      // Tasks should not be auto-completed - skip them
+      // Users should manually complete tasks
 
       // Update compliance audits status
       for (const id of complianceIds) {
-        await base44.entities.ComplianceAudit.update(id, { status: 'resolved' });
+        await base44.entities.ComplianceAudit.update(id, { status: 'acknowledged' });
       }
 
-      // Update regulatory updates status
+      // Regulatory updates - mark as acknowledged
       for (const id of regulatoryIds) {
-        await base44.entities.RegulatoryUpdate.update(id, { status: 'reviewed' });
+        await base44.entities.RegulatoryUpdate.update(id, { status: 'acknowledged' });
       }
 
-      // Mark announcements as read by updating or filtering
+      // Mark announcements as read
       for (const id of announcementIds) {
         await base44.entities.Announcement.update(id, { is_active: false });
       }
 
       queryClient.invalidateQueries();
-      toast.success(`All ${itemsToMark.length} notifications dismissed`);
+      toast.success(`Dismissed ${itemsToMark.length} notifications`);
     } catch (error) {
       console.error('Error dismissing all notifications:', error);
       toast.error('Failed to dismiss notifications');
