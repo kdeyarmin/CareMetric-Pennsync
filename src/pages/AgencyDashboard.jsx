@@ -15,6 +15,7 @@ import AgencyGuidedSetup from "../components/agency/AgencyGuidedSetup";
 import AgencyRoleBasedAccess from "../components/agency/AgencyRoleBasedAccess";
 import AgencyInvitationManager from "../components/agency/AgencyInvitationManager";
 import AgencyBrandingSettings from "../components/agency/AgencyBrandingSettings";
+import AgencyTrainingReport from "../components/training/AgencyTrainingReport";
 
 export default function AgencyDashboard() {
   const queryClient = useQueryClient();
@@ -161,6 +162,7 @@ export default function AgencyDashboard() {
           <TabsTrigger value="users">👥 Users</TabsTrigger>
           <TabsTrigger value="billing">💳 Billing</TabsTrigger>
           <TabsTrigger value="features">⚙️ Features</TabsTrigger>
+          <TabsTrigger value="training">🎓 Training</TabsTrigger>
           <TabsTrigger value="settings">⚙️ Settings</TabsTrigger>
           <TabsTrigger value="analytics">📊 Analytics</TabsTrigger>
         </TabsList>
@@ -252,6 +254,11 @@ export default function AgencyDashboard() {
         <TabsContent value="features" className="space-y-4">
           <AgencyFeatureSettings agency={agency} />
           <AgencyRoleBasedAccess agency={agency} />
+        </TabsContent>
+
+        {/* Training Tab */}
+        <TabsContent value="training" className="space-y-4">
+          <AgencyTrainingReport agency={agency} />
         </TabsContent>
 
         {/* Settings Tab */}

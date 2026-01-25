@@ -1,152 +1,296 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, FileText, Video, File, CheckCircle2, X } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Upload, FileText, Video, Loader2, Plus, X } from "lucide-react";
 
-export default function TrainingMaterialUploader({ moduleId, existingContent, onUploadComplete }) {
+export default function TrainingMaterialUploader({ onComplete }) {
+  const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState(existingContent || []);
-  const [error, setError] = useState(null);
+  const [module, setModule] = useState({
+    title: "",
+    description: "",
+    category: "clinical",
+    module_type: "ongoing",
+    content_type: "document",
+    duration_minutes: 30,
+    is_required: false,
+    passing_score: 80,
+    quiz_questions: []
+  });
+  const [newQuestion, setNewQuestion] = useState({
+    question: "",
+    options: ["", "", "", ""],
+    correct_answer: 0,
+    explanation: ""
+  });
 
-  const handleFileUpload = async (file, fileType) => {
+  const createModuleMutation = useMutation({
+    mutationFn: async (data) => {
+      await base44.entities.TrainingModule.create(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trainingModules'] });
+      toast.success('Training module created');
+      onComplete && onComplete();
+    }
+  });
+
+  const handleFileUpload = async (file, type) => {
     setUploading(true);
-    setError(null);
-
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       
-      const fileData = {
-        url: file_url,
-        name: file.name,
-        type: fileType,
-        size: file.size,
-        uploaded_at: new Date().toISOString()
-      };
-
-      const updated = [...uploadedFiles, fileData];
-      setUploadedFiles(updated);
-      onUploadComplete?.(updated);
-    } catch (err) {
-      console.error('Upload failed:', err);
-      setError('Upload failed. Please try again.');
+      if (type === 'video') {
+        setModule({ ...module, content: { ...module.content, video_url: file_url } });
+      } else {
+        setModule({ ...module, content: { ...module.content, document_url: file_url } });
+      }
+      toast.success('File uploaded successfully');
+    } catch (error) {
+      toast.error('Failed to upload file');
+    } finally {
+      setUploading(false);
     }
-
-    setUploading(false);
   };
 
-  const handleRemoveFile = (index) => {
-    const updated = uploadedFiles.filter((_, i) => i !== index);
-    setUploadedFiles(updated);
-    onUploadComplete?.(updated);
+  const addQuestion = () => {
+    if (!newQuestion.question) return;
+    
+    setModule({
+      ...module,
+      quiz_questions: [...(module.quiz_questions || []), newQuestion]
+    });
+    setNewQuestion({
+      question: "",
+      options: ["", "", "", ""],
+      correct_answer: 0,
+      explanation: ""
+    });
   };
 
-  const getFileIcon = (type) => {
-    if (type === 'video') return <Video className="w-5 h-5 text-purple-600" />;
-    if (type === 'document') return <FileText className="w-5 h-5 text-blue-600" />;
-    return <File className="w-5 h-5 text-gray-600" />;
+  const removeQuestion = (index) => {
+    setModule({
+      ...module,
+      quiz_questions: module.quiz_questions.filter((_, i) => i !== index)
+    });
+  };
+
+  const handleSubmit = () => {
+    if (!module.title) {
+      toast.error('Please enter a title');
+      return;
+    }
+    
+    createModuleMutation.mutate({
+      ...module,
+      content: {
+        ...module.content,
+        quiz_questions: module.quiz_questions
+      }
+    });
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Upload className="w-4 h-4" />
-          Training Materials
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {error && (
-          <Alert className="bg-red-50 border-red-200">
-            <AlertDescription className="text-sm text-red-800">{error}</AlertDescription>
-          </Alert>
-        )}
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Create Training Module</CardTitle>
+          <CardDescription>Upload training materials and create quizzes</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Title *</Label>
+              <Input
+                value={module.title}
+                onChange={(e) => setModule({ ...module, title: e.target.value })}
+                placeholder="HIPAA Compliance Training"
+              />
+            </div>
+            <div>
+              <Label>Category</Label>
+              <Select value={module.category} onValueChange={(v) => setModule({ ...module, category: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="clinical">Clinical</SelectItem>
+                  <SelectItem value="documentation">Documentation</SelectItem>
+                  <SelectItem value="compliance">Compliance</SelectItem>
+                  <SelectItem value="safety">Safety</SelectItem>
+                  <SelectItem value="technology">Technology</SelectItem>
+                  <SelectItem value="specialty">Specialty</SelectItem>
+                  <SelectItem value="onboarding">Onboarding</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-        {/* Upload Areas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Video Upload */}
-          <div className="border-2 border-dashed border-purple-300 rounded-lg p-4 text-center hover:bg-purple-50 transition-colors">
-            <input
-              type="file"
-              id="video-upload"
-              className="hidden"
-              accept="video/*"
-              onChange={(e) => {
-                const file = e.target.files[0];
-                if (file) handleFileUpload(file, 'video');
-              }}
-              disabled={uploading}
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              value={module.description}
+              onChange={(e) => setModule({ ...module, description: e.target.value })}
+              rows={2}
             />
-            <label htmlFor="video-upload" className="cursor-pointer">
-              <Video className="w-10 h-10 text-purple-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-gray-900">Upload Video</p>
-              <p className="text-xs text-gray-500 mt-1">MP4, WebM, etc.</p>
-            </label>
           </div>
 
-          {/* Document Upload */}
-          <div className="border-2 border-dashed border-blue-300 rounded-lg p-4 text-center hover:bg-blue-50 transition-colors">
-            <input
-              type="file"
-              id="document-upload"
-              className="hidden"
-              accept=".pdf,.doc,.docx,.ppt,.pptx"
-              onChange={(e) => {
-                const file = e.target.files[0];
-                if (file) handleFileUpload(file, 'document');
-              }}
-              disabled={uploading}
-            />
-            <label htmlFor="document-upload" className="cursor-pointer">
-              <FileText className="w-10 h-10 text-blue-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-gray-900">Upload Document</p>
-              <p className="text-xs text-gray-500 mt-1">PDF, DOC, PPT, etc.</p>
-            </label>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label>Content Type</Label>
+              <Select value={module.content_type} onValueChange={(v) => setModule({ ...module, content_type: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="video">Video</SelectItem>
+                  <SelectItem value="document">Document</SelectItem>
+                  <SelectItem value="quiz">Quiz Only</SelectItem>
+                  <SelectItem value="mixed">Mixed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Duration (minutes)</Label>
+              <Input
+                type="number"
+                value={module.duration_minutes}
+                onChange={(e) => setModule({ ...module, duration_minutes: parseInt(e.target.value) })}
+              />
+            </div>
+            <div>
+              <Label>Passing Score (%)</Label>
+              <Input
+                type="number"
+                value={module.passing_score}
+                onChange={(e) => setModule({ ...module, passing_score: parseInt(e.target.value) })}
+              />
+            </div>
           </div>
-        </div>
 
-        {uploading && (
-          <div className="text-center py-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Uploading...</p>
-          </div>
-        )}
+          {/* File Uploads */}
+          {(module.content_type === 'video' || module.content_type === 'mixed') && (
+            <div>
+              <Label>Upload Video</Label>
+              <Input
+                type="file"
+                accept="video/*"
+                onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0], 'video')}
+                disabled={uploading}
+              />
+            </div>
+          )}
 
-        {/* Uploaded Files List */}
-        {uploadedFiles.length > 0 && (
-          <div className="space-y-2">
-            <Label className="text-xs text-gray-500">Uploaded Materials ({uploadedFiles.length})</Label>
-            {uploadedFiles.map((file, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  {getFileIcon(file.type)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {file.type} • {(file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+          {(module.content_type === 'document' || module.content_type === 'mixed') && (
+            <div>
+              <Label>Upload Document</Label>
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx,.ppt,.pptx"
+                onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0], 'document')}
+                disabled={uploading}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Quiz Builder */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Quiz Questions</CardTitle>
+          <CardDescription>Add quiz questions to assess understanding</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {module.quiz_questions?.map((q, idx) => (
+            <div key={idx} className="p-3 bg-slate-50 rounded border">
+              <div className="flex justify-between items-start mb-2">
+                <p className="font-medium text-sm">{idx + 1}. {q.question}</p>
+                <Button size="sm" variant="ghost" onClick={() => removeQuestion(idx)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="text-xs text-slate-600 space-y-1">
+                {q.options.map((opt, i) => (
+                  <div key={i} className={i === q.correct_answer ? "text-green-700 font-medium" : ""}>
+                    {String.fromCharCode(65 + i)}. {opt}
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleRemoveFile(idx)}
-                    className="text-red-600 hover:bg-red-50"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div className="space-y-3 p-4 border-2 border-dashed rounded">
+            <div>
+              <Label>Question</Label>
+              <Input
+                value={newQuestion.question}
+                onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })}
+                placeholder="What is the primary purpose of HIPAA?"
+              />
+            </div>
+            {newQuestion.options.map((opt, idx) => (
+              <div key={idx}>
+                <Label>Option {String.fromCharCode(65 + idx)}</Label>
+                <Input
+                  value={opt}
+                  onChange={(e) => {
+                    const newOpts = [...newQuestion.options];
+                    newOpts[idx] = e.target.value;
+                    setNewQuestion({ ...newQuestion, options: newOpts });
+                  }}
+                />
               </div>
             ))}
+            <div>
+              <Label>Correct Answer</Label>
+              <Select 
+                value={newQuestion.correct_answer.toString()} 
+                onValueChange={(v) => setNewQuestion({ ...newQuestion, correct_answer: parseInt(v) })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">A</SelectItem>
+                  <SelectItem value="1">B</SelectItem>
+                  <SelectItem value="2">C</SelectItem>
+                  <SelectItem value="3">D</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={addQuestion} size="sm" variant="outline" className="w-full">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Question
+            </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          <Button 
+            onClick={handleSubmit} 
+            disabled={createModuleMutation.isPending || uploading}
+            className="w-full bg-blue-600 hover:bg-blue-700"
+          >
+            {createModuleMutation.isPending || uploading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                {uploading ? 'Uploading...' : 'Creating...'}
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4 mr-2" />
+                Create Training Module
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

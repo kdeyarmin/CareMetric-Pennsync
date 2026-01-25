@@ -8,6 +8,8 @@ import AdminTrainingAssignment from "../components/training/AdminTrainingAssignm
 import TrainingProgressDashboard from "../components/training/TrainingProgressDashboard";
 
 export default function AdminTrainingManagement() {
+  const [showUploader, setShowUploader] = useState(false);
+  
   const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
