@@ -234,8 +234,14 @@ export default function Dashboard() {
   }
 
   if (!currentUser) {
-    base44.auth.redirectToLogin();
-    return null;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-2">Not Authenticated</h2>
+          <p className="text-gray-600">Please log in to access the dashboard.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
