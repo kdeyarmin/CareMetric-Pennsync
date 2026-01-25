@@ -203,9 +203,8 @@ export default function StripeSubscriptionManager() {
       
       if (response?.data?.success === true || response?.success === true) {
         toast.success("Price deleted successfully");
-        // Invalidate both queries to force refetch
-        queryClient.invalidateQueries({ queryKey: ['stripeProducts'] });
-        queryClient.invalidateQueries({ queryKey: ['stripePrices'] });
+        // Invalidate and refetch prices - use refetch pattern to ensure fresh data
+        queryClient.removeQueries({ queryKey: ['stripePrices'] });
         await refetchProducts();
       } else {
         const errorMsg = response?.data?.error || response?.error || response?.details || "Failed to delete price";
