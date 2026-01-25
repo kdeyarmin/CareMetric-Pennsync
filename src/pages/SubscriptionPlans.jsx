@@ -7,6 +7,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SubscriptionPlanSwitcher from '../components/subscription/SubscriptionPlanSwitcher';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_live_51Qr3FJGbdOIAhzqIDXCO08y02eKhABH99Fm3LR5XWrSYbD25zrJ2T3dZHcF2XOGzQOC73vHNLvgVnMnXOuVqbxAF00j7xpRkDv'); 
 
@@ -18,6 +20,28 @@ export default function SubscriptionPlans() {
     // Check if running in iframe
     setIsInIframe(window.self !== window.top);
   }, []);
+
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: async () => {
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        return null;
+      }
+    }
+  });
+
+  const { data: subscription } = useQuery({
+    queryKey: ['userSubscription', currentUser?.email],
+    queryFn: async () => {
+      const subs = await base44.entities.Subscription.filter({ 
+        user_email: currentUser.email 
+      });
+      return subs[0];
+    },
+    enabled: !!currentUser?.email
+  });
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['subscriptionSettings'],
@@ -74,9 +98,9 @@ export default function SubscriptionPlans() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-4xl font-bold text-center mb-4">Our Plans</h1>
-      <p className="text-center text-gray-600 mb-8">Choose the plan that's right for you.</p>
+    <div className="p-8 max-w-6xl mx-auto">
+      <h1 className="text-4xl font-bold text-center mb-4">Subscription Plans</h1>
+      <p className="text-center text-gray-600 mb-8">Manage your subscription or choose a new plan</p>
 
       {isInIframe && (
         <Alert className="mb-8 border-amber-200 bg-amber-50">
@@ -86,6 +110,20 @@ export default function SubscriptionPlans() {
           </AlertDescription>
         </Alert>
       )}
+
+      <Tabs defaultValue={subscription?.status === 'active' ? 'manage' : 'plans'} className="w-full">
+        <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+          <TabsTrigger value="plans">Available Plans</TabsTrigger>
+          <TabsTrigger value="manage" disabled={!subscription || subscription?.status !== 'active'}>
+            Manage Subscription
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="manage">
+          <SubscriptionPlanSwitcher currentUser={currentUser} />
+        </TabsContent>
+
+        <TabsContent value="plans">
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
         {plans.map((plan) => (
@@ -128,6 +166,8 @@ export default function SubscriptionPlans() {
           </Card>
         ))}
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
