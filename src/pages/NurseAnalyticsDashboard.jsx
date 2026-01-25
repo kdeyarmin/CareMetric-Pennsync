@@ -130,7 +130,7 @@ export default function NurseAnalyticsDashboard() {
   const featureUsage = React.useMemo(() => {
     const usage = {};
     userActivity.forEach(activity => {
-      if (activity.details?.ai_utilization || activity.details?.feature) {
+      if (activity.details?.feature) {
         const feature = activity.details.feature || activity.action;
         usage[feature] = (usage[feature] || 0) + 1;
       }
@@ -145,11 +145,8 @@ export default function NurseAnalyticsDashboard() {
       .sort((a, b) => b.count - a.count);
 
     const total = chartData.reduce((sum, item) => sum + item.count, 0);
-    const totalActions = userActivity.length;
-    const aiActions = userActivity.filter(a => a.details?.ai_utilization || a.details?.feature).length;
-    const adoptionRate = totalActions > 0 ? Math.round((aiActions / totalActions) * 100) : 0;
 
-    return { chartData, total, adoptionRate };
+    return { chartData, total };
   }, [userActivity, noteConversions]);
 
   return (
@@ -220,11 +217,11 @@ export default function NurseAnalyticsDashboard() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">AI Adoption</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{featureUsage.adoptionRate}%</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">Of your workflow</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">Total Visits</p>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{visits.length}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Last {dateRange} days</p>
                 </div>
-                <Sparkles className="w-10 h-10 text-slate-600 dark:text-slate-400" />
+                <Calendar className="w-10 h-10 text-slate-600 dark:text-slate-400" />
               </div>
             </CardContent>
           </Card>
@@ -244,7 +241,7 @@ export default function NurseAnalyticsDashboard() {
           </TabsTrigger>
           <TabsTrigger value="ai-usage" className="gap-2">
             <Sparkles className="w-4 h-4" />
-            <span className="hidden sm:inline">AI Usage</span>
+            <span className="hidden sm:inline">Feature Usage</span>
           </TabsTrigger>
           <TabsTrigger value="coaching" className="gap-2">
             <Brain className="w-4 h-4" />
@@ -272,7 +269,7 @@ export default function NurseAnalyticsDashboard() {
           />
         </TabsContent>
 
-        {/* AI Feature Usage Tab */}
+        {/* Feature Usage Tab */}
         <TabsContent value="ai-usage">
           <AIFeatureUsageStats
             userActivity={userActivity}
@@ -280,7 +277,7 @@ export default function NurseAnalyticsDashboard() {
           />
         </TabsContent>
 
-        {/* AI Coaching Tab */}
+        {/* Coaching Tab */}
         <TabsContent value="coaching">
           <PersonalizedCoachingInsights
             nurseEmail={currentUser?.email}

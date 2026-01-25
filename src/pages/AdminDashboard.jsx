@@ -720,7 +720,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
             <TabsTrigger value="security" className="text-xs sm:text-sm py-2 whitespace-nowrap">🔒 Security</TabsTrigger>
             <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
-            <TabsTrigger value="ai-insights" className="text-xs sm:text-sm py-2 whitespace-nowrap">🤖 AI Insights</TabsTrigger>
+
             <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">⚡ System</TabsTrigger>
             <TabsTrigger value="activity" className="text-xs sm:text-sm py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
             <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">📥 Export</TabsTrigger>
@@ -1756,15 +1756,7 @@ export default function AdminDashboard() {
           <SubscriptionPricingManager />
         </TabsContent>
 
-        {/* AI Insights Tab */}
-        <TabsContent value="ai-insights" className="space-y-6">
-          <AIInsightsPanel />
-        </TabsContent>
 
-        {/* AI Feedback Tab */}
-        <TabsContent value="ai-feedback" className="space-y-6">
-          <AIFeedbackAnalytics />
-        </TabsContent>
 
         {/* Performance Tab - Individual Nurse Performance */}
         <TabsContent value="performance" className="space-y-6">

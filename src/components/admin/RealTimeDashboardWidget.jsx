@@ -64,10 +64,9 @@ export default function RealTimeDashboardWidget({ stats }) {
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
             <FileText className="w-6 h-6 text-purple-600" />
-            <TrendIndicator value={trends.enhancements} />
           </div>
           <p className="text-2xl font-bold text-slate-900">{liveStats.totalEnhancements}</p>
-          <p className="text-xs text-slate-600">AI Enhancements</p>
+          <p className="text-xs text-slate-600">Total Enhancements</p>
         </CardContent>
       </Card>
 
