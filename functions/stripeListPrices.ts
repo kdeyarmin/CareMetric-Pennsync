@@ -21,13 +21,10 @@ Deno.serve(async (req) => {
     }
 
     const prices = await stripe.prices.list(params);
-    
-    // Filter to only show active prices
-    const activePrices = prices.data.filter(price => price.active === true);
 
     return Response.json({
       success: true,
-      prices: activePrices
+      prices: prices.data
     });
   } catch (error) {
     console.error('[stripeListPrices] Error:', error.message);
