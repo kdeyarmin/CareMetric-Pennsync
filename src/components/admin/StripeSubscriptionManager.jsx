@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 
 export default function StripeSubscriptionManager() {
+  const queryClient = useQueryClient();
   const [newProduct, setNewProduct] = useState({ name: "", description: "" });
   const [newPrice, setNewPrice] = useState({ 
     productId: "", 
@@ -202,6 +203,9 @@ export default function StripeSubscriptionManager() {
       
       if (response?.data?.success === true || response?.success === true) {
         toast.success("Price deleted successfully");
+        // Invalidate both queries to force refetch
+        queryClient.invalidateQueries({ queryKey: ['stripeProducts'] });
+        queryClient.invalidateQueries({ queryKey: ['stripePrices'] });
         await refetchProducts();
       } else {
         const errorMsg = response?.data?.error || response?.error || response?.details || "Failed to delete price";
