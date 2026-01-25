@@ -48,7 +48,8 @@ export default function StripeSubscriptionManager() {
       for (const product of products) {
         try {
           const response = await base44.functions.invoke('stripeListPrices', { product_id: product.id });
-          prices[product.id] = response?.data?.prices || [];
+          // Filter out inactive/deleted prices
+          prices[product.id] = (response?.data?.prices || []).filter(p => p.active !== false);
         } catch (error) {
           console.error(`Error fetching prices for ${product.id}:`, error);
           prices[product.id] = [];
