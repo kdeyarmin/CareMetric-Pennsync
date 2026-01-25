@@ -16,6 +16,7 @@ import AgencyRoleBasedAccess from "../components/agency/AgencyRoleBasedAccess";
 import AgencyInvitationManager from "../components/agency/AgencyInvitationManager";
 import AgencyBrandingSettings from "../components/agency/AgencyBrandingSettings";
 import AgencyTrainingReport from "../components/training/AgencyTrainingReport";
+import AgencyAnalyticsDashboard from "../components/agency/AgencyAnalyticsDashboard";
 
 export default function AgencyDashboard() {
   const queryClient = useQueryClient();
@@ -269,47 +270,7 @@ export default function AgencyDashboard() {
 
         {/* Analytics Tab */}
         <TabsContent value="analytics" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5" />
-                Usage Analytics
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-medium">Seat Utilization</span>
-                    <span className="text-sm text-slate-600">{agencyUsers.length} / {agency.max_users}</span>
-                  </div>
-                  <div className="w-full bg-slate-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full"
-                      style={{ width: `${Math.min(utilizationPercent, 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 pt-4">
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <p className="text-2xl font-bold text-slate-900">{agencyUsers.length}</p>
-                    <p className="text-xs text-slate-600">Total Users</p>
-                  </div>
-                  <div className="text-center p-4 bg-slate-50 rounded-lg">
-                    <p className="text-2xl font-bold text-slate-900">
-                      {agency.max_users - agencyUsers.length}
-                    </p>
-                    <p className="text-xs text-slate-600">Available Seats</p>
-                  </div>
-                </div>
-
-                <p className="text-sm text-slate-600 text-center pt-4">
-                  More detailed analytics coming soon
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <AgencyAnalyticsDashboard agency={agency} />
         </TabsContent>
       </Tabs>
     </div>

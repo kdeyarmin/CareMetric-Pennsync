@@ -7,6 +7,7 @@ import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
 import AdminTrainingManagement from './pages/AdminTrainingManagement';
 import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
 import AgencyAnalytics from './pages/AgencyAnalytics';
+import AgencyDashboard from './pages/AgencyDashboard';
 import AgencyTemplates from './pages/AgencyTemplates';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import AuditLog from './pages/AuditLog';
@@ -112,7 +113,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AgencyDashboard from './pages/AgencyDashboard';
 import __Layout from './Layout.jsx';
 
 
@@ -126,6 +126,7 @@ export const PAGES = {
     "AdminTrainingManagement": AdminTrainingManagement,
     "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
     "AgencyAnalytics": AgencyAnalytics,
+    "AgencyDashboard": AgencyDashboard,
     "AgencyTemplates": AgencyTemplates,
     "AnalyticsDashboard": AnalyticsDashboard,
     "AuditLog": AuditLog,
@@ -231,7 +232,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "AgencyDashboard": AgencyDashboard,
 }
 
 export const pagesConfig = {
