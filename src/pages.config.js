@@ -241,7 +241,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "SmartNoteAssistant",
+    mainPage: "Dashboard",
     Pages: PAGES,
     Layout: __Layout,
 };
