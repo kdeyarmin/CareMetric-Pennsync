@@ -367,23 +367,34 @@ export default function UserManagement({ users, currentUser }) {
 
           {/* Users Table */}
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Credentials</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Care Scope</TableHead>
-                  <TableHead>Profile</TableHead>
-                  <TableHead>Subscription</TableHead>
-                  <TableHead>Joined</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
+            {filteredUsers.length === 0 ? (
+              <Alert className="bg-gray-50 border-gray-200">
+                <Users className="w-4 h-4 text-gray-400" />
+                <AlertDescription>
+                  <p className="font-semibold mb-1">No users found</p>
+                  <p className="text-sm text-gray-600">
+                    {searchTerm ? 'Try adjusting your search term' : 'Invite your first user to get started'}
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Credentials</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Care Scope</TableHead>
+                    <TableHead>Profile</TableHead>
+                    <TableHead>Subscription</TableHead>
+                    <TableHead>Joined</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -530,9 +541,10 @@ export default function UserManagement({ users, currentUser }) {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </CardContent>
       </Card>
