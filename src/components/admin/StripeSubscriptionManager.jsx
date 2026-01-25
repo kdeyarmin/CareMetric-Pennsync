@@ -171,11 +171,11 @@ export default function StripeSubscriptionManager() {
       toast.dismiss();
       
       // Check if deletion was successful
-      if (response?.success === true) {
+      if (response?.data?.success === true || response?.success === true) {
         toast.success("Product deleted successfully");
         await refetchProducts();
       } else {
-        const errorMsg = response?.error || response?.details || "Failed to delete product";
+        const errorMsg = response?.data?.error || response?.error || response?.details || "Failed to delete product";
         console.error('Delete failed:', errorMsg);
         toast.error(errorMsg);
       }
@@ -200,11 +200,11 @@ export default function StripeSubscriptionManager() {
 
       toast.dismiss();
       
-      if (response?.success === true) {
+      if (response?.data?.success === true || response?.success === true) {
         toast.success("Price deleted successfully");
         await refetchProducts();
       } else {
-        const errorMsg = response?.error || response?.details || "Failed to delete price";
+        const errorMsg = response?.data?.error || response?.error || response?.details || "Failed to delete price";
         console.error('Delete failed:', errorMsg);
         toast.error(errorMsg);
       }
