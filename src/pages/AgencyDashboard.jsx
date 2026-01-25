@@ -17,6 +17,8 @@ import AgencyInvitationManager from "../components/agency/AgencyInvitationManage
 import AgencyBrandingSettings from "../components/agency/AgencyBrandingSettings";
 import AgencyTrainingReport from "../components/training/AgencyTrainingReport";
 import AgencyAnalyticsDashboard from "../components/agency/AgencyAnalyticsDashboard";
+import AgencyPackageSelector from "../components/agency/AgencyPackageSelector";
+import BillingHistoryView from "../components/agency/BillingHistoryView";
 
 export default function AgencyDashboard() {
   const queryClient = useQueryClient();
@@ -206,49 +208,8 @@ export default function AgencyDashboard() {
 
         {/* Billing Tab */}
         <TabsContent value="billing" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5" />
-                Billing Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-slate-600">Price Per User</p>
-                  <p className="text-xl font-bold">${agency.price_per_user}/month</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-600">Billing Cycle</p>
-                  <p className="text-xl font-bold capitalize">{agency.billing_cycle}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-600">Current Month Bill</p>
-                  <p className="text-xl font-bold text-green-600">${monthlyBill.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-600">Total Billed</p>
-                  <p className="text-xl font-bold">${agency.total_billed_amount?.toFixed(2) || '0.00'}</p>
-                </div>
-              </div>
-
-              {agency.stripe_customer_id && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm text-slate-600 mb-2">Stripe Customer ID</p>
-                  <code className="text-xs bg-slate-100 px-2 py-1 rounded">{agency.stripe_customer_id}</code>
-                </div>
-              )}
-
-              {agency.contact_email && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm text-slate-600">Billing Contact</p>
-                  <p className="font-medium">{agency.contact_name}</p>
-                  <p className="text-sm text-slate-600">{agency.contact_email}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <AgencyPackageSelector agency={agency} />
+          <BillingHistoryView agency={agency} />
         </TabsContent>
 
         {/* Features Tab */}
