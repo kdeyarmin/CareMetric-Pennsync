@@ -48,10 +48,15 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: currentUser, isLoading: userLoading } = useQuery({
+  const { data: currentUser, isLoading: userLoading, error: userError } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
-      return await base44.auth.me();
+      try {
+        return await base44.auth.me();
+      } catch (error) {
+        console.error('Auth error:', error);
+        return null;
+      }
     }
   });
 
@@ -226,10 +231,10 @@ export default function Dashboard() {
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-600 dark:border-slate-400 border-t-transparent"></div>
       </div>
     );
-
   }
 
   if (!currentUser) {
+    base44.auth.redirectToLogin();
     return null;
   }
 
