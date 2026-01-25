@@ -13,6 +13,8 @@ import { format } from "date-fns";
 import AgencyFeatureSettings from "../components/agency/AgencyFeatureSettings";
 import AgencyGuidedSetup from "../components/agency/AgencyGuidedSetup";
 import AgencyRoleBasedAccess from "../components/agency/AgencyRoleBasedAccess";
+import AgencyInvitationManager from "../components/agency/AgencyInvitationManager";
+import AgencyBrandingSettings from "../components/agency/AgencyBrandingSettings";
 
 export default function AgencyDashboard() {
   const queryClient = useQueryClient();
@@ -165,29 +167,7 @@ export default function AgencyDashboard() {
 
         {/* Users Tab */}
         <TabsContent value="users" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Invite New User</CardTitle>
-              <CardDescription>Send an invitation email with your agency code</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-2">
-                <Input
-                  type="email"
-                  placeholder="user@example.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                />
-                <Button
-                  onClick={() => inviteUserMutation.mutate(inviteEmail)}
-                  disabled={!inviteEmail || inviteUserMutation.isPending}
-                >
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  {inviteUserMutation.isPending ? 'Sending...' : 'Invite'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <AgencyInvitationManager agency={agency} />
 
           <Card>
             <CardHeader>
@@ -277,6 +257,7 @@ export default function AgencyDashboard() {
         {/* Settings Tab */}
         <TabsContent value="settings" className="space-y-4">
           <AgencyGuidedSetup agency={agency} />
+          <AgencyBrandingSettings agency={agency} />
         </TabsContent>
 
         {/* Analytics Tab */}

@@ -45,6 +45,7 @@ import PushNotificationManager from "../components/notifications/PushNotificatio
 import { getAccessiblePages } from "../components/utils/providerAccessControl";
 import PWAInstallPrompt from "../components/mobile/PWAInstallPrompt";
 import { useAgencyFeatureAccess } from "../components/utils/useAgencyFeatureAccess";
+import InvitationAcceptBanner from "../components/agency/InvitationAcceptBanner";
 
 /* =========================
          iOS / Layout Constants
@@ -544,6 +545,7 @@ export default function Layout({ children, currentPageName }) {
         }
 
       {showNavigationUI && <OfflineIndicator />}
+      <InvitationAcceptBanner currentUser={currentUser} />
       <RealTimeBreachMonitor />
       <PWAInstallPrompt />
       </div>
