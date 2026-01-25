@@ -1,5 +1,6 @@
 import About from './pages/About';
 import Admin from './pages/Admin';
+import AdminBillingPackages from './pages/AdminBillingPackages';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
 import AdminSubscriptions from './pages/AdminSubscriptions';
@@ -103,23 +104,24 @@ import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
+import Test2FA from './pages/Test2FA';
 import Telehealth from './pages/Telehealth';
 import TelehealthCall from './pages/TelehealthCall';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
-import Test2FA from './pages/Test2FA';
 import TestCrossPlatform from './pages/TestCrossPlatform';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import AdminBillingPackages from './pages/AdminBillingPackages';
+import AgencyCollaboration from './pages/AgencyCollaboration';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "About": About,
     "Admin": Admin,
+    "AdminBillingPackages": AdminBillingPackages,
     "AdminDashboard": AdminDashboard,
     "AdminSubscriptionManagement": AdminSubscriptionManagement,
     "AdminSubscriptions": AdminSubscriptions,
@@ -223,17 +225,17 @@ export const PAGES = {
     "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
+    "Test2FA": Test2FA,
     "Telehealth": Telehealth,
     "TelehealthCall": TelehealthCall,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
-    "Test2FA": Test2FA,
     "TestCrossPlatform": TestCrossPlatform,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "AdminBillingPackages": AdminBillingPackages,
+    "AgencyCollaboration": AgencyCollaboration,
 }
 
 export const pagesConfig = {
