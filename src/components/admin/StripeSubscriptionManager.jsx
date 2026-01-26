@@ -815,7 +815,105 @@ export default function StripeSubscriptionManager() {
             ))}
           </div>
         )}
+
+        {/* No results message */}
+        {!loadingProducts && filteredAndSortedProducts.length === 0 && products.length > 0 && (
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              No products match your filters. Try adjusting your search or filters.
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {/* Bulk Edit Dialog */}
+      <Dialog open={bulkEditDialog} onOpenChange={setBulkEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bulk Edit Products</DialogTitle>
+            <DialogDescription>
+              Update {selectedProducts.length} selected product(s)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label>Status</Label>
+              <Select
+                value={bulkEditData.active === null ? "" : bulkEditData.active.toString()}
+                onValueChange={(value) => setBulkEditData({ active: value === "true" })}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Select status..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Activate All</SelectItem>
+                  <SelectItem value="false">Deactivate All</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleBulkEdit} className="flex-1" disabled={bulkEditData.active === null}>
+                Apply Changes
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setBulkEditDialog(false);
+                  setBulkEditData({ active: null });
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Product Dialog */}
+      <Dialog open={duplicateDialog} onOpenChange={setDuplicateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicate Product</DialogTitle>
+            <DialogDescription>
+              Create a copy of "{duplicateSource?.name}" with all its active prices
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label>New Product Name</Label>
+              <Input
+                value={duplicateName}
+                onChange={(e) => setDuplicateName(e.target.value)}
+                className="mt-2"
+                placeholder="Enter new product name..."
+              />
+            </div>
+            {duplicateSource && pricesByProduct[duplicateSource.id] && (
+              <Alert>
+                <Check className="w-4 h-4" />
+                <AlertDescription>
+                  Will duplicate {pricesByProduct[duplicateSource.id].filter(p => p.active).length} active price(s)
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={handleDuplicateProduct} className="flex-1" disabled={!duplicateName.trim()}>
+                Create Duplicate
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDuplicateDialog(false);
+                  setDuplicateSource(null);
+                  setDuplicateName("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
