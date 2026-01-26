@@ -11,6 +11,9 @@ import ProviderPerformanceTable from "../components/enterprise/ProviderPerforman
 import AgencyWideMetrics from "../components/enterprise/AgencyWideMetrics";
 import CommonIssuesAnalysis from "../components/enterprise/CommonIssuesAnalysis";
 import EnterpriseSetupPanel from "../components/enterprise/EnterpriseSetupPanel";
+import AITrainingAssignmentEngine from "../components/enterprise/AITrainingAssignmentEngine";
+import EnhancedAgencyAnalytics from "../components/enterprise/EnhancedAgencyAnalytics";
+import AIProviderCoachingEngine from "../components/enterprise/AIProviderCoachingEngine";
 
 export default function EnterpriseAdminDashboard() {
   const [selectedAgency, setSelectedAgency] = useState(null);
@@ -140,16 +143,30 @@ export default function EnterpriseAdminDashboard() {
           </div>
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="ai-coaching">AI Coaching</TabsTrigger>
+              <TabsTrigger value="ai-training">AI Training</TabsTrigger>
               <TabsTrigger value="users">Users ({agencyUsers.length})</TabsTrigger>
-              <TabsTrigger value="performance">Performance</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4 mt-4">
               <AgencyWideMetrics agency={selectedAgency} users={agencyUsers} />
               <CommonIssuesAnalysis agencyCode={selectedAgency.agency_code} />
+            </TabsContent>
+
+            <TabsContent value="analytics" className="mt-4">
+              <EnhancedAgencyAnalytics agencyCode={selectedAgency.agency_code} users={agencyUsers} />
+            </TabsContent>
+
+            <TabsContent value="ai-coaching" className="mt-4">
+              <AIProviderCoachingEngine agencyCode={selectedAgency.agency_code} providers={agencyUsers} />
+            </TabsContent>
+
+            <TabsContent value="ai-training" className="mt-4">
+              <AITrainingAssignmentEngine agencyCode={selectedAgency.agency_code} />
             </TabsContent>
 
             <TabsContent value="users" className="mt-4">
@@ -200,10 +217,6 @@ export default function EnterpriseAdminDashboard() {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            <TabsContent value="performance" className="mt-4">
-              <ProviderPerformanceTable agencyCode={selectedAgency.agency_code} />
             </TabsContent>
 
             <TabsContent value="settings" className="mt-4">
