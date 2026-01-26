@@ -24,6 +24,12 @@ Deno.serve(async (req) => {
     const YOUR_DOMAIN = req.headers.get('origin');
     const appId = Deno.env.get("BASE44_APP_ID");
 
+    // Check if user already has an active or trialing subscription
+    const existingSubscriptions = await base44.entities.Subscription.filter({ user_email: user.email });
+    const hasActiveSub = existingSubscriptions.some(sub => 
+      sub.status === 'active' || sub.status === 'trialing'
+    );
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -33,6 +39,9 @@ Deno.serve(async (req) => {
         },
       ],
       mode: 'subscription',
+      subscription_data: {
+        trial_period_days: hasActiveSub ? 0 : 14, // 14-day trial for new users only
+      },
       success_url: `${YOUR_DOMAIN}/app/PaymentSuccess`,
       cancel_url: `${YOUR_DOMAIN}/app/SubscriptionPlans`,
       customer_email: user.email,
@@ -45,7 +54,8 @@ Deno.serve(async (req) => {
     console.log('[createStripeCheckout] Session created:', {
       sessionId: session.id,
       userEmail: user.email,
-      priceId
+      priceId,
+      trialDays: hasActiveSub ? 0 : 14
     });
 
     return Response.json({ sessionId: session.id, url: session.url });
