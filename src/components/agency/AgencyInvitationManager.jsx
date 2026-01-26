@@ -46,15 +46,13 @@ export default function AgencyInvitationManager({ agency }) {
     }
   });
 
-  const revokeInvitationMutation = useMutation({
+  const deleteInvitationMutation = useMutation({
     mutationFn: async (inviteId) => {
-      await base44.entities.AgencyInvitation.update(inviteId, {
-        status: 'revoked'
-      });
+      await base44.entities.AgencyInvitation.delete(inviteId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agencyInvitations'] });
-      toast.success('Invitation revoked');
+      toast.success('Invitation deleted');
     }
   });
 
@@ -194,8 +192,13 @@ export default function AgencyInvitationManager({ agency }) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => revokeInvitationMutation.mutate(invite.id)}
-                      disabled={revokeInvitationMutation.isPending}
+                      onClick={() => {
+                        if (confirm('Delete this invitation?')) {
+                          deleteInvitationMutation.mutate(invite.id);
+                        }
+                      }}
+                      disabled={deleteInvitationMutation.isPending}
+                      title="Delete invitation"
                     >
                       <Trash2 className="w-3 h-3 text-red-600" />
                     </Button>
