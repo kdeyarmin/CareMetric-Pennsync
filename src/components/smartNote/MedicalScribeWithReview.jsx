@@ -22,6 +22,7 @@ import SpecialtyTemplateSelector from "../specialty/SpecialtyTemplateSelector";
 import { getSpecialtyTemplate } from "../specialty/SpecialtyTemplateLibrary";
 import AIMedicalCodingAssistant from "../coding/AIMedicalCodingAssistant";
 import DocumentationQualityScore from "./DocumentationQualityScore";
+import AICareCoordinationPanel from "../coordination/AICareCoordinationPanel";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -929,11 +930,24 @@ Provide specific, actionable suggestions for:
                     toast.success(`${codes.length} codes selected and ready to use`);
                   }}
                   />
-                </div>
-                </div>
-                </div>
-                );
-                }
 
-                return null;
-                }
+                  {/* AI Care Coordination */}
+                  <AICareCoordinationPanel
+                    enhancedNote={generatedNote}
+                    visitType={visitType}
+                    diagnosis={diagnosis}
+                    patientId={patientId}
+                    vitalSigns={{}}
+                    patientContext={patientContext}
+                    onActionCreated={(actionType) => {
+                      console.log('Care coordination action created:', actionType);
+                    }}
+                  />
+                  </div>
+                  </div>
+                  </div>
+                  );
+                  }
+
+                  return null;
+                  }

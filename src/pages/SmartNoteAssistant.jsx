@@ -74,6 +74,7 @@ import ComplianceBasedTrainingRecommender from "@/components/training/Compliance
 import AIOutputRating from "@/components/feedback/AIOutputRating";
 import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
 import PatientContextSidebar from '../components/smartNote/PatientContextSidebar';
+import AICareCoordinationPanel from '../components/coordination/AICareCoordinationPanel';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1561,6 +1562,25 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               {selectedPatient !== 'no_patient' && (
                 <EducationTrackingHistory patientId={selectedPatient} />
               )}
+
+              {/* AI Care Coordination Panel */}
+              <AICareCoordinationPanel
+                enhancedNote={isEditMode ? editedNote : enhancedNote}
+                visitType={visitType}
+                diagnosis={selectedDiagnosis}
+                patientId={selectedPatient}
+                vitalSigns={vitalSigns}
+                patientContext={patientData ? {
+                  age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                  primary_diagnosis: patientData.primary_diagnosis,
+                  secondary_diagnoses: patientData.secondary_diagnoses,
+                  allergies: patientData.allergies,
+                  current_medications: patientData.current_medications
+                } : null}
+                onActionCreated={(actionType) => {
+                  console.log('Care coordination action created:', actionType);
+                }}
+              />
 
               {/* Compliance-Based Training Recommendations */}
               {currentUser?.email && (
