@@ -216,13 +216,70 @@ Provide:
       };
     }
 
+    // Generate quality analysis
+    let qualityAnalysis = null;
+    if (enable_compliance_flagging) {
+      const qualityPrompt = `Analyze this clinical note for documentation quality:
+
+${enhancedNote}
+
+Visit Type: ${visitType}
+Provider: ${nurseType}
+
+Rate the note on:
+1. Clarity (readability, logical flow, medical terminology usage)
+2. Completeness (all required elements, comprehensive assessment)
+3. Clinical Reasoning (evidence-based decisions, clinical judgment)
+4. Overall Quality
+
+Provide scores (0-100) and specific feedback.`;
+
+      try {
+        const qualityResponse = await base44.integrations.Core.InvokeLLM({
+          prompt: qualityPrompt,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              overall_quality_score: { type: "number" },
+              clarity_score: { type: "number" },
+              completeness_score: { type: "number" },
+              clinical_reasoning_score: { type: "number" },
+              strengths: {
+                type: "array",
+                items: { type: "string" }
+              },
+              areas_for_improvement: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    issue: { type: "string" },
+                    suggestion: { type: "string" },
+                    severity: { type: "string", enum: ["high", "medium", "low"] }
+                  }
+                }
+              },
+              missing_elements: {
+                type: "array",
+                items: { type: "string" }
+              }
+            }
+          }
+        });
+        qualityAnalysis = qualityResponse;
+      } catch (error) {
+        console.error('Quality analysis error:', error);
+      }
+    }
+
     return Response.json({
       success: true,
       enhanced_note: enhancedNote,
       differential_diagnoses: differentialDiagnoses,
       suggested_codes: suggestedCodes,
       specialty_applied: specialtyContext?.specialty || null,
-      compliance_flags: complianceFlags
+      compliance_flags: complianceFlags,
+      quality_analysis: qualityAnalysis
     });
 
   } catch (error) {

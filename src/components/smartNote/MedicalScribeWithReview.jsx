@@ -21,6 +21,7 @@ import { getFormatPrompt } from "../notes/NoteFormatTemplates";
 import SpecialtyTemplateSelector from "../specialty/SpecialtyTemplateSelector";
 import { getSpecialtyTemplate } from "../specialty/SpecialtyTemplateLibrary";
 import AIMedicalCodingAssistant from "../coding/AIMedicalCodingAssistant";
+import DocumentationQualityScore from "./DocumentationQualityScore";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -63,6 +64,7 @@ export default function MedicalScribeWithReview({
   const [selectedSpecialtyTemplate, setSelectedSpecialtyTemplate] = useState("");
   const [differentialDiagnoses, setDifferentialDiagnoses] = useState([]);
   const [suggestedCodes, setSuggestedCodes] = useState({ icd10: [], cpt: [] });
+  const [qualityAnalysis, setQualityAnalysis] = useState(null);
 
   const { data: patientData } = useQuery({
     queryKey: ['patient', patientId],
@@ -275,11 +277,13 @@ export default function MedicalScribeWithReview({
           setDifferentialDiagnoses(data.differential_diagnoses || []);
           setSuggestedCodes(data.suggested_codes || { icd10: [], cpt: [] });
           setComplianceIssues(data.compliance_flags || []);
+          setQualityAnalysis(data.quality_analysis || null);
           onNoteGenerated?.(data.enhanced_note, {
             differentialDiagnoses: data.differential_diagnoses,
             suggestedCodes: data.suggested_codes,
             specialtyApplied: data.specialty_applied,
-            complianceFlags: data.compliance_flags
+            complianceFlags: data.compliance_flags,
+            qualityAnalysis: data.quality_analysis
           });
           setStage('complete');
 
