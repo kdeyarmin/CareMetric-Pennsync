@@ -47,7 +47,8 @@ import {
   CreditCard,
   Eye,
   FileText,
-  Activity
+  Activity,
+  AlertCircle
 } from "lucide-react";
 import { format } from "date-fns";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
