@@ -72,6 +72,7 @@ import { ResolveComplianceIssue, ResolveDocumentationGap, ResolveQualitySuggesti
 import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
 import ComplianceBasedTrainingRecommender from "@/components/training/ComplianceBasedTrainingRecommender";
 import AIOutputRating from "@/components/feedback/AIOutputRating";
+import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -760,6 +761,20 @@ export default function SmartNoteAssistant() {
                     } : null}
                     onFieldsGenerated={(fields) => {
                       console.log('OASIS fields suggested:', fields);
+                    }}
+                  />
+                )}
+
+                {/* Real-Time Compliance Monitor */}
+                {visitType && selectedDiagnosis && roughNotes && roughNotes.length > 100 && (
+                  <RealTimeComplianceMonitor
+                    content={roughNotes}
+                    documentType={visitType}
+                    patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                    onScoreChange={(score) => {
+                      if (score < 70) {
+                        console.log('Low compliance score detected:', score);
+                      }
                     }}
                   />
                 )}
