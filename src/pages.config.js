@@ -53,6 +53,7 @@ import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
 import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
 import MobileWorkflow from './pages/MobileWorkflow';
 import MyAILearning from './pages/MyAILearning';
+import MySubscription from './pages/MySubscription';
 import MyTraining from './pages/MyTraining';
 import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
 import NurseEducationVideos from './pages/NurseEducationVideos';
@@ -116,7 +117,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import MySubscription from './pages/MySubscription';
 import __Layout from './Layout.jsx';
 
 
@@ -176,6 +176,7 @@ export const PAGES = {
     "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
     "MobileWorkflow": MobileWorkflow,
     "MyAILearning": MyAILearning,
+    "MySubscription": MySubscription,
     "MyTraining": MyTraining,
     "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
     "NurseEducationVideos": NurseEducationVideos,
@@ -239,7 +240,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "MySubscription": MySubscription,
 }
 
 export const pagesConfig = {

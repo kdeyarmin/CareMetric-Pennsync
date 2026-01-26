@@ -4,12 +4,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Edit2, Trash2, Plus, ArrowLeft } from 'lucide-react';
-import TemplateBuilder from '../components/documents/TemplateBuilder';
+import { FileText, Edit2, Trash2, Plus, ArrowLeft, Sparkles } from 'lucide-react';
 import EmptyState from '../components/ui/EmptyState';
 import PullToRefresh from '../components/mobile/PullToRefresh';
-import { createPageUrl } from '@/utils';
-import { Link } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import AITemplateGenerator from '../components/templates/AITemplateGenerator';
+import PrebuiltTemplateLibrary from '../components/templates/PrebuiltTemplateLibrary';
+import CustomTemplateEditor from '../components/templates/CustomTemplateEditor';
 
 export default function TemplateLibrary() {
   const [step, setStep] = useState('list'); // list, create, edit
@@ -24,18 +26,19 @@ export default function TemplateLibrary() {
   const { data: userTemplates = [] } = useQuery({
     queryKey: ['userTemplates', currentUser?.email],
     queryFn: async () => {
-      const all = await base44.entities.DocumentTemplate.list('-created_date', 100);
-      return all.filter(t => t.created_by === currentUser?.email || (!t.is_system_template && !t.created_by));
+      const all = await base44.entities.DocumentTemplate.list('-created_date', 200);
+      return all.filter(t => t.created_by === currentUser?.email);
     },
     enabled: !!currentUser?.email
   });
 
-  const { data: systemTemplates = [] } = useQuery({
-    queryKey: ['systemTemplates'],
+  const { data: publicTemplates = [] } = useQuery({
+    queryKey: ['publicTemplates'],
     queryFn: async () => {
-      const all = await base44.entities.DocumentTemplate.list('-created_date', 100);
-      return all.filter(t => t.is_system_template);
-    }
+      const all = await base44.entities.DocumentTemplate.list('-usage_count', 100);
+      return all.filter(t => t.is_public && t.created_by !== currentUser?.email);
+    },
+    enabled: !!currentUser?.email
   });
 
   const saveTemplateMutation = useMutation({
@@ -93,10 +96,20 @@ export default function TemplateLibrary() {
           )}
         </div>
 
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">{template.category || 'Uncategorized'}</span>
-          {!isEditable && (
-            <span className="text-slate-400 italic">System Template</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="text-xs">
+            {template.category?.replace(/_/g, ' ') || 'Uncategorized'}
+          </Badge>
+          {template.ai_generated && (
+            <Badge className="bg-purple-600 text-xs">
+              <Sparkles className="w-3 h-3 mr-1" />
+              AI
+            </Badge>
+          )}
+          {template.usage_count > 0 && (
+            <Badge variant="outline" className="text-xs">
+              Used {template.usage_count}x
+            </Badge>
           )}
         </div>
       </CardContent>
@@ -132,15 +145,64 @@ export default function TemplateLibrary() {
               </Button>
             </div>
 
-            <Tabs defaultValue="my-templates" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="my-templates">
-                  My Templates ({userTemplates.length})
+            <Tabs defaultValue="prebuilt" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="prebuilt">
+                  📚 Pre-built
                 </TabsTrigger>
-                <TabsTrigger value="system-templates">
-                  System Templates ({systemTemplates.length})
+                <TabsTrigger value="my-templates">
+                  📝 My Templates ({userTemplates.length})
+                </TabsTrigger>
+                <TabsTrigger value="public">
+                  🌐 Shared ({publicTemplates.length})
+                </TabsTrigger>
+                <TabsTrigger value="ai-generator">
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  AI Generator
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="prebuilt">
+                <PrebuiltTemplateLibrary
+                  onUseTemplate={() => {
+                    queryClient.invalidateQueries({ queryKey: ['userTemplates'] });
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="ai-generator">
+                <AITemplateGenerator
+                  onTemplateGenerated={() => {
+                    queryClient.invalidateQueries({ queryKey: ['userTemplates'] });
+                    toast.success("Template saved! Check 'My Templates' tab.");
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="public">
+                {publicTemplates.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-12 text-center">
+                      <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-600">No shared templates available</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {publicTemplates.map((template) => (
+                      <TemplateCard
+                        key={template.id}
+                        template={template}
+                        onEdit={() => {
+                          setSelectedTemplate(template);
+                          setStep('edit');
+                        }}
+                        isEditable={false}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
 
               <TabsContent value="my-templates">
                 {userTemplates.length === 0 ? (
@@ -173,27 +235,6 @@ export default function TemplateLibrary() {
                 )}
               </TabsContent>
 
-              <TabsContent value="system-templates">
-                {systemTemplates.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">
-                    No system templates available
-                  </div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {systemTemplates.map((template) => (
-                      <TemplateCard
-                        key={template.id}
-                        template={template}
-                        onEdit={() => {
-                          setSelectedTemplate(template);
-                          setStep('edit');
-                        }}
-                        isEditable={false}
-                      />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
             </Tabs>
           </>
         ) : (
@@ -214,10 +255,13 @@ export default function TemplateLibrary() {
               </h1>
             </div>
 
-            <TemplateBuilder
+            <CustomTemplateEditor
               initialTemplate={selectedTemplate}
               onSave={(data) => saveTemplateMutation.mutate(data)}
-              saving={saveTemplateMutation.isPending}
+              onCancel={() => {
+                setStep('list');
+                setSelectedTemplate(null);
+              }}
             />
           </>
         )}
