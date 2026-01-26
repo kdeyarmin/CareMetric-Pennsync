@@ -19,6 +19,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { return_url } = await req.json().catch(() => ({}));
+
     // Get user's subscription
     const subscriptions = await base44.entities.Subscription.filter({ 
       user_email: user.email 
@@ -29,15 +31,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
-    // Create portal session
+    // Create portal session with custom return URL if provided
+    const portalReturnUrl = return_url || `${req.headers.get('origin')}${createPageUrl('MySubscription')}`;
+    
     const session = await stripe.billingPortal.sessions.create({
       customer: subscriptions[0].stripe_customer_id,
-      return_url: `${req.headers.get('origin')}${createPageUrl('Settings')}`,
+      return_url: portalReturnUrl,
     });
 
     console.log('[createStripePortal] Portal session created:', {
       customerId: subscriptions[0].stripe_customer_id,
-      userEmail: user.email
+      userEmail: user.email,
+      returnUrl: portalReturnUrl
     });
 
     return Response.json({ url: session.url });
