@@ -79,6 +79,7 @@ import UnifiedComplianceAudit from '../components/smartNote/UnifiedComplianceAud
 import UnifiedSuggestionsPanel from '../components/smartNote/UnifiedSuggestionsPanel';
 import NoteCompletenessTracker from '../components/smartNote/NoteCompletenessTracker';
 import QuickTemplateInserter from '../components/smartNote/QuickTemplateInserter';
+import AIPhraseSuggestionWidget from '../components/smartNote/AIPhraseSuggestionWidget';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -892,6 +893,14 @@ export default function SmartNoteAssistant() {
                   providerType={providerType}
                   currentNoteContent={roughNotes}
                 />
+
+                {/* AI Phrase Learning & Suggestions */}
+                {currentUser?.email && (
+                  <AIPhraseSuggestionWidget
+                    providerType={providerType}
+                    currentUser={currentUser}
+                  />
+                )}
 
                 {/* Patient Context Quick Insert */}
                 {selectedPatient !== 'no_patient' && patientData && (
