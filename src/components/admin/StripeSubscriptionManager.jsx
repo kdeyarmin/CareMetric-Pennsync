@@ -223,31 +223,33 @@ export default function StripeSubscriptionManager() {
     }
   };
 
-  const handleCleanupPrices = async () => {
-    if (!confirm('This will deactivate higher-priced options ($39.99, $115, $210, $350) and keep only the standard prices ($29.99, $81.99, $149.99, $264.99). Continue?')) {
+  const handleResetProducts = async () => {
+    if (!confirm('⚠️ WARNING: This will DELETE ALL existing products and recreate them with the correct prices ($29.99, $81.99, $149.99, $264.99). This cannot be undone. Continue?')) {
       return;
     }
 
     setIsCleaningUp(true);
-    const toastId = toast.loading('Cleaning up subscription prices...');
+    const toastId = toast.loading('Deleting and recreating products...');
 
     try {
-      const response = await base44.functions.invoke('cleanupSubscriptionPrices', {});
+      const response = await base44.functions.invoke('resetStripeProducts', {});
       
       if (response?.data?.success === true || response?.success === true) {
-        const results = response?.data?.results || response?.results;
+        const deleted = response?.data?.deleted || 0;
+        const created = response?.data?.created || [];
         toast.success(
-          `Cleanup complete! Deactivated ${results?.deactivated?.length || 0} prices, kept ${results?.kept?.length || 0} prices.`,
+          `Reset complete! Deleted ${deleted} products, created ${created.length} new products.`,
           { id: toastId, duration: 5000 }
         );
+        queryClient.resetQueries({ queryKey: ['stripeProducts'] });
         queryClient.resetQueries({ queryKey: ['stripePrices'] });
-        await refetchPrices();
+        await refetchProducts();
       } else {
-        toast.error('Failed to cleanup prices', { id: toastId });
+        toast.error('Failed to reset products', { id: toastId });
       }
     } catch (error) {
-      console.error('Cleanup error:', error);
-      toast.error(error.message || 'Failed to cleanup prices', { id: toastId });
+      console.error('Reset error:', error);
+      toast.error(error.message || 'Failed to reset products', { id: toastId });
     } finally {
       setIsCleaningUp(false);
     }
@@ -409,12 +411,12 @@ export default function StripeSubscriptionManager() {
             <Button
               size="sm"
               variant="destructive"
-              onClick={handleCleanupPrices}
+              onClick={handleResetProducts}
               disabled={isCleaningUp}
               className="gap-2"
             >
               <Trash2 className="w-4 h-4" />
-              {isCleaningUp ? "Cleaning..." : "Cleanup Prices"}
+              {isCleaningUp ? "Resetting..." : "Reset All Products"}
             </Button>
             <Button
               size="sm"
