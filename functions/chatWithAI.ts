@@ -57,6 +57,25 @@ Deno.serve(async (req) => {
       }));
     }
 
+    // Subscription and billing context
+    if (messageLower.includes('subscription') || messageLower.includes('billing') || 
+        messageLower.includes('payment') || messageLower.includes('plan') || 
+        messageLower.includes('cancel') || messageLower.includes('upgrade')) {
+      const subscriptions = await base44.entities.Subscription.filter({ user_email: user.email });
+      if (subscriptions.length > 0) {
+        const sub = subscriptions[0];
+        additionalContext.subscription = {
+          plan_name: sub.plan_name,
+          status: sub.status,
+          monthly_amount: sub.monthly_amount,
+          current_period_end: sub.current_period_end,
+          cancel_at_period_end: sub.cancel_at_period_end,
+          failed_payment_count: sub.failed_payment_count || 0,
+          last_payment_date: sub.last_payment_date
+        };
+      }
+    }
+
     // Build comprehensive context for AI
     const isUserSupport = context === 'user_support';
     
@@ -68,6 +87,16 @@ USER PROFILE:
 - Name: ${user.full_name}
 - Email: ${user.email}
 - Role: ${user.role}
+
+${additionalContext.subscription ? `
+SUBSCRIPTION INFORMATION:
+- Plan: ${additionalContext.subscription.plan_name}
+- Status: ${additionalContext.subscription.status}
+- Amount: $${additionalContext.subscription.monthly_amount}/month
+- Next Renewal: ${additionalContext.subscription.current_period_end}
+- Cancellation Scheduled: ${additionalContext.subscription.cancel_at_period_end ? 'Yes' : 'No'}
+${additionalContext.subscription.failed_payment_count > 0 ? `- Failed Payments: ${additionalContext.subscription.failed_payment_count}` : ''}
+` : ''}
 
 DOCUMENTATION & COMPLIANCE EXPERTISE:
 
@@ -151,6 +180,26 @@ CAREMETRIC AI FEATURES & HOW TO USE THEM:
     - Location: "Patient Alerts" page or Dashboard
     - Features: AI-powered risk predictions, readmission alerts, deterioration warnings
     - Action: Review and address alerts promptly
+
+11. SUBSCRIPTION & BILLING:
+    - Location: "My Subscription" page in sidebar
+    - Features: View plan details, update payment method, view billing history
+    - Manage: Click "Manage Billing" to access Stripe portal for plan changes
+    - Cancellation: Can be done through Stripe portal (subscription continues until period end)
+    - Payment Issues: Update payment method immediately to avoid service interruption
+
+BILLING & SUBSCRIPTION QUESTIONS:
+
+How to answer subscription/billing questions:
+- For plan details → Direct to "My Subscription" page or "Subscription Plans" page
+- For payment updates → Tell them to use "Manage Billing" button on My Subscription page
+- For cancellation → Explain they can cancel via Stripe portal, access continues until period end
+- For failed payments → Emphasize urgency to update payment method to avoid suspension
+- For plan changes → Direct to Manage Billing portal where they can upgrade/downgrade
+- For billing history → They can view invoices and download PDFs on My Subscription page
+- For trial questions → Check their subscription status and trial end date
+
+IMPORTANT: You cannot directly process payments or change subscriptions - always direct users to the "My Subscription" page or "Manage Billing" portal.
 
 NAVIGATION TIPS:
 - Main menu: Click hamburger icon (☰) on mobile, or use left sidebar on desktop

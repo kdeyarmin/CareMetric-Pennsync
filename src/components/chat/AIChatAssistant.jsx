@@ -42,13 +42,13 @@ export default function AIChatAssistant() {
 
   const suggestedQuestions = [
     "What documentation is required for skilled nursing visits?",
-    "How do I document homebound status?",
+    "How do I manage my subscription and billing?",
+    "How do I update my payment method?",
     "What are OASIS M-item requirements?",
     "How do I ensure Medicare compliance?",
-    "What's required for medication reconciliation?",
+    "What features are included in my plan?",
     "How do I use the visit scribe?",
-    "What are ICD-10 coding requirements?",
-    "How do care plans work?"
+    "How can I upgrade or cancel my subscription?"
   ];
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function AIChatAssistant() {
       setConversation([
         {
           role: "assistant",
-          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your AI Documentation Assistant.\n\nI can help you with:\n• Documentation requirements & best practices\n• Medicare/Medicaid compliance guidance\n• OASIS assessment standards\n• Clinical coding (ICD-10, procedures)\n• Regulatory requirements & updates\n• CareMetric AI features & workflows\n\nWhat documentation or compliance question can I answer?`,
+          content: `Hi ${currentUser?.full_name || "there"}! 👋 I'm your AI Assistant.\n\nI can help you with:\n• Documentation requirements & best practices\n• Subscription & billing questions\n• Payment method updates & plan changes\n• Medicare/Medicaid compliance guidance\n• OASIS assessment standards\n• CareMetric AI features & workflows\n\nWhat can I help you with today?`,
           timestamp: new Date(),
           showSuggestions: true
         }
@@ -236,7 +236,7 @@ export default function AIChatAssistant() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center">
-                Ask about documentation, compliance, or regulatory requirements
+                Ask about documentation, billing, features, or compliance
               </p>
             </div>
           </CardContent>
