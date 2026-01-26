@@ -19,6 +19,8 @@ import {
 import { formatEastern } from "@/components/utils/timezone";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import OneClickComplianceFixer from "../components/compliance/OneClickComplianceFixer";
 
 export default function ComplianceDashboard() {
@@ -684,16 +686,16 @@ export default function ComplianceDashboard() {
                           )}
                         </div>
                         <div className="text-right">
-                          <p className="text-2xl font-bold">{audit.compliance_score}%</p>
+                         <p className="text-2xl font-bold">{audit.compliance_score}%</p>
                         </div>
-                      </div>
-                    </CardContent>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                        </div>
+                        </div>
+                        ))}
+                        </div>
+                        </CardContent>
+                        </Card>
+                        </TabsContent>
+                        </Tabs>
 
         {/* Violation Detail Dialog */}
         <Dialog open={detailDialog} onOpenChange={setDetailDialog}>
