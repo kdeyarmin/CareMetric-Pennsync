@@ -201,7 +201,8 @@ export default function StripeSubscriptionManager() {
     
     try {
       const response = await base44.functions.invoke('stripeDeletePrice', {
-        price_id: priceId
+        price_id: priceId,
+        set_active: !currentStatus
       });
 
       console.log('Toggle price response:', response);

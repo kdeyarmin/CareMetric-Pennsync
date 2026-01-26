@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const { price_id } = payload;
+    const { price_id, set_active } = payload;
 
     if (!price_id) {
       console.error('Missing price_id in request');
@@ -19,18 +19,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Attempting to delete price: ${price_id}`);
+    // Get current status if not specified
+    let targetStatus = set_active;
+    if (targetStatus === undefined) {
+      const currentPrice = await stripe.prices.retrieve(price_id);
+      targetStatus = !currentPrice.active; // Toggle
+    }
 
-    // Archive the price instead of deleting (Stripe best practice)
+    console.log(`Setting price ${price_id} to active=${targetStatus}`);
+
     const updatedPrice = await stripe.prices.update(price_id, {
-      active: false,
+      active: targetStatus,
     });
 
-    console.log(`Price ${price_id} archived successfully`);
+    console.log(`Price ${price_id} updated successfully to active=${targetStatus}`);
 
     return Response.json({
       success: true,
-      message: 'Price archived successfully (marked as inactive)',
+      message: `Price ${targetStatus ? 'activated' : 'deactivated'} successfully`,
       price: updatedPrice,
     });
   } catch (error) {
