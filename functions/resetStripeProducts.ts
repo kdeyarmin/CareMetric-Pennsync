@@ -19,15 +19,19 @@ Deno.serve(async (req) => {
 
     console.log('Starting Stripe products reset...');
 
-    // Step 1: Delete all existing products
+    // Step 1: Archive all existing products (Stripe doesn't allow deletion if there are active prices)
     const existingProducts = await stripe.products.list({ limit: 100 });
     
     for (const product of existingProducts.data) {
-      console.log(`Deleting product: ${product.name} (${product.id})`);
-      await stripe.products.del(product.id);
+      console.log(`Archiving product: ${product.name} (${product.id})`);
+      try {
+        await stripe.products.update(product.id, { active: false });
+      } catch (error) {
+        console.log(`Could not archive ${product.id}: ${error.message}`);
+      }
     }
 
-    console.log(`Deleted ${existingProducts.data.length} products`);
+    console.log(`Archived ${existingProducts.data.length} products`);
 
     // Step 2: Create new products with correct prices
     const productsToCreate = [
