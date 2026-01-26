@@ -81,76 +81,50 @@ Deno.serve(async (req) => {
       console.error('Failed to auto-approve user:', updateError);
     }
 
-    // Notify admins of new signup (informational only)
+    // Notify admins of new signup using Core.SendEmail (more reliable)
     console.log('Fetching admin users...');
     const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
     console.log('Found admins:', admins.length);
 
-    const emailBody = `
-    Hello,
+    // Send email to all admins
+    if (admins && admins.length > 0) {
+      try {
+        for (const admin of admins) {
+          console.log('Sending admin notification to:', admin.email);
+          
+          await base44.asServiceRole.integrations.Core.SendEmail({
+            to: admin.email,
+            subject: `✅ New User Signup - ${user.full_name || user.email}`,
+            body: `Hello ${admin.full_name || 'Admin'},
 
-    A new user has signed up for CareMetric AI:
+A new user has signed up for CareMetric AI!
 
-    👤 Name: ${user.full_name || 'Not provided'}
-    📧 Email: ${user.email}
-    📅 Signup Date: ${new Date().toLocaleString()}
-    🎭 Role: ${user.role || 'user'}
-    👨‍⚕️ Provider Type: ${user.credential_type || 'Not set'}
-    🏥 Work Setting: ${user.service_type || 'Not set'}
-    ✅ Status: Auto-approved
+User Details:
+- Name: ${user.full_name || 'Not provided'}
+- Email: ${user.email}
+- Signup Date: ${new Date().toLocaleString()}
+- Role: ${user.role || 'user'}
+- Provider Type: ${user.credential_type || 'Not set'}
+- Work Setting: ${user.service_type || 'Not set'}
+- Status: Auto-approved
 
-    The user has been automatically approved and now has access to the system with a 14-day free trial.
+The user has been automatically approved and now has access to the system with a 14-day free trial.
 
-    You can view their activity in the Admin Dashboard.
+Log in to the admin dashboard to view more details.
 
-    ➡️ https://www.caremetricai.com
-
-    Best regards,
-    CareMetric AI
-    `.trim();
-
-    // Send email to all admins using Resend
-    try {
-      const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
-      
-      const emailPromises = admins.map(admin => 
-        resend.emails.send({
-          from: 'CareMetric AI <notifications@caremetricai.com>',
-          to: admin.email,
-          subject: '✅ New User Signup - CareMetric AI',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2>Hello ${admin.full_name || 'Admin'},</h2>
-              
-              <p>A new user has signed up for <strong>CareMetric AI</strong>:</p>
-              
-              <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <p style="margin: 5px 0;"><strong>👤 Name:</strong> ${user.full_name || 'Not provided'}</p>
-                <p style="margin: 5px 0;"><strong>📧 Email:</strong> ${user.email}</p>
-                <p style="margin: 5px 0;"><strong>📅 Signup Date:</strong> ${new Date().toLocaleString()}</p>
-                <p style="margin: 5px 0;"><strong>🎭 Role:</strong> ${user.role || 'user'}</p>
-                <p style="margin: 5px 0;"><strong>👨‍⚕️ Provider Type:</strong> ${user.credential_type || 'Not set'}</p>
-                <p style="margin: 5px 0;"><strong>🏥 Work Setting:</strong> ${user.service_type || 'Not set'}</p>
-                <p style="margin: 5px 0;"><strong>✅ Status:</strong> Auto-approved</p>
-              </div>
-              
-              <p>The user has been automatically approved and now has access to the system with a <strong>14-day free trial</strong>.</p>
-              
-              <p>You can view their activity in the Admin Dashboard:</p>
-              <p><a href="https://www.caremetricai.com" style="color: #3b82f6;">➡️ Go to Admin Dashboard</a></p>
-              
-              <p>Best regards,<br>CareMetric AI</p>
-            </div>
-          `
-        })
-      );
-
-      console.log('Sending emails to admins via Resend...');
-      await Promise.all(emailPromises);
-      console.log('Signup notification emails sent successfully');
-    } catch (emailError) {
-      console.error('Failed to send admin notification emails:', emailError);
-      // Continue execution - don't fail signup if email fails
+Best regards,
+CareMetric AI`
+          });
+          
+          console.log('✅ Admin notification sent to:', admin.email);
+        }
+      } catch (emailError) {
+        console.error('Failed to send admin notification emails:', emailError);
+        console.error('Error details:', emailError.message);
+        // Continue execution - don't fail signup if email fails
+      }
+    } else {
+      console.warn('⚠️ No admin users found to notify');
     }
 
     // Send welcome email sequence
