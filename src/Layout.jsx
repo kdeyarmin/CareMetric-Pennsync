@@ -159,6 +159,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Document Analyzer", icon: Brain, page: "DocumentAnalyzer" },
   { name: "Templates", icon: FileText, page: "TemplateLibrary" },
   { name: "Features", icon: Sparkles, page: "Features" },
+  { name: "Patient Education", icon: GraduationCap, page: "PatientEducationAnalytics" },
   { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
   { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
   { name: "Compliance Monitor", icon: ShieldAlert, page: "ComplianceDashboard" },
