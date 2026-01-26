@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, RefreshCw, Trash2, DollarSign, Calendar, Copy, AlertCircle, Edit, Archive } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, RefreshCw, Trash2, DollarSign, Calendar, Copy, AlertCircle, Edit, Archive, Filter, ArrowUpDown, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
@@ -26,6 +27,16 @@ export default function StripeSubscriptionManager() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [editDialog, setEditDialog] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [bulkEditDialog, setBulkEditDialog] = useState(false);
+  const [bulkEditData, setBulkEditData] = useState({ active: null });
+  const [duplicateDialog, setDuplicateDialog] = useState(false);
+  const [duplicateSource, setDuplicateSource] = useState(null);
+  const [duplicateName, setDuplicateName] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [sortBy, setSortBy] = useState("created");
+  const [sortOrder, setSortOrder] = useState("desc");
 
   // Fetch all products
   const { data: products = [], isLoading: loadingProducts, refetch: refetchProducts } = useQuery({
@@ -264,6 +275,132 @@ export default function StripeSubscriptionManager() {
     return `${times}${interval}${count > 1 ? 's' : ''}`;
   };
 
+  // Duplicate product handler
+  const handleDuplicateProduct = async () => {
+    if (!duplicateName.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+
+    try {
+      // Create new product with same description
+      const createResponse = await base44.functions.invoke('stripeCreateProduct', {
+        name: duplicateName,
+        description: duplicateSource.description || undefined
+      });
+
+      if (!createResponse?.data?.product?.id) {
+        throw new Error("Failed to create product");
+      }
+
+      const newProductId = createResponse.data.product.id;
+
+      // Duplicate all active prices from source product
+      const sourcePrices = pricesByProduct[duplicateSource.id] || [];
+      const activePrices = sourcePrices.filter(p => p.active);
+
+      for (const price of activePrices) {
+        await base44.functions.invoke('stripeCreatePrice', {
+          product_id: newProductId,
+          unit_amount: price.unit_amount,
+          recurring_interval: price.recurring?.interval || "month",
+          recurring_interval_count: price.recurring?.interval_count || 1,
+          currency: 'usd'
+        });
+      }
+
+      toast.success(`Product duplicated successfully with ${activePrices.length} prices!`);
+      setDuplicateDialog(false);
+      setDuplicateSource(null);
+      setDuplicateName("");
+      await refetchProducts();
+    } catch (error) {
+      toast.error(error.message || "Failed to duplicate product");
+    }
+  };
+
+  // Bulk edit handler
+  const handleBulkEdit = async () => {
+    if (selectedProducts.length === 0) {
+      toast.error("No products selected");
+      return;
+    }
+
+    if (bulkEditData.active === null) {
+      toast.error("Please select an action");
+      return;
+    }
+
+    const toastId = toast.loading(`Updating ${selectedProducts.length} products...`);
+
+    try {
+      for (const productId of selectedProducts) {
+        await base44.functions.invoke('stripeUpdateProduct', {
+          product_id: productId,
+          active: bulkEditData.active
+        });
+      }
+
+      toast.success(`Updated ${selectedProducts.length} products successfully`, { id: toastId });
+      setBulkEditDialog(false);
+      setSelectedProducts([]);
+      setBulkEditData({ active: null });
+      await refetchProducts();
+    } catch (error) {
+      toast.error(error.message || "Failed to update products", { id: toastId });
+    }
+  };
+
+  // Filter and sort products
+  const filteredAndSortedProducts = useMemo(() => {
+    let filtered = [...products];
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(p => 
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.description || "").toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Status filter
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(p => 
+        filterStatus === "active" ? p.active : !p.active
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      let comparison = 0;
+
+      if (sortBy === "name") {
+        comparison = a.name.localeCompare(b.name);
+      } else if (sortBy === "created") {
+        comparison = (a.created || 0) - (b.created || 0);
+      } else if (sortBy === "price") {
+        const pricesA = pricesByProduct[a.id] || [];
+        const pricesB = pricesByProduct[b.id] || [];
+        const minA = pricesA.length > 0 ? Math.min(...pricesA.map(p => p.unit_amount)) : 0;
+        const minB = pricesB.length > 0 ? Math.min(...pricesB.map(p => p.unit_amount)) : 0;
+        comparison = minA - minB;
+      }
+
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+
+    return filtered;
+  }, [products, pricesByProduct, searchTerm, filterStatus, sortBy, sortOrder]);
+
+  // Toggle select all
+  const toggleSelectAll = () => {
+    if (selectedProducts.length === filteredAndSortedProducts.length) {
+      setSelectedProducts([]);
+    } else {
+      setSelectedProducts(filteredAndSortedProducts.map(p => p.id));
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Alert>
@@ -405,33 +542,106 @@ export default function StripeSubscriptionManager() {
 
       {/* Products & Prices List */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">Products & Pricing</h2>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleResetProducts}
-              disabled={isCleaningUp}
-              className="gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              {isCleaningUp ? "Resetting..." : "Reset All Products"}
-            </Button>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">Products & Pricing</h2>
+            <div className="flex gap-2">
+              {selectedProducts.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setBulkEditDialog(true)}
+                  className="gap-2"
+                >
+                  <Edit className="w-4 h-4" />
+                  Bulk Edit ({selectedProducts.length})
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleResetProducts}
+                disabled={isCleaningUp}
+                className="gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isCleaningUp ? "Resetting..." : "Reset All"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  await refetchProducts();
+                  await refetchPrices();
+                }}
+                disabled={loadingProducts}
+                className="gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingProducts ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          {/* Filters and Sorting */}
+          <div className="flex flex-wrap gap-3 items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-lg">
+            <div className="flex-1 min-w-[200px]">
+              <Input
+                placeholder="Search products..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-white dark:bg-slate-800"
+              />
+            </div>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-[140px] bg-white dark:bg-slate-800">
+                <Filter className="w-4 h-4 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-[140px] bg-white dark:bg-slate-800">
+                <ArrowUpDown className="w-4 h-4 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created">Created Date</SelectItem>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="price">Price</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               size="sm"
               variant="outline"
-              onClick={async () => {
-                await refetchProducts();
-                await refetchPrices();
-              }}
-              disabled={loadingProducts}
-              className="gap-2"
+              onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
             >
-              <RefreshCw className={`w-4 h-4 ${loadingProducts ? "animate-spin" : ""}`} />
-              Refresh
+              {sortOrder === "asc" ? "↑" : "↓"}
             </Button>
           </div>
+
+          {/* Select All Checkbox */}
+          {filteredAndSortedProducts.length > 0 && (
+            <div className="flex items-center gap-2 px-2">
+              <Checkbox
+                checked={selectedProducts.length === filteredAndSortedProducts.length}
+                onCheckedChange={toggleSelectAll}
+                id="select-all"
+              />
+              <Label htmlFor="select-all" className="text-sm cursor-pointer">
+                Select All ({filteredAndSortedProducts.length})
+              </Label>
+              {selectedProducts.length > 0 && (
+                <span className="text-sm text-blue-600">
+                  {selectedProducts.length} selected
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {loadingProducts ? (
@@ -448,13 +658,24 @@ export default function StripeSubscriptionManager() {
           </Card>
         ) : (
           <div className="grid gap-4">
-            {products.map((product) => (
+            {filteredAndSortedProducts.map((product) => (
               <Card key={product.id} className="overflow-hidden">
                 <CardHeader className="bg-slate-50 dark:bg-slate-900 pb-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-lg">{product.name}</CardTitle>
+                    <div className="flex items-center gap-3 flex-1">
+                      <Checkbox
+                        checked={selectedProducts.includes(product.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedProducts(prev =>
+                            checked
+                              ? [...prev, product.id]
+                              : prev.filter(id => id !== product.id)
+                          );
+                        }}
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-lg">{product.name}</CardTitle>
                         <Badge variant={product.active ? "default" : "secondary"}>
                           {product.active ? "Active" : "Inactive"}
                         </Badge>
@@ -466,6 +687,18 @@ export default function StripeSubscriptionManager() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setDuplicateSource(product);
+                          setDuplicateName(`${product.name} (Copy)`);
+                          setDuplicateDialog(true);
+                        }}
+                        title="Duplicate product"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
                       <Dialog open={editDialog && editingProduct?.id === product.id} onOpenChange={(open) => {
                         setEditDialog(open);
                         if (!open) setEditingProduct(null);
