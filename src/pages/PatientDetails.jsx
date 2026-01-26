@@ -95,6 +95,7 @@ import ClinicalNotesManager from "../components/patient/ClinicalNotesManager";
 import PatientRiskScoreCard from "../components/patient/PatientRiskScoreCard";
 import ComprehensiveMedicalHistory from "../components/patient/ComprehensiveMedicalHistory";
 import AIComprehensivePatientAnalysis from "../components/patient/AIComprehensivePatientAnalysis";
+import ComplianceViolationWidget from "../components/compliance/ComplianceViolationWidget";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -388,6 +389,17 @@ export default function PatientDetails() {
             incidents={incidents}
           />
         </div>
+
+        {/* Compliance Violations for Recent Visits */}
+        {visits.length > 0 && visits[0]?.id && (
+          <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+            <ComplianceViolationWidget 
+              entityType="visit"
+              entityId={visits[0].id}
+              showTitle={true}
+            />
+          </div>
+        )}
 
         {/* AI Risk Score Card - Prominent Position */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
