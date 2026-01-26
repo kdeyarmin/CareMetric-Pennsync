@@ -75,6 +75,8 @@ import AIOutputRating from "@/components/feedback/AIOutputRating";
 import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
 import PatientContextSidebar from '../components/smartNote/PatientContextSidebar';
 import AICareCoordinationPanel from '../components/coordination/AICareCoordinationPanel';
+import UnifiedComplianceAudit from '../components/smartNote/UnifiedComplianceAudit';
+import UnifiedSuggestionsPanel from '../components/smartNote/UnifiedSuggestionsPanel';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1133,72 +1135,25 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 </CardContent>
               </Card>
 
-              {/* Quality & Compliance Scores */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Medicare Compliance */}
-                <Card className={complianceResults?.compliance_score >= 85 ? 'border-green-300 bg-green-50 dark:bg-green-950' : 'border-red-300 bg-red-50 dark:bg-red-950'}>
-                  <CardContent className="p-4">
-                    <div className="text-center">
-                      {complianceResults?.compliance_score >= 85 ?
-                        <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" /> :
-                        <ShieldAlert className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                      }
-                      <p className="font-semibold text-sm mb-1">Medicare Compliance</p>
-                      <span className={`text-3xl font-bold ${
-                        complianceResults?.compliance_score >= 85 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {complianceResults?.compliance_score || 0}%
-                      </span>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {complianceResults?.compliance_score >= 85 ? '✓ Meets threshold' : '✗ Below 85%'}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Quality Score */}
-                {complianceResults?.quality_analysis && (
-                  <>
-                    <Card className="border-purple-300 bg-purple-50 dark:bg-purple-950">
-                      <CardContent className="p-4">
-                        <div className="text-center">
-                          <Brain className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                          <p className="font-semibold text-sm mb-1">Documentation Quality</p>
-                          <span className={`text-3xl font-bold ${
-                            complianceResults.quality_analysis.overall_quality_score >= 90 ? 'text-green-600' :
-                            complianceResults.quality_analysis.overall_quality_score >= 75 ? 'text-yellow-600' :
-                            'text-red-600'
-                          }`}>
-                            {complianceResults.quality_analysis.overall_quality_score}%
-                          </span>
-                          <p className="text-xs text-gray-600 mt-1">Overall quality</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-blue-300 bg-blue-50 dark:bg-blue-950">
-                      <CardContent className="p-4">
-                        <div className="text-center">
-                          <CheckCircle2 className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                          <p className="font-semibold text-sm mb-1">Completeness</p>
-                          <span className={`text-3xl font-bold ${
-                            complianceResults.quality_analysis.completeness_score >= 90 ? 'text-green-600' :
-                            complianceResults.quality_analysis.completeness_score >= 75 ? 'text-yellow-600' :
-                            'text-red-600'
-                          }`}>
-                            {complianceResults.quality_analysis.completeness_score}%
-                          </span>
-                          <p className="text-xs text-gray-600 mt-1">Documentation complete</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </>
-                )}
-              </div>
+              {/* Unified Compliance & Quality Audit - ALL CHECKS IN ONE PLACE */}
+              <UnifiedComplianceAudit
+                complianceResults={complianceResults}
+                medicareViolations={medicareViolations}
+                regulatoryWarnings={regulatoryWarnings}
+                qualityAnalysis={complianceResults?.quality_analysis}
+              />
 
               {/* One-Click Resolve All Issues */}
               <ResolveAllIssues
-                issues={complianceResults?.issues}
+                issues={[
+                  ...(complianceResults?.issues || []),
+                  ...medicareViolations.map(v => ({
+                    element: v.violation,
+                    severity: v.severity,
+                    problem: v.cop_reference,
+                    suggestion: v.remediation
+                  }))
+                ]}
                 gaps={complianceResults?.quality_analysis?.missing_elements}
                 suggestions={complianceResults?.quality_analysis?.suggestions}
                 noteContent={isEditMode ? editedNote : enhancedNote}
@@ -1209,270 +1164,27 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   setEnhancedNote(correctedNote);
                   setIsEditMode(false);
                   toast.success(summary);
-                  // Re-run compliance check
                   recheckCompliance();
                 }}
               />
 
-              {/* Documentation Quality Score Component */}
-              {complianceResults?.quality_analysis && (
-                <DocumentationQualityScore 
-                  qualityAnalysis={complianceResults.quality_analysis}
-                  noteText={isEditMode ? editedNote : enhancedNote}
-                  visitType={visitType}
-                  providerType={providerType}
-                  onFeedbackSubmitted={() => {
-                    toast.success('Your feedback helps improve our AI suggestions!');
-                  }}
-                />
-              )}
-
-              {/* Interactive Quality Suggestions with One-Click Resolvers */}
-              {complianceResults?.quality_analysis && (
-                <InteractiveQualitySuggestions
-                  qualityAnalysis={complianceResults.quality_analysis}
-                  noteContent={isEditMode ? editedNote : enhancedNote}
-                  onApplySuggestion={(improvedNote) => {
-                    setEditedNote(improvedNote);
-                    setEnhancedNote(improvedNote);
-                  }}
-                />
-              )}
-
-              {/* Medicare Violations */}
-              {medicareViolations && medicareViolations.length > 0 &&
-            <Card className="border-red-300 bg-red-50 dark:bg-red-950">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-800 dark:text-red-400">
-                      <ShieldAlert className="w-5 h-5" />
-                      Medicare Compliance Violations ({medicareViolations.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {medicareViolations.map((violation, idx) =>
-                <div key={idx} className="bg-white dark:bg-gray-900 p-3 rounded-lg border-l-4 border-red-600">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <p className="font-semibold text-sm text-red-800 dark:text-red-400">{violation.violation}</p>
-                          <Badge className={
-                    violation.severity === 'critical' ? 'bg-red-700' :
-                    violation.severity === 'high' ? 'bg-orange-600' :
-                    'bg-yellow-600'
-                    }>
-                            {violation.severity}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                          <strong>42 CFR Reference:</strong> {violation.cop_reference}
-                        </p>
-                        <div className="bg-green-50 dark:bg-green-900 p-2 rounded">
-                          <p className="text-xs font-medium text-green-800 dark:text-green-300">
-                            <strong>How to Fix:</strong> {violation.remediation}
-                          </p>
-                        </div>
-                      </div>
-                )}
-                  </CardContent>
-                </Card>
-            }
-
-              {/* Regulatory Warnings */}
-              {regulatoryWarnings && regulatoryWarnings.length > 0 &&
-            <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-orange-800 dark:text-orange-400">
-                      <AlertTriangle className="w-5 h-5" />
-                      Regulatory Warnings ({regulatoryWarnings.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {regulatoryWarnings.map((warning, idx) =>
-                  <div key={idx} className="p-2 bg-white dark:bg-gray-900 rounded border-l-2 border-orange-500">
-                          <p className="text-sm text-orange-800 dark:text-orange-300">{warning}</p>
-                        </div>
-                  )}
-                    </div>
-                  </CardContent>
-                </Card>
-            }
-
-              {/* Compliance Results */}
-              {complianceResults &&
-            <Card className={
-            complianceResults.status === 'passed' ? 'border-green-300 bg-green-50 dark:bg-green-950' :
-            complianceResults.status === 'critical' ? 'border-red-300 bg-red-50 dark:bg-red-950' :
-            'border-yellow-300 bg-yellow-50 dark:bg-yellow-950'
-            }>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span>Documentation Analysis</span>
-                      {complianceResults?.status && (
-                        <Badge className={
-                      complianceResults.compliance_score >= 90 ? 'bg-green-600' :
-                      complianceResults.compliance_score >= 70 ? 'bg-yellow-600' :
-                      'bg-red-600'
-                      }>
-                           {complianceResults.status.toUpperCase()}
-                         </Badge>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {complianceResults.compliant_elements?.length > 0 &&
-                <div>
-                        <h5 className="font-semibold text-green-800 dark:text-green-400 mb-2">✓ Compliant Elements</h5>
-                        <ul className="space-y-1">
-                          {complianceResults.compliant_elements.map((element, idx) =>
-                    <li key={idx} className="text-sm text-green-700 dark:text-green-300">• {element}</li>
-                    )}
-                        </ul>
-                      </div>
-                }
-
-                    {complianceResults.issues?.length > 0 &&
-                    <div>
-                        <h5 className="font-semibold text-red-800 dark:text-red-400 mb-2">⚠ Issues Found</h5>
-                        <div className="space-y-3">
-                          {complianceResults.issues.map((issue, idx) =>
-                    <div key={idx} className="bg-white dark:bg-gray-900 p-3 rounded border border-red-200">
-                              <div className="flex items-start gap-2 mb-1">
-                                <Badge className={
-                        issue.severity === 'critical' ? 'bg-red-600' :
-                        issue.severity === 'high' ? 'bg-orange-500' :
-                        'bg-yellow-500'
-                        }>
-                                  {issue.severity}
-                                </Badge>
-                                <p className="font-medium text-sm">{issue.element}</p>
-                              </div>
-                              <p className="text-sm text-red-700 dark:text-red-300 mb-2">{issue.problem}</p>
-                              <div className="space-y-2">
-                                <p className="text-sm text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900 p-2 rounded">
-                                  <strong>How to fix:</strong> {issue.suggestion}
-                                </p>
-                                {issue.specific_fix &&
-                          <p className="text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900 p-2 rounded">
-                                    <strong>Example:</strong> {issue.specific_fix}
-                                  </p>
-                          }
-                                <ResolveComplianceIssue
-                                  issue={issue}
-                                  noteContent={isEditMode ? editedNote : enhancedNote}
-                                  onResolved={(correctedNote, summary) => {
-                                    setEditedNote(correctedNote);
-                                    setEnhancedNote(correctedNote);
-                                    toast.success(`Fixed: ${summary}`);
-                                  }}
-                                />
-                              </div>
-                            </div>
-                    )}
-                        </div>
-                      </div>
-                    }
-                  </CardContent>
-                </Card>
-            }
-
-              {/* Suggested Tasks */}
-              {suggestedTasks && suggestedTasks.length > 0 &&
-            <Card className="border-blue-300 bg-blue-50 dark:bg-blue-950">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ListTodo className="w-5 h-5 text-blue-600" />
-                      Suggested Follow-Up Tasks ({suggestedTasks.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {suggestedTasks.map((task, idx) =>
-                <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-slate-900 dark:text-slate-100">{task.title}</h4>
-                              <Badge className={
-                        task.priority === 'critical' ? 'bg-red-600' :
-                        task.priority === 'high' ? 'bg-orange-500' :
-                        task.priority === 'medium' ? 'bg-yellow-500' :
-                        'bg-blue-500'
-                        }>
-                                {task.priority}
-                              </Badge>
-                              <Badge variant="outline">{task.type}</Badge>
-                            </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{task.description}</p>
-                            <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-500">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {task.suggested_due_timeframe?.replace('_', ' ') || 'No deadline'}
-                              </span>
-                            </div>
-                            {task.ai_reason &&
-                      <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-800 rounded text-xs text-slate-600 dark:text-slate-400">
-                                <strong>AI Analysis:</strong> {task.ai_reason}
-                              </div>
-                      }
-                            {task.clinical_indicators && task.clinical_indicators.length > 0 &&
-                      <div className="mt-2 flex gap-1 flex-wrap">
-                                <span className="text-xs text-slate-500">Factors:</span>
-                                {task.clinical_indicators.map((indicator, i) => (
-                                  <Badge key={i} variant="outline" className="text-xs">{indicator}</Badge>
-                                ))}
-                              </div>
-                      }
-                          </div>
-                          <Button
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const dueDate = (() => {
-                            const today = new Date();
-                            switch (task.suggested_due_timeframe) {
-                              case 'today':return today.toISOString().split('T')[0];
-                              case '24_hours':
-                                today.setDate(today.getDate() + 1);
-                                return today.toISOString().split('T')[0];
-                              case '48_hours':
-                                today.setDate(today.getDate() + 2);
-                                return today.toISOString().split('T')[0];
-                              case 'this_week':
-                                today.setDate(today.getDate() + 7);
-                                return today.toISOString().split('T')[0];
-                              default:return null;
-                            }
-                          })();
-
-                          await base44.entities.Task.create({
-                            title: task.title,
-                            description: task.description,
-                            priority: task.priority,
-                            type: task.type,
-                            due_date: dueDate,
-                            due_timeframe: task.suggested_due_timeframe,
-                            patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
-                            assigned_to: currentUser?.email,
-                            source: 'ai_generated',
-                            ai_reason: task.ai_reason,
-                            status: 'pending'
-                          });
-                          toast.success('Task added to your list');
-                          setSuggestedTasks((prev) => prev.filter((_, i) => i !== idx));
-                        } catch (error) {
-                          toast.error('Failed to add task');
-                          console.error(error);
-                        }
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white">
-
-                            <Plus className="w-4 h-4 mr-1" />
-                            Add Task
-                          </Button>
-                        </div>
-                      </div>
-                )}
-                  </CardContent>
-                </Card>
-            }
+              {/* Unified Suggestions & Actions - ALL FIXES IN ONE PLACE */}
+              <UnifiedSuggestionsPanel
+                qualityAnalysis={complianceResults?.quality_analysis}
+                suggestedTasks={suggestedTasks}
+                noteContent={isEditMode ? editedNote : enhancedNote}
+                visitType={visitType}
+                diagnosis={selectedDiagnosis}
+                userEmail={currentUser?.email}
+                onNoteUpdate={(updatedNote) => {
+                  setEditedNote(updatedNote);
+                  setEnhancedNote(updatedNote);
+                  setIsEditMode(false);
+                }}
+                onTaskAdd={() => {
+                  setSuggestedTasks([]);
+                }}
+              />
 
               {/* AI Auto-Populate & Follow-Up Tasks - Only for non-home health/hospice settings */}
               {careSetting && careSetting !== CARE_SETTINGS.HOME_HEALTH && careSetting !== CARE_SETTINGS.HOSPICE && (
