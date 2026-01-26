@@ -160,6 +160,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Features", icon: Sparkles, page: "Features" },
   { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
   { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
+  { name: "Compliance Monitor", icon: ShieldAlert, page: "ComplianceDashboard" },
   { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
   { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
   { name: "My Training", icon: Target, page: "MyTraining" },
@@ -195,6 +196,7 @@ export default function Layout({ children, currentPageName }) {
   const adminNavItems = currentUser?.role === 'admin' ? [
     { name: "Admin Dashboard", icon: BarChart3, page: "AdminDashboard" },
     { name: "Enterprise", icon: Building2, page: "EnterpriseAdminDashboard" },
+    { name: "Compliance Automation", icon: ShieldAlert, page: "ComplianceAutomation" },
     { name: "Training Manager", icon: GraduationCap, page: "AdminTrainingManagement" },
     { name: "Agency Templates", icon: FileText, page: "AgencyTemplates" },
     { name: "Audit Log", icon: ShieldAlert, page: "AuditLog" },

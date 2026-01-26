@@ -1,828 +1,776 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import {
-  AlertTriangle,
-  Clock,
-  FileText,
-  Shield,
-  TrendingUp,
-  Calendar,
-  User,
-  ChevronRight,
-  Bell,
-  CheckCircle2,
-  XCircle,
-  RefreshCw,
-  Filter,
-  Search,
-  Download,
-  BarChart3,
-  Target,
-  Sparkles,
-  ExternalLink
+  Shield, AlertTriangle, CheckCircle2, XCircle, TrendingUp,
+  TrendingDown, BarChart3, Calendar, Users, FileText,
+  Search, Filter, ChevronLeft, ChevronRight, Eye, Wand2
 } from "lucide-react";
-import { format, differenceInDays, addDays, subDays } from "date-fns";
-
-import PolicyGuidelineMonitor from "../components/compliance/PolicyGuidelineMonitor";
-import AutomatedComplianceReporting from "../components/compliance/AutomatedComplianceReporting";
-import ComplianceRuleManager from "../components/compliance/ComplianceRuleManager";
-import EnhancedComplianceAuditor from "../components/compliance/EnhancedComplianceAuditor";
-import AIAuditSuggestions from "../components/compliance/AIAuditSuggestions";
-import AuditCategoryAnalyzer from "../components/compliance/AuditCategoryAnalyzer";
-import NurseAuditTrends from "../components/compliance/NurseAuditTrends";
-import AdvancedComplianceAnalytics from "../components/compliance/AdvancedComplianceAnalytics";
-import CustomReportGenerator from "../components/compliance/CustomReportGenerator";
+import {
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from "recharts";
+import { formatEastern } from "@/components/utils/timezone";
+import PullToRefresh from "../components/mobile/PullToRefresh";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import OneClickComplianceFixer from "../components/compliance/OneClickComplianceFixer";
 
 export default function ComplianceDashboard() {
-  const [filterCategory, setFilterCategory] = useState("all");
+  const [timeframe, setTimeframe] = useState("30");
   const [filterSeverity, setFilterSeverity] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("open");
   const [searchTerm, setSearchTerm] = useState("");
-  const [dismissedAlerts, setDismissedAlerts] = useState([]);
+  const [selectedViolation, setSelectedViolation] = useState(null);
+  const [detailDialog, setDetailDialog] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryFn: () => base44.auth.me()
   });
 
-  const { data: patients } = useQuery({
-    queryKey: ['compliancePatients'],
-    queryFn: () => base44.entities.Patient.filter({ status: 'active' }),
-    initialData: [],
+  const { data: allAudits = [] } = useQuery({
+    queryKey: ['allComplianceAudits'],
+    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 500)
   });
 
-  const { data: visits } = useQuery({
-    queryKey: ['complianceVisits'],
-    queryFn: () => base44.entities.Visit.list('-visit_date', 200),
-    initialData: [],
-  });
-
-  const { data: carePlans } = useQuery({
-    queryKey: ['complianceCarePlans'],
-    queryFn: () => base44.entities.CarePlan.list(),
-    initialData: [],
-  });
-
-  const { data: incidents } = useQuery({
-    queryKey: ['complianceIncidents'],
-    queryFn: () => base44.entities.Incident.filter({ status: 'reported' }),
-    initialData: [],
-  });
-
-  const { data: securityLogs } = useQuery({
-    queryKey: ['complianceSecurityLogs'],
-    queryFn: () => base44.entities.SecurityLog.list('-timestamp', 50),
-    initialData: [],
-  });
-
-  const { data: complianceAudits = [] } = useQuery({
-    queryKey: ['complianceAudits'],
-    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 500),
-  });
-
-  const { data: trainingCompletions = [] } = useQuery({
-    queryKey: ['trainingCompletions'],
-    queryFn: () => base44.entities.TrainingCompletion.list('-completion_date', 200),
+  const { data: allViolations = [] } = useQuery({
+    queryKey: ['allComplianceViolations'],
+    queryFn: () => base44.entities.ComplianceViolation.list('-created_date', 500)
   });
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
-    queryFn: () => base44.entities.User.list(),
-    enabled: currentUser?.role === 'admin',
+    queryFn: () => base44.entities.User.list()
   });
 
-  const [selectedAudit, setSelectedAudit] = useState(null);
+  const { data: userAgency } = useQuery({
+    queryKey: ['userAgency', currentUser?.email],
+    queryFn: async () => {
+      if (currentUser?.role === 'admin') return null;
+      const agencies = await base44.entities.Agency.filter({ admin_email: currentUser.email });
+      return agencies[0] || null;
+    },
+    enabled: !!currentUser?.email && currentUser?.role !== 'admin'
+  });
 
-  const aggregatedAlerts = useMemo(() => {
-    const alerts = [];
-    const today = new Date();
+  const isAgencyAdmin = !!userAgency;
+  const canAccess = currentUser?.role === 'admin' || isAgencyAdmin;
 
-    // Visit Documentation Deadlines
-    (visits || []).forEach(visit => {
-      if (visit.status === 'scheduled' || visit.status === 'in_progress') {
-        const visitDate = new Date(visit.visit_date);
-        const daysSince = differenceInDays(today, visitDate);
-        
-        if (daysSince > 0 && visit.status !== 'completed') {
-          const patient = patients.find(p => p.id === visit.patient_id);
-          alerts.push({
-            id: `visit-overdue-${visit.id}`,
-            type: 'documentation',
-            severity: daysSince > 2 ? 'critical' : 'warning',
-            title: 'Overdue Visit Documentation',
-            message: `Visit for ${patient?.first_name || 'Patient'} ${patient?.last_name || ''} on ${format(visitDate, 'MMM d')} needs documentation`,
-            daysOverdue: daysSince,
-            link: `${createPageUrl("DocumentVisit")}?visitId=${visit.id}`,
-            linkText: 'Document Now',
-            category: 'Documentation',
-            timestamp: visit.visit_date
-          });
-        }
-      }
-    });
-
-    // Recertification Due
-    (patients || []).forEach(patient => {
-      const patientVisits = visits.filter(v => v.patient_id === patient.id);
-      const lastRecert = patientVisits.find(v => v.visit_type === 'recertification' || v.visit_type === 'admission');
-      
-      if (lastRecert) {
-        const recertDate = new Date(lastRecert.visit_date);
-        const nextRecertDue = addDays(recertDate, 60);
-        const daysUntil = differenceInDays(nextRecertDue, today);
-        
-        if (daysUntil <= 14 && daysUntil > 0) {
-          alerts.push({
-            id: `recert-${patient.id}`,
-            type: 'recertification',
-            severity: daysUntil <= 7 ? 'critical' : 'warning',
-            title: 'Recertification Due Soon',
-            message: `${patient.first_name} ${patient.last_name} - recertification due in ${daysUntil} days`,
-            dueDate: nextRecertDue,
-            link: `${createPageUrl("PatientDetails")}?patientId=${patient.id}`,
-            linkText: 'View Patient',
-            category: 'Recertification',
-            timestamp: nextRecertDue.toISOString()
-          });
-        } else if (daysUntil <= 0) {
-          alerts.push({
-            id: `recert-overdue-${patient.id}`,
-            type: 'recertification',
-            severity: 'critical',
-            title: 'Recertification Overdue',
-            message: `${patient.first_name} ${patient.last_name} - recertification ${Math.abs(daysUntil)} days overdue`,
-            dueDate: nextRecertDue,
-            link: `${createPageUrl("PatientDetails")}?patientId=${patient.id}`,
-            linkText: 'Schedule Recert',
-            category: 'Recertification',
-            timestamp: nextRecertDue.toISOString()
-          });
-        }
-      }
-    });
-
-    // Care Plan Reviews
-    (carePlans || []).forEach(cp => {
-      if (cp.status === 'active' && cp.target_date) {
-        const targetDate = new Date(cp.target_date);
-        const daysUntil = differenceInDays(targetDate, today);
-        
-        if (daysUntil <= 7 && daysUntil > 0) {
-          const patient = patients.find(p => p.id === cp.patient_id);
-          alerts.push({
-            id: `careplan-${cp.id}`,
-            type: 'careplan',
-            severity: 'info',
-            title: 'Care Plan Goal Due',
-            message: `${patient?.first_name || 'Patient'}'s goal "${cp.goal?.substring(0, 40)}..." due in ${daysUntil} days`,
-            dueDate: targetDate,
-            link: createPageUrl("CarePlanManagement"),
-            linkText: 'Review',
-            category: 'Care Plans',
-            timestamp: cp.target_date
-          });
-        } else if (daysUntil <= 0) {
-          const patient = patients.find(p => p.id === cp.patient_id);
-          alerts.push({
-            id: `careplan-overdue-${cp.id}`,
-            type: 'careplan',
-            severity: 'warning',
-            title: 'Care Plan Goal Overdue',
-            message: `${patient?.first_name || 'Patient'}'s goal "${cp.goal?.substring(0, 40)}..." is ${Math.abs(daysUntil)} days past target`,
-            dueDate: targetDate,
-            link: createPageUrl("CarePlanManagement"),
-            linkText: 'Update Status',
-            category: 'Care Plans',
-            timestamp: cp.target_date
-          });
-        }
-      }
-    });
-
-    // Unresolved Incidents
-    (incidents || []).forEach(incident => {
-      const patient = patients.find(p => p.id === incident.patient_id);
-      const daysSince = differenceInDays(today, new Date(incident.incident_date));
-      
-      alerts.push({
-        id: `incident-${incident.id}`,
-        type: 'incident',
-        severity: incident.severity === 'high' ? 'critical' : 'warning',
-        title: `Unresolved ${(incident.incident_type || '').replace(/_/g, ' ')} Incident`,
-        message: `${patient?.first_name || 'Patient'} ${patient?.last_name || ''} - reported ${daysSince} days ago`,
-        daysAgo: daysSince,
-        link: `${createPageUrl("PatientDetails")}?patientId=${incident.patient_id}`,
-        linkText: 'Review',
-        category: 'Incidents',
-        timestamp: incident.incident_date
-      });
-    });
-
-    // Security Alerts
-    const recentSecurityEvents = (securityLogs || []).filter(log => {
-      const logDate = new Date(log.timestamp);
-      return differenceInDays(today, logDate) <= 7 && 
-             (log.action?.includes('UNAUTHORIZED') || log.action?.includes('FAILED') || log.action?.includes('ERROR'));
-    });
-
-    if (recentSecurityEvents.length > 0) {
-      alerts.push({
-        id: 'security-alerts',
-        type: 'security',
-        severity: 'warning',
-        title: 'Security Events Detected',
-        message: `${recentSecurityEvents.length} security event(s) in the last 7 days require review`,
-        count: recentSecurityEvents.length,
-        link: createPageUrl("AdminDashboard"),
-        linkText: 'View Logs',
-        category: 'Security',
-        timestamp: recentSecurityEvents[0]?.timestamp
-      });
+  const resolveViolationMutation = useMutation({
+    mutationFn: ({ id, resolution_notes }) => 
+      base44.entities.ComplianceViolation.update(id, {
+        status: 'resolved',
+        resolved_date: new Date().toISOString(),
+        resolution_notes
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['allComplianceViolations'] });
+      toast.success("Violation marked as resolved");
     }
+  });
 
-    // Quality Measure Alerts
-    const incompleteVisits = (visits || []).filter(v => 
-      v.status === 'completed' && 
-      (!v.nurse_notes || v.nurse_notes.length < 100)
-    );
-    
-    if (incompleteVisits.length > 0) {
-      alerts.push({
-        id: 'quality-documentation',
-        type: 'quality',
-        severity: 'warning',
-        title: 'Incomplete Visit Documentation',
-        message: `${incompleteVisits.length} completed visit(s) have minimal documentation`,
-        count: incompleteVisits.length,
-        link: createPageUrl("QualityDashboard"),
-        linkText: 'Review Quality',
-        category: 'Quality Measures',
-        timestamp: new Date().toISOString()
-      });
-    }
+  // Calculate metrics
+  const metrics = useMemo(() => {
+    const days = parseInt(timeframe);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
 
-    // OASIS Submission Deadlines (simulated)
-    const recentAdmissions = (visits || []).filter(v => 
-      v.visit_type === 'admission' && 
-      differenceInDays(today, new Date(v.visit_date)) <= 5 &&
-      differenceInDays(today, new Date(v.visit_date)) >= 3
-    );
+    const recentAudits = allAudits.filter(a => new Date(a.audit_date) >= cutoff);
+    const recentViolations = allViolations.filter(v => new Date(v.created_date) >= cutoff);
 
-    recentAdmissions.forEach(admission => {
-      const patient = patients.find(p => p.id === admission.patient_id);
-      const daysRemaining = 5 - differenceInDays(today, new Date(admission.visit_date));
-      
-      alerts.push({
-        id: `oasis-${admission.id}`,
-        type: 'oasis',
-        severity: daysRemaining <= 2 ? 'critical' : 'warning',
-        title: 'OASIS Submission Deadline',
-        message: `${patient?.first_name || 'Patient'} ${patient?.last_name || ''} - OASIS due in ${daysRemaining} days`,
-        daysRemaining,
-        link: `${createPageUrl("DocumentVisit")}?visitId=${admission.id}`,
-        linkText: 'Complete OASIS',
-        category: 'OASIS',
-        timestamp: admission.visit_date
-      });
-    });
+    const openViolations = allViolations.filter(v => v.status === 'open');
+    const criticalOpen = openViolations.filter(v => v.severity === 'critical');
+    const highOpen = openViolations.filter(v => v.severity === 'high');
 
-    const severityOrder = { critical: 0, warning: 1, info: 2 };
-    return alerts
-      .filter(a => !dismissedAlerts.includes(a.id))
-      .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-  }, [patients, visits, carePlans, incidents, securityLogs, dismissedAlerts]);
+    const avgScore = recentAudits.length > 0
+      ? (recentAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / recentAudits.length).toFixed(1)
+      : 0;
 
-  const filteredAlerts = useMemo(() => {
-    return aggregatedAlerts.filter(alert => {
-      const matchesCategory = filterCategory === 'all' || alert.category === filterCategory;
-      const matchesSeverity = filterSeverity === 'all' || alert.severity === filterSeverity;
-      const matchesSearch = !searchTerm || 
-        alert.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        alert.message.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesCategory && matchesSeverity && matchesSearch;
-    });
-  }, [aggregatedAlerts, filterCategory, filterSeverity, searchTerm]);
+    const passedAudits = recentAudits.filter(a => a.status === 'passed').length;
+    const flaggedAudits = recentAudits.filter(a => a.status === 'flagged' || a.status === 'critical').length;
 
-  const alertCounts = useMemo(() => ({
-    critical: aggregatedAlerts.filter(a => a.severity === 'critical').length,
-    warning: aggregatedAlerts.filter(a => a.severity === 'warning').length,
-    info: aggregatedAlerts.filter(a => a.severity === 'info').length,
-    total: aggregatedAlerts.length
-  }), [aggregatedAlerts]);
-
-  const categoryBreakdown = useMemo(() => {
-    const breakdown = {};
-    aggregatedAlerts.forEach(a => {
-      breakdown[a.category] = (breakdown[a.category] || 0) + 1;
-    });
-    return breakdown;
-  }, [aggregatedAlerts]);
-
-  const getSeverityIcon = (severity) => {
-    switch (severity) {
-      case 'critical': return <XCircle className="w-5 h-5 text-red-600" />;
-      case 'warning': return <AlertTriangle className="w-5 h-5 text-orange-600" />;
-      case 'info': return <Bell className="w-5 h-5 text-blue-600" />;
-      default: return <Bell className="w-5 h-5" />;
-    }
-  };
-
-  const getSeverityStyle = (severity) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-50 border-l-4 border-l-red-500';
-      case 'warning': return 'bg-orange-50 border-l-4 border-l-orange-500';
-      case 'info': return 'bg-blue-50 border-l-4 border-l-blue-500';
-      default: return 'bg-gray-50 border-l-4 border-l-gray-500';
-    }
-  };
-
-  const getCategoryIcon = (category) => {
-    switch (category) {
-      case 'Documentation': return <FileText className="w-4 h-4" />;
-      case 'Recertification': return <Calendar className="w-4 h-4" />;
-      case 'Care Plans': return <Target className="w-4 h-4" />;
-      case 'Incidents': return <AlertTriangle className="w-4 h-4" />;
-      case 'Security': return <Shield className="w-4 h-4" />;
-      case 'Quality Measures': return <TrendingUp className="w-4 h-4" />;
-      case 'OASIS': return <FileText className="w-4 h-4" />;
-      default: return <Bell className="w-4 h-4" />;
-    }
-  };
-
-  const handleDismiss = (id) => {
-    setDismissedAlerts([...dismissedAlerts, id]);
-  };
-
-  const quickLinks = [
-    { name: 'Care Plans', url: createPageUrl('CarePlanManagement'), icon: Target, color: 'bg-green-500' },
-    { name: 'Security Logs', url: createPageUrl('AdminDashboard'), icon: Shield, color: 'bg-orange-500' },
-    { name: 'Patients', url: createPageUrl('Patients'), icon: User, color: 'bg-teal-500' },
-  ];
-
-  const exportComplianceReport = () => {
-    const report = {
-      generated: new Date().toISOString(),
-      summary: alertCounts,
-      alerts: aggregatedAlerts.map(a => ({
-        category: a.category,
-        severity: a.severity,
-        title: a.title,
-        message: a.message,
-        timestamp: a.timestamp
-      }))
+    return {
+      totalAudits: recentAudits.length,
+      avgScore,
+      passedAudits,
+      flaggedAudits,
+      totalViolations: recentViolations.length,
+      openViolations: openViolations.length,
+      criticalOpen: criticalOpen.length,
+      highOpen: highOpen.length,
+      resolvedViolations: allViolations.filter(v => v.status === 'resolved').length,
+      autoFixableCount: openViolations.filter(v => v.auto_fix_available).length
     };
-    
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `compliance-report-${format(new Date(), 'yyyy-MM-dd')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
+  }, [allAudits, allViolations, timeframe]);
+
+  // Compliance score trend
+  const complianceTrend = useMemo(() => {
+    const days = parseInt(timeframe);
+    const trend = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+
+      const dayAudits = allAudits.filter(a => a.audit_date?.startsWith(dateStr));
+      const avgScore = dayAudits.length > 0
+        ? Math.round(dayAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / dayAudits.length)
+        : null;
+
+      trend.push({
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        score: avgScore,
+        audits: dayAudits.length
+      });
+    }
+
+    return trend;
+  }, [allAudits, timeframe]);
+
+  // Violations by severity
+  const violationsBySeverity = useMemo(() => {
+    const counts = allViolations
+      .filter(v => v.status === 'open')
+      .reduce((acc, v) => {
+        acc[v.severity] = (acc[v.severity] || 0) + 1;
+        return acc;
+      }, {});
+
+    const colors = {
+      critical: '#EF4444',
+      high: '#F97316',
+      medium: '#EAB308',
+      low: '#3B82F6'
+    };
+
+    return Object.entries(counts).map(([severity, count]) => ({
+      name: severity.charAt(0).toUpperCase() + severity.slice(1),
+      value: count,
+      color: colors[severity]
+    }));
+  }, [allViolations]);
+
+  // Violations by category
+  const violationsByCategory = useMemo(() => {
+    const counts = allViolations
+      .filter(v => v.status === 'open')
+      .reduce((acc, v) => {
+        const category = v.rule_category || 'Other';
+        acc[category] = (acc[category] || 0) + 1;
+        return acc;
+      }, {});
+
+    return Object.entries(counts)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [allViolations]);
+
+  // Filter violations
+  const filteredViolations = useMemo(() => {
+    return allViolations.filter(v => {
+      const matchesSeverity = filterSeverity === 'all' || v.severity === filterSeverity;
+      const matchesStatus = filterStatus === 'all' || v.status === filterStatus;
+      const matchesSearch = !searchTerm ||
+        v.rule_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.violation_description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        v.user_email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      return matchesSeverity && matchesStatus && matchesSearch;
+    });
+  }, [allViolations, filterSeverity, filterStatus, searchTerm]);
+
+  // User performance
+  const userPerformance = useMemo(() => {
+    const userStats = {};
+
+    allAudits.forEach(audit => {
+      if (!userStats[audit.nurse_email]) {
+        userStats[audit.nurse_email] = {
+          email: audit.nurse_email,
+          name: audit.nurse_name,
+          totalAudits: 0,
+          totalScore: 0,
+          violations: 0
+        };
+      }
+      userStats[audit.nurse_email].totalAudits++;
+      userStats[audit.nurse_email].totalScore += audit.compliance_score || 0;
+    });
+
+    allViolations.forEach(v => {
+      if (userStats[v.user_email]) {
+        userStats[v.user_email].violations++;
+      }
+    });
+
+    return Object.values(userStats)
+      .map(u => ({
+        ...u,
+        avgScore: u.totalAudits > 0 ? (u.totalScore / u.totalAudits).toFixed(1) : 0
+      }))
+      .sort((a, b) => parseFloat(b.avgScore) - parseFloat(a.avgScore));
+  }, [allAudits, allViolations]);
+
+  if (!canAccess) {
+    return (
+      <div className="p-8 max-w-4xl mx-auto">
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Restricted</h2>
+            <p className="text-gray-600">This dashboard is only accessible to administrators and agency managers.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Compliance Dashboard</h1>
-          <p className="text-gray-600 mt-1">Aggregated alerts and compliance tracking</p>
+    <PullToRefresh onRefresh={async () => {
+      await queryClient.invalidateQueries();
+    }}>
+      <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Shield className="w-8 h-8 text-blue-600" />
+              Compliance Dashboard
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
+              {isAgencyAdmin ? 'Agency-wide compliance monitoring' : 'System-wide compliance monitoring'}
+            </p>
+          </div>
+          <Select value={timeframe} onValueChange={setTimeframe}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">7 Days</SelectItem>
+              <SelectItem value="30">30 Days</SelectItem>
+              <SelectItem value="90">90 Days</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportComplianceReport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export Report
-          </Button>
-          <Button onClick={() => window.location.reload()} variant="outline">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
-        <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
-          <CardContent className="p-3 md:p-4 text-center">
-            <XCircle className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-1 md:mb-2 opacity-80" />
-            <p className="text-2xl md:text-3xl font-bold">{alertCounts.critical}</p>
-            <p className="text-xs md:text-sm opacity-90">Critical</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
-          <CardContent className="p-3 md:p-4 text-center">
-            <AlertTriangle className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-1 md:mb-2 opacity-80" />
-            <p className="text-2xl md:text-3xl font-bold">{alertCounts.warning}</p>
-            <p className="text-xs md:text-sm opacity-90">Warnings</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-          <CardContent className="p-3 md:p-4 text-center">
-            <Bell className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-1 md:mb-2 opacity-80" />
-            <p className="text-2xl md:text-3xl font-bold">{alertCounts.info}</p>
-            <p className="text-xs md:text-sm opacity-90">Info</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
-          <CardContent className="p-3 md:p-4 text-center">
-            <CheckCircle2 className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-1 md:mb-2 opacity-80" />
-            <p className="text-2xl md:text-3xl font-bold">{Math.max(0, 100 - alertCounts.total * 2)}%</p>
-            <p className="text-xs md:text-sm opacity-90">Score</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Critical Alert Banner */}
-      {alertCounts.critical > 0 && (
-        <Alert className="mb-6 bg-red-100 border-red-300">
-          <XCircle className="w-5 h-5 text-red-600" />
-          <AlertDescription className="text-red-900">
-            <span className="font-bold">⚠️ {alertCounts.critical} Critical Alert(s) Require Immediate Attention</span>
-            <span className="ml-2">Scroll down to view and resolve.</span>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Tabs for Compliance Sections */}
-      <Tabs defaultValue="alerts" className="mb-6">
-        <TabsList className="mb-4 flex-wrap">
-          <TabsTrigger value="alerts">Alerts</TabsTrigger>
-          <TabsTrigger value="auditor">Audit</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="reports">Reports</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="auditor">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <EnhancedComplianceAuditor onAuditComplete={(audit) => setSelectedAudit(audit)} />
-            </div>
-            <div className="space-y-4">
-              {selectedAudit && (
-                <AIAuditSuggestions audit={selectedAudit} />
-              )}
-              <AuditCategoryAnalyzer audits={complianceAudits} />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="analytics">
-          <AdvancedComplianceAnalytics 
-            audits={complianceAudits}
-            trainingCompletions={trainingCompletions}
-            nurses={allUsers}
-            patients={patients}
-          />
-        </TabsContent>
-
-        <TabsContent value="trends">
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-blue-600" />
-                  Audit Performance Trends
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <NurseAuditTrends 
-                  audits={complianceAudits} 
-                  nurseEmail={currentUser?.role !== 'admin' ? currentUser?.email : null}
-                />
-              </CardContent>
-            </Card>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <AuditCategoryAnalyzer audits={complianceAudits} />
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Recent Audits</CardTitle>
-                </CardHeader>
-                <CardContent className="max-h-80 overflow-y-auto">
-                  <div className="space-y-2">
-                    {complianceAudits.slice(0, 10).map((audit, idx) => (
-                      <div 
-                        key={idx} 
-                        className="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
-                        onClick={() => setSelectedAudit(audit)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{audit.nurse_email?.split('@')[0]}</span>
-                          <Badge className={
-                            audit.status === 'passed' ? 'bg-green-100 text-green-800' :
-                            audit.status === 'critical' ? 'bg-red-100 text-red-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }>
-                            {audit.compliance_score}%
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {audit.issues?.length || 0} issues • {audit.audit_date?.split('T')[0]}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="reports">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-indigo-600" />
-                    Generate Custom Reports
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Create customized compliance reports with flexible filtering options. 
-                    Export to CSV or JSON for further analysis.
-                  </p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                    <Card className="bg-blue-50">
-                      <CardContent className="p-3 text-center">
-                        <p className="text-2xl font-bold text-blue-600">{complianceAudits.length}</p>
-                        <p className="text-xs text-gray-500">Total Audits</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="bg-green-50">
-                      <CardContent className="p-3 text-center">
-                        <p className="text-2xl font-bold text-green-600">
-                          {new Set(complianceAudits.map(a => a.nurse_email)).size}
-                        </p>
-                        <p className="text-xs text-gray-500">Nurses</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="bg-purple-50">
-                      <CardContent className="p-3 text-center">
-                        <p className="text-2xl font-bold text-purple-600">
-                          {complianceAudits.reduce((sum, a) => sum + (a.issues?.length || 0), 0)}
-                        </p>
-                        <p className="text-xs text-gray-500">Total Issues</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="bg-orange-50">
-                      <CardContent className="p-3 text-center">
-                        <p className="text-2xl font-bold text-orange-600">
-                          {complianceAudits.length > 0 
-                            ? Math.round(complianceAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / complianceAudits.length)
-                            : 0}%
-                        </p>
-                        <p className="text-xs text-gray-500">Avg Score</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-            <CustomReportGenerator 
-              audits={complianceAudits}
-              nurses={allUsers}
-              patients={patients}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="rules">
-          <ComplianceRuleManager />
-        </TabsContent>
-
-        <TabsContent value="alerts">
-          {/* Quick Links */}
-          <Card className="mb-6">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base md:text-lg flex items-center gap-2">
-                <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-indigo-600" />
-                Quick Access
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 md:p-6">
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 md:gap-3">
-                {quickLinks.map((link, idx) => (
-                  <Link key={idx} to={link.url}>
-                    <div className="p-2 md:p-3 rounded-lg border hover:shadow-md transition-all text-center cursor-pointer">
-                      <div className={`w-8 h-8 md:w-10 md:h-10 ${link.color} rounded-lg flex items-center justify-center mx-auto mb-1 md:mb-2`}>
-                        <link.icon className="w-4 h-4 md:w-5 md:h-5 text-white" />
-                      </div>
-                      <p className="text-[10px] md:text-xs font-medium text-gray-700 truncate">{link.name}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+        {/* Key Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <CardContent className="p-4">
+              <TrendingUp className="w-8 h-8 text-blue-600 mb-2" />
+              <p className="text-2xl font-bold text-gray-900">{metrics.avgScore}%</p>
+              <p className="text-xs text-gray-600">Avg Compliance Score</p>
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
-            {/* Main Alerts List */}
-            <div className="lg:col-span-3 space-y-4 order-2 lg:order-1">
-              {/* Filters */}
-              <Card>
+          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+            <CardContent className="p-4">
+              <AlertTriangle className="w-8 h-8 text-red-600 mb-2" />
+              <p className="text-2xl font-bold text-gray-900">{metrics.openViolations}</p>
+              <p className="text-xs text-gray-600">Open Issues</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+            <CardContent className="p-4">
+              <XCircle className="w-8 h-8 text-orange-600 mb-2" />
+              <p className="text-2xl font-bold text-gray-900">{metrics.criticalOpen}</p>
+              <p className="text-xs text-gray-600">Critical Issues</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <CardContent className="p-4">
+              <CheckCircle2 className="w-8 h-8 text-green-600 mb-2" />
+              <p className="text-2xl font-bold text-gray-900">{metrics.passedAudits}</p>
+              <p className="text-xs text-gray-600">Passed Audits</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Tabs defaultValue="violations" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="violations">
+              Issues ({metrics.openViolations})
+            </TabsTrigger>
+            <TabsTrigger value="trends">Trends</TabsTrigger>
+            <TabsTrigger value="users">User Performance</TabsTrigger>
+            <TabsTrigger value="audits">Audit History</TabsTrigger>
+          </TabsList>
+
+          {/* Violations Tab */}
+          <TabsContent value="violations" className="space-y-4">
+            {/* Filters */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex gap-3 items-center">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      placeholder="Search violations..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Select value={filterSeverity} onValueChange={setFilterSeverity}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Severities</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="open">Open</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Auto-Fixable Issues */}
+            {metrics.autoFixableCount > 0 && (
+              <Card className="border-2 border-green-300 bg-green-50">
                 <CardContent className="p-4">
-                  <div className="flex flex-wrap gap-3">
-                    <div className="flex-1 min-w-[200px]">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <Input
-                          placeholder="Search alerts..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10"
-                        />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Wand2 className="w-6 h-6 text-green-600" />
+                      <div>
+                        <p className="font-semibold text-green-900">
+                          {metrics.autoFixableCount} issues can be auto-fixed
+                        </p>
+                        <p className="text-sm text-green-700">
+                          Use one-click resolution to quickly resolve common compliance issues
+                        </p>
                       </div>
                     </div>
-                    <Select value={filterCategory} onValueChange={setFilterCategory}>
-                      <SelectTrigger className="w-[160px]">
-                        <SelectValue placeholder="Category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Categories</SelectItem>
-                        <SelectItem value="Documentation">Documentation</SelectItem>
-                        <SelectItem value="Recertification">Recertification</SelectItem>
-                        <SelectItem value="Care Plans">Care Plans</SelectItem>
-                        <SelectItem value="Incidents">Incidents</SelectItem>
-                        <SelectItem value="Security">Security</SelectItem>
-                        <SelectItem value="Quality Measures">Quality Measures</SelectItem>
-                        <SelectItem value="OASIS">OASIS</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue placeholder="Severity" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Severities</SelectItem>
-                        <SelectItem value="critical">Critical</SelectItem>
-                        <SelectItem value="warning">Warning</SelectItem>
-                        <SelectItem value="info">Info</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                 </CardContent>
               </Card>
+            )}
 
-              {/* Alerts */}
-              <div className="space-y-3">
-                {filteredAlerts.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-12 text-center">
-                      <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">All Clear!</h3>
-                      <p className="text-gray-500">No compliance alerts match your current filters.</p>
+            {/* Violations List */}
+            <div className="space-y-3">
+              {filteredViolations.length === 0 ? (
+                <Card>
+                  <CardContent className="p-12 text-center">
+                    <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                    <p className="text-gray-600">
+                      {filterStatus === 'open' ? 'No open compliance issues!' : 'No violations found'}
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                filteredViolations.map((violation, idx) => (
+                  <Card
+                    key={idx}
+                    className={`border-l-4 ${
+                      violation.severity === 'critical' ? 'border-l-red-500 bg-red-50' :
+                      violation.severity === 'high' ? 'border-l-orange-500 bg-orange-50' :
+                      violation.severity === 'medium' ? 'border-l-yellow-500 bg-yellow-50' :
+                      'border-l-blue-500 bg-blue-50'
+                    }`}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-semibold">{violation.rule_name}</h4>
+                            <Badge className={
+                              violation.severity === 'critical' ? 'bg-red-600' :
+                              violation.severity === 'high' ? 'bg-orange-600' :
+                              violation.severity === 'medium' ? 'bg-yellow-600' :
+                              'bg-blue-600'
+                            }>
+                              {violation.severity}
+                            </Badge>
+                            <Badge variant={violation.status === 'open' ? 'default' : 'secondary'}>
+                              {violation.status}
+                            </Badge>
+                            {violation.auto_fix_available && (
+                              <Badge className="bg-green-600">
+                                <Wand2 className="w-3 h-3 mr-1" />
+                                Auto-Fix
+                              </Badge>
+                            )}
+                          </div>
+
+                          <p className="text-sm text-gray-700 mb-2">{violation.violation_description}</p>
+
+                          {violation.recommended_action && (
+                            <div className="bg-white p-2 rounded border border-gray-200 mb-2">
+                              <p className="text-xs font-semibold text-gray-700">Recommended Action:</p>
+                              <p className="text-xs text-gray-600">{violation.recommended_action}</p>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span>{violation.user_email}</span>
+                            <span>•</span>
+                            <span>{formatEastern(violation.created_date, 'MMM d, yyyy h:mm a')}</span>
+                            <span>•</span>
+                            <span className="capitalize">{violation.detection_method || 'manual'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedViolation(violation);
+                              setDetailDialog(true);
+                            }}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          {violation.status === 'open' && (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                const notes = prompt("Enter resolution notes (optional):");
+                                resolveViolationMutation.mutate({
+                                  id: violation.id,
+                                  resolution_notes: notes || 'Manually resolved'
+                                });
+                              }}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              Resolve
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
-                ) : (
-                  filteredAlerts.map((alert) => (
-                    <Card key={alert.id} className={`${getSeverityStyle(alert.severity)} border`}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 mt-1">
-                            {getSeverityIcon(alert.severity)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-gray-900">{alert.title}</h4>
-                              <Badge variant="outline" className="text-xs">
-                                {getCategoryIcon(alert.category)}
-                                <span className="ml-1">{alert.category}</span>
-                              </Badge>
+                ))
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Trends Tab */}
+          <TabsContent value="trends" className="space-y-6">
+            {/* Compliance Score Trend */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                  Compliance Score Trend
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={complianceTrend}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload?.length && payload[0].value !== null) {
+                          return (
+                            <div className="bg-white p-3 border rounded shadow">
+                              <p className="text-sm font-semibold">{payload[0].payload.date}</p>
+                              <p className="text-sm text-blue-600">Score: {payload[0].value}%</p>
+                              <p className="text-xs text-gray-500">{payload[0].payload.audits} audits</p>
                             </div>
-                            <p className="text-sm text-gray-700 mb-3">{alert.message}</p>
-                            <div className="flex items-center gap-3">
-                              <Link to={alert.link}>
-                                <Button size="sm" className="gap-1">
-                                  {alert.linkText}
-                                  <ExternalLink className="w-3 h-3" />
-                                </Button>
-                              </Link>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDismiss(alert.id)}
-                                className="text-gray-500"
-                              >
-                                Dismiss
-                              </Button>
-                              {alert.timestamp && (
-                                <span className="text-xs text-gray-400 ml-auto">
-                                  <Clock className="w-3 h-3 inline mr-1" />
-                                  {format(new Date(alert.timestamp), 'MMM d, yyyy')}
-                                </span>
-                              )}
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="score"
+                      stroke="#3B82F6"
+                      strokeWidth={3}
+                      dot={{ fill: '#3B82F6' }}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Violations by Severity */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-orange-600" />
+                    Open Issues by Severity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {violationsBySeverity.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={250}>
+                      <PieChart>
+                        <Pie
+                          data={violationsBySeverity}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, value }) => `${name}: ${value}`}
+                          outerRadius={80}
+                          dataKey="value"
+                        >
+                          {violationsBySeverity.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">No open violations</div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Violations by Category */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-purple-600" />
+                    Issues by Category
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {violationsByCategory.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={violationsByCategory}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="category" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip />
+                        <Bar dataKey="count" fill="#8B5CF6" radius={[8, 8, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">No violations to display</div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* User Performance Tab */}
+          <TabsContent value="users" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  User Compliance Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left p-2">User</th>
+                        <th className="text-center p-2">Audits</th>
+                        <th className="text-center p-2">Avg Score</th>
+                        <th className="text-center p-2">Violations</th>
+                        <th className="text-center p-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userPerformance.slice(0, 20).map((user, idx) => (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="p-2">
+                            <div>
+                              <p className="font-medium">{user.name || user.email}</p>
+                              <p className="text-xs text-gray-500">{user.email}</p>
                             </div>
+                          </td>
+                          <td className="text-center p-2">{user.totalAudits}</td>
+                          <td className="text-center p-2">
+                            <Badge className={
+                              parseFloat(user.avgScore) >= 90 ? 'bg-green-600' :
+                              parseFloat(user.avgScore) >= 75 ? 'bg-yellow-600' :
+                              'bg-red-600'
+                            }>
+                              {user.avgScore}%
+                            </Badge>
+                          </td>
+                          <td className="text-center p-2">
+                            {user.violations > 0 ? (
+                              <Badge className="bg-red-600">{user.violations}</Badge>
+                            ) : (
+                              <span className="text-gray-400">0</span>
+                            )}
+                          </td>
+                          <td className="text-center p-2">
+                            {parseFloat(user.avgScore) >= 85 && user.violations === 0 ? (
+                              <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto" />
+                            ) : (
+                              <AlertTriangle className="w-5 h-5 text-orange-600 mx-auto" />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {userPerformance.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">No user data available</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Audit History Tab */}
+          <TabsContent value="audits" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  Recent Compliance Audits
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {allAudits.slice(0, 20).map((audit, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-lg border ${
+                        audit.status === 'passed' ? 'bg-green-50 border-green-200' :
+                        audit.status === 'critical' ? 'bg-red-50 border-red-200' :
+                        'bg-yellow-50 border-yellow-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-sm">{audit.nurse_name || audit.nurse_email}</span>
+                            <Badge className={
+                              audit.status === 'passed' ? 'bg-green-600' :
+                              audit.status === 'critical' ? 'bg-red-600' :
+                              'bg-yellow-600'
+                            }>
+                              {audit.status}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {audit.audit_type}
+                            </Badge>
                           </div>
+                          <p className="text-xs text-gray-600">
+                            {formatEastern(audit.audit_date, 'MMM d, yyyy h:mm a')}
+                          </p>
+                          {audit.issues_found?.length > 0 && (
+                            <p className="text-xs text-gray-700 mt-1">
+                              {audit.issues_found.length} issue{audit.issues_found.length !== 1 ? 's' : ''} found
+                            </p>
+                          )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))
+                        <div className="text-right">
+                          <p className="text-2xl font-bold">{audit.compliance_score}%</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Violation Detail Dialog */}
+        <Dialog open={detailDialog} onOpenChange={setDetailDialog}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-600" />
+                Compliance Issue Details
+              </DialogTitle>
+            </DialogHeader>
+
+            {selectedViolation && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm font-semibold">Rule</Label>
+                  <p className="text-sm mt-1">{selectedViolation.rule_name}</p>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-semibold">Description</Label>
+                  <p className="text-sm mt-1">{selectedViolation.violation_description}</p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Badge className={
+                    selectedViolation.severity === 'critical' ? 'bg-red-600' :
+                    selectedViolation.severity === 'high' ? 'bg-orange-600' :
+                    'bg-yellow-600'
+                  }>
+                    {selectedViolation.severity}
+                  </Badge>
+                  <Badge>{selectedViolation.status}</Badge>
+                </div>
+
+                {selectedViolation.recommended_action && (
+                  <div>
+                    <Label className="text-sm font-semibold">Recommended Action</Label>
+                    <p className="text-sm mt-1 p-3 bg-blue-50 rounded border border-blue-200">
+                      {selectedViolation.recommended_action}
+                    </p>
+                  </div>
+                )}
+
+                {selectedViolation.auto_fix_available && selectedViolation.entity_id && (
+                  <OneClickComplianceFixer
+                    issue={selectedViolation}
+                    documentContent={selectedViolation.document_analyzed || ""}
+                    onFixed={(fixedContent, changes) => {
+                      toast.success("Issue auto-fixed: " + changes);
+                      setDetailDialog(false);
+                      queryClient.invalidateQueries({ queryKey: ['allComplianceViolations'] });
+                    }}
+                  />
+                )}
+
+                {selectedViolation.status === 'open' && (
+                  <Button
+                    onClick={() => {
+                      const notes = prompt("Enter resolution notes:");
+                      if (notes) {
+                        resolveViolationMutation.mutate({
+                          id: selectedViolation.id,
+                          resolution_notes: notes
+                        });
+                        setDetailDialog(false);
+                      }
+                    }}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    Mark as Resolved
+                  </Button>
                 )}
               </div>
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-4 order-1 lg:order-2">
-              {/* Category Breakdown */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">By Category</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {Object.entries(categoryBreakdown).map(([category, count]) => (
-                      <div 
-                        key={category} 
-                        className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
-                        onClick={() => setFilterCategory(category)}
-                      >
-                        <div className="flex items-center gap-2">
-                          {getCategoryIcon(category)}
-                          <span className="text-sm">{category}</span>
-                        </div>
-                        <Badge variant="outline">{count}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Upcoming Deadlines */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Calendar className="w-5 h-5" />
-                    Upcoming
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {aggregatedAlerts
-                      .filter(a => a.dueDate || a.daysRemaining)
-                      .slice(0, 5)
-                      .map((alert, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-sm">
-                          <span className="truncate flex-1">{alert.title.substring(0, 20)}...</span>
-                          <Badge variant="outline" className={
-                            alert.severity === 'critical' ? 'bg-red-100 text-red-800' : 
-                            alert.severity === 'warning' ? 'bg-orange-100 text-orange-800' : 
-                            'bg-blue-100 text-blue-800'
-                          }>
-                            {alert.daysRemaining ? `${alert.daysRemaining}d` : 
-                             alert.dueDate ? format(new Date(alert.dueDate), 'MMM d') : ''}
-                          </Badge>
-                        </div>
-                      ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Policy & Guideline Monitor */}
-              <PolicyGuidelineMonitor 
-                nurseEmail={currentUser?.email}
-                onTrainingRecommended={(topics) => console.log('Training recommended:', topics)}
-              />
-
-              {/* Automated Compliance Reporting */}
-              <AutomatedComplianceReporting 
-                nurseEmail={currentUser?.email}
-                isAdmin={currentUser?.role === 'admin'}
-              />
-
-              {/* Compliance Tips */}
-              <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2 text-indigo-900">
-                    <Sparkles className="w-5 h-5" />
-                    Pro Tips
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2 text-sm text-indigo-800">
-                    <li>• Complete documentation within 24 hours</li>
-                    <li>• Schedule recerts 2 weeks before due date</li>
-                    <li>• Review care plans at each visit</li>
-                    <li>• Document homebound status every visit</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
-    </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </PullToRefresh>
   );
 }

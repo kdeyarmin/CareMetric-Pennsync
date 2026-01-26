@@ -10,6 +10,8 @@ import {
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Label } from "@/components/ui/label";
+import OneClickComplianceFixer from "./OneClickComplianceFixer";
 
 export default function AutomatedComplianceChecker({ 
   documentContent, 
@@ -266,6 +268,15 @@ export default function AutomatedComplianceChecker({
                                 </div>
                               </div>
                             )}
+
+                            {/* One-Click Fix */}
+                            <OneClickComplianceFixer
+                              issue={issue}
+                              documentContent={documentContent}
+                              onFixed={(fixedContent, changes) => {
+                                toast.success("Applied fix: " + changes);
+                              }}
+                            />
                           </CardContent>
                         </CollapsibleContent>
                       </Card>
