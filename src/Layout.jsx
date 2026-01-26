@@ -161,6 +161,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "OASIS", icon: ShieldAlert, page: "OASIS" },
   { name: "Compliance", icon: ShieldAlert, page: "Compliance" },
   { name: "Compliance Monitor", icon: ShieldAlert, page: "ComplianceDashboard" },
+  { name: "Compliance Training", icon: GraduationCap, page: "ComplianceTraining" },
   { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
   { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
   { name: "My Training", icon: Target, page: "MyTraining" },
