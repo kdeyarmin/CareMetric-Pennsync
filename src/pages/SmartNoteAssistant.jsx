@@ -39,6 +39,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
 import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
+import EnhancedTemplateSelector from "@/components/templates/EnhancedTemplateSelector";
+import TemplateEducationSuggestions from "@/components/education/TemplateEducationSuggestions";
 
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
@@ -740,9 +742,16 @@ export default function SmartNoteAssistant() {
                   </Select>
                 </div>
 
-                {/* Template Selector */}
+                {/* Template Selector with Education Materials */}
+                {visitType && providerType && selectedTemplate && (
+                  <TemplateEducationSuggestions
+                    templateId={selectedTemplate.id}
+                    patientDiagnosis={selectedDiagnosis}
+                  />
+                )}
+
                 {visitType && providerType &&
-              <NoteTemplateSelector
+                <NoteTemplateSelector
                 visitType={visitType}
                 providerType={providerType}
                 onSelectTemplate={(formattedNote, template) => {
@@ -750,7 +759,7 @@ export default function SmartNoteAssistant() {
                   setSelectedTemplate(template);
                 }} />
 
-              }
+                }
 
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
