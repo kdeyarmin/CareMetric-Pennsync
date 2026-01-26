@@ -163,16 +163,23 @@ export default function StripeSubscriptionManager() {
         active: editingProduct.active
       });
 
-      console.log('Update product response:', response);
+      console.log('Update product full response:', response);
 
-      if (response?.data?.success || response?.data?.product) {
+      // Check for success in response.data
+      const data = response?.data || response;
+
+      if (data?.success || data?.product) {
         toast.success("Product updated successfully", { id: toastId });
         setEditDialog(false);
         setEditingProduct(null);
-        queryClient.invalidateQueries({ queryKey: ['stripeProducts'] });
+        // Force complete refresh
+        await queryClient.resetQueries({ queryKey: ['stripeProducts'] });
+        await queryClient.resetQueries({ queryKey: ['stripePrices'] });
         await refetchProducts();
+        await refetchPrices();
       } else {
-        const errorMsg = response?.data?.error || response?.error || "Failed to update product";
+        const errorMsg = data?.error || "Failed to update product";
+        console.error('Update failed - full response:', response);
         toast.error(errorMsg, { id: toastId });
       }
     } catch (error) {
@@ -228,18 +235,23 @@ export default function StripeSubscriptionManager() {
         set_active: !currentStatus
       });
 
-      console.log('Toggle price response:', response);
+      console.log('Toggle price full response:', response);
       
-      if (response?.data?.success === true || response?.success === true || response?.data?.price) {
+      // Check for success in response.data
+      const data = response?.data || response;
+      
+      if (data?.success === true || data?.price) {
         toast.success(`Price ${action}d successfully`, { id: toastId });
-        // Force refresh both products and prices
-        queryClient.invalidateQueries({ queryKey: ['stripePrices'] });
-        queryClient.invalidateQueries({ queryKey: ['stripeProducts'] });
+        // Force complete refresh
+        await queryClient.resetQueries({ queryKey: ['stripePrices'] });
+        await queryClient.resetQueries({ queryKey: ['stripeProducts'] });
+        // Wait a bit for Stripe to sync
+        await new Promise(resolve => setTimeout(resolve, 500));
         await refetchProducts();
         await refetchPrices();
       } else {
-        const errorMsg = response?.data?.error || response?.error || response?.details || `Failed to ${action} price`;
-        console.error('Toggle failed:', response);
+        const errorMsg = data?.error || `Failed to ${action} price`;
+        console.error('Toggle failed - full response:', response);
         toast.error(errorMsg, { id: toastId });
       }
     } catch (error) {
