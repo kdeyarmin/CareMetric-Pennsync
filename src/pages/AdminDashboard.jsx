@@ -44,6 +44,7 @@ import AIInsightsPanel from "../components/admin/AIInsightsPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import RealTimeDashboardWidget from "../components/admin/RealTimeDashboardWidget";
 import AgencyManagement from "../components/admin/AgencyManagement";
+import SubscriptionAnalyticsDashboard from "../components/admin/SubscriptionAnalyticsDashboard";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
@@ -714,18 +715,29 @@ export default function AdminDashboard() {
         <div className="w-full overflow-x-auto">
           <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1 sm:p-2">
             <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">📊 Overview</TabsTrigger>
+            <TabsTrigger value="analytics" className="text-xs sm:text-sm py-2 whitespace-nowrap">📈 Analytics</TabsTrigger>
             <TabsTrigger value="agencies" className="text-xs sm:text-sm py-2 whitespace-nowrap">🏢 Agencies</TabsTrigger>
             <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2 whitespace-nowrap">💰 Revenue</TabsTrigger>
             <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">👥 Users</TabsTrigger>
             <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
             <TabsTrigger value="security" className="text-xs sm:text-sm py-2 whitespace-nowrap">🔒 Security</TabsTrigger>
             <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
-
             <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">⚡ System</TabsTrigger>
             <TabsTrigger value="activity" className="text-xs sm:text-sm py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
             <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">📥 Export</TabsTrigger>
           </TabsList>
         </div>
+
+        {/* Analytics Tab */}
+        <TabsContent value="analytics" className="space-y-6">
+          <SubscriptionAnalyticsDashboard 
+            subscriptions={allSubscriptions}
+            payments={allPayments}
+            users={allUsers}
+            activity={allActivity}
+            complianceAudits={allComplianceAudits}
+          />
+        </TabsContent>
 
         {/* Agencies Tab */}
         <TabsContent value="agencies" className="space-y-6">
