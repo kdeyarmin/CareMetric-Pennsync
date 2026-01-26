@@ -192,7 +192,19 @@ export default function MedicalScribeWithReview({
     setIsProcessing(true);
 
     try {
-      // Build enhanced context from patient data
+      // Build enhanced context from patient data, history, and care plans
+      let carePlans = [];
+      if (patientId && patientId !== 'anonymous') {
+        try {
+          carePlans = await base44.entities.CarePlan.filter({
+            patient_id: patientId,
+            status: 'active'
+          });
+        } catch (error) {
+          console.error('Error fetching care plans:', error);
+        }
+      }
+
       const contextData = {
         patient_demographics: patientContext ? {
           age: patientContext.date_of_birth 
@@ -200,12 +212,24 @@ export default function MedicalScribeWithReview({
             : null,
           primary_diagnosis: patientContext.primary_diagnosis,
           allergies: patientContext.allergies,
-          current_medications: patientContext.current_medications?.map(m => `${m.name} ${m.dosage}`).join(', ')
+          current_medications: patientContext.current_medications?.map(m => `${m.name} ${m.dosage}`).join(', '),
+          secondary_diagnoses: patientContext.secondary_diagnoses || []
         } : null,
         recent_visits: recentVisits?.map(v => ({
           date: v.visit_date,
           type: v.visit_type,
           summary: v.nurse_notes?.substring(0, 200)
+        })),
+        active_care_plans: carePlans.map(cp => ({
+          problem: cp.problem,
+          goal: cp.goal,
+          interventions: cp.interventions,
+          status: cp.status
+        })),
+        previous_notes_summary: patientContext?.enhanced_notes_history?.slice(-3).map(note => ({
+          date: note.date,
+          visit_type: note.visit_type,
+          excerpt: note.enhanced_note?.substring(0, 250)
         }))
       };
 
@@ -237,7 +261,8 @@ export default function MedicalScribeWithReview({
         contextData,
         noteFormat: selectedFormat,
         formatInstructions: formatPrompt,
-        specialtyContext
+        specialtyContext,
+        enable_compliance_flagging: true
       });
 
       const data = response.data || response;

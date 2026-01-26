@@ -24,20 +24,53 @@ Deno.serve(async (req) => {
 
     console.log('Starting consolidated note enhancement and quality analysis...');
 
-    // Build the comprehensive prompt
+    // Build the comprehensive prompt with enhanced patient context
     const customRulesText = custom_rules?.length > 0 
-      ? `\n\nORGANIZATIONAL COMPLIANCE RULES:\n${custom_rules.map(rule => 
-          `- ${rule.rule_name}: ${rule.description}\n  Requirement: ${rule.requirement_text}`
-        ).join('\n')}`
-      : '';
+     ? `\n\nORGANIZATIONAL COMPLIANCE RULES:\n${custom_rules.map(rule => 
+         `- ${rule.rule_name}: ${rule.description}\n  Requirement: ${rule.requirement_text}`
+       ).join('\n')}`
+     : '';
 
     // Add user-defined custom compliance rules from AI preferences
     const userCustomRules = ai_preferences?.custom_compliance_rules?.filter(r => r.is_active !== false) || [];
     const userRulesText = userCustomRules.length > 0
-      ? `\n\nUSER-DEFINED CUSTOM COMPLIANCE RULES:\n${userCustomRules.map(rule =>
-          `- ${rule.rule_name}: ${rule.rule_description}${rule.applies_to_visit_types?.length > 0 ? `\n  Applies to: ${rule.applies_to_visit_types.join(', ')}` : ''}`
-        ).join('\n')}\n\nIMPORTANT: These are the user's specific compliance requirements. Interpret and apply them intelligently to the clinical note.`
-      : '';
+     ? `\n\nUSER-DEFINED CUSTOM COMPLIANCE RULES:\n${userCustomRules.map(rule =>
+         `- ${rule.rule_name}: ${rule.rule_description}${rule.applies_to_visit_types?.length > 0 ? `\n  Applies to: ${rule.applies_to_visit_types.join(', ')}` : ''}`
+       ).join('\n')}\n\nIMPORTANT: These are the user's specific compliance requirements. Interpret and apply them intelligently to the clinical note.`
+     : '';
+
+    // Enhanced patient context section
+    const patientContextSection = patient_context ? `
+
+    ═══════════════════════════════════════
+    PATIENT CONTEXT & HISTORICAL DATA
+    ═══════════════════════════════════════
+
+    Patient: ${patient_context.patient_name}
+    Primary Diagnosis: ${patient_context.primary_diagnosis || 'Not specified'}
+    ${patient_context.secondary_diagnoses?.length > 0 ? `Secondary Diagnoses: ${patient_context.secondary_diagnoses.join(', ')}\n` : ''}${patient_context.allergies ? `Allergies: ${patient_context.allergies}\n` : ''}${patient_context.current_medications?.length > 0 ? `
+    Current Medications:
+    ${patient_context.current_medications.map(m => `  • ${m.name} ${m.dosage || ''}`).join('\n')}
+    ` : ''}
+    ${patient_context.recent_notes?.length > 0 ? `RECENT VISIT HISTORY (Use to understand patient trajectory and ensure continuity):
+    ${patient_context.recent_notes.map((note, i) => `
+    Visit ${i + 1}: ${new Date(note.date).toLocaleDateString()}
+    Type: ${note.visit_type}
+    Diagnosis: ${note.diagnosis}
+    Excerpt: ${note.note_excerpt}...
+    `).join('\n')}
+    IMPORTANT: Reference relevant trends, changes from previous visits, and progression in your note.
+    ` : ''}
+    ${patient_context.active_care_plans?.length > 0 ? `ACTIVE CARE PLAN GOALS (Ensure note addresses progress toward these goals):
+    ${patient_context.active_care_plans.map((cp, i) => `
+    ${i + 1}. Problem: ${cp.problem}
+    Goal: ${cp.goal}
+    Status: ${cp.status}
+    `).join('\n')}
+    CRITICAL: Document patient's progress toward these specific goals.
+    ` : ''}
+    ═══════════════════════════════════════
+    ` : '';
 
     // Import provider-specific context
     const { getProviderSpecificPromptAdditions, getCareLocationPromptAdditions } = await import('../components/utils/providerSpecificPrompts.js');
@@ -60,16 +93,7 @@ ${compliance_prompt}${customRulesText}${userRulesText}
 
 ${vital_signs && Object.values(vital_signs).some(v => v) ? `VITAL SIGNS:
 ${vital_signs.temperature ? `Temperature: ${vital_signs.temperature}°F\n` : ''}${vital_signs.heart_rate ? `Heart Rate: ${vital_signs.heart_rate} bpm\n` : ''}${vital_signs.respiratory_rate ? `Respiratory Rate: ${vital_signs.respiratory_rate}\n` : ''}${vital_signs.bp_systolic && vital_signs.bp_diastolic ? `Blood Pressure: ${vital_signs.bp_systolic}/${vital_signs.bp_diastolic}\n` : ''}${vital_signs.oxygen_saturation ? `O2 Saturation: ${vital_signs.oxygen_saturation}%\n` : ''}
-` : ''}${patient_context ? `
-PATIENT CONTEXT:
-- Patient: ${patient_context.patient_name}
-- Primary Diagnosis: ${patient_context.primary_diagnosis || 'Not specified'}
-${patient_context.secondary_diagnoses?.length > 0 ? `- Secondary Diagnoses: ${patient_context.secondary_diagnoses.join(', ')}\n` : ''}${patient_context.allergies ? `- Allergies: ${patient_context.allergies}\n` : ''}${patient_context.current_medications?.length > 0 ? `- Current Medications: ${patient_context.current_medications.map(m => m.name).join(', ')}\n` : ''}
-${patient_context.recent_notes?.length > 0 ? `RECENT VISIT NOTES (Last 3):
-${patient_context.recent_notes.map((note, i) => `${i + 1}. ${note.date} - ${note.visit_type}: ${note.note_excerpt}...`).join('\n')}
-` : ''}${patient_context.active_care_plans?.length > 0 ? `ACTIVE CARE PLANS:
-${patient_context.active_care_plans.map((cp, i) => `${i + 1}. Problem: ${cp.problem}, Goal: ${cp.goal}`).join('\n')}
-` : ''}` : ''}
+` : ''}${patientContextSection}
 ${ai_preferences ? `AI DOCUMENTATION PREFERENCES:
 - Verbosity: ${ai_preferences.verbosity_level || 'balanced'} (concise/balanced/detailed)
 - Compliance Focus: ${ai_preferences.compliance_priority || 'medicare'}
@@ -84,11 +108,14 @@ EXCELLENCE CRITERIA FOR ENHANCED NARRATIVE:
 - Create a cohesive, flowing narrative that demonstrates comprehensive patient assessment
 - Establish clear clinical reasoning and evidence-based decision-making
 - Use precise medical terminology while maintaining clarity
-- Show patient trajectory and clinical decision points
+- Show patient trajectory and clinical decision points by referencing previous visit findings
 - Document skilled nursing or clinical judgement clearly
 - Ensure all assessments directly support the primary and secondary diagnoses
-- Link interventions to identified clinical needs
+- Link interventions to identified clinical needs and active care plan goals
 - Create chronological and logical flow between assessment, findings, and plan
+- Reference relevant changes from previous visits when applicable
+- Address progress toward active care plan goals when present
+- Identify potential compliance red flags or documentation gaps proactively
 
 Please provide a comprehensive response that includes:
 
@@ -109,8 +136,13 @@ Please provide a comprehensive response that includes:
    - Create a narrative that reads as high-quality professional documentation
    - Ensure Medicare readiness with specific, documentable clinical details
    
-3. COMPLIANCE CHECK: Identify any remaining compliance gaps with specific, actionable fixes
-   - Only include actual regulatory/Medicare violations
+3. COMPLIANCE CHECK: Proactively identify compliance gaps and potential red flags
+   - Flag actual regulatory/Medicare violations found in the note
+   - Identify missing required elements for this visit type
+   - Flag vague or non-specific language that could trigger audit concerns
+   - Identify missing documentation of skilled services
+   - Flag any homebound status gaps (if applicable)
+   - Check for medical necessity justification
    - Provide SPECIFIC remediation text for each issue
    - Map to relevant Medicare Conditions of Participation or billing guidance
    
