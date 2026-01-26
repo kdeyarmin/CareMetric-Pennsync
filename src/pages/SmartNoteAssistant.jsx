@@ -73,6 +73,7 @@ import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
 import ComplianceBasedTrainingRecommender from "@/components/training/ComplianceBasedTrainingRecommender";
 import AIOutputRating from "@/components/feedback/AIOutputRating";
 import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
+import PatientContextSidebar from '../components/smartNote/PatientContextSidebar';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -876,6 +877,16 @@ export default function SmartNoteAssistant() {
                     </div>
                   </div>
                 </div>
+
+                {/* Patient Context Quick Insert */}
+                {selectedPatient !== 'no_patient' && patientData && (
+                  <PatientContextSidebar
+                    patientId={selectedPatient}
+                    onInsertContext={(text) => {
+                      setRoughNotes(roughNotes + '\n\n' + text);
+                    }}
+                  />
+                )}
 
                 {/* Rough Notes Input with Voice Dictation */}
                 <div>

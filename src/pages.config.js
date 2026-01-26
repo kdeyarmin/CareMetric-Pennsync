@@ -28,6 +28,7 @@ import Compliance from './pages/Compliance';
 import ComplianceAutomation from './pages/ComplianceAutomation';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
+import ComplianceTraining from './pages/ComplianceTraining';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
@@ -103,8 +104,8 @@ import SecurityPolicy from './pages/SecurityPolicy';
 import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import StaffTraining from './pages/StaffTraining';
-import StaffTrainingHub from './pages/StaffTrainingHub';
 import Support from './pages/Support';
+import StaffTrainingHub from './pages/StaffTrainingHub';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
@@ -118,7 +119,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import ComplianceTraining from './pages/ComplianceTraining';
 import __Layout from './Layout.jsx';
 
 
@@ -153,6 +153,7 @@ export const PAGES = {
     "ComplianceAutomation": ComplianceAutomation,
     "ComplianceDashboard": ComplianceDashboard,
     "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
+    "ComplianceTraining": ComplianceTraining,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
     "DocumentAnalysisHistory": DocumentAnalysisHistory,
@@ -228,8 +229,8 @@ export const PAGES = {
     "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
     "StaffTraining": StaffTraining,
-    "StaffTrainingHub": StaffTrainingHub,
     "Support": Support,
+    "StaffTrainingHub": StaffTrainingHub,
     "SubscriptionPlans": SubscriptionPlans,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
@@ -243,7 +244,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "ComplianceTraining": ComplianceTraining,
 }
 
 export const pagesConfig = {

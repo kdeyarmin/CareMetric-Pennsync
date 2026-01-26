@@ -274,10 +274,12 @@ export default function MedicalScribeWithReview({
           setGeneratedNote(data.enhanced_note);
           setDifferentialDiagnoses(data.differential_diagnoses || []);
           setSuggestedCodes(data.suggested_codes || { icd10: [], cpt: [] });
+          setComplianceIssues(data.compliance_flags || []);
           onNoteGenerated?.(data.enhanced_note, {
             differentialDiagnoses: data.differential_diagnoses,
             suggestedCodes: data.suggested_codes,
-            specialtyApplied: data.specialty_applied
+            specialtyApplied: data.specialty_applied,
+            complianceFlags: data.compliance_flags
           });
           setStage('complete');
 
@@ -649,6 +651,33 @@ Provide specific, actionable suggestions for:
   if (stage === 'complete') {
     return (
       <div className="space-y-4">
+        {/* Compliance Flags Alert */}
+        {complianceIssues.length > 0 && (
+          <Alert className="bg-orange-50 border-orange-300">
+            <AlertCircle className="w-4 h-4 text-orange-600" />
+            <AlertDescription>
+              <p className="font-semibold text-sm mb-2 text-orange-900">
+                {complianceIssues.length} Potential Compliance Issue{complianceIssues.length > 1 ? 's' : ''} Detected
+              </p>
+              <div className="space-y-2">
+                {complianceIssues.slice(0, 3).map((flag, idx) => (
+                  <div key={idx} className="text-xs">
+                    <span className={`font-semibold ${
+                      flag.severity === 'critical' ? 'text-red-600' :
+                      flag.severity === 'high' ? 'text-orange-600' : 'text-yellow-600'
+                    }`}>
+                      [{flag.severity}]
+                    </span> {flag.issue}
+                  </div>
+                ))}
+                {complianceIssues.length > 3 && (
+                  <p className="text-xs text-orange-700">+{complianceIssues.length - 3} more issues</p>
+                )}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Card className="w-full border-green-200 bg-green-50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-green-900">
