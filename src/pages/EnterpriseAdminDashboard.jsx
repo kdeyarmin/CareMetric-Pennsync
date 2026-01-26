@@ -5,7 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, Users, Search, ChevronRight, Mail, Phone, CreditCard, ArrowLeft } from "lucide-react";
+import { Building2, Users, Search, ChevronRight, Mail, Phone, CreditCard, ArrowLeft, Plus, Settings, BarChart3 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ProviderPerformanceTable from "../components/enterprise/ProviderPerformanceTable";
+import AgencyWideMetrics from "../components/enterprise/AgencyWideMetrics";
+import CommonIssuesAnalysis from "../components/enterprise/CommonIssuesAnalysis";
+import EnterpriseSetupPanel from "../components/enterprise/EnterpriseSetupPanel";
 
 export default function EnterpriseAdminDashboard() {
   const [selectedAgency, setSelectedAgency] = useState(null);
@@ -51,24 +56,33 @@ export default function EnterpriseAdminDashboard() {
     agency.agency_code?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // If an agency is selected, show its users
+  // If an agency is selected, show detailed view
   if (selectedAgency) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6">
         <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" onClick={() => setSelectedAgency(null)}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Agencies
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-                {selectedAgency.agency_name}
-              </h1>
-              <p className="text-slate-600 mt-1">
-                {agencyUsers.length} users • {selectedAgency.package_name || 'Custom Package'}
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" onClick={() => setSelectedAgency(null)}>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Agencies
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+                  {selectedAgency.agency_name}
+                </h1>
+                <p className="text-slate-600 mt-1">
+                  {agencyUsers.length} users • {selectedAgency.package_name || 'Custom Package'}
+                </p>
+              </div>
             </div>
+            <Badge className={
+              selectedAgency.status === 'active' ? 'bg-green-500' :
+              selectedAgency.status === 'trial' ? 'bg-blue-500' :
+              'bg-red-500'
+            }>
+              {selectedAgency.status}
+            </Badge>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -125,53 +139,77 @@ export default function EnterpriseAdminDashboard() {
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Agency Users</CardTitle>
-              <CardDescription>All users under this agency</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {agencyUsers.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-semibold">
-                          {user.full_name?.substring(0, 2).toUpperCase() || 'U'}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium">{user.full_name || 'Unknown'}</p>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Mail className="w-3 h-3" />
-                          {user.email}
-                        </div>
-                        {user.phone && (
-                          <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <Phone className="w-3 h-3" />
-                            {user.phone}
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="users">Users ({agencyUsers.length})</TabsTrigger>
+              <TabsTrigger value="performance">Performance</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-4 mt-4">
+              <AgencyWideMetrics agency={selectedAgency} users={agencyUsers} />
+              <CommonIssuesAnalysis agencyCode={selectedAgency.agency_code} />
+            </TabsContent>
+
+            <TabsContent value="users" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Agency Users</CardTitle>
+                  <CardDescription>All users under this agency</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {agencyUsers.map((user) => (
+                      <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-sm font-semibold">
+                              {user.full_name?.substring(0, 2).toUpperCase() || 'U'}
+                            </span>
                           </div>
-                        )}
+                          <div>
+                            <p className="font-medium">{user.full_name || 'Unknown'}</p>
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                              <Mail className="w-3 h-3" />
+                              {user.email}
+                            </div>
+                            {user.phone && (
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Phone className="w-3 h-3" />
+                                {user.phone}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {user.credential_type && (
+                            <Badge variant="outline">{user.credential_type}</Badge>
+                          )}
+                          <Badge className={user.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}>
+                            {user.role}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {user.credential_type && (
-                        <Badge variant="outline">{user.credential_type}</Badge>
-                      )}
-                      <Badge className={user.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}>
-                        {user.role}
-                      </Badge>
-                    </div>
+                    ))}
+                    {agencyUsers.length === 0 && (
+                      <div className="text-center py-8 text-slate-500">
+                        No users found for this agency
+                      </div>
+                    )}
                   </div>
-                ))}
-                {agencyUsers.length === 0 && (
-                  <div className="text-center py-8 text-slate-500">
-                    No users found for this agency
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="performance" className="mt-4">
+              <ProviderPerformanceTable agencyCode={selectedAgency.agency_code} />
+            </TabsContent>
+
+            <TabsContent value="settings" className="mt-4">
+              <EnterpriseSetupPanel agency={selectedAgency} />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     );
@@ -181,14 +219,20 @@ export default function EnterpriseAdminDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <Building2 className="w-8 h-8 text-blue-600" />
-            Enterprise Agencies
-          </h1>
-          <p className="text-slate-600 mt-1">
-            Manage all enterprise customer agencies
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+              <Building2 className="w-8 h-8 text-blue-600" />
+              Enterprise Agencies
+            </h1>
+            <p className="text-slate-600 mt-1">
+              Manage all enterprise customer agencies
+            </p>
+          </div>
+          <Button className="bg-blue-600 hover:bg-blue-700">
+            <Plus className="w-4 h-4 mr-2" />
+            Create New Agency
+          </Button>
         </div>
 
         <Card>

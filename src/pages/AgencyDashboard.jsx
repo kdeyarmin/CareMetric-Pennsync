@@ -19,6 +19,8 @@ import AgencyTrainingReport from "../components/training/AgencyTrainingReport";
 import AgencyAnalyticsDashboard from "../components/agency/AgencyAnalyticsDashboard";
 import AgencyPackageSelector from "../components/agency/AgencyPackageSelector";
 import BillingHistoryView from "../components/agency/BillingHistoryView";
+import EnterpriseWorkflowGuide from "../components/enterprise/EnterpriseWorkflowGuide";
+import QuickAgencySetup from "../components/agency/QuickAgencySetup";
 
 export default function AgencyDashboard() {
   const queryClient = useQueryClient();
@@ -86,23 +88,36 @@ export default function AgencyDashboard() {
 
   if (!agency) {
     return (
-      <div className="p-8 max-w-2xl mx-auto">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Building2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">No Agency Access</h3>
-            <p className="text-slate-600 mb-4">
-              You don't have agency admin access. If you believe this is an error, please contact support.
-            </p>
-            <Button onClick={() => navigate('/')}>Go to Dashboard</Button>
-          </CardContent>
-        </Card>
+      <div className="p-8 max-w-3xl mx-auto">
+        <div className="mb-6 text-center">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Create Your Agency</h1>
+          <p className="text-slate-600">
+            Set up your agency to manage team members, features, and analytics
+          </p>
+        </div>
+        
+        <QuickAgencySetup 
+          currentUser={currentUser}
+          onAgencyCreated={() => {
+            queryClient.invalidateQueries({ queryKey: ['myAgency'] });
+            window.location.reload();
+          }}
+        />
+
+        <div className="mt-6 text-center">
+          <Button variant="outline" onClick={() => navigate('/')}>
+            Go to Dashboard
+          </Button>
+        </div>
       </div>
     );
   }
 
   const monthlyBill = agencyUsers.length * agency.price_per_user;
   const utilizationPercent = (agencyUsers.length / agency.max_users) * 100;
+
+  // Check if setup is incomplete
+  const isSetupIncomplete = !agency.enabled_features || agency.enabled_features.length === 0 || agencyUsers.length === 0;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -113,6 +128,13 @@ export default function AgencyDashboard() {
         </h1>
         <p className="text-slate-600 mt-1">Agency Management Dashboard</p>
       </div>
+
+      {/* Setup Guide - Show if setup is incomplete */}
+      {isSetupIncomplete && (
+        <div className="mb-6">
+          <EnterpriseWorkflowGuide agency={agency} userRole={currentUser?.role} />
+        </div>
+      )}
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

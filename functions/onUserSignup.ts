@@ -37,12 +37,13 @@ Deno.serve(async (req) => {
         status: 'trialing',
         trial_start: new Date().toISOString(),
         trial_end: trialEndDate.toISOString(),
-        plan_name: '14-Day Free Trial',
-        payment_method: 'trial'
+        plan_name: '14-Day Free Trial - Full Access',
+        monthly_amount: 0
       });
-      console.log('Trial subscription created for:', user.email);
+      console.log('✅ 14-day trial subscription created for:', user.email);
     } catch (trialError) {
       console.error('Failed to create trial subscription:', trialError);
+      // Don't fail signup if trial creation fails
     }
 
     // Check if user was invited
