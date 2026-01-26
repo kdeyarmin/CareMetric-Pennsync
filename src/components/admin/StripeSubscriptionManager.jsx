@@ -674,19 +674,20 @@ export default function StripeSubscriptionManager() {
                         }}
                       />
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <CardTitle className="text-lg">{product.name}</CardTitle>
-                        <Badge variant={product.active ? "default" : "secondary"}>
-                          {product.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </div>
+                       <div className="flex items-center gap-2">
+                         <CardTitle className="text-lg">{product.name}</CardTitle>
+                         <Badge variant={product.active ? "default" : "secondary"}>
+                           {product.active ? "Active" : "Inactive"}
+                         </Badge>
+                       </div>
                       {product.description && (
                         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                           {product.description}
                         </p>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2">
+                      </div>
+                      </div>
+                      <div className="flex items-center gap-2">
                       <Button
                         size="sm"
                         variant="ghost"
