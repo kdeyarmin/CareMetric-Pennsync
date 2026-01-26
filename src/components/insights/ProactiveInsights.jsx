@@ -13,7 +13,33 @@ export default function ProactiveInsights({ userEmail }) {
         const response = await base44.functions.invoke('generateProactiveInsights', {
           user_email: userEmail
         });
-        return response?.data?.insights || [];
+        const result = response?.data?.insights || response?.insights;
+        
+        // Return empty array if no meaningful insights
+        if (!result || !result.trending_concerns || result.trending_concerns.length === 0) {
+          return [];
+        }
+        
+        // Convert insights to display format
+        const displayInsights = [];
+        
+        if (result.risk_flags?.length > 0) {
+          displayInsights.push(...result.risk_flags.map(risk => ({
+            type: 'warning',
+            title: risk.risk_type,
+            description: risk.description
+          })));
+        }
+        
+        if (result.trending_concerns?.length > 0) {
+          displayInsights.push(...result.trending_concerns.slice(0, 2).map(concern => ({
+            type: 'trending',
+            title: concern.concern,
+            description: concern.clinical_significance
+          })));
+        }
+        
+        return displayInsights.slice(0, 3);
       } catch (err) {
         console.error('Failed to fetch insights:', err);
         return [];
@@ -24,10 +50,10 @@ export default function ProactiveInsights({ userEmail }) {
   });
 
   if (isLoading) {
-    return <SkeletonCard className="mb-6" />;
+    return null; // Don't show skeleton, just hide while loading
   }
 
-  if (!insights?.length) return null;
+  if (!insights || insights.length === 0) return null;
 
   const getIcon = (type) => {
     switch (type) {
