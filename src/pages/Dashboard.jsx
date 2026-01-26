@@ -5,12 +5,14 @@ import RoleBasedOnboarding from "@/components/onboarding/RoleBasedOnboarding";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video, Shield, Target, Activity, ListTodo, ChevronRight } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
+import ComplianceErrorAnalyzer from "../components/training/ComplianceErrorAnalyzer";
+import { useNavigate } from "react-router-dom";
 
 import RealTimePatientAlerts from "../components/dashboard/RealTimePatientAlerts";
 
@@ -393,7 +395,7 @@ export default function Dashboard() {
       {/* Critical Alerts & Compliance Section - only for providers with access */}
       {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) &&
         <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden mb-4">
             {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) &&
             <ComplianceAlertNotifications
               nurseEmail={currentUser?.email}
@@ -409,6 +411,14 @@ export default function Dashboard() {
 
             }
           </div>
+
+          {/* Compliance Training Widget */}
+          <ComplianceErrorAnalyzer
+            userEmail={currentUser?.email}
+            onGenerateTraining={(patterns) => {
+              navigate(createPageUrl("ComplianceTraining"));
+            }}
+          />
           </DashboardSection>
           }
 
