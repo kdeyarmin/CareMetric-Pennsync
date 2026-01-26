@@ -3,8 +3,54 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, TrendingUp, Users } from "lucide-react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 
-export default function CommonIssuesAnalysis({ issues }) {
+export default function CommonIssuesAnalysis({ agencyCode }) {
+  const { data: issues = [], isLoading } = useQuery({
+    queryKey: ['commonIssues', agencyCode],
+    queryFn: async () => {
+      // Fetch compliance violations for this agency
+      const violations = await base44.asServiceRole.entities.ComplianceViolation.filter({
+        status: 'open'
+      }, '-created_date', 100);
+      
+      // Group by rule name and count occurrences
+      const issueMap = {};
+      violations.forEach(v => {
+        if (!issueMap[v.rule_name]) {
+          issueMap[v.rule_name] = {
+            issue: v.rule_name,
+            description: v.violation_description,
+            count: 0,
+            affectedProviders: new Set(),
+            recommendation: v.recommended_action || 'Review and address this issue'
+          };
+        }
+        issueMap[v.rule_name].count++;
+        issueMap[v.rule_name].affectedProviders.add(v.user_email);
+      });
+      
+      // Convert to array and calculate prevalence
+      return Object.values(issueMap).map(issue => ({
+        ...issue,
+        affectedProviders: issue.affectedProviders.size,
+        prevalence: Math.round((issue.count / violations.length) * 100)
+      })).sort((a, b) => b.count - a.count).slice(0, 5);
+    },
+    enabled: !!agencyCode
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!issues || issues.length === 0) {
     return (
       <Card>

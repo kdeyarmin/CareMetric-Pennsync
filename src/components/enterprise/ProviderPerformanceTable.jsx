@@ -8,13 +8,23 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, TrendingUp, TrendingDown, Eye, Download } from "lucide-react";
 import ProviderDetailModal from "./ProviderDetailModal";
 
-export default function ProviderPerformanceTable({ providers }) {
+export default function ProviderPerformanceTable({ agencyCode }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProvider, setSelectedProvider] = useState(null);
 
+  // Fetch agency providers
+  const { data: providers = [], isLoading: providersLoading } = useQuery({
+    queryKey: ['agencyProviders', agencyCode],
+    queryFn: async () => {
+      const allUsers = await base44.asServiceRole.entities.User.list();
+      return allUsers.filter(u => u.agency_code === agencyCode);
+    },
+    enabled: !!agencyCode
+  });
+
   // Fetch performance data for all providers
   const { data: performanceData = {}, isLoading } = useQuery({
-    queryKey: ['providerPerformance', providers.map(p => p.email)],
+    queryKey: ['providerPerformance', agencyCode, providers.map(p => p.email)],
     queryFn: async () => {
       const data = {};
       
