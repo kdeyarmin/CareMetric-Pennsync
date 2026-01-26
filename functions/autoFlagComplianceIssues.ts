@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       .filter(rule => rule.is_active !== false)
       .slice(0, 15); // Limit to 15 rules to avoid timeout
 
-    const analysisPrompt = `You are a healthcare compliance expert. Analyze the following clinical documentation for compliance violations.
+    const analysisPrompt = `You are a healthcare compliance expert specializing in HIPAA, Medicare/Medicaid regulations, and clinical documentation standards. Analyze the following clinical documentation for compliance violations.
 
 DOCUMENTATION TYPE: ${documentType}
 CREATED BY: ${userEmail}
@@ -81,15 +81,20 @@ ${idx + 1}. ${rule.rule_name} (${rule.category} - ${rule.severity})
    Description: ${rule.description}
    Required Elements: ${rule.required_elements?.join(', ') || 'None specified'}
    Validation Logic: ${rule.validation_logic || 'Check for presence of required elements'}
+   Auto-Fix Template: ${rule.fix_template || 'Not available'}
 `).join('\n')}
 
-Analyze the documentation and identify ANY violations of the above rules. For each violation found, provide:
-- Which rule was violated
-- Specific description of the violation
-- Severity level
-- Recommended corrective action
-- Whether an auto-fix is possible (true if it's a simple addition/correction)
-- Suggested fix text if applicable
+Analyze the documentation thoroughly and identify ANY violations of the above rules. For each violation found, provide:
+- rule_name: Which rule was violated (exact name from above)
+- rule_category: Category of the rule
+- violation_description: Specific and clear description of what is missing or incorrect
+- severity: Use the severity from the rule definition
+- recommended_action: Step-by-step guidance on how to fix this issue
+- auto_fix_available: true if this can be auto-corrected (simple additions, formatting fixes, missing required fields), false for complex clinical judgments
+- suggested_fix: Specific text or correction to apply (be detailed and ready to copy-paste)
+- explanation: Brief explanation of why this rule is important for compliance
+
+Be thorough but practical. Focus on actionable violations that can realistically be addressed.
 
 Return violations found. If no violations, return empty array.`;
 
@@ -109,7 +114,8 @@ Return violations found. If no violations, return empty array.`;
                 severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
                 recommended_action: { type: "string" },
                 auto_fix_available: { type: "boolean" },
-                suggested_fix: { type: "string" }
+                suggested_fix: { type: "string" },
+                explanation: { type: "string" }
               }
             }
           },

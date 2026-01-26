@@ -25,6 +25,7 @@ import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import ClinicalReasoning from './pages/ClinicalReasoning';
 import Compliance from './pages/Compliance';
+import ComplianceAutomation from './pages/ComplianceAutomation';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
 import Dashboard from './pages/Dashboard';
@@ -103,8 +104,8 @@ import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import StaffTraining from './pages/StaffTraining';
 import StaffTrainingHub from './pages/StaffTrainingHub';
-import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
+import SubscriptionPlans from './pages/SubscriptionPlans';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
 import Telehealth from './pages/Telehealth';
@@ -117,7 +118,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import ComplianceAutomation from './pages/ComplianceAutomation';
 import __Layout from './Layout.jsx';
 
 
@@ -149,6 +149,7 @@ export const PAGES = {
     "ClinicalPathwayManager": ClinicalPathwayManager,
     "ClinicalReasoning": ClinicalReasoning,
     "Compliance": Compliance,
+    "ComplianceAutomation": ComplianceAutomation,
     "ComplianceDashboard": ComplianceDashboard,
     "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
     "Dashboard": Dashboard,
@@ -227,8 +228,8 @@ export const PAGES = {
     "SmartNoteAssistant": SmartNoteAssistant,
     "StaffTraining": StaffTraining,
     "StaffTrainingHub": StaffTrainingHub,
-    "SubscriptionPlans": SubscriptionPlans,
     "Support": Support,
+    "SubscriptionPlans": SubscriptionPlans,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
     "Telehealth": Telehealth,
@@ -241,7 +242,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "ComplianceAutomation": ComplianceAutomation,
 }
 
 export const pagesConfig = {

@@ -425,6 +425,13 @@ export default function ComplianceDashboard() {
                             </div>
                           )}
 
+                          {violation.suggested_fix && (
+                            <div className="bg-blue-50 p-2 rounded border border-blue-200 mb-2">
+                              <p className="text-xs font-semibold text-blue-700">💡 AI Suggested Fix:</p>
+                              <p className="text-xs text-blue-600 whitespace-pre-wrap">{violation.suggested_fix.substring(0, 150)}...</p>
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-4 text-xs text-gray-500">
                             <span>{violation.user_email}</span>
                             <span>•</span>
@@ -577,13 +584,45 @@ export default function ComplianceDashboard() {
 
           {/* User Performance Tab */}
           <TabsContent value="users" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-blue-600" />
-                  User Compliance Performance
-                </CardTitle>
-              </CardHeader>
+          {/* AI Feedback Summary */}
+          <Card className="border-purple-200 bg-purple-50">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-purple-600" />
+                AI Suggestions Impact
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-purple-900">
+                    {allViolations.filter(v => v.ai_feedback === 'helpful').length}
+                  </p>
+                  <p className="text-xs text-purple-700">Helpful Suggestions</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-purple-900">
+                    {allViolations.filter(v => v.auto_fix_available).length}
+                  </p>
+                  <p className="text-xs text-purple-700">Auto-Fixable Issues</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-purple-900">
+                    {allViolations.filter(v => v.status === 'resolved' && v.resolution_notes?.includes('Auto-fixed')).length}
+                  </p>
+                  <p className="text-xs text-purple-700">Auto-Resolved</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                User Compliance Performance
+              </CardTitle>
+            </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -743,12 +782,31 @@ export default function ComplianceDashboard() {
                   <OneClickComplianceFixer
                     issue={selectedViolation}
                     documentContent={selectedViolation.document_analyzed || ""}
+                    violationId={selectedViolation.id}
+                    applyToEntity={true}
                     onFixed={(fixedContent, changes) => {
                       toast.success("Issue auto-fixed: " + changes);
                       setDetailDialog(false);
                       queryClient.invalidateQueries({ queryKey: ['allComplianceViolations'] });
                     }}
                   />
+                )}
+
+                {/* Manual Fix Guidance */}
+                {!selectedViolation.auto_fix_available && selectedViolation.suggested_fix && (
+                  <Card className="border-blue-200 bg-blue-50">
+                    <CardHeader>
+                      <CardTitle className="text-sm">Manual Fix Guidance</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <pre className="text-xs whitespace-pre-wrap bg-white p-3 rounded border">
+                        {selectedViolation.suggested_fix}
+                      </pre>
+                      <p className="text-xs text-blue-700 mt-2">
+                        Please apply this correction manually to the documentation
+                      </p>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {selectedViolation.status === 'open' && (

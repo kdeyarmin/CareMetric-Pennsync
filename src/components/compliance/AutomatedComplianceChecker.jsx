@@ -270,13 +270,15 @@ export default function AutomatedComplianceChecker({
                             )}
 
                             {/* One-Click Fix */}
-                            <OneClickComplianceFixer
-                              issue={issue}
-                              documentContent={documentContent}
-                              onFixed={(fixedContent, changes) => {
-                                toast.success("Applied fix: " + changes);
-                              }}
-                            />
+                            {issue.auto_fixable && (
+                              <OneClickComplianceFixer
+                                issue={issue}
+                                documentContent={documentContent}
+                                onFixed={(fixedContent, changes) => {
+                                  toast.success("Applied fix: " + changes);
+                                }}
+                              />
+                            )}
                           </CardContent>
                         </CollapsibleContent>
                       </Card>
