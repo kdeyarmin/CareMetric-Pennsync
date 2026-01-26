@@ -7,6 +7,26 @@ import { Badge } from '@/components/ui/badge';
 import { Apple, Loader, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+export const useAppleIAP = () => {
+  const verifyReceiptMutation = useMutation({
+    mutationFn: async (receipt) => {
+      const response = await base44.functions.invoke('verifyAppleReceipt', {
+        receiptData: receipt,
+      });
+      return response?.data;
+    },
+  });
+
+  const restorePurchases = async (userEmail) => {
+    // In a real iOS app, this would use StoreKit to fetch transaction history
+    // For web/testing, we check the backend for existing subscriptions
+    const response = await base44.functions.invoke('getMySubscription', {});
+    return response?.data || { transactions: [] };
+  };
+
+  return { verifyReceipt: verifyReceiptMutation.mutate, restorePurchases };
+};
+
 export default function AppleIAPManager() {
   const [trialActivated, setTrialActivated] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
