@@ -933,70 +933,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
         <>
             {/* Results Page */}
             <div className="space-y-4">
-              {/* Clinical Insights Panel */}
-              <ClinicalInsightsPanel 
-                insights={clinicalInsights} 
-                isLoading={loadingInsights}
-                visitType={visitType}
-                providerType={providerType}
-              />
 
-              {/* AI Care Plan Draft Generator - Excludes Physicians */}
-              {patientData && enhancedNote && 
-               providerType !== 'MD' && 
-               providerType !== 'DO' && 
-               providerType !== 'PHYSICIAN' && (
-                <CarePlanDraftGenerator
-                  diagnosis={selectedDiagnosis}
-                  noteContent={enhancedNote}
-                  vitalSigns={vitalSigns}
-                  patientId={patientData.id}
-                  providerType={providerType}
-                  patientContext={{
-                    age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                    diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])].filter(Boolean),
-                    medications: patientData.current_medications || [],
-                    allergies: patientData.allergies,
-                    past_medical_history: patientData.past_medical_history || [],
-                    functional_status: patientData.functional_status,
-                    fall_risk: patientData.functional_status?.fall_risk,
-                    cognitive_status: patientData.functional_status?.cognitive_status
-                  }}
-                  onCarePlanCreated={(plan) => {
-                    toast.success('Care plan added to patient record');
-                  }}
-                />
-              )}
-
-              {/* Proactive Clinical Orders */}
-              {enhancedNote && selectedDiagnosis && (providerType === 'RN' || providerType === 'NP' || providerType === 'PA') && (
-                <ProactiveClinicalOrders
-                  diagnosis={selectedDiagnosis}
-                  noteContent={enhancedNote}
-                  vitalSigns={vitalSigns}
-                  patientContext={patientData ? {
-                    age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                    diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])],
-                    medications: patientData.current_medications,
-                    past_medical_history: patientData.past_medical_history
-                  } : null}
-                  onOrderGenerated={(order) => {
-                    console.log('Order generated:', order);
-                  }}
-                />
-              )}
-
-              {/* Prior Authorization Generator */}
-              {enhancedNote && selectedDiagnosis && (
-                <PriorAuthGenerator
-                  diagnosis={selectedDiagnosis}
-                  noteContent={enhancedNote}
-                  patientContext={patientData}
-                  onAuthGenerated={(auth) => {
-                    console.log('Prior auth generated:', auth);
-                  }}
-                />
-              )}
 
               {/* Enhanced Note Display */}
               <Card className="border-green-300 bg-green-50 dark:bg-green-950">
@@ -1176,6 +1113,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 visitType={visitType}
                 diagnosis={selectedDiagnosis}
                 userEmail={currentUser?.email}
+                selectedPatient={selectedPatient}
                 onNoteUpdate={(updatedNote) => {
                   setEditedNote(updatedNote);
                   setEnhancedNote(updatedNote);
@@ -1188,102 +1126,113 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
 
 
-              {/* Comprehensive Medical Coding Assistant - Only for Physicians & NPs after note enhancement */}
-              <MedicalCodingAssistant
-                enhancedNote={enhancedNote}
-                diagnosis={selectedDiagnosis}
-                visitType={visitType}
-                providerType={providerType}
-                patientContext={patientData ? {
-                  patient_name: `${patientData.first_name} ${patientData.last_name}`,
-                  primary_diagnosis: patientData.primary_diagnosis,
-                  secondary_diagnoses: patientData.secondary_diagnoses,
-                  current_medications: patientData.current_medications
-                } : null}
-                currentUser={currentUser}
-              />
+              {/* Clinical Tools - Collapsible Section */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Clinical Tools & Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Medical Coding */}
+                  <MedicalCodingAssistant
+                    enhancedNote={enhancedNote}
+                    diagnosis={selectedDiagnosis}
+                    visitType={visitType}
+                    providerType={providerType}
+                    patientContext={patientData ? {
+                      patient_name: `${patientData.first_name} ${patientData.last_name}`,
+                      primary_diagnosis: patientData.primary_diagnosis,
+                      secondary_diagnoses: patientData.secondary_diagnoses,
+                      current_medications: patientData.current_medications
+                    } : null}
+                    currentUser={currentUser}
+                  />
 
-              {/* Care Plan Suggestions - Provider-specific */}
-              {patientData && (providerType === 'RN' || providerType === 'MSW' ||
-                               providerType === 'NP' || providerType === 'PT' || 
-                               providerType === 'OT' || providerType === 'ST') &&
-            <CarePlanSuggestionsPanel
-              patientId={patientData.id}
-              visitType={visitType}
-              diagnosis={selectedDiagnosis}
-              noteContent={enhancedNote}
-              providerType={providerType} />
+                  {/* Care Plan Suggestions */}
+                  {patientData && (providerType === 'RN' || providerType === 'MSW' ||
+                                   providerType === 'NP' || providerType === 'PT' || 
+                                   providerType === 'OT' || providerType === 'ST') &&
+                    <CarePlanSuggestionsPanel
+                      patientId={patientData.id}
+                      visitType={visitType}
+                      diagnosis={selectedDiagnosis}
+                      noteContent={enhancedNote}
+                      providerType={providerType}
+                    />
+                  }
+                </CardContent>
+              </Card>
 
-            }
 
+              {/* Additional Actions - Collapsible */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Additional Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Patient Education */}
+                  {patientData && (
+                    <>
+                      <PersonalizedEducationGenerator 
+                        diagnosis={selectedDiagnosis}
+                        visitType={visitType}
+                        clinicalNote={enhancedNote}
+                        patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                        patientContext={{
+                          patient_name: `${patientData.first_name} ${patientData.last_name}`,
+                          age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                          primary_diagnosis: patientData.primary_diagnosis,
+                          allergies: patientData.allergies,
+                          current_medications: patientData.current_medications
+                        }}
+                        onMaterialGenerated={(material, method) => {
+                          setProvidedEducation(prev => [...prev, { material, method }]);
+                          toast.success('Education documented - will be added to note');
+                        }}
+                      />
+                      
+                      <PatientEducationPanel
+                        suggestedMaterials={suggestedEducation}
+                        patientId={selectedPatient}
+                        patientEmail={patientData?.email}
+                        onEducationProvided={(material, method) => {
+                          setProvidedEducation(prev => [...prev, { material, method }]);
+                          toast.success('Education documented - will be added to note');
+                        }}
+                      />
+                    </>
+                  )}
 
+                  {/* Care Coordination */}
+                  <AICareCoordinationPanel
+                    enhancedNote={isEditMode ? editedNote : enhancedNote}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    patientId={selectedPatient}
+                    vitalSigns={vitalSigns}
+                    patientContext={patientData ? {
+                      age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                      primary_diagnosis: patientData.primary_diagnosis,
+                      secondary_diagnoses: patientData.secondary_diagnoses,
+                      allergies: patientData.allergies,
+                      current_medications: patientData.current_medications
+                    } : null}
+                    onActionCreated={(actionType) => {
+                      console.log('Care coordination action created:', actionType);
+                    }}
+                  />
 
-
-
-              {/* Personalized AI Education Generator */}
-              <PersonalizedEducationGenerator 
-                diagnosis={selectedDiagnosis}
-                visitType={visitType}
-                clinicalNote={enhancedNote}
-                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                patientContext={patientData ? {
-                  patient_name: `${patientData.first_name} ${patientData.last_name}`,
-                  age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                  primary_diagnosis: patientData.primary_diagnosis,
-                  allergies: patientData.allergies,
-                  current_medications: patientData.current_medications
-                } : null}
-                onMaterialGenerated={(material, method) => {
-                  setProvidedEducation(prev => [...prev, { material, method }]);
-                  toast.success('Education documented - will be added to note');
-                }}
-              />
-
-              {/* Patient Education Panel - Library Browser */}
-              <PatientEducationPanel
-                suggestedMaterials={suggestedEducation}
-                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                patientEmail={patientData?.email}
-                onEducationProvided={(material, method) => {
-                  setProvidedEducation(prev => [...prev, { material, method }]);
-                  toast.success('Education documented - will be added to note');
-                }}
-              />
-
-              {/* Education Tracking History */}
-              {selectedPatient !== 'no_patient' && (
-                <EducationTrackingHistory patientId={selectedPatient} />
-              )}
-
-              {/* AI Care Coordination Panel */}
-              <AICareCoordinationPanel
-                enhancedNote={isEditMode ? editedNote : enhancedNote}
-                visitType={visitType}
-                diagnosis={selectedDiagnosis}
-                patientId={selectedPatient}
-                vitalSigns={vitalSigns}
-                patientContext={patientData ? {
-                  age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                  primary_diagnosis: patientData.primary_diagnosis,
-                  secondary_diagnoses: patientData.secondary_diagnoses,
-                  allergies: patientData.allergies,
-                  current_medications: patientData.current_medications
-                } : null}
-                onActionCreated={(actionType) => {
-                  console.log('Care coordination action created:', actionType);
-                }}
-              />
-
-              {/* Compliance-Based Training Recommendations */}
-              {currentUser?.email && (
-                <ComplianceBasedTrainingRecommender
-                  complianceResults={complianceResults}
-                  documentationGaps={complianceResults?.quality_analysis?.missing_elements}
-                  visitType={visitType}
-                  providerType={providerType}
-                  nurseEmail={currentUser.email}
-                />
-              )}
+                  {/* Training Recommendations */}
+                  {currentUser?.email && (
+                    <ComplianceBasedTrainingRecommender
+                      complianceResults={complianceResults}
+                      documentationGaps={complianceResults?.quality_analysis?.missing_elements}
+                      visitType={visitType}
+                      providerType={providerType}
+                      nurseEmail={currentUser.email}
+                    />
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Start Over Button */}
               <Button

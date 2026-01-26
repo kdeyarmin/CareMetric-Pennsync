@@ -25,7 +25,8 @@ export default function UnifiedSuggestionsPanel({
   diagnosis,
   onNoteUpdate,
   onTaskAdd,
-  userEmail
+  userEmail,
+  selectedPatient
 }) {
   const [applyingAll, setApplyingAll] = useState(false);
   const [appliedSuggestions, setAppliedSuggestions] = useState(new Set());
@@ -110,7 +111,7 @@ Return only the improved note with this suggestion applied.`;
     if (!userEmail || suggestedTasks.length === 0) return;
 
     try {
-      for (const task of suggestedTasks) {
+      const tasksToCreate = suggestedTasks.map(task => {
         const dueDate = (() => {
           const today = new Date();
           switch (task.suggested_due_timeframe) {
@@ -128,18 +129,20 @@ Return only the improved note with this suggestion applied.`;
           }
         })();
 
-        await base44.entities.Task.create({
+        return {
           title: task.title,
           description: task.description,
           priority: task.priority,
           type: task.type,
           due_date: dueDate,
+          patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
           assigned_to: userEmail,
           source: 'ai_generated',
           status: 'pending'
-        });
-      }
-      
+        };
+      });
+
+      await base44.entities.Task.bulkCreate(tasksToCreate);
       onTaskAdd?.();
       toast.success(`Added ${suggestedTasks.length} tasks to your list`);
     } catch (error) {
