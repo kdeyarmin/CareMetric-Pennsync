@@ -45,6 +45,8 @@ import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
 import ProactiveInsights from "../components/insights/ProactiveInsights";
 import { ErrorBoundary } from "../components/utils/ErrorBoundary";
 import HighRiskPatientsWidget from "../components/dashboard/HighRiskPatientsWidget";
+import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
+import HighRiskPatientsList from "../components/dashboard/HighRiskPatientsList";
 
 export default function Dashboard() {
   const navigate = useNavigate();

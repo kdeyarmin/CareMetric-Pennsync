@@ -98,6 +98,7 @@ import AIComprehensivePatientAnalysis from "../components/patient/AIComprehensiv
 import ComplianceViolationWidget from "../components/compliance/ComplianceViolationWidget";
 import ProactiveComplianceRiskPredictor from "../components/compliance/ProactiveComplianceRiskPredictor";
 import AIComplianceCarePlanSuggester from "../components/compliance/AIComplianceCarePlanSuggester";
+import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -389,6 +390,17 @@ export default function PatientDetails() {
             visits={visits}
             carePlans={carePlans}
             incidents={incidents}
+          />
+        </div>
+
+        {/* AI Risk Prediction Panel - Prominent Position */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <AIRiskPredictionPanel
+            patientId={patientId}
+            autoAnalyze={false}
+            onRiskCalculated={(risk) => {
+              queryClient.invalidateQueries({ queryKey: ["patients"] });
+            }}
           />
         </div>
 
