@@ -77,6 +77,8 @@ import PatientContextSidebar from '../components/smartNote/PatientContextSidebar
 import AICareCoordinationPanel from '../components/coordination/AICareCoordinationPanel';
 import UnifiedComplianceAudit from '../components/smartNote/UnifiedComplianceAudit';
 import UnifiedSuggestionsPanel from '../components/smartNote/UnifiedSuggestionsPanel';
+import NoteCompletenessTracker from '../components/smartNote/NoteCompletenessTracker';
+import QuickTemplateInserter from '../components/smartNote/QuickTemplateInserter';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -881,6 +883,16 @@ export default function SmartNoteAssistant() {
                   </div>
                 </div>
 
+                {/* Quick Template & Phrase Inserter */}
+                <QuickTemplateInserter
+                  onInsert={(content) => {
+                    setRoughNotes(content);
+                  }}
+                  visitType={visitType}
+                  providerType={providerType}
+                  currentNoteContent={roughNotes}
+                />
+
                 {/* Patient Context Quick Insert */}
                 {selectedPatient !== 'no_patient' && patientData && (
                   <PatientContextSidebar
@@ -934,6 +946,14 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
             {/* Results Page */}
             <div className="space-y-4">
 
+
+              {/* Note Completeness Tracker */}
+              <NoteCompletenessTracker
+                noteContent={isEditMode ? editedNote : enhancedNote}
+                complianceResults={complianceResults}
+                visitType={visitType}
+                providerType={providerType}
+              />
 
               {/* Enhanced Note Display */}
               <Card className="border-green-300 bg-green-50 dark:bg-green-950">
