@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Mic, ArrowRight, Info, CheckCircle2, User, FileText, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import { todayEastern } from "../components/utils/timezone";
 import { getVisitTypesForProvider } from "../components/utils/providerVisitTypeMapping";
