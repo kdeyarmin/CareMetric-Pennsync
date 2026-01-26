@@ -96,6 +96,8 @@ import PatientRiskScoreCard from "../components/patient/PatientRiskScoreCard";
 import ComprehensiveMedicalHistory from "../components/patient/ComprehensiveMedicalHistory";
 import AIComprehensivePatientAnalysis from "../components/patient/AIComprehensivePatientAnalysis";
 import ComplianceViolationWidget from "../components/compliance/ComplianceViolationWidget";
+import ProactiveComplianceRiskPredictor from "../components/compliance/ProactiveComplianceRiskPredictor";
+import AIComplianceCarePlanSuggester from "../components/compliance/AIComplianceCarePlanSuggester";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -400,6 +402,22 @@ export default function PatientDetails() {
             />
           </div>
         )}
+
+        {/* Proactive Compliance Risk Prediction */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <ProactiveComplianceRiskPredictor 
+            patientId={patientId}
+            autoAnalyze={false}
+          />
+        </div>
+
+        {/* AI Care Plan Suggestions from Compliance Analysis */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <AIComplianceCarePlanSuggester 
+            patientId={patientId}
+            autoGenerate={false}
+          />
+        </div>
 
         {/* AI Risk Score Card - Prominent Position */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">

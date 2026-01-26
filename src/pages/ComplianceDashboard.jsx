@@ -22,6 +22,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import OneClickComplianceFixer from "../components/compliance/OneClickComplianceFixer";
+import ProactiveComplianceRiskPredictor from "../components/compliance/ProactiveComplianceRiskPredictor";
+import AIComplianceCarePlanSuggester from "../components/compliance/AIComplianceCarePlanSuggester";
 
 export default function ComplianceDashboard() {
   const [timeframe, setTimeframe] = useState("30");
@@ -615,6 +617,62 @@ export default function ComplianceDashboard() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Proactive Risk Prediction for High-Risk Patients */}
+          {(() => {
+            const highRiskPatients = Array.from(new Set(
+              allViolations
+                .filter(v => v.severity === 'critical' || v.severity === 'high')
+                .map(v => v.entity_id)
+            )).slice(0, 3);
+
+            return highRiskPatients.length > 0 && (
+              <div className="space-y-4">
+                {highRiskPatients.map(entityId => {
+                  const patientVisits = allViolations.filter(v => v.entity_id === entityId);
+                  const patientId = patientVisits[0]?.entity_type === 'visit' ? 
+                    visits?.find(v => v.id === entityId)?.patient_id : 
+                    carePlans?.find(cp => cp.id === entityId)?.patient_id;
+
+                  return patientId && (
+                    <ProactiveComplianceRiskPredictor 
+                      key={patientId}
+                      patientId={patientId}
+                      autoAnalyze={false}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* AI Care Plan Suggestions */}
+          {(() => {
+            const patientsWithGaps = Array.from(new Set(
+              allViolations
+                .filter(v => v.status === 'open')
+                .map(v => v.entity_id)
+            )).slice(0, 2);
+
+            return patientsWithGaps.length > 0 && (
+              <div className="space-y-4">
+                {patientsWithGaps.map(entityId => {
+                  const patientVisits = allViolations.filter(v => v.entity_id === entityId);
+                  const patientId = patientVisits[0]?.entity_type === 'visit' ? 
+                    visits?.find(v => v.id === entityId)?.patient_id : 
+                    carePlans?.find(cp => cp.id === entityId)?.patient_id;
+
+                  return patientId && (
+                    <AIComplianceCarePlanSuggester 
+                      key={patientId}
+                      patientId={patientId}
+                      autoGenerate={false}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           <Card>
             <CardHeader>
