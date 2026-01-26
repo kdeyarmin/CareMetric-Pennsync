@@ -46,8 +46,6 @@ import { getAccessiblePages } from "../components/utils/providerAccessControl";
 import PWAInstallPrompt from "../components/mobile/PWAInstallPrompt";
 import { useAgencyFeatureAccess } from "../components/utils/useAgencyFeatureAccess";
 import InvitationAcceptBanner from "../components/agency/InvitationAcceptBanner";
-import MobileBottomNav from "../components/mobile/MobileBottomNav";
-import MobileQuickActions from "../components/mobile/MobileQuickActions";
 
 /* =========================
          iOS / Layout Constants
@@ -529,9 +527,8 @@ export default function Layout({ children, currentPageName }) {
       <main
           className="flex-1 overflow-x-hidden w-full relative bg-transparent"
           style={{
-            // Always add padding on mobile to account for header and bottom nav
+            // Always add padding on mobile to account for header
             paddingTop: showNavigationUI ? mobileHeaderTotalHeight : 0,
-            paddingBottom: showNavigationUI ? "80px" : 0, // Space for bottom nav
             minHeight: "100vh"
           }}>
 
@@ -540,15 +537,9 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </main>
 
-      {/* ================= Mobile Bottom Navigation ================= */}
-      {showNavigationUI && <MobileBottomNav currentPage={currentPageName} />}
-
-      {/* ================= Mobile Quick Actions ================= */}
-      {showNavigationUI && <MobileQuickActions />}
-
-      {/* AI Chat moved to desktop only to avoid clutter on mobile */}
+      {/* ================= AI Chat Assistant ================= */}
       {showNavigationUI &&
-        <div className="hidden lg:block fixed right-6 bottom-6 z-[9997]">
+        <div className="fixed right-4 bottom-4 lg:right-6 lg:bottom-6 z-[9997]">
           <AIChatAssistant />
         </div>
         }
