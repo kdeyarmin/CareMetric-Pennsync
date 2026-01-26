@@ -165,6 +165,7 @@ export default function Layout({ children, currentPageName }) {
   { name: "Analytics", icon: BarChart3, page: "NurseAnalyticsDashboard" },
   { name: "Training", icon: GraduationCap, page: "ProviderTrainingHub" },
   { name: "My Training", icon: Target, page: "MyTraining" },
+  { name: "Staff Training", icon: GraduationCap, page: "StaffTrainingModule" },
   { name: "Tasks", icon: ListTodo, page: "Tasks" },
   { name: "Subscription", icon: CreditCard, page: "SubscriptionPlans" },
   { name: "Billing Optimization", icon: TrendingUp, page: "BillingOptimization" },
