@@ -23,6 +23,8 @@ import BiometricAuth from "../components/auth/BiometricAuth";
 import SecurityAuditLog from "../components/security/SecurityAuditLog";
 import AgencyCodeInput from "../components/settings/AgencyCodeInput";
 import AgencyCodeManager from "../components/settings/AgencyCodeManager";
+import NotificationPreferences from "../components/settings/NotificationPreferences";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -123,7 +125,15 @@ export default function Settings() {
          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage your account and data preferences</p>
       </div>
 
-      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
+      <Tabs defaultValue="profile" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="advanced">Advanced</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="profile" className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Profile Info */}
         <Card className="w-full max-w-full overflow-hidden">
           <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
@@ -397,49 +407,91 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Provider Profile */}
-        <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
-
-        {/* Advanced AI Customization */}
-        <AdvancedAICustomization currentUser={currentUser} />
-
-        {/* Agency Code Manager */}
-        <AgencyCodeManager currentUser={currentUser} />
-
-        {/* Offline Sync Manager */}
-        <OfflineSyncManager />
-
-        {/* Biometric Authentication */}
-        {currentUser?.email && (
-          <BiometricAuth 
-            userEmail={currentUser.email}
-            onAuthSuccess={() => toast.success('Biometric login successful!')}
-          />
-        )}
-
-        {/* Security Audit Log */}
-        {currentUser?.email && (
-          <SecurityAuditLog userEmail={currentUser.email} />
-        )}
-
-        {/* Professional Specializations - Only for Physicians */}
-        {currentUser && currentUser.credential_type === 'PHYSICIAN' &&
-        <ProviderSpecializationManager currentUser={currentUser} />
-        }
-
-        {/* Practice Information */}
-        {currentUser && !['RN', 'LPN', 'THERAPIST'].includes(currentUser.credential_type) &&
-        <ProviderPracticeInfoManager userEmail={currentUser.email} credentialType={currentUser.credential_type} />
-        }
-
-        {/* Data Retention Settings */}
-        <DataRetentionSettings />
-
         {/* Referral Program */}
         <ReferralCodeDisplay user={currentUser} />
+        </TabsContent>
 
-        {/* Danger Zone */}
-        <Card className="border-slate-300 dark:border-slate-600 w-full max-w-full overflow-hidden">
+        <TabsContent value="notifications" className="space-y-4 sm:space-y-6">
+          <NotificationPreferences currentUser={currentUser} />
+        </TabsContent>
+
+        <TabsContent value="security" className="space-y-4 sm:space-y-6">
+          {/* Two-Factor Authentication */}
+          <Card className="w-full max-w-full overflow-hidden">
+            <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
+              <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+                Two-Factor Authentication
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="bg-slate-100 pt-0 p-6">
+              <div className="space-y-4">
+                <p className="text-slate-600 dark:text-slate-400">
+                  Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
+                </p>
+                <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-slate-100">Status: {currentUser?.two_factor_enabled ? 'Enabled' : 'Disabled'}</p>
+                      {currentUser?.two_factor_enabled ? (
+                        <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
+                          You'll receive a verification code at {currentUser?.phone_number} when logging in.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-slate-800 dark:text-slate-200 mt-1">
+                          Enable 2FA in your profile settings by adding your phone number.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Biometric Authentication */}
+          {currentUser?.email && (
+            <BiometricAuth 
+              userEmail={currentUser.email}
+              onAuthSuccess={() => toast.success('Biometric login successful!')}
+            />
+          )}
+
+          {/* Security Audit Log */}
+          {currentUser?.email && (
+            <SecurityAuditLog userEmail={currentUser.email} />
+          )}
+
+          {/* Data Retention Settings */}
+          <DataRetentionSettings />
+        </TabsContent>
+
+        <TabsContent value="advanced" className="space-y-4 sm:space-y-6">
+          {/* Provider Profile */}
+          <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
+
+          {/* Advanced AI Customization */}
+          <AdvancedAICustomization currentUser={currentUser} />
+
+          {/* Agency Code Manager */}
+          <AgencyCodeManager currentUser={currentUser} />
+
+          {/* Offline Sync Manager */}
+          <OfflineSyncManager />
+
+          {/* Professional Specializations - Only for Physicians */}
+          {currentUser && currentUser.credential_type === 'PHYSICIAN' && (
+            <ProviderSpecializationManager currentUser={currentUser} />
+          )}
+
+          {/* Practice Information */}
+          {currentUser && !['RN', 'LPN', 'THERAPIST'].includes(currentUser.credential_type) && (
+            <ProviderPracticeInfoManager userEmail={currentUser.email} credentialType={currentUser.credential_type} />
+          )}
+
+          {/* Danger Zone */}
+          <Card className="border-slate-300 dark:border-slate-600 w-full max-w-full overflow-hidden">
            <CardHeader className="bg-slate-200 dark:bg-slate-800">
              <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100 text-base sm:text-lg">
               <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -504,8 +556,9 @@ export default function Settings() {
               }
             </div>
           </CardContent>
-        </Card>
-      </div>
-    </div>);
-
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
 }
