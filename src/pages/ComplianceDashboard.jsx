@@ -49,6 +49,16 @@ export default function ComplianceDashboard() {
     queryFn: () => base44.entities.ComplianceViolation.list('-created_date', 500)
   });
 
+  const { data: visits = [] } = useQuery({
+    queryKey: ['allVisits'],
+    queryFn: () => base44.entities.Visit.list()
+  });
+
+  const { data: carePlans = [] } = useQuery({
+    queryKey: ['allCarePlans'],
+    queryFn: () => base44.entities.CarePlan.list()
+  });
+
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
     queryFn: () => base44.entities.User.list()
@@ -586,8 +596,8 @@ export default function ComplianceDashboard() {
 
           {/* User Performance Tab */}
           <TabsContent value="users" className="space-y-4">
-          {/* AI Feedback Summary */}
-          <Card className="border-purple-200 bg-purple-50">
+            {/* AI Feedback Summary */}
+            <Card className="border-purple-200 bg-purple-50">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-purple-600" />
@@ -616,10 +626,10 @@ export default function ComplianceDashboard() {
                 </div>
               </div>
             </CardContent>
-          </Card>
+            </Card>
 
-          {/* Proactive Risk Prediction for High-Risk Patients */}
-          {(() => {
+            {/* Proactive Risk Prediction for High-Risk Patients */}
+            {(() => {
             const highRiskPatients = Array.from(new Set(
               allViolations
                 .filter(v => v.severity === 'critical' || v.severity === 'high')
@@ -644,10 +654,10 @@ export default function ComplianceDashboard() {
                 })}
               </div>
             );
-          })()}
+            })()}
 
-          {/* AI Care Plan Suggestions */}
-          {(() => {
+            {/* AI Care Plan Suggestions */}
+            {(() => {
             const patientsWithGaps = Array.from(new Set(
               allViolations
                 .filter(v => v.status === 'open')
@@ -672,15 +682,15 @@ export default function ComplianceDashboard() {
                 })}
               </div>
             );
-          })()}
+            })()}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-600" />
-                User Compliance Performance
-              </CardTitle>
-            </CardHeader>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  User Compliance Performance
+                </CardTitle>
+              </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
