@@ -104,6 +104,7 @@ import SecurityPolicy from './pages/SecurityPolicy';
 import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import StaffTraining from './pages/StaffTraining';
+import StaffTrainingModule from './pages/StaffTrainingModule';
 import Support from './pages/Support';
 import StaffTrainingHub from './pages/StaffTrainingHub';
 import SubscriptionPlans from './pages/SubscriptionPlans';
@@ -119,7 +120,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import StaffTrainingModule from './pages/StaffTrainingModule';
 import __Layout from './Layout.jsx';
 
 
@@ -230,6 +230,7 @@ export const PAGES = {
     "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
     "StaffTraining": StaffTraining,
+    "StaffTrainingModule": StaffTrainingModule,
     "Support": Support,
     "StaffTrainingHub": StaffTrainingHub,
     "SubscriptionPlans": SubscriptionPlans,
@@ -245,7 +246,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "StaffTrainingModule": StaffTrainingModule,
 }
 
 export const pagesConfig = {
