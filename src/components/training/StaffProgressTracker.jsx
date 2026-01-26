@@ -1,417 +1,384 @@
-import React, { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useMemo } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, Award, Target, Calendar, CheckCircle2, Clock, BarChart3, Zap } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { 
+  Users, 
+  Search, 
+  TrendingUp, 
+  AlertTriangle, 
+  CheckCircle2,
+  Clock,
+  Award,
+  ArrowUpDown,
+  UserPlus,
+  Send,
+  BarChart3
+} from 'lucide-react';
+import { format, differenceInDays } from 'date-fns';
+import { toast } from 'sonner';
 
-export default function StaffProgressTracker({ currentUser, completions, modules, skillGaps }) {
-  // Calculate comprehensive stats
-  const stats = useMemo(() => {
-    const completed = completions.filter(c => c.status === 'completed');
-    const inProgress = completions.filter(c => c.status === 'in_progress');
-    
-    const totalHours = completed.reduce((sum, c) => {
-      const module = modules.find(m => m.id === c.module_id);
-      return sum + ((module?.estimated_duration_minutes || 30) / 60);
-    }, 0);
+export default function StaffProgressTracker({ users, trainingModules }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('completion');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedModule, setSelectedModule] = useState('');
+  const queryClient = useQueryClient();
 
-    const avgScore = completed.filter(c => c.score).length > 0
-      ? Math.round(completed.filter(c => c.score).reduce((sum, c) => sum + c.score, 0) / completed.filter(c => c.score).length)
-      : 0;
+  // Fetch all completions for admin view
+  const { data: allCompletions = [], isLoading } = useQuery({
+    queryKey: ['allCompletions'],
+    queryFn: () => base44.entities.TrainingCompletion.list('-created_date', 1000),
+    initialData: []
+  });
 
-    // Calculate trend (last 30 days vs previous 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+  // Fetch all skill gaps
+  const { data: allSkillGaps = [] } = useQuery({
+    queryKey: ['allSkillGaps'],
+    queryFn: () => base44.entities.SkillGap.list('-created_date', 500),
+    initialData: []
+  });
 
-    const recentCompletions = completed.filter(c => 
-      c.completion_date && new Date(c.completion_date) >= thirtyDaysAgo
-    ).length;
+  const assignTrainingMutation = useMutation({
+    mutationFn: ({ userEmail, moduleId }) => base44.entities.TrainingCompletion.create({
+      nurse_email: userEmail,
+      training_module_id: moduleId,
+      status: 'assigned',
+      due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['allCompletions']);
+      toast.success('Training assigned successfully');
+      setAssignDialogOpen(false);
+    }
+  });
 
-    const previousCompletions = completed.filter(c => 
-      c.completion_date && 
-      new Date(c.completion_date) < thirtyDaysAgo &&
-      new Date(c.completion_date) >= sixtyDaysAgo
-    ).length;
+  // Calculate staff progress data
+  const staffProgress = useMemo(() => {
+    return users.map(user => {
+      const userCompletions = allCompletions.filter(c => c.nurse_email === user.email);
+      const completed = userCompletions.filter(c => c.status === 'completed');
+      const inProgress = userCompletions.filter(c => c.status === 'in_progress' || c.status === 'assigned');
+      const overdue = userCompletions.filter(c => 
+        c.status !== 'completed' && 
+        c.due_date && 
+        new Date(c.due_date) < new Date()
+      );
 
-    const trend = previousCompletions > 0 
-      ? Math.round(((recentCompletions - previousCompletions) / previousCompletions) * 100)
-      : 0;
+      const avgScore = completed.length > 0
+        ? Math.round(completed.reduce((sum, c) => sum + (c.score || 0), 0) / completed.length)
+        : 0;
 
-    return {
-      completed: completed.length,
-      inProgress: inProgress.length,
-      totalHours: totalHours.toFixed(1),
-      avgScore,
-      completionRate: modules.length > 0 ? Math.round((completed.length / modules.length) * 100) : 0,
-      trend,
-      recentCompletions
-    };
-  }, [completions, modules]);
+      const userGaps = allSkillGaps.filter(g => 
+        g.user_email === user.email && 
+        (g.status === 'identified' || g.status === 'in_progress')
+      );
 
-  // Progress over time chart
-  const progressData = useMemo(() => {
-    const last90Days = Array.from({ length: 12 }, (_, i) => {
-      const weekStart = new Date();
-      weekStart.setDate(weekStart.getDate() - ((11 - i) * 7));
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-
-      const weekCompletions = completions.filter(c => 
-        c.completion_date && 
-        new Date(c.completion_date) >= weekStart &&
-        new Date(c.completion_date) < weekEnd &&
-        c.status === 'completed'
-      ).length;
+      const completionRate = userCompletions.length > 0
+        ? Math.round((completed.length / userCompletions.length) * 100)
+        : 0;
 
       return {
-        week: `Week ${i + 1}`,
-        completions: weekCompletions,
-        date: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        email: user.email,
+        name: user.full_name || user.email.split('@')[0],
+        role: user.credential_type || user.role,
+        totalAssigned: userCompletions.length,
+        completed: completed.length,
+        inProgress: inProgress.length,
+        overdue: overdue.length,
+        avgScore,
+        skillGaps: userGaps.length,
+        completionRate,
+        lastActivity: userCompletions[0]?.updated_date
       };
     });
+  }, [users, allCompletions, allSkillGaps]);
 
-    return last90Days;
-  }, [completions]);
+  // Filter and sort
+  const filteredStaff = useMemo(() => {
+    let filtered = staffProgress;
 
-  // Category breakdown
-  const categoryData = useMemo(() => {
-    const categoryMap = {};
-    
-    completions.forEach(c => {
-      if (c.status === 'completed') {
-        const module = modules.find(m => m.id === c.module_id);
-        const category = module?.category || 'other';
-        categoryMap[category] = (categoryMap[category] || 0) + 1;
-      }
-    });
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(s => 
+        s.name.toLowerCase().includes(query) ||
+        s.email.toLowerCase().includes(query)
+      );
+    }
 
-    return Object.entries(categoryMap).map(([category, count]) => ({
-      category: category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      count
-    }));
-  }, [completions, modules]);
+    // Status filter
+    if (filterStatus === 'overdue') {
+      filtered = filtered.filter(s => s.overdue > 0);
+    } else if (filterStatus === 'active') {
+      filtered = filtered.filter(s => s.inProgress > 0);
+    } else if (filterStatus === 'completed') {
+      filtered = filtered.filter(s => s.completionRate === 100);
+    }
 
-  // Recent completions
-  const recentCompletions = useMemo(() => {
-    return completions
-      .filter(c => c.status === 'completed' && c.completion_date)
-      .sort((a, b) => new Date(b.completion_date) - new Date(a.completion_date))
-      .slice(0, 5)
-      .map(c => {
-        const module = modules.find(m => m.id === c.module_id);
-        return { ...c, moduleTitle: module?.title || 'Unknown Module' };
-      });
-  }, [completions, modules]);
+    // Sort
+    switch (sortBy) {
+      case 'name':
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'overdue':
+        filtered.sort((a, b) => b.overdue - a.overdue);
+        break;
+      case 'gaps':
+        filtered.sort((a, b) => b.skillGaps - a.skillGaps);
+        break;
+      case 'completion':
+      default:
+        filtered.sort((a, b) => b.completionRate - a.completionRate);
+        break;
+    }
+
+    return filtered;
+  }, [staffProgress, searchQuery, filterStatus, sortBy]);
+
+  // Overall stats
+  const overallStats = useMemo(() => {
+    const total = staffProgress.length;
+    const avgCompletion = total > 0
+      ? Math.round(staffProgress.reduce((sum, s) => sum + s.completionRate, 0) / total)
+      : 0;
+    const totalOverdue = staffProgress.reduce((sum, s) => sum + s.overdue, 0);
+    const totalGaps = staffProgress.reduce((sum, s) => sum + s.skillGaps, 0);
+
+    return { total, avgCompletion, totalOverdue, totalGaps };
+  }, [staffProgress]);
+
+  const getCompletionColor = (rate) => {
+    if (rate >= 80) return 'text-green-600 bg-green-100 dark:bg-green-900 dark:text-green-300';
+    if (rate >= 50) return 'text-amber-600 bg-amber-100 dark:bg-amber-900 dark:text-amber-300';
+    return 'text-red-600 bg-red-100 dark:bg-red-900 dark:text-red-300';
+  };
 
   return (
     <div className="space-y-6">
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <Award className="w-8 h-8 text-blue-600" />
-              {stats.trend > 0 && (
-                <Badge className="bg-green-600">
-                  +{stats.trend}%
-                </Badge>
-              )}
+      {/* Overall Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+              <Users className="w-5 h-5 text-blue-600 dark:text-blue-300" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.completed}</p>
-            <p className="text-sm text-gray-600">Modules Completed</p>
-            <p className="text-xs text-gray-500 mt-1">{stats.recentCompletions} this month</p>
+            <div>
+              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{overallStats.total}</p>
+              <p className="text-xs text-slate-500">Total Staff</p>
+            </div>
           </CardContent>
         </Card>
-
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <Clock className="w-8 h-8 text-purple-600" />
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-green-600 dark:text-green-300" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.totalHours}</p>
-            <p className="text-sm text-gray-600">Hours of Training</p>
-            <p className="text-xs text-gray-500 mt-1">{stats.inProgress} in progress</p>
+            <div>
+              <p className="text-2xl font-bold text-green-600">{overallStats.avgCompletion}%</p>
+              <p className="text-xs text-slate-500">Avg Completion</p>
+            </div>
           </CardContent>
         </Card>
-
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <TrendingUp className="w-8 h-8 text-green-600" />
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-100 dark:bg-red-900 rounded-lg flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-300" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.avgScore}%</p>
-            <p className="text-sm text-gray-600">Average Score</p>
-            <p className="text-xs text-gray-500 mt-1">Across all assessments</p>
+            <div>
+              <p className="text-2xl font-bold text-red-600">{overallStats.totalOverdue}</p>
+              <p className="text-xs text-slate-500">Overdue Tasks</p>
+            </div>
           </CardContent>
         </Card>
-
-        <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <Target className="w-8 h-8 text-amber-600" />
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-orange-600 dark:text-orange-300" />
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.completionRate}%</p>
-            <p className="text-sm text-gray-600">Completion Rate</p>
-            <p className="text-xs text-gray-500 mt-1">{stats.completed} of {modules.length}</p>
+            <div>
+              <p className="text-2xl font-bold text-orange-600">{overallStats.totalGaps}</p>
+              <p className="text-xs text-slate-500">Skill Gaps</p>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Progress Over Time */}
+      {/* Filters */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
-            Training Activity (Last 12 Weeks)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={progressData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend />
-              <Line 
-                type="monotone" 
-                dataKey="completions" 
-                stroke="#3b82f6" 
-                strokeWidth={2}
-                name="Modules Completed"
-                dot={{ fill: '#3b82f6', r: 4 }}
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input 
+                placeholder="Search staff by name or email..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
               />
-            </LineChart>
-          </ResponsiveContainer>
+            </div>
+            <div className="flex gap-2">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Staff</SelectItem>
+                  <SelectItem value="overdue">Has Overdue</SelectItem>
+                  <SelectItem value="active">In Progress</SelectItem>
+                  <SelectItem value="completed">100% Complete</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-[140px]">
+                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="completion">Completion Rate</SelectItem>
+                  <SelectItem value="name">Name A-Z</SelectItem>
+                  <SelectItem value="overdue">Most Overdue</SelectItem>
+                  <SelectItem value="gaps">Most Skill Gaps</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Training by Category */}
-      {categoryData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-purple-600" />
-              Training by Category
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={categoryData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Recent Achievements */}
+      {/* Staff List */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Award className="w-5 h-5 text-amber-600" />
-            Recent Completions
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentCompletions.length > 0 ? (
-            <div className="space-y-3">
-              {recentCompletions.map((completion) => (
-                <div key={completion.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-                  <div className="flex items-center gap-3 flex-1">
-                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900 truncate">{completion.moduleTitle}</p>
-                      <p className="text-xs text-gray-600">
-                        {new Date(completion.completion_date).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric', 
-                          year: 'numeric' 
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  {completion.score && (
-                    <Badge className="bg-green-600 ml-2">
-                      {completion.score}%
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p>No completions yet - start your first training module!</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Active Skill Gaps */}
-      {skillGaps.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-600" />
-              Focus Areas for Improvement
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {skillGaps.slice(0, 5).map((gap) => (
-                <div key={gap.id} className="flex items-start justify-between p-3 bg-white rounded-lg border border-amber-200">
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{gap.skill_name}</p>
-                    <p className="text-sm text-gray-600">{gap.gap_description}</p>
-                    {gap.recommended_training && (
-                      <p className="text-xs text-blue-600 mt-1">→ {gap.recommended_training}</p>
-                    )}
-                  </div>
-                  <Badge className={
-                    gap.priority === 'high' ? 'bg-red-600' :
-                    gap.priority === 'medium' ? 'bg-amber-600' :
-                    'bg-blue-600'
-                  }>
-                    {gap.priority}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Overall Progress */}
-      <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="w-5 h-5 text-green-600" />
-            Overall Training Progress
-          </CardTitle>
+          <CardTitle>Staff Training Progress</CardTitle>
+          <CardDescription>Monitor and manage training completion across your team</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="font-medium text-gray-900">Completion Rate</span>
-                <span className="font-bold text-green-600">{stats.completionRate}%</span>
-              </div>
-              <Progress value={stats.completionRate} className="h-3" />
-              <p className="text-xs text-gray-600 mt-1">
-                {stats.completed} of {modules.length} available modules
-              </p>
-            </div>
+            {filteredStaff.map((staff) => (
+              <div 
+                key={staff.email} 
+                className={`p-4 rounded-lg border ${
+                  staff.overdue > 0 ? 'border-red-200 bg-red-50/50 dark:bg-red-950/30' : 
+                  'border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <div className="flex flex-col md:flex-row md:items-center gap-4">
+                  {/* User Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {staff.name}
+                      </h4>
+                      {staff.role && (
+                        <Badge variant="outline" className="text-xs">
+                          {staff.role}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-500 truncate">{staff.email}</p>
+                  </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-4 border-t">
-              <div className="text-center p-3 bg-white rounded-lg">
-                <p className="text-lg font-bold text-blue-600">{stats.completed}</p>
-                <p className="text-xs text-gray-600">Completed</p>
-              </div>
-              <div className="text-center p-3 bg-white rounded-lg">
-                <p className="text-lg font-bold text-purple-600">{stats.inProgress}</p>
-                <p className="text-xs text-gray-600">In Progress</p>
-              </div>
-              <div className="text-center p-3 bg-white rounded-lg">
-                <p className="text-lg font-bold text-green-600">{stats.avgScore}%</p>
-                <p className="text-xs text-gray-600">Avg Score</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                  {/* Stats */}
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-green-600">{staff.completed}</p>
+                      <p className="text-xs text-slate-500">Completed</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-blue-600">{staff.inProgress}</p>
+                      <p className="text-xs text-slate-500">In Progress</p>
+                    </div>
+                    {staff.overdue > 0 && (
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-red-600">{staff.overdue}</p>
+                        <p className="text-xs text-slate-500">Overdue</p>
+                      </div>
+                    )}
+                    {staff.skillGaps > 0 && (
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-orange-600">{staff.skillGaps}</p>
+                        <p className="text-xs text-slate-500">Skill Gaps</p>
+                      </div>
+                    )}
+                    <Badge className={`${getCompletionColor(staff.completionRate)} font-bold`}>
+                      {staff.completionRate}%
+                    </Badge>
+                  </div>
 
-      {/* Certifications & Achievements */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Award className="w-5 h-5 text-amber-600" />
-            Certifications & Badges
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stats.completed >= 5 && (
-              <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-yellow-100 rounded-lg border-2 border-amber-300">
-                <Award className="w-10 h-10 text-amber-600 mx-auto mb-2" />
-                <p className="font-semibold text-sm">Learner</p>
-                <p className="text-xs text-gray-600">5+ modules</p>
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    <Dialog open={assignDialogOpen && selectedUser === staff.email} onOpenChange={(open) => {
+                      setAssignDialogOpen(open);
+                      if (open) setSelectedUser(staff.email);
+                    }}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline">
+                          <UserPlus className="w-4 h-4 mr-1" />
+                          Assign
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Assign Training to {staff.name}</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 pt-4">
+                          <Select value={selectedModule} onValueChange={setSelectedModule}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a training module" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {trainingModules.map(m => (
+                                <SelectItem key={m.id} value={m.id}>
+                                  {m.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button 
+                            className="w-full"
+                            disabled={!selectedModule || assignTrainingMutation.isPending}
+                            onClick={() => assignTrainingMutation.mutate({ 
+                              userEmail: staff.email, 
+                              moduleId: selectedModule 
+                            })}
+                          >
+                            <Send className="w-4 h-4 mr-2" />
+                            Assign Training
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                  <div className="flex justify-between text-xs text-slate-500 mb-1">
+                    <span>Overall Progress</span>
+                    <span>{staff.completed} of {staff.totalAssigned} modules</span>
+                  </div>
+                  <Progress value={staff.completionRate} className="h-2" />
+                </div>
               </div>
-            )}
-            {stats.completed >= 10 && (
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-cyan-100 rounded-lg border-2 border-blue-300">
-                <Award className="w-10 h-10 text-blue-600 mx-auto mb-2" />
-                <p className="font-semibold text-sm">Dedicated</p>
-                <p className="text-xs text-gray-600">10+ modules</p>
-              </div>
-            )}
-            {stats.avgScore >= 90 && stats.completed >= 5 && (
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-100 rounded-lg border-2 border-green-300">
-                <Award className="w-10 h-10 text-green-600 mx-auto mb-2" />
-                <p className="font-semibold text-sm">Excellence</p>
-                <p className="text-xs text-gray-600">90%+ average</p>
-              </div>
-            )}
-            {stats.completed >= 20 && (
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-100 rounded-lg border-2 border-purple-300">
-                <Award className="w-10 h-10 text-purple-600 mx-auto mb-2" />
-                <p className="font-semibold text-sm">Expert</p>
-                <p className="text-xs text-gray-600">20+ modules</p>
-              </div>
-            )}
+            ))}
           </div>
-          {stats.completed === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm">Complete training modules to earn badges and certifications</p>
+
+          {filteredStaff.length === 0 && (
+            <div className="py-12 text-center">
+              <Users className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-600 dark:text-slate-400">No staff members match your filters.</p>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* In Progress Modules */}
-      {stats.inProgress > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-blue-600" />
-              Currently Learning ({stats.inProgress})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {completions
-                .filter(c => c.status === 'in_progress')
-                .map(c => {
-                  const module = modules.find(m => m.id === c.module_id);
-                  return (
-                    <div key={c.id} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="font-medium text-gray-900">{module?.title || 'Unknown Module'}</p>
-                        {c.progress_percentage && (
-                          <Badge variant="outline">{c.progress_percentage}%</Badge>
-                        )}
-                      </div>
-                      {c.progress_percentage && (
-                        <Progress value={c.progress_percentage} className="h-2 mb-2" />
-                      )}
-                      <p className="text-xs text-gray-600">
-                        Started: {new Date(c.started_date).toLocaleDateString()}
-                      </p>
-                    </div>
-                  );
-                })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
