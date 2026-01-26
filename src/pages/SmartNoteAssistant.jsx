@@ -1186,27 +1186,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 }}
               />
 
-              {/* AI Auto-Populate & Follow-Up Tasks - Only for non-home health/hospice settings */}
-              {careSetting && careSetting !== CARE_SETTINGS.HOME_HEALTH && careSetting !== CARE_SETTINGS.HOSPICE && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                <AutoPopulateDataFields
-                narrative={enhancedNote || roughNotes}
-                dataType="vital_signs"
-                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                visitType={visitType}
-                onDataExtracted={(data) => {
-                  console.log('Extracted vital signs:', data);
-                }} />
 
-                <AIFollowUpTasksGenerator
-                visitId={null}
-                patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                patientName={patientData ? `${patientData.first_name} ${patientData.last_name}` : 'Patient'}
-                visitNotes={enhancedNote}
-                vitalSigns={extractedData?.vitals} />
-
-              </div>
-              )}
 
               {/* Comprehensive Medical Coding Assistant - Only for Physicians & NPs after note enhancement */}
               <MedicalCodingAssistant
