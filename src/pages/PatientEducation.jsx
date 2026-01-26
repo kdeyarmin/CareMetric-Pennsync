@@ -1,316 +1,49 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  BookOpen,
-  Search,
-  Loader2,
-  FileText,
-  Heart,
-  Pill,
-  Activity,
-  Brain,
-  Utensils,
-  Shield,
-  CheckCircle2,
-  Copy,
-  Printer,
-  Plus,
-  Sparkles,
-  ListChecks,
-  MessageSquare
-} from "lucide-react";
-
-import EducationMaterialGenerator from "../components/education/EducationMaterialGenerator";
-import TeachBackConfirmation from "../components/education/TeachBackConfirmation";
-import EducationLibrary from "../components/education/EducationLibrary";
-import SimplifiedExplanationGenerator from "../components/education/SimplifiedExplanationGenerator";
-import NextStepsSummaryGenerator from "../components/education/NextStepsSummaryGenerator";
-import TeachBackPromptsGenerator from "../components/education/TeachBackPromptsGenerator";
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import PatientEducationLibrary from '../components/education/PatientEducationLibrary';
+import AdminEducationManager from '../components/education/AdminEducationManager';
+import PullToRefresh from '../components/mobile/PullToRefresh';
 
 export default function PatientEducation() {
-  const [selectedPatientId, setSelectedPatientId] = useState("");
-  const [selectedTopic, setSelectedTopic] = useState("");
-  const [generatedMaterial, setGeneratedMaterial] = useState(null);
-  const [teachBackRecords, setTeachBackRecords] = useState([]);
-
-  const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+  const { data: currentUser, isLoading } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
   });
 
-  const selectedPatient = patients.find(p => p.id === selectedPatientId);
+  const isAdmin = currentUser?.role === 'admin';
 
-  const handleMaterialGenerated = (material) => {
-    setGeneratedMaterial(material);
-  };
-
-  const handleTeachBackRecorded = (record) => {
-    setTeachBackRecords(prev => [...prev, record]);
-  };
-
-  // Get teach-back history for selected patient
-  const patientTeachBackHistory = selectedPatientId 
-    ? teachBackRecords.filter(r => r.patientId === selectedPatientId)
-    : teachBackRecords;
+  if (isLoading) return <div className="p-4">Loading...</div>;
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-          <BookOpen className="w-8 h-8 text-blue-600" />
-          Patient Education Center
-        </h1>
-        <p className="text-gray-600">
-          Generate patient-friendly educational materials and document understanding
-        </p>
-      </div>
-
-      {/* Patient Selection */}
-      <Card className="mb-6 border-blue-200">
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium text-gray-700 mb-1 block">
-                Select Patient (Optional)
-              </label>
-              <Select value={selectedPatientId || "none"} onValueChange={(val) => setSelectedPatientId(val === "none" ? "" : val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a patient..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No patient selected</SelectItem>
-                  {patients.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.first_name} {p.last_name} - {p.primary_diagnosis || 'No diagnosis'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {selectedPatient && (
-              <div className="flex items-end gap-2">
-                <Badge className="bg-blue-100 text-blue-800 h-10 px-4 flex items-center">
-                  {selectedPatient.primary_diagnosis || 'No diagnosis'}
-                </Badge>
-                <Badge className="bg-purple-100 text-purple-800 h-10 px-4 flex items-center">
-                  {selectedPatient.care_type === 'hospice' ? 'Hospice' : 'Home Health'}
-                </Badge>
-              </div>
+    <PullToRefresh onRefresh={async () => {
+      // Refresh data
+    }}>
+      <div className="p-4 md:p-6 max-w-6xl mx-auto">
+        <Tabs defaultValue={isAdmin ? "manage" : "browse"} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="browse">
+              📚 Browse Materials
+            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="manage">
+                ⚙️ Manage Materials
+              </TabsTrigger>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </TabsList>
 
-      <Tabs defaultValue="generate" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="generate" className="gap-2">
-            <Brain className="w-4 h-4" />
-            <span className="hidden sm:inline">Materials</span>
-          </TabsTrigger>
-          <TabsTrigger value="simplify" className="gap-2">
-            <Sparkles className="w-4 h-4" />
-            <span className="hidden sm:inline">Simplify</span>
-          </TabsTrigger>
-          <TabsTrigger value="nextsteps" className="gap-2">
-            <ListChecks className="w-4 h-4" />
-            <span className="hidden sm:inline">Next Steps</span>
-          </TabsTrigger>
-          <TabsTrigger value="prompts" className="gap-2">
-            <MessageSquare className="w-4 h-4" />
-            <span className="hidden sm:inline">Teach-Back</span>
-          </TabsTrigger>
-          <TabsTrigger value="library" className="gap-2">
-            <BookOpen className="w-4 h-4" />
-            <span className="hidden sm:inline">Library</span>
-          </TabsTrigger>
-          <TabsTrigger value="records" className="gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Records</span>
-          </TabsTrigger>
-        </TabsList>
+          <TabsContent value="browse" className="mt-6">
+            <PatientEducationLibrary />
+          </TabsContent>
 
-        <TabsContent value="generate">
-          <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <EducationMaterialGenerator
-                patient={selectedPatient}
-                teachBackHistory={patientTeachBackHistory}
-                onMaterialGenerated={handleMaterialGenerated}
-              />
-            </div>
-            <div>
-              {generatedMaterial && (
-                <TeachBackConfirmation
-                  material={generatedMaterial}
-                  patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
-                />
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Simplified Explanation Tab */}
-        <TabsContent value="simplify">
-          <div className="grid lg:grid-cols-2 gap-6">
-            <SimplifiedExplanationGenerator
-              patient={selectedPatient}
-              diagnosis={selectedPatient?.primary_diagnosis}
-            />
-            <div className="space-y-4">
-              <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
-                <CardContent className="p-4">
-                  <h3 className="font-bold text-purple-900 mb-2">💡 How to Use</h3>
-                  <ul className="text-sm text-purple-800 space-y-2">
-                    <li>1. Enter complex medical information</li>
-                    <li>2. AI transforms it into simple language</li>
-                    <li>3. Get analogies, FAQs, and speaking scripts</li>
-                    <li>4. Copy the script to use with patients</li>
-                  </ul>
-                </CardContent>
-              </Card>
-              {generatedMaterial && (
-                <TeachBackConfirmation
-                  material={generatedMaterial}
-                  patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
-                />
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Next Steps Summary Tab */}
-        <TabsContent value="nextsteps">
-          <div className="grid lg:grid-cols-2 gap-6">
-            <NextStepsSummaryGenerator
-              patient={selectedPatient}
-              educationMaterial={generatedMaterial}
-              diagnosis={selectedPatient?.primary_diagnosis}
-            />
-            <div className="space-y-4">
-              <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-                <CardContent className="p-4">
-                  <h3 className="font-bold text-green-900 mb-2">📋 Patient Take-Home Summary</h3>
-                  <p className="text-sm text-green-800 mb-3">
-                    Generate personalized "what to watch for" and "next steps" summaries for patients after education sessions.
-                  </p>
-                  <ul className="text-sm text-green-700 space-y-1">
-                    <li>• Immediate action items</li>
-                    <li>• Daily checklists</li>
-                    <li>• Warning signs to watch</li>
-                    <li>• When to call nurse vs 911</li>
-                    <li>• Medication reminders</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* AI Teach-Back Prompts Tab */}
-        <TabsContent value="prompts">
-          <div className="grid lg:grid-cols-2 gap-6">
-            <TeachBackPromptsGenerator
-              patient={selectedPatient}
-              educationMaterial={generatedMaterial}
-              diagnosis={selectedPatient?.primary_diagnosis}
-              onTeachBackComplete={handleTeachBackRecorded}
-            />
-            <div className="space-y-4">
-              <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200">
-                <CardContent className="p-4">
-                  <h3 className="font-bold text-indigo-900 mb-2">🎯 AI-Assisted Teach-Back</h3>
-                  <p className="text-sm text-indigo-800 mb-3">
-                    Get tailored questions to ask patients based on their condition and literacy level.
-                  </p>
-                  <ul className="text-sm text-indigo-700 space-y-1">
-                    <li>• Open-ended questions (not yes/no)</li>
-                    <li>• Alternative phrasings if patient struggles</li>
-                    <li>• What to listen for in responses</li>
-                    <li>• AI-generated follow-ups for clarification</li>
-                    <li>• Automatic documentation</li>
-                  </ul>
-                </CardContent>
-              </Card>
-              {generatedMaterial && (
-                <TeachBackConfirmation
-                  material={generatedMaterial}
-                  patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
-                />
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="library">
-          <EducationLibrary
-            patient={selectedPatient}
-            onSelectMaterial={(material) => setGeneratedMaterial(material)}
-          />
-        </TabsContent>
-
-        <TabsContent value="records">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                Teach-Back Documentation History
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {teachBackRecords.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <CheckCircle2 className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p>No teach-back records yet.</p>
-                  <p className="text-sm">Generate educational materials and document patient understanding.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {teachBackRecords.map((record, idx) => (
-                    <Card key={idx} className="border-l-4 border-l-green-500">
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h4 className="font-semibold">{record.topic}</h4>
-                            <p className="text-sm text-gray-600">{record.patientName}</p>
-                          </div>
-                          <Badge className={
-                            record.understandingLevel === 'good' ? 'bg-green-100 text-green-800' :
-                            record.understandingLevel === 'fair' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }>
-                            {record.understandingLevel} understanding
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-gray-700 mb-2">{record.response}</p>
-                        <p className="text-xs text-gray-500">
-                          Recorded: {new Date(record.timestamp).toLocaleString()}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+          {isAdmin && (
+            <TabsContent value="manage" className="mt-6">
+              <AdminEducationManager />
+            </TabsContent>
+          )}
+        </Tabs>
+      </div>
+    </PullToRefresh>
   );
 }

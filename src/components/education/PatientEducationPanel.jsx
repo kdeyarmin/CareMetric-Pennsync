@@ -1,213 +1,107 @@
 import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { BookOpen, Mail, Printer, CheckCircle2, Loader2, X, Link2 } from "lucide-react";
-import { toast } from "sonner";
-import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import EducationAssignmentDialog from "@/components/education/EducationAssignmentDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, BookOpen } from "lucide-react";
+import EducationMaterialCard from "./EducationMaterialCard";
 
-export default function PatientEducationPanel({ 
-  suggestedMaterials = [], 
-  patientId, 
-  patientEmail,
-  onEducationProvided 
-}) {
-  const [selectedMaterials, setSelectedMaterials] = useState([]);
-  const [sendingEmail, setSendingEmail] = useState(false);
-  const [assignmentDialog, setAssignmentDialog] = useState(null);
-  const queryClient = useQueryClient();
+export default function PatientEducationPanel({ patientDiagnosis }) {
+  const [showAll, setShowAll] = useState(false);
 
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ["carePlans", patientId],
+  const { data: suggestedMaterials = [], isLoading } = useQuery({
+    queryKey: ['suggestedEducation', patientDiagnosis],
     queryFn: async () => {
-      return await base44.entities.CarePlan.filter({
-        patient_id: patientId,
-        status: "active"
+      if (!patientDiagnosis) return [];
+      const response = await base44.functions.invoke('suggestEducationMaterials', {
+        patientDiagnosis,
+        limit: 3
       });
+      return response.suggestions || [];
     },
-    enabled: !!patientId
+    enabled: !!patientDiagnosis
   });
 
-  const toggleMaterial = (material) => {
-    setSelectedMaterials(prev => {
-      const exists = prev.find(m => m.id === material.id);
-      if (exists) {
-        return prev.filter(m => m.id !== material.id);
-      }
-      return [...prev, material];
-    });
-  };
-
-  const handlePrint = (material) => {
-    if (material.pdf_url || material.document_url) {
-      window.open(material.pdf_url || material.document_url, '_blank');
-      toast.success('Opening material for printing');
-    } else if (material.content_text) {
-      const printWindow = window.open('', '_blank');
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>${material.title}</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h1 { color: #333; }
-              p { line-height: 1.6; }
-            </style>
-          </head>
-          <body>
-            <h1>${material.title}</h1>
-            <p>${material.content_text}</p>
-            <script>window.print();</script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    } else {
-      toast.error('No printable content available');
-    }
-    
-    markAsProvided(material, 'print');
-  };
-
-  const handleEmail = async (material) => {
-    if (!patientEmail) {
-      toast.error('Patient email not available');
-      return;
-    }
-
-    setSendingEmail(true);
-    try {
-      const { sendPatientEducation } = await import('@/functions/sendPatientEducation');
-      await sendPatientEducation({
-        patient_id: patientId,
-        material_id: material.id,
-        patient_email: patientEmail
-      });
-      
-      toast.success('Education material emailed to patient');
-      markAsProvided(material, 'email');
-    } catch (error) {
-      console.error('Error sending education:', error);
-      toast.error('Failed to send education material');
-    } finally {
-      setSendingEmail(false);
-    }
-  };
-
-  const markAsProvided = async (material, method) => {
-    try {
-      const user = await base44.auth.me();
-
-      // Create assignment record
-      await base44.entities.PatientEducationAssignment.create({
-        patient_id: patientId,
-        education_material_id: material.id,
-        material_title: material.title,
-        assigned_by: user.email,
-        assigned_date: new Date().toISOString(),
-        provided_date: new Date().toISOString(),
-        delivery_method: method,
-        status: 'provided'
-      });
-
-      queryClient.invalidateQueries({ queryKey: ['educationAssignments', patientId] });
-      
-      if (onEducationProvided) {
-        onEducationProvided(material, method);
-      }
-      
-      toast.success('Education tracked successfully');
-    } catch (error) {
-      console.error('Error marking education as provided:', error);
-      toast.error('Failed to track education');
-    }
-  };
+  if (!patientDiagnosis || suggestedMaterials.length === 0) {
+    return null;
+  }
 
   return (
-    <Card className="border-teal-300 bg-teal-50 dark:bg-teal-950">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-teal-600" />
-          Patient Education
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {suggestedMaterials.length === 0 ? (
-          <div className="text-center py-8 text-slate-500 dark:text-slate-400 text-sm">
-            <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p>No education materials suggested</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {suggestedMaterials.map((item, idx) => (
-              <div
-                key={idx}
-                className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-teal-200 dark:border-teal-800"
-              >
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-sm mb-1">{item.title}</h4>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
-                      {item.reason}
-                    </p>
-                    {item.category && (
-                      <Badge variant="outline" className="text-xs">{item.category}</Badge>
-                    )}
+    <>
+      <Card className="border-l-4 border-l-green-500 bg-gradient-to-r from-green-50 to-green-100">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BookOpen className="w-5 h-5 text-green-600" />
+            Educational Resources
+          </CardTitle>
+          <p className="text-xs text-slate-600 mt-1">
+            Materials related to {patientDiagnosis}
+          </p>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-4 h-4 animate-spin text-green-600 mr-2" />
+              <span className="text-sm text-slate-600">Loading materials...</span>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {suggestedMaterials.slice(0, 3).map((material) => (
+                  <div
+                    key={material.id}
+                    className="p-3 bg-white rounded-lg border border-green-200 hover:border-green-400 transition-colors"
+                  >
+                    <p className="font-medium text-sm text-slate-900">{material.title}</p>
+                    <p className="text-xs text-slate-600 mt-1">{material.description}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(material.content_url, '_blank')}
+                      className="mt-2 w-full text-xs bg-green-50 border-green-200 hover:bg-green-100"
+                    >
+                      Read More
+                    </Button>
                   </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handlePrint(item)}
-                    className="flex-1"
-                  >
-                    <Printer className="w-3 h-3 mr-1" />
-                    Print
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => handleEmail(item)}
-                    disabled={sendingEmail || !patientEmail}
-                    className="flex-1 bg-teal-600 hover:bg-teal-700"
-                  >
-                    {sendingEmail ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    ) : (
-                      <Mail className="w-3 h-3 mr-1" />
-                    )}
-                    Email
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setAssignmentDialog(item)}
-                    className="flex-1"
-                  >
-                    <Link2 className="w-3 h-3 mr-1" />
-                    Assign
-                  </Button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
 
-        {assignmentDialog && (
-          <EducationAssignmentDialog
-            material={assignmentDialog}
-            patientId={patientId}
-            carePlans={carePlans}
-            onClose={() => setAssignmentDialog(null)}
-            onAssigned={() => {
-              queryClient.invalidateQueries({ queryKey: ['educationAssignments', patientId] });
-            }}
-          />
-        )}
-      </CardContent>
-    </Card>
+              {suggestedMaterials.length > 3 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAll(true)}
+                  className="w-full text-xs"
+                >
+                  View All {suggestedMaterials.length} Materials
+                </Button>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* View All Dialog */}
+      {showAll && (
+        <Dialog open={showAll} onOpenChange={setShowAll}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Educational Materials for {patientDiagnosis}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 mt-4">
+              {suggestedMaterials.map((material) => (
+                <EducationMaterialCard
+                  key={material.id}
+                  material={material}
+                  onOpen={() => window.open(material.content_url, '_blank')}
+                />
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
