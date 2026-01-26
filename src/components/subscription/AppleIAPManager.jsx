@@ -1,108 +1,115 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useMutation } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Apple, Loader, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 
-export const APPLE_PRODUCTS = {
-  monthly: 'com.monthly.premium',
-  quarterly: 'com.quarterly.premium',
-  semiannual: 'com.semiannual.premium',
-  annual: 'com.annual.premium'
-};
+export default function AppleIAPManager() {
+  const [trialActivated, setTrialActivated] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
 
-export const useAppleIAP = () => {
-  const [isProcessing, setIsProcessing] = useState(false);
+  const verifyReceiptMutation = useMutation({
+    mutationFn: async (receipt) => {
+      const response = await base44.functions.invoke('verifyAppleReceipt', {
+        receiptData: receipt,
+      });
+      return response?.data;
+    },
+    onSuccess: (data) => {
+      setTrialActivated(true);
+      setReceiptData(data);
+      toast.success('14-day free trial activated!');
+    },
+    onError: (error) => {
+      toast.error(`Error: ${error.message}`);
+    },
+  });
 
-  const callNativePlugin = async (method, args = {}) => {
-    if (typeof window === 'undefined' || !window.webkit?.messageHandlers?.storeKit) {
-      throw new Error('StoreKit not available - not running on iOS native app');
-    }
-
-    // Direct StoreKit integration via webkit message handlers
-    return new Promise((resolve, reject) => {
-      const messageId = `iap_${Date.now()}_${Math.random()}`;
-      
-      const handleMessage = (event) => {
-        if (event.data?.messageId === messageId) {
-          window.removeEventListener('message', handleMessage);
-          if (event.data.success) {
-            resolve(event.data.result);
-          } else {
-            reject(new Error(event.data.error || 'IAP failed'));
-          }
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-
-      // Send to native via webkit
-      if (window.webkit?.messageHandlers?.storeKit) {
-        window.webkit.messageHandlers.storeKit.postMessage({
-          messageId,
-          method,
-          ...args
-        });
-      } else {
-        window.removeEventListener('message', handleMessage);
-        reject(new Error('StoreKit bridge not available'));
+  const handleStartAppleTrial = async () => {
+    // In a real app, this would get the receipt from StoreKit
+    // For demo purposes, showing the flow
+    if (typeof window !== 'undefined' && window.ApplePaySession) {
+      try {
+        // This would be implemented with StoreKit 2 or RevenueCat
+        toast.info('Apple in-app purchase not available in browser preview');
+      } catch (error) {
+        toast.error('Failed to initiate Apple purchase');
       }
-
-      // Timeout after 60 seconds
-      setTimeout(() => {
-        window.removeEventListener('message', handleMessage);
-        reject(new Error('IAP request timeout'));
-      }, 60000);
-    });
-  };
-
-  const purchaseSubscription = async (productId, userEmail) => {
-    setIsProcessing(true);
-    try {
-      const result = await callNativePlugin('purchase', { productId, userEmail });
-      setIsProcessing(false);
-      return result;
-    } catch (error) {
-      setIsProcessing(false);
-      throw error;
+    } else {
+      toast.info('Apple in-app purchases require a native iOS app');
     }
   };
 
-  const restorePurchases = async (userEmail) => {
-    setIsProcessing(true);
-    try {
-      // Get restored transactions from iOS
-      const result = await callNativePlugin('restore', {});
-      
-      // Verify each restored transaction with backend
-      if (result.transactions && result.transactions.length > 0 && userEmail) {
-        const { base44 } = await import('@/api/base44Client');
-        
-        for (const transaction of result.transactions) {
-          try {
-            await base44.functions.invoke('verifyAppleReceipt', {
-              receipt: transaction.receipt,
-              userEmail: userEmail,
-              isRestore: true
-            });
-          } catch (error) {
-            console.error('Failed to verify restored transaction:', error);
-          }
-        }
-      }
-      
-      setIsProcessing(false);
-      return result;
-    } catch (error) {
-      setIsProcessing(false);
-      throw error;
-    }
-  };
+  if (trialActivated) {
+    return (
+      <Card className="border-green-200 bg-green-50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            14-Day Free Trial Active
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-600">Status</span>
+              <Badge className="bg-green-100 text-green-800">Active</Badge>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-600">Trial Ends</span>
+              <span className="font-medium">
+                {new Date(receiptData?.trial_ends).toLocaleDateString()}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-600">Days Remaining</span>
+              <span className="font-medium">
+                {Math.ceil(
+                  (new Date(receiptData?.trial_ends) - new Date()) /
+                    (24 * 60 * 60 * 1000)
+                )}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
-  const getProductInfo = async (productId) => {
-    return callNativePlugin('getProductInfo', { productId });
-  };
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Apple className="w-5 h-5" />
+          Start Free Trial
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-900">
+            Get 14 days free access to all CareMetric AI features with your Apple ID.
+          </p>
+        </div>
 
-  return {
-    purchaseSubscription,
-    restorePurchases,
-    getProductInfo,
-    isProcessing
-  };
-};
+        <Button
+          onClick={handleStartAppleTrial}
+          disabled={verifyReceiptMutation.isPending}
+          className="w-full bg-black hover:bg-gray-900 text-white gap-2"
+        >
+          {verifyReceiptMutation.isPending && (
+            <Loader className="w-4 h-4 animate-spin" />
+          )}
+          <Apple className="w-4 h-4" />
+          {verifyReceiptMutation.isPending ? 'Processing...' : 'Start with Apple'}
+        </Button>
+
+        <p className="text-xs text-slate-500 text-center">
+          After your 14-day trial, you'll be charged $29.99/month unless you cancel.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}

@@ -9,132 +9,111 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { receiptData, productId, transactionId, purchaseDate, expiryDate } = await req.json();
+    const { receiptData, password } = await req.json();
 
-    if (!receiptData || !productId || !transactionId) {
-      return Response.json({ 
-        error: 'Missing required fields: receiptData, productId, transactionId' 
-      }, { status: 400 });
+    if (!receiptData) {
+      return Response.json(
+        { error: 'Missing receipt data' },
+        { status: 400 }
+      );
     }
 
-    // Verify receipt with Apple
-    console.log('Verifying receipt with Apple...');
-    const appleResponse = await verifyWithApple(receiptData);
-    console.log('Apple verification result:', appleResponse);
-
-    if (!appleResponse.valid) {
-      return Response.json({ 
-        success: false,
-        error: 'Invalid receipt from Apple',
-        details: appleResponse.error || 'Unknown error'
-      }, { status: 400 });
+    const appleSecret = Deno.env.get('APPLE_SHARED_SECRET');
+    if (!appleSecret) {
+      return Response.json(
+        { error: 'Apple configuration not found' },
+        { status: 500 }
+      );
     }
 
-    // Map product ID to plan
-    const planMap = {
-      'com.monthly.premium': { name: 'monthly', amount: 39.99, interval: 1 },
-      'com.quarterly.premium': { name: 'quarterly', amount: 114.99, interval: 3 },
-      'com.semiannual.premium': { name: 'semiannual', amount: 209.99, interval: 6 },
-      'com.annual.premium': { name: 'annual', amount: 349.99, interval: 12 }
-    };
+    // Apple's production endpoint
+    const appleEndpoint = 'https://buy.itunes.apple.com/verifyReceipt';
+    const sandboxEndpoint = 'https://sandbox.itunes.apple.com/verifyReceipt';
 
-    const plan = planMap[productId];
-    if (!plan) {
-      console.error('Invalid product ID:', productId, 'Available:', Object.keys(planMap));
-      return Response.json({ 
-        error: 'Invalid product ID', 
-        productId,
-        availableProducts: Object.keys(planMap)
-      }, { status: 400 });
-    }
-
-    // Calculate period dates
-    const startDate = new Date(purchaseDate);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + plan.interval);
-
-    // Check for existing subscription
-    const existingSubs = await base44.asServiceRole.entities.Subscription.filter({
-      user_email: user.email
-    });
-
-    let subscription;
-    if (existingSubs.length > 0) {
-      // Update existing subscription
-      subscription = await base44.asServiceRole.entities.Subscription.update(existingSubs[0].id, {
-        status: 'active',
-        plan: plan.name,
-        monthly_amount: plan.amount,
-        current_period_start: startDate.toISOString(),
-        current_period_end: endDate.toISOString(),
-        stripe_subscription_id: transactionId,
-        cancel_at_period_end: false
+    let verifyResponse;
+    try {
+      // Try production first
+      verifyResponse = await fetch(appleEndpoint, {
+        method: 'POST',
+        body: JSON.stringify({
+          'receipt-data': receiptData,
+          password: appleSecret,
+        }),
       });
-      console.log('Updated subscription:', subscription);
-    } else {
-      // Create new subscription
-      subscription = await base44.asServiceRole.entities.Subscription.create({
-        user_email: user.email,
-        status: 'active',
-        plan: plan.name,
-        monthly_amount: plan.amount,
-        current_period_start: startDate.toISOString(),
-        current_period_end: endDate.toISOString(),
-        stripe_subscription_id: transactionId,
-        stripe_customer_id: user.email,
-        cancel_at_period_end: false
-      });
-      console.log('Created subscription:', subscription);
+    } catch (error) {
+      console.error('Apple verification error:', error);
+      return Response.json(
+        { error: 'Failed to verify receipt with Apple' },
+        { status: 500 }
+      );
     }
 
-    // If creation succeeded, return success immediately
-    // The subscription object confirms it was created
-    return Response.json({
-      success: true,
-      message: 'Subscription activated',
-      plan: plan.name,
-      expiresAt: endDate.toISOString(),
-      subscription: subscription
-    });
+    const result = await verifyResponse.json();
+
+    // Status 0 = valid, 21007 = sandbox receipt, try again with sandbox
+    if (result.status === 21007) {
+      const sandboxResponse = await fetch(sandboxEndpoint, {
+        method: 'POST',
+        body: JSON.stringify({
+          'receipt-data': receiptData,
+          password: appleSecret,
+        }),
+      });
+      const sandboxResult = await sandboxResponse.json();
+      
+      if (sandboxResult.status === 0) {
+        return handleValidReceipt(base44, user, sandboxResult.receipt, true);
+      }
+    }
+
+    if (result.status === 0) {
+      return handleValidReceipt(base44, user, result.receipt, false);
+    }
+
+    return Response.json(
+      { error: `Invalid receipt: status ${result.status}` },
+      { status: 400 }
+    );
   } catch (error) {
     console.error('Apple receipt verification error:', error);
-    return Response.json({ 
-      success: false,
-      error: error.message 
-    }, { status: 500 });
+    return Response.json(
+      { error: error.message },
+      { status: 500 }
+    );
   }
 });
 
-async function verifyWithApple(receiptData) {
-  const isProduction = Deno.env.get('DENO_ENV') === 'production';
-  const verifyURL = isProduction 
-    ? 'https://buy.itunes.apple.com/verifyReceipt'
-    : 'https://sandbox.itunes.apple.com/verifyReceipt';
-
+async function handleValidReceipt(base44, user, receipt, isSandbox) {
   try {
-    const response = await fetch(verifyURL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        'receipt-data': receiptData,
-        'password': Deno.env.get('APPLE_SHARED_SECRET') || '',
-        'exclude-old-transactions': true
-      })
+    const now = new Date();
+    const trialEndDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    // Create subscription record
+    const subscription = await base44.asServiceRole.entities.Subscription.create({
+      user_email: user.email,
+      status: 'trialing',
+      plan_name: 'CareMetric AI - Apple IAP Trial',
+      monthly_amount: 0, // Free trial
+      trial_start: now.toISOString(),
+      trial_end: trialEndDate.toISOString(),
+      is_apple_iap: true,
+      apple_receipt: isSandbox ? 'sandbox' : 'production',
+      apple_bundle_id: receipt.bundle_id,
+      current_period_start: now.toISOString(),
+      current_period_end: trialEndDate.toISOString(),
     });
 
-    const data = await response.json();
-    
-    // Status 0 = valid, 21007 = sandbox receipt sent to production (retry with sandbox)
-    if (data.status === 0) {
-      return { valid: true, receipt: data.receipt };
-    } else if (data.status === 21007 && isProduction) {
-      // Retry with sandbox
-      return verifyWithApple(receiptData);
-    }
-    
-    return { valid: false, error: `Status ${data.status}` };
+    return Response.json({
+      success: true,
+      subscription,
+      message: '14-day free trial activated',
+      trial_ends: trialEndDate.toISOString(),
+    });
   } catch (error) {
-    console.error('Apple verification failed:', error);
-    return { valid: false, error: error.message };
+    console.error('Failed to create subscription:', error);
+    return Response.json(
+      { error: 'Failed to activate trial' },
+      { status: 500 }
+    );
   }
 }
