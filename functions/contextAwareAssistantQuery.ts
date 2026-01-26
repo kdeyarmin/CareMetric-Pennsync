@@ -65,4 +65,31 @@ Deno.serve(async (req) => {
 ${contextString}
 
 ${conversationHistory.length > 0 ? 'Continue this conversation:' : 'User Query:'}
-${messages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}
+${messages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}`,
+      add_context_from_internet: true
+    });
+
+    // Log for audit trail
+    await base44.asServiceRole.entities.SystemLog.create({
+      timestamp: new Date().toISOString(),
+      user_email: user.email,
+      action: 'ai_assistant_query',
+      details: {
+        page: currentPage,
+        query_length: query.length,
+        response_length: response.length
+      }
+    });
+
+    return new Response(
+      JSON.stringify({ response }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('AI Assistant Query Error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to process query' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+});
