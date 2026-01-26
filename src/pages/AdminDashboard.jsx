@@ -45,6 +45,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import RealTimeDashboardWidget from "../components/admin/RealTimeDashboardWidget";
 import AgencyManagement from "../components/admin/AgencyManagement";
 import SubscriptionAnalyticsDashboard from "../components/admin/SubscriptionAnalyticsDashboard";
+import InactiveUserEmailManager from "../components/admin/InactiveUserEmailManager";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
@@ -1084,6 +1085,7 @@ export default function AdminDashboard() {
 
         {/* Users Tab */}
         <TabsContent value="users" className="space-y-6">
+          <InactiveUserEmailManager />
           <UserManagement users={allUsers} currentUser={currentUser} />
         </TabsContent>
 
