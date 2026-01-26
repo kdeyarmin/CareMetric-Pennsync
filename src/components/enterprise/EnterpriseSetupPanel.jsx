@@ -8,11 +8,11 @@ import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Building2, Mail, Loader2, CheckCircle, Copy } from "lucide-react";
 
-export default function EnterpriseSetupPanel({ agencySettings, onSetupComplete }) {
-  const [managerEmail, setManagerEmail] = useState(agencySettings?.agency_manager_email || "");
-  const [officeName, setOfficeName] = useState(agencySettings?.office_name || "");
+export default function EnterpriseSetupPanel({ agency, onSetupComplete }) {
+  const [managerEmail, setManagerEmail] = useState(agency?.admin_email || "");
+  const [officeName, setOfficeName] = useState(agency?.agency_name || "");
   const [setting, setSetting] = useState(false);
-  const [generatedCode, setGeneratedCode] = useState(agencySettings?.agency_code || null);
+  const [generatedCode, setGeneratedCode] = useState(agency?.agency_code || null);
 
   const handleSetup = async () => {
     if (!managerEmail || !officeName) {
@@ -47,7 +47,7 @@ export default function EnterpriseSetupPanel({ agencySettings, onSetupComplete }
     toast.success('Agency code copied to clipboard');
   };
 
-  const isAlreadyEnterprise = agencySettings?.is_enterprise;
+  const isAlreadyEnterprise = agency?.agency_code;
 
   return (
     <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950">
@@ -110,7 +110,7 @@ export default function EnterpriseSetupPanel({ agencySettings, onSetupComplete }
             <Alert className="bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
               <CheckCircle className="w-4 h-4 text-green-600" />
               <AlertDescription className="text-green-900 dark:text-green-100">
-                Enterprise features are active for <strong>{agencySettings.office_name}</strong>
+                Enterprise features are active for <strong>{agency.agency_name}</strong>
               </AlertDescription>
             </Alert>
 
@@ -118,7 +118,7 @@ export default function EnterpriseSetupPanel({ agencySettings, onSetupComplete }
               <Label>Agency Code</Label>
               <div className="flex gap-2">
                 <Input
-                  value={generatedCode || agencySettings.agency_code}
+                  value={generatedCode || agency.agency_code}
                   readOnly
                   className="font-mono text-lg font-bold"
                 />
@@ -138,7 +138,7 @@ export default function EnterpriseSetupPanel({ agencySettings, onSetupComplete }
             <div className="space-y-2">
               <Label>Manager Email</Label>
               <Input
-                value={agencySettings.agency_manager_email}
+                value={agency.admin_email}
                 readOnly
                 className="bg-slate-100 dark:bg-slate-800"
               />
