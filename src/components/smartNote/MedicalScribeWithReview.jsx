@@ -861,6 +861,19 @@ Provide specific, actionable suggestions for:
                )}
              </div>
              <div className="lg:col-span-4 space-y-4">
+               {/* Documentation Quality Score - Prominent Display */}
+               {qualityAnalysis && (
+                 <DocumentationQualityScore
+                   qualityAnalysis={qualityAnalysis}
+                   noteText={generatedNote}
+                   visitType={visitType}
+                   providerType={currentUser?.credential_type || currentUser?.provider_type}
+                   onFeedbackSubmitted={() => {
+                     toast.success('Feedback helps improve AI accuracy');
+                   }}
+                 />
+               )}
+
                {/* One-Click Resolve All for Final Note */}
                <ResolveAllIssues
                  issues={complianceIssues}
@@ -896,7 +909,7 @@ Provide specific, actionable suggestions for:
                   refinedNote={editedTranscription}
                   selectedLanguage={selectedLanguage}
                 />
-                
+
                 <EnhancedDocumentationAssistant
                   generatedNote={generatedNote}
                   diagnosis={diagnosis}
@@ -916,11 +929,11 @@ Provide specific, actionable suggestions for:
                     toast.success(`${codes.length} codes selected and ready to use`);
                   }}
                   />
-                  </div>
-                  </div>
-                  </div>
-                  );
-                  }
+                </div>
+                </div>
+                </div>
+                );
+                }
 
-          return null;
-}
+                return null;
+                }
