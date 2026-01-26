@@ -542,12 +542,10 @@ export default function Layout({ children, currentPageName }) {
         </div>
       </main>
 
-      {/* ================= AI Chat Assistant ================= */}
+      {/* ================= AI Assistant Engine ================= */}
       {showNavigationUI &&
-        <div className="fixed right-4 bottom-4 lg:right-6 lg:bottom-6 z-[9997]">
-          <AIChatAssistant />
-        </div>
-        }
+        <AIAssistantEngine currentPage={currentPageName} />
+      }
 
       {showNavigationUI && <OfflineIndicator />}
       <InvitationAcceptBanner currentUser={currentUser} />
