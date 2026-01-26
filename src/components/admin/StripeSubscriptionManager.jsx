@@ -25,6 +25,7 @@ export default function StripeSubscriptionManager() {
   const [isCreatingPrice, setIsCreatingPrice] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [editDialog, setEditDialog] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   // Fetch all products
   const { data: products = [], isLoading: loadingProducts, refetch: refetchProducts } = useQuery({
@@ -404,19 +405,31 @@ export default function StripeSubscriptionManager() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold">Products & Pricing</h2>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={async () => {
-              await refetchProducts();
-              await refetchPrices();
-            }}
-            disabled={loadingProducts}
-            className="gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${loadingProducts ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleCleanupPrices}
+              disabled={isCleaningUp}
+              className="gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              {isCleaningUp ? "Cleaning..." : "Cleanup Prices"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await refetchProducts();
+                await refetchPrices();
+              }}
+              disabled={loadingProducts}
+              className="gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingProducts ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {loadingProducts ? (
