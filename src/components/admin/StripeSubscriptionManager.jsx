@@ -222,6 +222,36 @@ export default function StripeSubscriptionManager() {
     }
   };
 
+  const handleCleanupPrices = async () => {
+    if (!confirm('This will deactivate higher-priced options ($39.99, $115, $210, $350) and keep only the standard prices ($29.99, $81.99, $149.99, $264.99). Continue?')) {
+      return;
+    }
+
+    setIsCleaningUp(true);
+    const toastId = toast.loading('Cleaning up subscription prices...');
+
+    try {
+      const response = await base44.functions.invoke('cleanupSubscriptionPrices', {});
+      
+      if (response?.data?.success === true || response?.success === true) {
+        const results = response?.data?.results || response?.results;
+        toast.success(
+          `Cleanup complete! Deactivated ${results?.deactivated?.length || 0} prices, kept ${results?.kept?.length || 0} prices.`,
+          { id: toastId, duration: 5000 }
+        );
+        queryClient.resetQueries({ queryKey: ['stripePrices'] });
+        await refetchPrices();
+      } else {
+        toast.error('Failed to cleanup prices', { id: toastId });
+      }
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      toast.error(error.message || 'Failed to cleanup prices', { id: toastId });
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
   const formatPrice = (cents) => {
     return `$${(cents / 100).toFixed(2)}`;
   };
