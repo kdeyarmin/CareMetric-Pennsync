@@ -36,6 +36,7 @@ import AutomatedTaskGenerator from "../components/carePlan/AutomatedTaskGenerato
 import CarePlanTimeline from "../components/carePlan/CarePlanTimeline";
 import AIEducationRecommender from "../components/carePlan/AIEducationRecommender";
 import EducationTracker from "../components/carePlan/EducationTracker";
+import CarePlanEducationRecommender from "../components/education/CarePlanEducationRecommender";
 import AICarePlanGenerator from "../components/carePlan/AICarePlanGenerator";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import FavoriteButton from "../components/navigation/FavoriteButton";
@@ -555,15 +556,25 @@ export default function CarePlanManagement() {
               }}
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full">
-            <AIEducationRecommender
-              patient={selectedPatient}
-              carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
-              onAssignEducation={() => {
-                queryClient.invalidateQueries({ queryKey: ['patientEducation', selectedPatient.id] });
+          <div className="space-y-3 sm:space-y-4 w-full">
+            {/* Inline Education Recommendations */}
+            <CarePlanEducationRecommender
+              patientDiagnosis={selectedPatient.primary_diagnosis}
+              onAssignMaterial={(material) => {
+                toast.success(`Added "${material.title}" to patient education plan`);
               }}
             />
-            <EducationTracker patient={selectedPatient} />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full">
+              <AIEducationRecommender
+                patient={selectedPatient}
+                carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
+                onAssignEducation={() => {
+                  queryClient.invalidateQueries({ queryKey: ['patientEducation', selectedPatient.id] });
+                }}
+              />
+              <EducationTracker patient={selectedPatient} />
+            </div>
           </div>
         </div>
       )}
