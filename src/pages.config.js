@@ -79,10 +79,10 @@ import PatientDashboard from './pages/PatientDashboard';
 import PatientDataManagement from './pages/PatientDataManagement';
 import PatientDetails from './pages/PatientDetails';
 import PatientEducation from './pages/PatientEducation';
+import PatientEducationAnalytics from './pages/PatientEducationAnalytics';
 import PatientEducationGenerator from './pages/PatientEducationGenerator';
 import PatientEducationHub from './pages/PatientEducationHub';
 import PatientEducationLibrary from './pages/PatientEducationLibrary';
-import PatientEducationAnalytics from './pages/PatientEducationAnalytics';
 import PatientMessaging from './pages/PatientMessaging';
 import PatientOnboarding from './pages/PatientOnboarding';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
@@ -105,10 +105,10 @@ import SecurityPolicy from './pages/SecurityPolicy';
 import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import StaffTraining from './pages/StaffTraining';
-import Support from './pages/Support';
 import StaffTrainingHub from './pages/StaffTrainingHub';
 import StaffTrainingModule from './pages/StaffTrainingModule';
 import SubscriptionPlans from './pages/SubscriptionPlans';
+import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
 import Telehealth from './pages/Telehealth';
@@ -206,10 +206,10 @@ export const PAGES = {
     "PatientDataManagement": PatientDataManagement,
     "PatientDetails": PatientDetails,
     "PatientEducation": PatientEducation,
+    "PatientEducationAnalytics": PatientEducationAnalytics,
     "PatientEducationGenerator": PatientEducationGenerator,
     "PatientEducationHub": PatientEducationHub,
     "PatientEducationLibrary": PatientEducationLibrary,
-    "PatientEducationAnalytics": PatientEducationAnalytics,
     "PatientMessaging": PatientMessaging,
     "PatientOnboarding": PatientOnboarding,
     "PatientRecordDashboard": PatientRecordDashboard,
@@ -232,10 +232,10 @@ export const PAGES = {
     "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
     "StaffTraining": StaffTraining,
-    "Support": Support,
     "StaffTrainingHub": StaffTrainingHub,
     "StaffTrainingModule": StaffTrainingModule,
     "SubscriptionPlans": SubscriptionPlans,
+    "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
     "Telehealth": Telehealth,

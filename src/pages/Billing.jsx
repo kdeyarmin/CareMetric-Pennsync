@@ -111,13 +111,13 @@ export default function Billing() {
     },
     {
       name: "Quarterly",
-      price: 114.99,
+      price: 79.99,
       interval: "3 months",
-      description: "Save 4% vs monthly",
+      description: "Save 33% vs monthly",
       priceId: "price_1SioSoCEZXcVOdjdPYzUvQiX",
       popular: false,
-      savings: "Save $5",
-      monthlyEquiv: "$38.33/mo"
+      savings: "Save $30",
+      monthlyEquiv: "$26.66/mo"
     },
     {
       name: "Semi-Annual",
