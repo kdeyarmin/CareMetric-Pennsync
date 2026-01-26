@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import AITemplateGenerator from '../components/templates/AITemplateGenerator';
 import PrebuiltTemplateLibrary from '../components/templates/PrebuiltTemplateLibrary';
 import CustomTemplateEditor from '../components/templates/CustomTemplateEditor';
+import ContextualTemplatesSuggester from '../components/documents/ContextualTemplatesSuggester';
 
 export default function TemplateLibrary() {
   const [step, setStep] = useState('list'); // list, create, edit
@@ -206,34 +207,45 @@ export default function TemplateLibrary() {
 
               <TabsContent value="my-templates">
                 {userTemplates.length === 0 ? (
-                  <EmptyState
-                    icon={FileText}
-                    title="No Custom Templates"
-                    description="Create your first template to get started."
-                    actions={[
-                      {
-                        label: 'Create Template',
-                        onClick: () => setStep('create')
-                      }
-                    ]}
-                  />
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {userTemplates.map((template) => (
-                      <TemplateCard
-                        key={template.id}
-                        template={template}
-                        onEdit={() => {
-                          setSelectedTemplate(template);
-                          setStep('edit');
-                        }}
-                        onDelete={(id) => deleteTemplateMutation.mutate(id)}
-                        isEditable={true}
-                      />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
+                   <EmptyState
+                     icon={FileText}
+                     title="No Custom Templates"
+                     description="Create your first template to get started."
+                     actions={[
+                       {
+                         label: 'Create Template',
+                         onClick: () => setStep('create')
+                       }
+                     ]}
+                   />
+                 ) : (
+                   <div className="space-y-4">
+                     <ContextualTemplatesSuggester
+                       patientDiagnosis={null}
+                       visitType={null}
+                       availableTemplates={userTemplates}
+                       onTemplateSelect={(template) => {
+                         setSelectedTemplate(template);
+                         setStep('edit');
+                       }}
+                     />
+                     <div className="grid gap-4 md:grid-cols-2">
+                       {userTemplates.map((template) => (
+                         <TemplateCard
+                           key={template.id}
+                           template={template}
+                           onEdit={() => {
+                             setSelectedTemplate(template);
+                             setStep('edit');
+                           }}
+                           onDelete={(id) => deleteTemplateMutation.mutate(id)}
+                           isEditable={true}
+                         />
+                       ))}
+                     </div>
+                   </div>
+                 )}
+               </TabsContent>
 
             </Tabs>
           </>
