@@ -40,7 +40,7 @@ export default function StripeSubscriptionManager() {
     }
   });
 
-  // Fetch all prices for each product
+  // Fetch all prices for each product (including inactive)
   const { data: pricesByProduct = {}, refetch: refetchPrices } = useQuery({
     queryKey: ["stripePrices"],
     queryFn: async () => {
@@ -48,8 +48,8 @@ export default function StripeSubscriptionManager() {
       for (const product of products) {
         try {
           const response = await base44.functions.invoke('stripeListPrices', { product_id: product.id });
-          // Filter out inactive/deleted prices
-          prices[product.id] = (response?.data?.prices || []).filter(p => p.active !== false);
+          // Show ALL prices including inactive ones
+          prices[product.id] = response?.data?.prices || [];
         } catch (error) {
           console.error(`Error fetching prices for ${product.id}:`, error);
           prices[product.id] = [];
@@ -190,33 +190,34 @@ export default function StripeSubscriptionManager() {
     }
   };
 
-  const handleDeletePrice = async (priceId, priceLabel) => {
-    if (!confirm(`Are you sure you want to delete this price (${priceLabel})?`)) {
+  const handleTogglePriceStatus = async (priceId, currentStatus, priceLabel) => {
+    const action = currentStatus ? "deactivate" : "activate";
+    
+    if (!confirm(`Are you sure you want to ${action} this price (${priceLabel})?`)) {
       return;
     }
 
-    const toastId = toast.loading("Deleting price...");
+    const toastId = toast.loading(`${action === 'deactivate' ? 'Deactivating' : 'Activating'} price...`);
     
     try {
       const response = await base44.functions.invoke('stripeDeletePrice', {
         price_id: priceId
       });
 
-      console.log('Delete price response:', response);
+      console.log('Toggle price response:', response);
       
       if (response?.data?.success === true || response?.success === true) {
-        toast.success("Price deleted successfully", { id: toastId });
-        // Clear cache and force refetch
+        toast.success(`Price ${action}d successfully`, { id: toastId });
         queryClient.resetQueries({ queryKey: ['stripePrices'] });
         await refetchPrices();
       } else {
-        const errorMsg = response?.data?.error || response?.error || response?.details || "Failed to delete price";
-        console.error('Delete failed:', response);
+        const errorMsg = response?.data?.error || response?.error || response?.details || `Failed to ${action} price`;
+        console.error('Toggle failed:', response);
         toast.error(errorMsg, { id: toastId });
       }
     } catch (error) {
-      console.error('Delete error:', error);
-      toast.error(error.message || "Failed to delete price", { id: toastId });
+      console.error('Toggle error:', error);
+      toast.error(error.message || `Failed to ${action} price`, { id: toastId });
     }
   };
 
@@ -487,7 +488,7 @@ export default function StripeSubscriptionManager() {
                   {pricesByProduct[product.id]?.length > 0 ? (
                     <div className="space-y-2">
                       {pricesByProduct[product.id].map((price) => (
-                        <div key={price.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div key={price.id} className={`flex items-center justify-between p-3 rounded-lg ${price.active ? 'bg-gray-50 dark:bg-gray-800' : 'bg-gray-100 dark:bg-gray-900 opacity-60'}`}>
                           <div className="flex items-center gap-4 flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <DollarSign className="w-4 h-4 text-green-600" />
@@ -499,7 +500,10 @@ export default function StripeSubscriptionManager() {
                               <Calendar className="w-4 h-4" />
                               {getIntervalLabel(price.recurring?.interval, price.recurring?.interval_count || 1)}
                             </div>
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant={price.active ? "default" : "secondary"} className="text-xs">
+                              {price.active ? "Active" : "Inactive"}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
                               {price.id}
                             </Badge>
                           </div>
@@ -514,10 +518,11 @@ export default function StripeSubscriptionManager() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleDeletePrice(price.id, `${formatPrice(price.unit_amount)}/${getIntervalLabel(price.recurring?.interval, price.recurring?.interval_count || 1)}`)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleTogglePriceStatus(price.id, price.active, `${formatPrice(price.unit_amount)}/${getIntervalLabel(price.recurring?.interval, price.recurring?.interval_count || 1)}`)}
+                              className={price.active ? "text-red-600 hover:text-red-700 hover:bg-red-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                              title={price.active ? "Deactivate price" : "Activate price"}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Archive className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
