@@ -9,6 +9,8 @@ import { FileText, History } from 'lucide-react';
 import TemplateSelectionFlow from '../components/documents/TemplateSelectionFlow';
 import DocumentDataForm from '../components/documents/DocumentDataForm';
 import DocumentPreview from '../components/documents/DocumentPreview';
+import ContextualTemplatesSuggester from '../components/documents/ContextualTemplatesSuggester';
+import QuickPhraseInsert from '../components/documents/QuickPhraseInsert';
 import EmptyState from '../components/ui/EmptyState';
 import PullToRefresh from '../components/mobile/PullToRefresh';
 
@@ -135,26 +137,44 @@ export default function DocumentGenerator() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => setSelectedPatientForDoc(null)}
-                      className="mb-4"
-                    >
-                      Change Patient
-                    </Button>
-                    <TemplateSelectionFlow
-                      patient={patients.find(p => p.id === selectedPatientForDoc)}
-                      templates={templates}
-                      onSelect={(template, prefilled) => {
-                        setSelectedTemplate(template);
-                        setPreFilledData(prefilled);
-                        setStep('form');
-                      }}
-                      loading={templatesLoading}
-                    />
-                  </>
-                )}
+                   <>
+                     <Button
+                       variant="outline"
+                       onClick={() => setSelectedPatientForDoc(null)}
+                       className="mb-4"
+                     >
+                       Change Patient
+                     </Button>
+                     {/* Contextual Suggestions */}
+                     {patients.find(p => p.id === selectedPatientForDoc) && (
+                       <div className="space-y-4">
+                         <ContextualTemplatesSuggester
+                           patientDiagnosis={patients.find(p => p.id === selectedPatientForDoc)?.primary_diagnosis}
+                           visitType={null}
+                           availableTemplates={templates}
+                           onTemplateSelect={(template) => {
+                             setSelectedTemplate(template);
+                             setStep('form');
+                           }}
+                         />
+                         <QuickPhraseInsert
+                           patientDiagnosis={patients.find(p => p.id === selectedPatientForDoc)?.primary_diagnosis}
+                           visitType={null}
+                         />
+                       </div>
+                     )}
+                     <TemplateSelectionFlow
+                       patient={patients.find(p => p.id === selectedPatientForDoc)}
+                       templates={templates}
+                       onSelect={(template, prefilled) => {
+                         setSelectedTemplate(template);
+                         setPreFilledData(prefilled);
+                         setStep('form');
+                       }}
+                       loading={templatesLoading}
+                     />
+                   </>
+                 )}
               </div>
             )}
 
