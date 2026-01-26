@@ -63,6 +63,8 @@ export default function UserManagement({ users, currentUser }) {
   const [editingSubscription, setEditingSubscription] = useState(null);
   const [viewingUser, setViewingUser] = useState(null);
   const [isDownloadingRoster, setIsDownloadingRoster] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
   
   const [inviteData, setInviteData] = useState({
     email: "",
@@ -193,6 +195,49 @@ export default function UserManagement({ users, currentUser }) {
       alert('Failed to send invitation: ' + error.message);
     }
   });
+
+  // Delete user mutation
+  const deleteUserMutation = useMutation({
+    mutationFn: async ({ userId, userEmail }) => {
+      const response = await base44.functions.invoke('deleteUser', {
+        user_id: userId,
+        user_email: userEmail
+      });
+      return response.data || response;
+    },
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['allSubscriptions'] });
+      
+      await logActivity('user_deleted', {
+        entity_type: 'User',
+        entity_id: userToDelete?.id,
+        deleted_user_email: userToDelete?.email,
+        page: 'UserManagement'
+      });
+      
+      setShowDeleteDialog(false);
+      setUserToDelete(null);
+      alert('User deleted successfully');
+    },
+    onError: (error) => {
+      console.error('Failed to delete user:', error);
+      alert('Failed to delete user: ' + error.message);
+    }
+  });
+
+  const handleDeleteUser = (user) => {
+    setUserToDelete(user);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteUser = () => {
+    if (!userToDelete) return;
+    deleteUserMutation.mutate({
+      userId: userToDelete.id,
+      userEmail: userToDelete.email
+    });
+  };
 
   const handleCreateUser = () => {
     if (!inviteData.email || !inviteData.full_name) {
@@ -574,6 +619,16 @@ export default function UserManagement({ users, currentUser }) {
                           }
                           return null;
                         })()}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteUser(user)}
+                          title="Delete user"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          disabled={user.email === currentUser?.email}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -584,6 +639,66 @@ export default function UserManagement({ users, currentUser }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete User Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Delete User
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the user account and all associated data.
+            </DialogDescription>
+          </DialogHeader>
+
+          {userToDelete && (
+            <Alert className="bg-red-50 border-red-300">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+              <AlertDescription className="text-red-900">
+                <p className="font-semibold mb-2">You are about to delete:</p>
+                <div className="space-y-1 text-sm">
+                  <p><strong>Name:</strong> {userToDelete.full_name || 'N/A'}</p>
+                  <p><strong>Email:</strong> {userToDelete.email}</p>
+                  <p><strong>Role:</strong> {userToDelete.role}</p>
+                </div>
+                <p className="mt-3 text-sm font-semibold">
+                  This will delete:
+                </p>
+                <ul className="text-sm space-y-1 mt-1">
+                  <li>• User account and profile</li>
+                  <li>• Associated subscription records</li>
+                  <li>• Activity logs will be preserved for audit purposes</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setUserToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmDeleteUser}
+              disabled={deleteUserMutation.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteUserMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Deleting...</>
+              ) : (
+                <><Trash2 className="w-4 h-4 mr-2" /> Delete User</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create User Dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
@@ -1083,6 +1198,18 @@ export default function UserManagement({ users, currentUser }) {
                   <CreditCard className="w-4 h-4 mr-2" />
                   Manage Subscription
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowUserDetailsDialog(false);
+                    handleDeleteUser(viewingUser);
+                  }}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  disabled={viewingUser?.email === currentUser?.email}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete User
+                </Button>
               </div>
             </div>
           )}
@@ -1090,6 +1217,66 @@ export default function UserManagement({ users, currentUser }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUserDetailsDialog(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Delete User
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the user account and all associated data.
+            </DialogDescription>
+          </DialogHeader>
+
+          {userToDelete && (
+            <Alert className="bg-red-50 border-red-300">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+              <AlertDescription className="text-red-900">
+                <p className="font-semibold mb-2">You are about to delete:</p>
+                <div className="space-y-1 text-sm">
+                  <p><strong>Name:</strong> {userToDelete.full_name || 'N/A'}</p>
+                  <p><strong>Email:</strong> {userToDelete.email}</p>
+                  <p><strong>Role:</strong> {userToDelete.role}</p>
+                </div>
+                <p className="mt-3 text-sm font-semibold">
+                  This will delete:
+                </p>
+                <ul className="text-sm space-y-1 mt-1">
+                  <li>• User account and profile</li>
+                  <li>• Associated subscription records</li>
+                  <li>• Activity logs will be preserved for audit purposes</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setUserToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmDeleteUser}
+              disabled={deleteUserMutation.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteUserMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Deleting...</>
+              ) : (
+                <><Trash2 className="w-4 h-4 mr-2" /> Delete User</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
