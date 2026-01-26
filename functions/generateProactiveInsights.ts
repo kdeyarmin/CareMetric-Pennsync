@@ -12,11 +12,93 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { patient_id } = body;
+    const { patient_id, user_email } = body;
 
-    if (!patient_id) {
-      console.error('[generateProactiveInsights] Missing patient_id');
-      return Response.json({ error: 'patient_id is required' }, { status: 400 });
+    // Support both patient_id (from patient pages) and user_email (from dashboard)
+    if (!patient_id && !user_email) {
+      console.error('[generateProactiveInsights] Missing patient_id or user_email');
+      return Response.json({ error: 'patient_id or user_email is required' }, { status: 400 });
+    }
+
+    // If user_email provided, generate insights for their recent patients
+    if (user_email && !patient_id) {
+      console.log('[generateProactiveInsights] Generating insights for user:', user_email);
+      
+      // Get user's recent patients from visits
+      const recentVisits = await base44.entities.Visit.filter(
+        { created_by: user_email },
+        '-created_date',
+        10
+      );
+      
+      const uniquePatientIds = [...new Set(recentVisits.map(v => v.patient_id))].filter(Boolean);
+      
+      if (uniquePatientIds.length === 0) {
+        return Response.json({
+          success: true,
+          insights: {
+            risk_flags: [],
+            trending_concerns: [],
+            visit_preparation: {
+              key_assessment_areas: [],
+              suggested_discussion_points: ["No recent patient visits found"],
+              recommended_interventions: []
+            },
+            care_plan_recommendations: [],
+            medication_alerts: [],
+            preventive_opportunities: []
+          },
+          generated_at: new Date().toISOString()
+        });
+      }
+      
+      // For dashboard, just analyze the most recent patient
+      const mostRecentPatientId = uniquePatientIds[0];
+      const patient = await base44.entities.Patient.filter({ id: mostRecentPatientId });
+      
+      if (!patient || patient.length === 0) {
+        return Response.json({
+          success: true,
+          insights: {
+            risk_flags: [],
+            trending_concerns: [],
+            visit_preparation: {
+              key_assessment_areas: [],
+              suggested_discussion_points: [],
+              recommended_interventions: []
+            },
+            care_plan_recommendations: [],
+            medication_alerts: [],
+            preventive_opportunities: []
+          },
+          generated_at: new Date().toISOString()
+        });
+      }
+      
+      const patientData = patient[0];
+      
+      // Generate quick insights for dashboard
+      return Response.json({
+        success: true,
+        insights: {
+          risk_flags: [],
+          trending_concerns: [{
+            concern: `Recent activity with patient: ${patientData.first_name} ${patientData.last_name}`,
+            trend_direction: "stable",
+            data_points: [`${uniquePatientIds.length} patients in recent visits`],
+            clinical_significance: "Continue monitoring patient care"
+          }],
+          visit_preparation: {
+            key_assessment_areas: ["Continue routine assessments"],
+            suggested_discussion_points: [`Follow up on ${patientData.primary_diagnosis || 'current condition'}`],
+            recommended_interventions: []
+          },
+          care_plan_recommendations: [],
+          medication_alerts: [],
+          preventive_opportunities: []
+        },
+        generated_at: new Date().toISOString()
+      });
     }
 
     console.log('[generateProactiveInsights] Generating insights for patient:', patient_id);
