@@ -1,13 +1,19 @@
-import Stripe from 'npm:stripe@15.0.0';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import Stripe from 'npm:stripe@17.5.0';
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'), {
+  apiVersion: '2024-12-18.acacia'
+});
 
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') {
-    return Response.json({ error: 'Method not allowed' }, { status: 405 });
-  }
-
   try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+
+    if (user?.role !== 'admin') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const payload = await req.json();
     const { price_id, set_active } = payload;
 

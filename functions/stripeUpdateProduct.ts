@@ -20,13 +20,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Product ID required' }, { status: 400 });
     }
 
-    const updatedProduct = await stripe.products.update(product_id, {
-      name,
-      description,
-      active
-    });
+    // Only update fields that are provided
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (active !== undefined) updateData.active = active;
 
-    console.log('Product updated:', updatedProduct.id);
+    const updatedProduct = await stripe.products.update(product_id, updateData);
+
+    console.log('Product updated successfully:', updatedProduct.id);
 
     return Response.json({ 
       success: true, 
