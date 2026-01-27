@@ -15,6 +15,7 @@ Deno.serve(async (req) => {
 
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
+    // Fetch ALL prices (active and inactive) for admin view
     const params = { limit: 100 };
     if (product_id) {
       params.product = product_id;
