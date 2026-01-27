@@ -47,7 +47,6 @@ import { ErrorBoundary } from "../components/utils/ErrorBoundary";
 import HighRiskPatientsWidget from "../components/dashboard/HighRiskPatientsWidget";
 import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
 import HighRiskPatientsList from "../components/dashboard/HighRiskPatientsList";
-import TrialBanner from "../components/subscription/TrialBanner";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -268,11 +267,6 @@ export default function Dashboard() {
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header with integrated banners */}
       <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
-
-      {/* Trial Banner */}
-      <div className="mb-4 sm:mb-6">
-        <TrialBanner subscription={subscription} />
-      </div>
 
       {/* Proactive Insights */}
       <ErrorBoundary>
