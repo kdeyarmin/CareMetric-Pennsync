@@ -39,7 +39,7 @@ export default function AuditLog() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
       <ComprehensiveAuditLog />
     </div>
   );

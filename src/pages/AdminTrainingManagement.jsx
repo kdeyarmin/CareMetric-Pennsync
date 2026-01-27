@@ -91,34 +91,34 @@ export default function AdminTrainingManagement() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 sm:mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-            <GraduationCap className="w-8 h-8 text-blue-600" />
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-2">
+            <GraduationCap className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
             Training Management
           </h1>
-          <p className="text-slate-600 mt-1">
+          <p className="text-sm sm:text-base text-slate-600 mt-1">
             Assign training and track provider progress
           </p>
         </div>
-        <Button onClick={() => setShowUploader(!showUploader)} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={() => setShowUploader(!showUploader)} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto touch-target">
           <Plus className="w-4 h-4 mr-2" />
           {showUploader ? 'Hide Uploader' : 'Upload Training'}
         </Button>
       </div>
 
       {showUploader && (
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <TrainingMaterialUploader onComplete={() => setShowUploader(false)} />
         </div>
       )}
 
-      <Tabs defaultValue="assign" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="assign">Assign Training</TabsTrigger>
-          <TabsTrigger value="progress">Progress & Analytics</TabsTrigger>
-          <TabsTrigger value="upload">Upload Materials</TabsTrigger>
+      <Tabs defaultValue="assign" className="space-y-4 sm:space-y-6 w-full">
+        <TabsList className="grid w-full grid-cols-3 h-auto">
+          <TabsTrigger value="assign" className="text-xs sm:text-sm">Assign Training</TabsTrigger>
+          <TabsTrigger value="progress" className="text-xs sm:text-sm">Progress & Analytics</TabsTrigger>
+          <TabsTrigger value="upload" className="text-xs sm:text-sm">Upload Materials</TabsTrigger>
         </TabsList>
 
         <TabsContent value="assign">
