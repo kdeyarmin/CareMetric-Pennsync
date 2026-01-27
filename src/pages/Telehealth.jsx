@@ -170,16 +170,16 @@ export default function Telehealth() {
   const getPatient = (patientId) => patients.find(p => p.id === patientId);
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-          <Video className="w-8 h-8 text-blue-600" />
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+          <Video className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
           Telehealth
         </h1>
-        <p className="text-gray-600 dark:text-gray-400">Schedule and conduct virtual patient visits</p>
+        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Schedule and conduct virtual patient visits</p>
       </div>
 
-      <Alert className="mb-6 bg-blue-50 border-blue-200">
+      <Alert className="mb-4 sm:mb-6 bg-blue-50 border-blue-200">
         <Video className="w-4 h-4 text-blue-600" />
         <AlertDescription className="text-blue-900">
           <p className="font-semibold mb-1">HIPAA-Compliant Telehealth</p>
@@ -187,10 +187,10 @@ export default function Telehealth() {
         </AlertDescription>
       </Alert>
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <Button
           onClick={() => setShowScheduleDialog(true)}
-          className="bg-blue-600 hover:bg-blue-700"
+          className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto touch-target"
         >
           <Plus className="w-4 h-4 mr-2" />
           Schedule Telehealth Visit
@@ -198,14 +198,14 @@ export default function Telehealth() {
       </div>
 
       {/* Scheduled Calls */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-blue-600" />
+      <Card className="mb-4 sm:mb-6 w-full">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
             Scheduled Telehealth Visits ({scheduledCalls.length})
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6 pt-0">
           {scheduledCalls.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -219,9 +219,9 @@ export default function Telehealth() {
                 const isNow = Math.abs(new Date() - visitDateTime) < 15 * 60 * 1000; // Within 15 minutes
 
                 return (
-                  <Card key={visit.id} className={`${isNow ? 'border-2 border-green-500 bg-green-50' : ''}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between gap-4">
+                  <Card key={visit.id} className={`${isNow ? 'border-2 border-green-500 bg-green-50' : ''} w-full`}>
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-gray-900 mb-1">
                             {patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown Patient'}
@@ -249,7 +249,7 @@ export default function Telehealth() {
                         <Button
                           onClick={() => handleStartCall(visit)}
                           disabled={joiningCall === visit.id}
-                          className="bg-green-600 hover:bg-green-700"
+                          className="bg-green-600 hover:bg-green-700 w-full sm:w-auto touch-target"
                         >
                           {joiningCall === visit.id ? (
                             <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Joining...</>
@@ -268,14 +268,14 @@ export default function Telehealth() {
       </Card>
 
       {/* Completed Calls - Need Documentation */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-green-600" />
+      <Card className="w-full">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
             Recent Telehealth Visits ({completedCalls.slice(0, 10).length})
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6 pt-0">
           {completedCalls.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -288,14 +288,14 @@ export default function Telehealth() {
                 const needsDocumentation = !visit.telehealth_summary || !visit.nurse_notes;
 
                 return (
-                  <Card key={visit.id} className={needsDocumentation ? 'border-yellow-300 bg-yellow-50' : ''}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 mb-1">
+                  <Card key={visit.id} className={`${needsDocumentation ? 'border-yellow-300 bg-yellow-50' : ''} w-full`}>
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                        <div className="flex-1 min-w-0 w-full">
+                          <h3 className="font-semibold text-gray-900 mb-1 text-sm sm:text-base break-words">
                             {patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown Patient'}
                           </h3>
-                          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                          <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
                             <div className="flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
                               {visit.visit_date}
@@ -314,12 +314,12 @@ export default function Telehealth() {
                             )}
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 w-full sm:w-auto flex-shrink-0">
                           {needsDocumentation ? (
                             <Button
                               onClick={() => handleDocumentCall(visit)}
                               variant="outline"
-                              className="border-yellow-600 text-yellow-700 hover:bg-yellow-50"
+                              className="border-yellow-600 text-yellow-700 hover:bg-yellow-50 w-full sm:w-auto touch-target"
                             >
                               <FileText className="w-4 h-4 mr-2" />
                               Document
@@ -328,6 +328,7 @@ export default function Telehealth() {
                             <Button
                               onClick={() => navigate(`${createPageUrl('DocumentVisit')}?visitId=${visit.id}`)}
                               variant="outline"
+                              className="w-full sm:w-auto touch-target"
                             >
                               <ExternalLink className="w-4 h-4 mr-2" />
                               View
@@ -346,7 +347,7 @@ export default function Telehealth() {
 
       {/* Schedule Dialog */}
       <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Schedule Telehealth Visit</DialogTitle>
             <DialogDescription>
@@ -364,13 +365,14 @@ export default function Telehealth() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Visit Date *</Label>
                 <Input
                   type="date"
                   value={newVisit.visit_date}
                   onChange={(e) => setNewVisit({ ...newVisit, visit_date: e.target.value })}
+                  className="h-11"
                 />
               </div>
               <div>
@@ -379,6 +381,7 @@ export default function Telehealth() {
                   type="time"
                   value={newVisit.visit_time}
                   onChange={(e) => setNewVisit({ ...newVisit, visit_time: e.target.value })}
+                  className="h-11"
                 />
               </div>
             </div>
@@ -407,14 +410,14 @@ export default function Telehealth() {
             </Alert>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowScheduleDialog(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setShowScheduleDialog(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button
               onClick={handleSchedule}
               disabled={scheduleVisitMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
             >
               {scheduleVisitMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Scheduling...</>
@@ -428,7 +431,7 @@ export default function Telehealth() {
 
       {/* Documentation Dialog */}
       <Dialog open={showDocumentDialog} onOpenChange={setShowDocumentDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Document Telehealth Visit</DialogTitle>
             <DialogDescription>
@@ -463,7 +466,7 @@ export default function Telehealth() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 <div>
                   <Label className="text-xs">Blood Pressure</Label>
                   <Input
@@ -529,14 +532,14 @@ export default function Telehealth() {
             </div>
           )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDocumentDialog(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setShowDocumentDialog(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button
               onClick={handleSaveDocumentation}
               disabled={updateVisitMutation.isPending || !callNotes.summary}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
             >
               {updateVisitMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>

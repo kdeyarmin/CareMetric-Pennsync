@@ -152,31 +152,31 @@ export default function DocumentCenter() {
 
   return (
     <PullToRefresh onRefresh={() => queryClient.invalidateQueries()}>
-      <div className="p-4 md:p-6 max-w-6xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <FileText className="w-8 h-8 text-blue-600" />
+      <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold flex items-center gap-2">
+            <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
             Document Center
           </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
             Generate documents, manage templates, and analyze clinical files
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="generate">Generate</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
             <TabsTrigger value="analyze">Analyze</TabsTrigger>
           </TabsList>
 
           {/* Generate Tab */}
-          <TabsContent value="generate" className="space-y-6 mt-6">
+          <TabsContent value="generate" className="space-y-4 sm:space-y-6 mt-4 sm:mt-6 w-full">
             {step === 'select' && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6 w-full">
                 {!selectedPatient ? (
-                  <Card>
-                    <CardContent className="p-6">
+                  <Card className="w-full">
+                    <CardContent className="p-4 sm:p-6">
                       <Label className="text-base font-semibold mb-3 block">Select Patient</Label>
                       <Select value={selectedPatient || ''} onValueChange={setSelectedPatient}>
                         <SelectTrigger>
@@ -231,29 +231,29 @@ export default function DocumentCenter() {
           </TabsContent>
 
           {/* Templates Tab */}
-          <TabsContent value="templates" className="space-y-6 mt-6">
+          <TabsContent value="templates" className="space-y-4 sm:space-y-6 mt-4 sm:mt-6 w-full">
             {templateStep === 'list' ? (
               <>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Document Templates</h2>
-                  <Button onClick={() => { setSelectedTemplate(null); setTemplateStep('create'); }}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <h2 className="text-lg sm:text-xl font-semibold">Document Templates</h2>
+                  <Button onClick={() => { setSelectedTemplate(null); setTemplateStep('create'); }} className="w-full sm:w-auto touch-target">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Template
                   </Button>
                 </div>
 
-                <Tabs defaultValue="my-templates">
-                  <TabsList className="grid w-full grid-cols-3">
+                <Tabs defaultValue="my-templates" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
                     <TabsTrigger value="my-templates">My Templates ({userTemplates.length})</TabsTrigger>
                     <TabsTrigger value="prebuilt">Pre-built</TabsTrigger>
                     <TabsTrigger value="ai-gen">AI Generator</TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="my-templates" className="mt-4">
+                  <TabsContent value="my-templates" className="mt-4 w-full">
                     {userTemplates.length === 0 ? (
                       <EmptyState icon={FileText} title="No Templates" description="Create your first template" />
                     ) : (
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2">
                         {userTemplates.map(template => (
                           <Card key={template.id} className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => { setSelectedTemplate(template); setTemplateStep('edit'); }}>
                             <CardContent className="p-4">
@@ -299,13 +299,13 @@ export default function DocumentCenter() {
           </TabsContent>
 
           {/* Analyze Tab */}
-          <TabsContent value="analyze" className="space-y-6 mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Upload & Analyze Documents</CardTitle>
-                <CardDescription>Upload clinical PDFs for AI-powered analysis</CardDescription>
+          <TabsContent value="analyze" className="space-y-4 sm:space-y-6 mt-4 sm:mt-6 w-full">
+            <Card className="w-full">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-base sm:text-lg">Upload & Analyze Documents</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Upload clinical PDFs for AI-powered analysis</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
                 <input
                   type="file"
                   id="file-upload"
@@ -314,9 +314,9 @@ export default function DocumentCenter() {
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-                <label htmlFor="file-upload" className="border-2 border-dashed rounded-lg p-8 text-center block cursor-pointer hover:border-indigo-500 transition-colors">
-                  <Upload className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-sm text-slate-600">Click to upload or drag PDF files</p>
+                <label htmlFor="file-upload" className="border-2 border-dashed rounded-lg p-6 sm:p-8 text-center block cursor-pointer hover:border-indigo-500 transition-colors">
+                  <Upload className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 sm:mb-4 text-slate-400" />
+                  <p className="text-xs sm:text-sm text-slate-600">Click to upload or drag PDF files</p>
                 </label>
 
                 {files.length > 0 && (
@@ -338,7 +338,7 @@ export default function DocumentCenter() {
                   </div>
                 )}
 
-                <Button onClick={handleAnalyze} disabled={files.length === 0 || analyzing} className="w-full bg-indigo-600">
+                <Button onClick={handleAnalyze} disabled={files.length === 0 || analyzing} className="w-full bg-indigo-600 touch-target">
                   {analyzing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   {analyzing ? 'Analyzing...' : 'Analyze Documents'}
                 </Button>
@@ -346,24 +346,24 @@ export default function DocumentCenter() {
             </Card>
 
             {analysis && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Analysis Results</CardTitle>
+              <Card className="w-full">
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="text-base sm:text-lg">Analysis Results</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
                   <div>
-                    <h3 className="font-semibold mb-2">Executive Summary</h3>
-                    <p className="text-sm bg-slate-50 p-4 rounded-lg whitespace-pre-wrap">{analysis.executive_summary}</p>
+                    <h3 className="font-semibold mb-2 text-sm sm:text-base">Executive Summary</h3>
+                    <p className="text-xs sm:text-sm bg-slate-50 p-3 sm:p-4 rounded-lg whitespace-pre-wrap break-words">{analysis.executive_summary}</p>
                   </div>
 
                   {analysis.key_findings && (
                     <div>
-                      <h3 className="font-semibold mb-2">Key Findings</h3>
+                      <h3 className="font-semibold mb-2 text-sm sm:text-base">Key Findings</h3>
                       <div className="space-y-2">
                         {analysis.key_findings.map((finding, idx) => (
-                          <div key={idx} className="p-3 bg-blue-50 border-l-4 border-blue-500 rounded">
-                            <p className="text-sm font-medium text-blue-900">{finding.category}</p>
-                            <p className="text-sm text-blue-800 mt-1">{finding.finding}</p>
+                          <div key={idx} className="p-3 bg-blue-50 border-l-4 border-blue-500 rounded overflow-hidden">
+                            <p className="text-xs sm:text-sm font-medium text-blue-900 break-words">{finding.category}</p>
+                            <p className="text-xs sm:text-sm text-blue-800 mt-1 break-words">{finding.finding}</p>
                           </div>
                         ))}
                       </div>
