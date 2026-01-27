@@ -70,8 +70,8 @@ const FEATURES = [
   'Priority email support'
 ];
 
-export default function EnhancedSignupFlow({ onComplete }) {
-  const [step, setStep] = useState(1); // 1: info, 2: plan, 3: payment
+export default function EnhancedSignupFlow({ onComplete, skipToPayment = false }) {
+  const [step, setStep] = useState(1); // 1: info, 2: plan (optional)
   const [userData, setUserData] = useState({
     full_name: '',
     email: '',
@@ -95,7 +95,13 @@ export default function EnhancedSignupFlow({ onComplete }) {
       await base44.auth.updateMe(data);
     },
     onSuccess: () => {
-      setStep(2);
+      toast.success('Welcome! Your 14-day free trial has started.');
+      // Skip directly to dashboard - trial is auto-created by onUserSignup
+      if (onComplete) {
+        onComplete();
+      } else {
+        window.location.href = '/';
+      }
     },
     onError: (error) => {
       toast.error('Failed to save information. Please try again.');
@@ -181,8 +187,11 @@ export default function EnhancedSignupFlow({ onComplete }) {
             </div>
             <CardTitle className="text-2xl">Welcome to CareMetric AI</CardTitle>
             <p className="text-sm text-gray-600 mt-2">
-              Let's get you started with your account
+              Start your free 14-day trial - no credit card required
             </p>
+            <Badge className="bg-green-100 text-green-800 mt-3">
+              ✨ Full access, cancel anytime
+            </Badge>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleBasicInfoSubmit} className="space-y-4">
@@ -237,10 +246,14 @@ export default function EnhancedSignupFlow({ onComplete }) {
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <>
-                    Continue <ArrowRight className="w-4 h-4 ml-2" />
+                    Start Free Trial <Sparkles className="w-4 h-4 ml-2" />
                   </>
                 )}
               </Button>
+              
+              <p className="text-xs text-center text-gray-500 mt-3">
+                By continuing, you agree to our Terms of Service and Privacy Policy
+              </p>
             </form>
           </CardContent>
         </Card>
