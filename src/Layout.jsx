@@ -386,14 +386,13 @@ export default function Layout({ children, currentPageName }) {
 
       {/* ================= Mobile Header (OPAQUE + SAFE AREA) ================= */}
       <header
-          className={`lg:hidden fixed top-0 left-0 right-0 bg-gradient-to-r from-white/90 via-slate-50/80 to-white/90 dark:from-slate-900/90 dark:via-gray-900/80 dark:to-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/30 shadow-lg flex flex-col transition-colors duration-300 ${
-          showNavigationUI ? 'z-[9999] visible' : 'z-[-1] invisible'}`
+          className={`lg:hidden bg-gradient-to-r from-white/90 via-slate-50/80 to-white/90 dark:from-slate-900/90 dark:via-gray-900/80 dark:to-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/30 shadow-lg flex flex-col transition-colors duration-300 ${
+          showNavigationUI ? 'visible' : 'invisible'}`
           }
           style={{
             paddingTop: "env(safe-area-inset-top, 0px)",
             width: "100vw",
-            maxWidth: "100vw",
-            position: "fixed"
+            maxWidth: "100vw"
           }}>
 
         {showNavigationUI &&
@@ -531,8 +530,6 @@ export default function Layout({ children, currentPageName }) {
       <main
           className="flex-1 overflow-x-hidden w-full relative bg-transparent"
           style={{
-            // Always add padding on mobile to account for header
-            paddingTop: showNavigationUI ? mobileHeaderTotalHeight : 0,
             minHeight: "100vh"
           }}>
 
