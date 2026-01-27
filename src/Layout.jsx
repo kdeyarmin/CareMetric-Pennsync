@@ -140,11 +140,18 @@ export default function Layout({ children, currentPageName }) {
   const isActive = (page) => currentPageName === page;
 
   // Show navigation when user is logged in
-  const showNavigationUI = currentUser;
+      const showNavigationUI = currentUser;
 
-  // Get role-specific navigation items
-  // User items first, then admin items
-  const allNavItems = [
+      // Redirect to onboarding if not completed
+      React.useEffect(() => {
+        if (currentUser && !currentUser.onboarding_completed && currentPageName !== 'Onboarding') {
+          window.location.href = `/onboarding`;
+        }
+      }, [currentUser, currentPageName]);
+
+      // Get role-specific navigation items
+      // User items first, then admin items
+      const allNavItems = [
   // User items
   { name: "Dashboard", icon: Home, page: "Dashboard" },
   { name: "Patients", icon: Users, page: "Patients" },
