@@ -46,7 +46,7 @@ export default function About() {
           </p>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
             Any healthcare provider can paste their notes for instant compliance review. 
-            Plus telehealth, medical scribe, and automated care planning/billing code suggestions.
+            Plus medical scribe and automated care planning/billing code suggestions.
           </p>
         </div>
 
