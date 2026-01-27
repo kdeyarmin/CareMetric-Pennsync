@@ -54,40 +54,40 @@ export default function AdvancedAnalyticsDashboard() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg">
-            <BarChart3 className="w-6 h-6 text-white" />
+      <div className="mb-4 sm:mb-6">
+        <div className="flex items-center gap-2 sm:gap-3 mb-2">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
+            <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Advanced Analytics</h1>
-            <p className="text-gray-600">Sophisticated insights with AI-powered predictions</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Advanced Analytics</h1>
+            <p className="text-xs sm:text-sm md:text-base text-gray-600 truncate">Sophisticated insights with AI-powered predictions</p>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="trends" className="space-y-6">
-        <TabsList className="grid grid-cols-2 md:grid-cols-4 gap-2 p-1 h-auto">
-          <TabsTrigger value="trends" className="gap-2">
-            <TrendingUp className="w-4 h-4" />
+      <Tabs defaultValue="trends" className="space-y-4 sm:space-y-6 w-full">
+        <TabsList className="grid grid-cols-2 md:grid-cols-4 gap-2 p-1 h-auto w-full">
+          <TabsTrigger value="trends" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+            <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Population Trends</span>
             <span className="sm:hidden">Trends</span>
           </TabsTrigger>
-          <TabsTrigger value="readmission" className="gap-2">
-            <Brain className="w-4 h-4" />
+          <TabsTrigger value="readmission" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+            <Brain className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Readmission Risk</span>
             <span className="sm:hidden">Risk</span>
           </TabsTrigger>
-          <TabsTrigger value="progression" className="gap-2">
-            <BarChart3 className="w-4 h-4" />
+          <TabsTrigger value="progression" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+            <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Disease Progression</span>
             <span className="sm:hidden">Progression</span>
           </TabsTrigger>
-          <TabsTrigger value="reports" className="gap-2">
-            <FileText className="w-4 h-4" />
+          <TabsTrigger value="reports" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+            <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Custom Reports</span>
             <span className="sm:hidden">Reports</span>
           </TabsTrigger>
