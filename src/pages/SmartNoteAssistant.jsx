@@ -682,8 +682,8 @@ export default function SmartNoteAssistant() {
                     </SelectTrigger>
                     <SelectContent>
                       {availableVisitTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
