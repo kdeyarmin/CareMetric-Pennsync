@@ -115,8 +115,6 @@ import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
-import Telehealth from './pages/Telehealth';
-import TelehealthCall from './pages/TelehealthCall';
 import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
@@ -247,8 +245,6 @@ export const PAGES = {
     "Support": Support,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
-    "Telehealth": Telehealth,
-    "TelehealthCall": TelehealthCall,
     "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
