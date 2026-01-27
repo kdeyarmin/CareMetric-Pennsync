@@ -741,8 +741,8 @@ export default function SmartNoteAssistant() {
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
 
-                {/* OASIS Field Suggestions - Only for Home Health/Hospice settings */}
-                {visitType && selectedDiagnosis && (careSetting === CARE_SETTINGS.HOME_HEALTH || careSetting === CARE_SETTINGS.HOSPICE) && (
+                {/* OASIS Field Suggestions - Only for RN on Admission visits */}
+                {providerType === 'RN' && visitType === 'admission' && selectedDiagnosis && (
                   <OASISFieldSuggester
                     visitType={visitType}
                     diagnosis={selectedDiagnosis}
