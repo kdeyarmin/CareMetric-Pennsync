@@ -82,7 +82,12 @@ export default function EnhancedSignupFlow({ onComplete }) {
   const [processingApple, setProcessingApple] = useState(false);
 
   useEffect(() => {
-    setIsApple(isApplePlatform());
+    const checkPlatform = () => {
+      const apple = isApplePlatform();
+      setIsApple(apple);
+      console.log('Platform detected:', apple ? 'Apple (iOS/iPadOS)' : 'Web/Android (Stripe)');
+    };
+    checkPlatform();
   }, []);
 
   const updateUserMutation = useMutation({
@@ -314,10 +319,12 @@ export default function EnhancedSignupFlow({ onComplete }) {
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-2">
               <Shield className="w-5 h-5 text-gray-600" />
-              <span className="text-sm text-gray-600">Secure payment powered by:</span>
+              <span className="text-sm text-gray-600">
+                {isApple ? 'Pay securely with Apple' : 'Secure payment powered by Stripe'}
+              </span>
             </div>
 
-            {isApple && (
+            {isApple ? (
               <Button
                 onClick={handleAppleSubscription}
                 disabled={processingApple}
@@ -332,16 +339,15 @@ export default function EnhancedSignupFlow({ onComplete }) {
                   </>
                 )}
               </Button>
+            ) : (
+              <Button
+                onClick={handleStripeCheckout}
+                className="w-full h-14 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-lg"
+              >
+                <CreditCard className="w-5 h-5 mr-2" />
+                Subscribe with Card
+              </Button>
             )}
-
-            <Button
-              onClick={handleStripeCheckout}
-              className="w-full h-14 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-lg"
-            >
-              <CreditCard className="w-5 h-5 mr-2" />
-              Subscribe with Card
-            </Button>
-          </div>
 
           <p className="text-xs text-gray-500 text-center mt-6">
             Start your 14-day free trial. You won't be charged until the trial ends.

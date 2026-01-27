@@ -25,7 +25,12 @@ export default function SubscriptionPlans() {
     // Check if running in iframe
     setIsInIframe(window.self !== window.top);
     // Check if on Apple platform
-    setIsApple(isApplePlatform());
+    const checkPlatform = () => {
+      const apple = isApplePlatform();
+      setIsApple(apple);
+      console.log('Subscription page - Platform:', apple ? 'Apple (App Store)' : 'Web/Android (Stripe)');
+    };
+    checkPlatform();
   }, []);
 
   const { data: currentUser } = useQuery({
