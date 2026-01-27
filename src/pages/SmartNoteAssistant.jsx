@@ -673,6 +673,23 @@ export default function SmartNoteAssistant() {
                 }
                 </div>
 
+                {/* Visit Type Selection */}
+                <div>
+                  <Label className="text-sm font-medium">Visit Type *</Label>
+                  <Select value={visitType} onValueChange={setVisitType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select visit type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableVisitTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Diagnosis Selection with Search */}
                 <div>
                   <Label className="text-sm font-medium">Primary Diagnosis *</Label>
