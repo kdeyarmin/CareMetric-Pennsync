@@ -25,12 +25,36 @@ Deno.serve(async (req) => {
     const appId = Deno.env.get("BASE44_APP_ID");
 
     // Check if user already has an active or trialing subscription
-    const existingSubscriptions = await base44.entities.Subscription.filter({ user_email: user.email });
+    const existingSubscriptions = await base44.asServiceRole.entities.Subscription.filter({ user_email: user.email });
     const hasActiveSub = existingSubscriptions.some(sub => 
-      sub.status === 'active' || sub.status === 'trialing'
+      sub.status === 'active' || sub.status === 'trialing' || sub.status === 'lifetime_free'
     );
 
+    if (hasActiveSub && existingSubscriptions[0].status !== 'trialing') {
+      console.log('[createStripeCheckout] User already has active subscription');
+      return Response.json({ 
+        error: 'You already have an active subscription. Please manage it from the billing portal.' 
+      }, { status: 400 });
+    }
+
+    // Get or create Stripe customer
+    let customerId = existingSubscriptions[0]?.stripe_customer_id;
+    
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.full_name,
+        metadata: {
+          user_email: user.email,
+          base44_app_id: appId || 'unknown'
+        }
+      });
+      customerId = customer.id;
+      console.log('[createStripeCheckout] Created new customer:', customerId);
+    }
+
     const session = await stripe.checkout.sessions.create({
+      customer: customerId,
       payment_method_types: ['card'],
       line_items: [
         {
@@ -41,14 +65,19 @@ Deno.serve(async (req) => {
       mode: 'subscription',
       subscription_data: {
         trial_period_days: hasActiveSub ? 0 : 14, // 14-day trial for new users only
+        metadata: {
+          user_email: user.email,
+          base44_app_id: appId || 'unknown'
+        }
       },
-      success_url: `${YOUR_DOMAIN}/app/PaymentSuccess`,
+      success_url: `${YOUR_DOMAIN}/app/PaymentSuccess?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${YOUR_DOMAIN}/app/SubscriptionPlans`,
-      customer_email: user.email,
       metadata: {
         user_email: user.email,
         base44_app_id: appId || 'unknown'
-      }
+      },
+      allow_promotion_codes: true,
+      billing_address_collection: 'auto'
     });
 
     console.log('[createStripeCheckout] Session created:', {
