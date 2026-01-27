@@ -3,97 +3,87 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const { topic_type, topic_name, patient_age, reading_level = 'intermediate', format = 'comprehensive' } = await req.json();
 
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!topic_type || !topic_name) {
+      return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const { patientId, diagnosis, topic, educationLevel, language, treatmentPlan } = await req.json();
+    const readingLevelGuidance = {
+      simple: 'Use very simple language, short sentences, define all medical terms. Reading level: 5th grade.',
+      intermediate: 'Use clear language with some medical terms explained. Reading level: 8th-9th grade.',
+      advanced: 'Use standard medical language. Reading level: college level.'
+    };
 
-    if (!diagnosis || !topic) {
-      return Response.json({ error: 'Diagnosis and topic are required' }, { status: 400 });
-    }
+    const formatGuidance = format === 'comprehensive' 
+      ? 'Include sections: What is it?, Why it matters, Symptoms/Signs, Treatment/Management, Self-care tips, When to call doctor, Questions to ask doctor'
+      : 'Create a concise handout with key points, bullet-point format, visual recommendations, and action items';
 
-    // Get patient data if provided
-    let patientContext = '';
-    if (patientId) {
-      const patient = await base44.entities.Patient.get(patientId);
-      if (patient) {
-        patientContext = `Patient: ${patient.first_name} ${patient.last_name}, Age: ${patient.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 'Unknown'}, Primary Diagnosis: ${patient.primary_diagnosis}`;
-      }
-    }
+    const response = await base44.asServiceRole.integrations.Core.InvokeLLM({
+      prompt: `You are a medical education specialist. Create patient-friendly educational material about a ${topic_type}.
 
-    // Build the prompt
-    const readingLevelDescription = {
-      basic: 'elementary school level (simple words, short sentences)',
-      intermediate: 'high school level (standard medical terminology with explanations)',
-      advanced: 'college level (technical medical terminology)'
-    }[educationLevel] || 'general public';
+Topic: ${topic_name}
+${patient_age ? `Patient Age/Context: ${patient_age}` : ''}
+Reading Level: ${readingLevelGuidance[reading_level] || readingLevelGuidance.intermediate}
+Format: ${formatGuidance}
 
-    const prompt = `Generate personalized patient education material for the following:
+Create educational material that:
+1. Is easy to understand for a non-medical audience
+2. Explains the condition/procedure/medication clearly
+3. Includes practical self-management tips
+4. Lists warning signs to watch for
+5. Encourages questions for healthcare provider
+6. Is engaging and supportive in tone
+7. Avoids medical jargon or explains it clearly
 
-Topic: ${topic}
-Diagnosis: ${diagnosis}
-Reading Level: ${readingLevelDescription}
-Language: ${language}
-${treatmentPlan ? `Treatment Plan: ${treatmentPlan}` : ''}
-${patientContext ? `${patientContext}` : ''}
+${format === 'comprehensive' ? 'Organize with clear section headers.' : 'Format as a concise one-page handout.'}
 
-Create comprehensive, engaging, and medically accurate education material that includes:
-1. Overview - A clear, non-technical introduction
-2. Key Points - 5-7 essential points about the diagnosis and treatment
-3. Daily Tips - 4-5 practical daily tips for managing the condition
-4. Warning Signs - Important symptoms that require immediate medical attention
-5. Resources - Suggested resources or support options
-
-The material should be:
-- Written in clear, accessible language appropriate for the reading level
-- Personalized based on the provided context
-- Encouraging and positive in tone
-- Evidence-based and accurate
-- Formatted for easy reading
-
-Return the response as JSON with the following structure:
-{
-  "title": "Title of the education material",
-  "overview": "...",
-  "key_points": ["point 1", "point 2", ...],
-  "daily_tips": ["tip 1", "tip 2", ...],
-  "warning_signs": ["sign 1", "sign 2", ...],
-  "resources": ["resource 1", "resource 2", ...],
-  "language": "${language}"
-}`;
-
-    // Call LLM to generate content
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt,
+Return as a JSON object with:
+- title: Material title
+- content: Full educational content (well-formatted with line breaks and sections)
+- key_points: Array of 3-5 key takeaways
+- warning_signs: Array of symptoms/signs to watch
+- action_items: Array of recommended actions/lifestyle changes
+- resources: Array of recommended resources or when to seek help`,
       response_json_schema: {
         type: 'object',
         properties: {
           title: { type: 'string' },
-          overview: { type: 'string' },
-          key_points: { type: 'array', items: { type: 'string' } },
-          daily_tips: { type: 'array', items: { type: 'string' } },
-          warning_signs: { type: 'array', items: { type: 'string' } },
-          resources: { type: 'array', items: { type: 'string' } },
-          language: { type: 'string' }
-        },
-        required: ['title', 'overview', 'key_points', 'daily_tips', 'warning_signs']
+          content: { type: 'string' },
+          key_points: { 
+            type: 'array',
+            items: { type: 'string' }
+          },
+          warning_signs: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          action_items: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          resources: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        }
       }
     });
 
-    return Response.json({ 
-      data: { 
-        content: result,
-        diagnosis,
-        topic,
-        language,
-        readingLevel: educationLevel
-      } 
+    return Response.json({
+      success: true,
+      material: response,
+      topic_type,
+      topic_name,
+      reading_level,
+      format,
+      generated_at: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Error generating patient education material:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Error generating patient education:', error);
+    return Response.json({ 
+      error: error.message,
+      success: false
+    }, { status: 500 });
   }
 });
