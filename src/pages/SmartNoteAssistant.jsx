@@ -87,6 +87,7 @@ import ICD10CodeSuggester from '../components/smartNote/ICD10CodeSuggester';
 import FollowUpTaskGenerator from '../components/smartNote/FollowUpTaskGenerator';
 import RealtimeComplianceChecker from '../components/smartNote/RealtimeComplianceChecker';
 import PatientEducationGenerator from '../components/education/PatientEducationGenerator';
+import EnhancedMedicalCodingAssistant from '../components/smartNote/EnhancedMedicalCodingAssistant';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1067,6 +1068,18 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                         }}
                       />
 
+                      <EnhancedMedicalCodingAssistant
+                        noteContent={isEditMode ? editedNote : enhancedNote}
+                        diagnosis={selectedDiagnosis}
+                        procedures={extractedData?.procedures || ''}
+                        patientAge={patientData?.age}
+                        visitType={visitType}
+                        onCodesSelected={(codes) => {
+                          console.log('Codes selected:', codes);
+                          toast.success(`${codes.length} code(s) selected`);
+                        }}
+                      />
+
                       <AdvancedMedicalCodingAssistant
                         enhancedNote={isEditMode ? editedNote : enhancedNote}
                         extractedData={extractedData}
@@ -1076,8 +1089,8 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                           console.log('Medical codes generated:', codes);
                         }}
                       />
-                    </>
-                  )}
+                      </>
+                      )}
                   <MedicalCodingAssistant enhancedNote={enhancedNote} diagnosis={selectedDiagnosis} visitType={visitType} providerType={providerType} patientContext={patientData ? { patient_name: `${patientData.first_name} ${patientData.last_name}`, primary_diagnosis: patientData.primary_diagnosis, secondary_diagnoses: patientData.secondary_diagnoses, current_medications: patientData.current_medications } : null} currentUser={currentUser} />
                   {patientData && (providerType === 'RN' || providerType === 'MSW' || providerType === 'NP' || providerType === 'PT' || providerType === 'OT' || providerType === 'ST') && (
                     <CarePlanSuggestionsPanel patientId={patientData.id} visitType={visitType} diagnosis={selectedDiagnosis} noteContent={enhancedNote} providerType={providerType} />
