@@ -178,9 +178,10 @@ export default function SubscriptionPlans() {
   }
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 max-w-6xl mx-auto pb-20 sm:pb-8">
-      <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center mb-4">Subscription Plans</h1>
-      <p className="text-center text-sm sm:text-base text-gray-600 mb-6 sm:mb-8">Manage your subscription or choose a new plan</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-4 sm:p-6 md:p-8 pb-20 sm:pb-8">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center mb-4 text-gray-900">Subscription Plans</h1>
+        <p className="text-center text-sm sm:text-base text-gray-700 mb-6 sm:mb-8">Manage your subscription or choose a new plan</p>
 
       {isInIframe && (
         <Alert className="mb-6 sm:mb-8 border-amber-200 bg-amber-50">
@@ -288,6 +289,7 @@ export default function SubscriptionPlans() {
       </div>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }
