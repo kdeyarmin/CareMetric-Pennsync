@@ -63,45 +63,55 @@ export default function SubscriptionPlans() {
     }
   });
 
-  // Real Stripe prices from the context
-  const plans = [
-    { 
-      name: 'Monthly', 
-      price: 29.99, 
-      priceId: 'price_1Qr3FJGbdOIAhzqI2X5K8L9M', // Monthly CareMetric AI Subscription
-      appleProductId: 'com.caremetric.monthly',
-      period: '/ month', 
-      popular: false,
-      savings: null
+  // Fetch actual Stripe products and prices dynamically
+  const { data: stripePlans = [], isLoading: plansLoading } = useQuery({
+    queryKey: ['stripeSubscriptionPlans'],
+    queryFn: async () => {
+      try {
+        // Fetch all products
+        const productsResponse = await base44.functions.invoke('stripeListProducts', {});
+        const products = productsResponse?.data?.products || [];
+
+        // Fetch all prices
+        const allPlans = [];
+        for (const product of products) {
+          if (!product.active) continue; // Skip inactive products
+
+          const pricesResponse = await base44.functions.invoke('stripeListPrices', { 
+            product_id: product.id 
+          });
+          const prices = pricesResponse?.data?.prices || [];
+
+          // Get active prices
+          const activePrices = prices.filter(p => p.active);
+          
+          if (activePrices.length > 0) {
+            // Use the first active price
+            const price = activePrices[0];
+            allPlans.push({
+              name: product.name,
+              price: price.unit_amount / 100,
+              priceId: price.id,
+              appleProductId: `com.caremetric.${product.name.toLowerCase().replace(/\s+/g, '')}`,
+              period: `/ ${price.recurring?.interval_count > 1 ? price.recurring.interval_count + ' ' : ''}${price.recurring?.interval}${price.recurring?.interval_count > 1 ? 's' : ''}`,
+              popular: product.name.includes('3 Month') || product.name.includes('Monthly'), // Mark monthly as popular
+              savings: null,
+              description: product.description
+            });
+          }
+        }
+
+        // Sort by price
+        return allPlans.sort((a, b) => a.price - b.price);
+      } catch (error) {
+        console.error('Error fetching plans:', error);
+        return [];
+      }
     },
-    { 
-      name: '3 Month', 
-      price: 81.99, // Corrected from Stripe data
-      priceId: 'price_1Qr3FJGbdOIAhzqI4Z7M0N1O', // 3 Month CareMetric AI Subscription
-      appleProductId: 'com.caremetric.3month',
-      period: '/ 3 months', 
-      popular: true,
-      savings: '8% off'
-    },
-    { 
-      name: '6 Month', 
-      price: 149.99, 
-      priceId: 'price_1Qr3FJGbdOIAhzqI3Y6L9M0N', // 6 Month CareMetric AI Subscription
-      appleProductId: 'com.caremetric.6month',
-      period: '/ 6 months', 
-      popular: false,
-      savings: '16% off'
-    },
-    { 
-      name: 'Yearly', 
-      price: 264.99, 
-      priceId: 'price_1Qr3FJGbdOIAhzqI5A8N1O2P', // Yearly CareMetric AI Subscription
-      appleProductId: 'com.caremetric.yearly',
-      period: '/ year', 
-      popular: false,
-      savings: '26% off'
-    },
-  ];
+    staleTime: 60000 // Cache for 1 minute
+  });
+
+  const plans = stripePlans;
 
   const handleAppleCheckout = async (plan) => {
     if (isInIframe) {
@@ -174,8 +184,15 @@ export default function SubscriptionPlans() {
     }
   };
 
-  if (settingsLoading) {
-    return <div className="p-8 text-center">Loading plans...</div>;
+  if (settingsLoading || plansLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading subscription plans...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -222,9 +239,19 @@ export default function SubscriptionPlans() {
         </TabsContent>
 
         <TabsContent value="plans">
-
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-        {plans.map((plan) => (
+          {plans.length === 0 ? (
+            <Card className="p-8">
+              <CardContent className="text-center">
+                <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">No Plans Available</h3>
+                <p className="text-gray-600">
+                  No subscription plans are currently configured. Please contact support or check back later.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+              {plans.map((plan) => (
           <Card key={plan.name} className={`flex flex-col ${plan.popular ? 'ring-2 ring-blue-500 shadow-lg' : ''}`}>
             {plan.popular && (
               <div className="bg-blue-500 text-white text-center py-2 text-sm font-semibold">
@@ -285,9 +312,10 @@ export default function SubscriptionPlans() {
                 </Button>
               )}
             </CardContent>
-          </Card>
-        ))}
-      </div>
+              </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
       </div>
