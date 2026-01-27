@@ -120,95 +120,97 @@ export default function AgencyDashboard() {
   const isSetupIncomplete = !agency.enabled_features || agency.enabled_features.length === 0 || agencyUsers.length === 0;
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-          <Building2 className="w-8 h-8 text-blue-600" />
-          {agency.agency_name}
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-2 sm:gap-3 break-words">
+          <Building2 className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
+          <span className="break-words">{agency.agency_name}</span>
         </h1>
-        <p className="text-slate-600 mt-1">Agency Management Dashboard</p>
+        <p className="text-sm sm:text-base text-slate-600 mt-1">Agency Management Dashboard</p>
       </div>
 
       {/* Setup Guide - Show if setup is incomplete */}
       {isSetupIncomplete && (
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <EnterpriseWorkflowGuide agency={agency} userRole={currentUser?.role} />
         </div>
       )}
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-2">
-              <Users className="w-8 h-8 text-blue-600" />
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
               <Badge>{agency.status}</Badge>
             </div>
-            <p className="text-3xl font-bold text-slate-900">{agencyUsers.length}</p>
-            <p className="text-xs text-slate-600">Active Users (of {agency.max_users} max)</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-900">{agencyUsers.length}</p>
+            <p className="text-[10px] sm:text-xs text-slate-600">Active Users (of {agency.max_users} max)</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-2">
-              <DollarSign className="w-8 h-8 text-green-600" />
+              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
             </div>
-            <p className="text-3xl font-bold text-slate-900">${monthlyBill.toFixed(2)}</p>
-            <p className="text-xs text-slate-600">Current Monthly Bill</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-900">${monthlyBill.toFixed(2)}</p>
+            <p className="text-[10px] sm:text-xs text-slate-600">Current Monthly Bill</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-2">
-              <TrendingUp className="w-8 h-8 text-purple-600" />
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
             </div>
-            <p className="text-3xl font-bold text-slate-900">{utilizationPercent.toFixed(0)}%</p>
-            <p className="text-xs text-slate-600">Seat Utilization</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-900">{utilizationPercent.toFixed(0)}%</p>
+            <p className="text-[10px] sm:text-xs text-slate-600">Seat Utilization</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between mb-2">
-              <Calendar className="w-8 h-8 text-amber-600" />
+              <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-amber-600" />
             </div>
-            <p className="text-lg font-bold text-slate-900">
+            <p className="text-base sm:text-lg font-bold text-slate-900">
               {agency.next_billing_date ? format(new Date(agency.next_billing_date), 'MMM d') : 'N/A'}
             </p>
-            <p className="text-xs text-slate-600">Next Billing Date</p>
+            <p className="text-[10px] sm:text-xs text-slate-600">Next Billing Date</p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="users" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="users">👥 Users</TabsTrigger>
-          <TabsTrigger value="billing">💳 Billing</TabsTrigger>
-          <TabsTrigger value="features">⚙️ Features</TabsTrigger>
-          <TabsTrigger value="training">🎓 Training</TabsTrigger>
-          <TabsTrigger value="settings">⚙️ Settings</TabsTrigger>
-          <TabsTrigger value="analytics">📊 Analytics</TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="users" className="space-y-4 sm:space-y-6 w-full">
+        <div className="w-full overflow-x-auto">
+          <TabsList className="flex w-max min-w-full gap-1 p-1">
+            <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">👥 Users</TabsTrigger>
+            <TabsTrigger value="billing" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">💳 Billing</TabsTrigger>
+            <TabsTrigger value="features" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">⚙️ Features</TabsTrigger>
+            <TabsTrigger value="training" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">🎓 Training</TabsTrigger>
+            <TabsTrigger value="settings" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">⚙️ Settings</TabsTrigger>
+            <TabsTrigger value="analytics" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">📊 Analytics</TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Users Tab */}
-        <TabsContent value="users" className="space-y-4">
+        <TabsContent value="users" className="space-y-4 w-full">
           <AgencyInvitationManager agency={agency} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Agency Users ({agencyUsers.length})</CardTitle>
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Agency Users ({agencyUsers.length})</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 sm:p-6 pt-0">
               <div className="space-y-2">
                 {agencyUsers.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{user.full_name || user.email}</p>
-                      <p className="text-sm text-slate-600">{user.email}</p>
+                  <div key={user.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-slate-50 rounded-lg gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm sm:text-base break-words">{user.full_name || user.email}</p>
+                      <p className="text-xs sm:text-sm text-slate-600 break-all">{user.email}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right flex-shrink-0 w-full sm:w-auto">
                       <Badge variant="outline">
                         {user.credential_type || user.provider_type || 'Provider'}
                       </Badge>

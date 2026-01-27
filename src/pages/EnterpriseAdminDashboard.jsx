@@ -62,19 +62,19 @@ export default function EnterpriseAdminDashboard() {
   // If an agency is selected, show detailed view
   if (selectedAgency) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="outline" onClick={() => setSelectedAgency(null)}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-3 sm:p-4 md:p-6 w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+              <Button variant="outline" onClick={() => setSelectedAgency(null)} className="w-full sm:w-auto touch-target">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Agencies
               </Button>
-              <div>
-                <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+              <div className="w-full sm:w-auto">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-2 sm:gap-3 break-words">
                   {selectedAgency.agency_name}
                 </h1>
-                <p className="text-slate-600 mt-1">
+                <p className="text-sm sm:text-base text-slate-600 mt-1">
                   {agencyUsers.length} users • {selectedAgency.package_name || 'Custom Package'}
                 </p>
               </div>
@@ -88,7 +88,7 @@ export default function EnterpriseAdminDashboard() {
             </Badge>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
@@ -143,14 +143,16 @@ export default function EnterpriseAdminDashboard() {
           </div>
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="analytics">Analytics</TabsTrigger>
-              <TabsTrigger value="ai-coaching">AI Coaching</TabsTrigger>
-              <TabsTrigger value="ai-training">AI Training</TabsTrigger>
-              <TabsTrigger value="users">Users ({agencyUsers.length})</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
-            </TabsList>
+            <div className="w-full overflow-x-auto mb-4">
+              <TabsList className="flex w-max min-w-full gap-1 p-1">
+                <TabsTrigger value="overview" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Overview</TabsTrigger>
+                <TabsTrigger value="analytics" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Analytics</TabsTrigger>
+                <TabsTrigger value="ai-coaching" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">AI Coaching</TabsTrigger>
+                <TabsTrigger value="ai-training" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">AI Training</TabsTrigger>
+                <TabsTrigger value="users" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Users ({agencyUsers.length})</TabsTrigger>
+                <TabsTrigger value="settings" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Settings</TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="overview" className="space-y-4 mt-4">
               <AgencyWideMetrics agency={selectedAgency} users={agencyUsers} />
@@ -230,55 +232,55 @@ export default function EnterpriseAdminDashboard() {
 
   // Show agency list
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-3 sm:p-4 md:p-6 w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-              <Building2 className="w-8 h-8 text-blue-600" />
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 flex items-center gap-2 sm:gap-3">
+              <Building2 className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
               Enterprise Agencies
             </h1>
-            <p className="text-slate-600 mt-1">
+            <p className="text-sm sm:text-base text-slate-600 mt-1">
               Manage all enterprise customer agencies
             </p>
           </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto touch-target">
             <Plus className="w-4 h-4 mr-2" />
             Create New Agency
           </Button>
         </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Enterprise Customers ({agencies.length})</CardTitle>
-              <div className="relative w-64">
+        <Card className="w-full">
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <CardTitle className="text-base sm:text-lg">Enterprise Customers ({agencies.length})</CardTitle>
+              <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   placeholder="Search agencies..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-11"
                 />
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6 pt-0">
             <div className="space-y-3">
               {filteredAgencies.map((agency) => (
                 <div
                   key={agency.id}
                   onClick={() => setSelectedAgency(agency)}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 border rounded-lg hover:bg-slate-50 cursor-pointer transition-colors gap-3"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                      <Building2 className="w-6 h-6 text-white" />
+                  <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     </div>
-                    <div>
-                      <p className="font-semibold text-slate-900">{agency.agency_name}</p>
-                      <p className="text-sm text-slate-600">Code: {agency.agency_code}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-900 text-sm sm:text-base break-words">{agency.agency_name}</p>
+                      <p className="text-xs sm:text-sm text-slate-600">Code: {agency.agency_code}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
                         <Badge variant="outline" className="text-xs">
                           {agency.current_user_count || 0} users
                         </Badge>
@@ -291,16 +293,16 @@ export default function EnterpriseAdminDashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Badge className={
+                  <div className="flex items-center gap-3 flex-shrink-0 w-full sm:w-auto justify-between sm:justify-start">
+                    <Badge className={`${
                       agency.status === 'active' ? 'bg-green-500' :
                       agency.status === 'trial' ? 'bg-blue-500' :
                       agency.status === 'suspended' ? 'bg-red-500' :
                       'bg-slate-500'
-                    }>
+                    } whitespace-nowrap`}>
                       {agency.status}
                     </Badge>
-                    <ChevronRight className="w-5 h-5 text-slate-400" />
+                    <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
                   </div>
                 </div>
               ))}

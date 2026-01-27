@@ -43,10 +43,10 @@ export default function PatientEducationAnalytics() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900">Patient Education Analytics</h1>
-        <p className="text-slate-600 mt-2">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">Patient Education Analytics</h1>
+        <p className="text-sm sm:text-base text-slate-600 mt-2">
           Track material performance, user engagement, and patient completion rates
         </p>
       </div>
