@@ -29,18 +29,25 @@ Deno.serve(async (req) => {
     // Create 14-day free trial subscription for new user
     console.log('Creating trial subscription for:', user.email);
     try {
-      const trialEndDate = new Date();
-      trialEndDate.setDate(trialEndDate.getDate() + 14);
+      // Check if subscription already exists
+      const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ user_email: user.email });
       
-      await base44.asServiceRole.entities.Subscription.create({
-        user_email: user.email,
-        status: 'trialing',
-        trial_start: new Date().toISOString(),
-        trial_end: trialEndDate.toISOString(),
-        plan_name: '14-Day Free Trial - Full Access',
-        monthly_amount: 0
-      });
-      console.log('✅ 14-day trial subscription created for:', user.email);
+      if (!existingSubs || existingSubs.length === 0) {
+        const trialEndDate = new Date();
+        trialEndDate.setDate(trialEndDate.getDate() + 14);
+        
+        await base44.asServiceRole.entities.Subscription.create({
+          user_email: user.email,
+          status: 'trialing',
+          trial_start: new Date().toISOString(),
+          trial_end: trialEndDate.toISOString(),
+          plan_name: '14-Day Free Trial - Full Access',
+          monthly_amount: 0
+        });
+        console.log('✅ 14-day trial subscription created for:', user.email);
+      } else {
+        console.log('ℹ️ Subscription already exists for:', user.email);
+      }
     } catch (trialError) {
       console.error('Failed to create trial subscription:', trialError);
       // Don't fail signup if trial creation fails

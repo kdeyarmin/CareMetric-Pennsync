@@ -12,7 +12,9 @@ export default function TrialStatusBanner({ subscription }) {
     return null;
   }
 
-  const trialEndDate = new Date(subscription.trial_end * 1000);
+  const trialEndDate = subscription.trial_end.includes('T') 
+    ? new Date(subscription.trial_end) 
+    : new Date(subscription.trial_end * 1000);
   const daysRemaining = differenceInDays(trialEndDate, new Date());
   const isEndingSoon = daysRemaining <= 3;
 
