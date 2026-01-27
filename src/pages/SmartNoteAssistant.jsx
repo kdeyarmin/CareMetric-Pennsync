@@ -673,21 +673,33 @@ export default function SmartNoteAssistant() {
                 }
                 </div>
 
-                {/* Diagnosis Selection */}
+                {/* Diagnosis Selection with Search */}
                 <div>
                   <Label className="text-sm font-medium">Primary Diagnosis *</Label>
-                  <Select value={selectedDiagnosis} onValueChange={setSelectedDiagnosis}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select diagnosis..." />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      {commonDiagnoses.map((diagnosis, idx) =>
-                      <SelectItem key={idx} value={diagnosis}>
-                            {diagnosis}
-                          </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Search diagnoses..."
+                      value={diagnosisSearch}
+                      onChange={(e) => setDiagnosisSearch(e.target.value)}
+                      className="h-9"
+                    />
+                    <Select value={selectedDiagnosis} onValueChange={(value) => { setSelectedDiagnosis(value); setDiagnosisSearch(""); }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select diagnosis..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {filteredDiagnoses.length > 0 ? (
+                          filteredDiagnoses.map((diagnosis, idx) => (
+                            <SelectItem key={idx} value={diagnosis}>
+                              {diagnosis}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="p-2 text-sm text-slate-500">No matches found</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {/* Template Selector with Education Materials */}
@@ -922,48 +934,6 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               />
 
               {/* Enhanced Note Display - Streamlined */}
-              <Card>
-               <CardHeader className="pb-3">
-                 <CardTitle className="flex items-center justify-between text-base">
-                   <span className="flex items-center gap-2">
-                     <CheckCircle2 className="w-5 h-5 text-green-600" />
-                     Enhanced Note
-                   </span>
-                   <div className="flex gap-2">
-                     <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied"); }} variant="outline" size="sm">Copy</Button>
-                     {patientData && (
-                       <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700" size="sm">
-                         {savingToPatient ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
-                       </Button>
-                     )}
-                   </div>
-                 </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {isEditMode ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={editedNote}
-                        onChange={(e) => setEditedNote(e.target.value)}
-                        className="w-full h-80 p-3 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
-                      />
-                      <div className="flex gap-2">
-                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600" size="sm">Save & Recheck</Button>
-                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline" size="sm">Cancel</Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg text-sm whitespace-pre-wrap max-h-80 overflow-y-auto border">
-                        {enhancedNote}
-                      </div>
-                      <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm" className="w-full">Edit Note</Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Enhanced Note - Streamlined Display */}
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
