@@ -86,6 +86,7 @@ import AIPhraseSuggestionWidget from '../components/smartNote/AIPhraseSuggestion
 import ICD10CodeSuggester from '../components/smartNote/ICD10CodeSuggester';
 import FollowUpTaskGenerator from '../components/smartNote/FollowUpTaskGenerator';
 import RealtimeComplianceChecker from '../components/smartNote/RealtimeComplianceChecker';
+import PatientEducationGenerator from '../components/education/PatientEducationGenerator';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1082,7 +1083,16 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                     <CarePlanSuggestionsPanel patientId={patientData.id} visitType={visitType} diagnosis={selectedDiagnosis} noteContent={enhancedNote} providerType={providerType} />
                   )}
                   {patientData && (
-                    <PatientEducationPanel suggestedMaterials={suggestedEducation} patientId={selectedPatient} patientEmail={patientData?.email} onEducationProvided={(material, method) => { setProvidedEducation(prev => [...prev, { material, method }]); toast.success('Education documented'); }} />
+                    <>
+                      <PatientEducationGenerator
+                        patientAge={patientData?.age}
+                        onMaterialGenerated={(material) => {
+                          console.log('Patient education material generated:', material);
+                          toast.success('Educational material generated!');
+                        }}
+                      />
+                      <PatientEducationPanel suggestedMaterials={suggestedEducation} patientId={selectedPatient} patientEmail={patientData?.email} onEducationProvided={(material, method) => { setProvidedEducation(prev => [...prev, { material, method }]); toast.success('Education documented'); }} />
+                    </>
                   )}
                 </div>
               </details>
