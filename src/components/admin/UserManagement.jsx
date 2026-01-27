@@ -197,6 +197,27 @@ export default function UserManagement({ users, currentUser }) {
     }
   });
 
+  // Delete invitation mutation
+  const deleteInvitationMutation = useMutation({
+    mutationFn: async (invitationId) => {
+      await base44.entities.UserInvitation.delete(invitationId);
+    },
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
+      
+      await logActivity('invitation_deleted', {
+        entity_type: 'UserInvitation',
+        page: 'UserManagement'
+      });
+      
+      alert('Invitation deleted successfully');
+    },
+    onError: (error) => {
+      console.error('Failed to delete invitation:', error);
+      alert('Failed to delete invitation: ' + error.message);
+    }
+  });
+
   // Delete user mutation
   const deleteUserMutation = useMutation({
     mutationFn: async ({ userId, userEmail }) => {
