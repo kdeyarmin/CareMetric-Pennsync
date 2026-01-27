@@ -63,11 +63,12 @@ export default function SubscriptionPlans() {
     }
   });
 
+  // Real Stripe prices from the context
   const plans = [
     { 
       name: 'Monthly', 
       price: 29.99, 
-      priceId: 'price_1Qr3FJGbdOIAhzqI2X5K8L9M',
+      priceId: 'price_1Qr3FJGbdOIAhzqI2X5K8L9M', // Monthly CareMetric AI Subscription
       appleProductId: 'com.caremetric.monthly',
       period: '/ month', 
       popular: false,
@@ -75,17 +76,17 @@ export default function SubscriptionPlans() {
     },
     { 
       name: '3 Month', 
-      price: 79.99, 
-      priceId: 'price_1Qr3FJGbdOIAhzqI4Z7M0N1O',
+      price: 81.99, // Corrected from Stripe data
+      priceId: 'price_1Qr3FJGbdOIAhzqI4Z7M0N1O', // 3 Month CareMetric AI Subscription
       appleProductId: 'com.caremetric.3month',
       period: '/ 3 months', 
       popular: true,
-      savings: '10% off'
+      savings: '8% off'
     },
     { 
       name: '6 Month', 
       price: 149.99, 
-      priceId: 'price_1Qr3FJGbdOIAhzqI3Y6L9M0N',
+      priceId: 'price_1Qr3FJGbdOIAhzqI3Y6L9M0N', // 6 Month CareMetric AI Subscription
       appleProductId: 'com.caremetric.6month',
       period: '/ 6 months', 
       popular: false,
@@ -94,7 +95,7 @@ export default function SubscriptionPlans() {
     { 
       name: 'Yearly', 
       price: 264.99, 
-      priceId: 'price_1Qr3FJGbdOIAhzqI5A8N1O2P',
+      priceId: 'price_1Qr3FJGbdOIAhzqI5A8N1O2P', // Yearly CareMetric AI Subscription
       appleProductId: 'com.caremetric.yearly',
       period: '/ year', 
       popular: false,

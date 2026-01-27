@@ -364,41 +364,7 @@ Deno.serve(async (req) => {
         }
         break;
       }
-      case 'invoice.payment_succeeded': {
-        // Handle agency subscription payments
-        const invoice = event.data.object;
-        const agencies = await base44.asServiceRole.entities.Agency.filter({ 
-          stripe_subscription_id: invoice.subscription 
-        });
-        
-        if (agencies.length > 0) {
-          const agency = agencies[0];
-          await base44.asServiceRole.entities.Agency.update(agency.id, {
-            status: 'active',
-            total_billed_amount: (agency.total_billed_amount || 0) + (invoice.amount_paid / 100),
-            last_billing_date: new Date(invoice.created * 1000).toISOString().split('T')[0],
-            next_billing_date: new Date((invoice.period_end || invoice.created + 2592000) * 1000).toISOString().split('T')[0]
-          });
-          console.log('[stripeWebhook] Agency payment recorded:', agency.agency_name, invoice.amount_paid / 100);
-        }
-        break;
-      }
-      case 'invoice.payment_failed': {
-        // Handle failed agency payments
-        const invoice = event.data.object;
-        const agencies = await base44.asServiceRole.entities.Agency.filter({ 
-          stripe_subscription_id: invoice.subscription 
-        });
-        
-        if (agencies.length > 0) {
-          const agency = agencies[0];
-          await base44.asServiceRole.entities.Agency.update(agency.id, {
-            status: 'suspended'
-          });
-          console.log('[stripeWebhook] Agency payment failed, suspended:', agency.agency_name);
-        }
-        break;
-      }
+
       default:
         console.log('[stripeWebhook] Unhandled event type:', event.type);
     }
