@@ -121,6 +121,11 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
+import ComplianceHub from './pages/ComplianceHub';
+import TrainingHub from './pages/TrainingHub';
+import DocumentCenter from './pages/DocumentCenter';
+import ClinicalHub from './pages/ClinicalHub';
+import AnalyticsHub from './pages/AnalyticsHub';
 import __Layout from './Layout.jsx';
 
 
@@ -248,6 +253,11 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
+    "ComplianceHub": ComplianceHub,
+    "TrainingHub": TrainingHub,
+    "DocumentCenter": DocumentCenter,
+    "ClinicalHub": ClinicalHub,
+    "AnalyticsHub": AnalyticsHub,
 }
 
 export const pagesConfig = {
