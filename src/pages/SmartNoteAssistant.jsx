@@ -52,6 +52,7 @@ import CodeSearchInserter from "@/components/smartNote/CodeSearchInserter";
 import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
 
 import MedicalCodingAssistant from "@/components/smartNote/MedicalCodingAssistant.jsx";
+import AdvancedMedicalCodingAssistant from "@/components/coding/AdvancedMedicalCodingAssistant";
 
 import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryComplianceMonitor";
 import EducationLibraryBrowser from "@/components/education/EducationLibraryBrowser";
@@ -1024,6 +1025,17 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   </Card>
                 </summary>
                 <div className="mt-3 space-y-3">
+                  {(providerType === 'MD' || providerType === 'NP') && (
+                    <AdvancedMedicalCodingAssistant
+                      enhancedNote={isEditMode ? editedNote : enhancedNote}
+                      extractedData={extractedData}
+                      diagnosis={selectedDiagnosis}
+                      visitType={visitType}
+                      onCodesGenerated={(codes) => {
+                        console.log('Medical codes generated:', codes);
+                      }}
+                    />
+                  )}
                   <MedicalCodingAssistant enhancedNote={enhancedNote} diagnosis={selectedDiagnosis} visitType={visitType} providerType={providerType} patientContext={patientData ? { patient_name: `${patientData.first_name} ${patientData.last_name}`, primary_diagnosis: patientData.primary_diagnosis, secondary_diagnoses: patientData.secondary_diagnoses, current_medications: patientData.current_medications } : null} currentUser={currentUser} />
                   {patientData && (providerType === 'RN' || providerType === 'MSW' || providerType === 'NP' || providerType === 'PT' || providerType === 'OT' || providerType === 'ST') && (
                     <CarePlanSuggestionsPanel patientId={patientData.id} visitType={visitType} diagnosis={selectedDiagnosis} noteContent={enhancedNote} providerType={providerType} />
