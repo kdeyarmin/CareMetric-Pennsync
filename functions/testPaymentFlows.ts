@@ -29,8 +29,15 @@ Deno.serve(async (req) => {
     if (testMode === 'all' || testMode === 'stripe') {
       console.log('🔍 TEST: Checking Stripe products and prices...');
       try {
-        const productsResponse = await base44.functions.invoke('stripeListProducts', {});
-        const products = productsResponse?.data?.products || [];
+        // Skip this test if not admin - stripeListProducts requires admin role
+        if (user.role !== 'admin') {
+          results.tests.stripeProducts = {
+            status: 'SKIP',
+            message: 'Admin role required to list products'
+          };
+        } else {
+          const productsResponse = await base44.functions.invoke('stripeListProducts', {});
+          const products = productsResponse?.data?.products || [];
         
         if (products.length === 0) {
           results.tests.stripeProducts = {
@@ -62,7 +69,7 @@ Deno.serve(async (req) => {
             productsFound: products.length,
             checkedProducts: productChecks
           };
-        }
+          }
       } catch (error) {
         results.tests.stripeProducts = {
           status: 'FAIL',
