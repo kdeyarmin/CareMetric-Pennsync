@@ -610,8 +610,8 @@ export default function SmartNoteAssistant() {
   };
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 md:p-6 pb-20 sm:pb-6 overflow-x-hidden">
-      <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full">
+    <div className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-6 pb-20 sm:pb-6 overflow-x-hidden w-full max-w-full min-w-0">
+      <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Hide provider note type selector to streamline - visit type is below */}
 
         {/* Streamlined - removed checklist for efficiency */}
@@ -622,19 +622,19 @@ export default function SmartNoteAssistant() {
         {!showResults ?
         <>
             {/* Streamlined Input Form */}
-            <Card>
-              <CardHeader className="bg-slate-200 p-4 sm:p-6 flex flex-col space-y-1.5">
-                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Card className="w-full max-w-full overflow-hidden">
+              <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
                   <Wand2 className="w-4 h-4 sm:w-5 sm:h-5" />
                   Clinical Documentation
                 </CardTitle>
               </CardHeader>
-              <CardContent className="bg-slate-100 pt-0 p-4 sm:p-6 space-y-4">
+              <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
                 {/* Patient Selection Dropdown */}
-                <div className="bg-slate-100">
-                  <Label className="text-sm font-medium">Patient *</Label>
+                <div className="bg-slate-100 w-full">
+                  <Label className="text-xs sm:text-sm font-medium">Patient *</Label>
                   <Select value={selectedPatient} onValueChange={setSelectedPatient}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full h-11">
                       <SelectValue placeholder="Select patient..." />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
@@ -675,10 +675,10 @@ export default function SmartNoteAssistant() {
                 </div>
 
                 {/* Visit Type Selection */}
-                <div>
-                  <Label className="text-sm font-medium">Visit Type *</Label>
+                <div className="w-full">
+                  <Label className="text-xs sm:text-sm font-medium">Visit Type *</Label>
                   <Select value={visitType} onValueChange={setVisitType}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select visit type..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -692,17 +692,17 @@ export default function SmartNoteAssistant() {
                 </div>
 
                 {/* Diagnosis Selection with Search */}
-                <div>
-                  <Label className="text-sm font-medium">Primary Diagnosis *</Label>
+                <div className="w-full">
+                  <Label className="text-xs sm:text-sm font-medium">Primary Diagnosis *</Label>
                   <div className="space-y-2">
                     <Input
                       placeholder="Search diagnoses..."
                       value={diagnosisSearch}
                       onChange={(e) => setDiagnosisSearch(e.target.value)}
-                      className="h-9"
+                      className="h-11"
                     />
                     <Select value={selectedDiagnosis} onValueChange={(value) => { setSelectedDiagnosis(value); setDiagnosisSearch(""); }}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-11">
                         <SelectValue placeholder="Select diagnosis..." />
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
@@ -804,9 +804,9 @@ export default function SmartNoteAssistant() {
                 )}
 
                 {/* Vital Signs */}
-                <div>
-                  <Label className="text-sm font-medium">Vital Signs</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mt-2">
+                <div className="w-full">
+                  <Label className="text-xs sm:text-sm font-medium">Vital Signs</Label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 mt-2">
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Temperature (°F)</label>
                       <Input
@@ -884,9 +884,9 @@ export default function SmartNoteAssistant() {
                 )}
 
                 {/* Rough Notes Input with Voice Dictation */}
-                <div>
-                  <Label className="text-sm font-medium">Clinical Notes *</Label>
-                  <p className="text-xs text-slate-500 mb-2">Type or dictate your clinical notes</p>
+                <div className="w-full">
+                  <Label className="text-xs sm:text-sm font-medium">Clinical Notes *</Label>
+                  <p className="text-[10px] sm:text-xs text-slate-500 mb-2">Type or dictate your clinical notes</p>
                   <VoiceDictationInput
                     value={roughNotes}
                     onChange={(e) => setRoughNotes(e.target.value)}
@@ -924,7 +924,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
         <>
             {/* Results Page */}
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
 
 
               {/* Note Completeness Tracker */}
@@ -936,40 +936,40 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               />
 
               {/* Enhanced Note Display - Streamlined */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-green-600" />
-                      <span className="font-semibold">Enhanced Note</span>
+              <Card className="w-full max-w-full overflow-hidden">
+                <CardHeader className="pb-3 p-3 sm:p-4 md:p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+                      <span className="font-semibold text-sm sm:text-base">Enhanced Note</span>
                       {complianceResults?.compliance_score && (
-                        <Badge variant={complianceResults.compliance_score >= 85 ? "default" : "outline"} className="bg-green-100 text-green-800">
+                        <Badge variant={complianceResults.compliance_score >= 85 ? "default" : "outline"} className="bg-green-100 text-green-800 text-xs whitespace-nowrap">
                           {complianceResults.compliance_score}% Compliant
                         </Badge>
                       )}
                     </div>
-                    <div className="flex gap-2">
-                      <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied!"); }} variant="outline" size="sm">Copy</Button>
-                      {!isEditMode && <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm">Edit</Button>}
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                      <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied!"); }} variant="outline" size="sm" className="flex-1 sm:flex-initial">Copy</Button>
+                      {!isEditMode && <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm" className="flex-1 sm:flex-initial">Edit</Button>}
                       {patientData && !isEditMode && (
-                        <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700" size="sm">
+                        <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-initial" size="sm">
                           {savingToPatient ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save to Record'}
                         </Button>
                       )}
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-3 sm:p-4 md:p-6 pt-0">
                   {isEditMode ? (
                     <div className="space-y-2">
-                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-72 p-3 border rounded-lg text-sm focus:ring-2 focus:ring-green-500" />
-                      <div className="flex gap-2">
-                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600" size="sm">Save & Recheck</Button>
-                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline" size="sm">Cancel</Button>
+                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-64 sm:h-72 p-3 border rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-green-500" />
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600 w-full sm:w-auto touch-target" size="sm">Save & Recheck</Button>
+                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline" className="w-full sm:w-auto" size="sm">Cancel</Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg text-sm whitespace-pre-wrap max-h-72 overflow-y-auto border">
+                    <div className="bg-slate-50 dark:bg-slate-900 p-3 sm:p-4 rounded-lg text-xs sm:text-sm whitespace-pre-wrap max-h-64 sm:max-h-72 overflow-y-auto border break-words">
                       {enhancedNote}
                     </div>
                   )}
@@ -977,34 +977,36 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               </Card>
 
               {/* Quick Actions Row */}
-              <div className="flex gap-2">
-                <ResolveAllIssues
-                  issues={[...(complianceResults?.issues || []), ...medicareViolations.map(v => ({ element: v.violation, severity: v.severity, problem: v.cop_reference, suggestion: v.remediation }))]}
-                  gaps={complianceResults?.quality_analysis?.missing_elements}
-                  suggestions={complianceResults?.quality_analysis?.suggestions}
-                  noteContent={isEditMode ? editedNote : enhancedNote}
-                  visitType={visitType}
-                  diagnosis={selectedDiagnosis}
-                  onResolved={(correctedNote, summary) => { setEditedNote(correctedNote); setEnhancedNote(correctedNote); setIsEditMode(false); toast.success(summary); recheckCompliance(); }}
-                />
-                <Button onClick={() => { setShowResults(false); setEnhancedNote(null); setRoughNotes(""); setIsEditMode(false); }} variant="outline" className="flex-1">New Note</Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full">
+                <div className="flex-1 w-full">
+                  <ResolveAllIssues
+                    issues={[...(complianceResults?.issues || []), ...medicareViolations.map(v => ({ element: v.violation, severity: v.severity, problem: v.cop_reference, suggestion: v.remediation }))]}
+                    gaps={complianceResults?.quality_analysis?.missing_elements}
+                    suggestions={complianceResults?.quality_analysis?.suggestions}
+                    noteContent={isEditMode ? editedNote : enhancedNote}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    onResolved={(correctedNote, summary) => { setEditedNote(correctedNote); setEnhancedNote(correctedNote); setIsEditMode(false); toast.success(summary); recheckCompliance(); }}
+                  />
+                </div>
+                <Button onClick={() => { setShowResults(false); setEnhancedNote(null); setRoughNotes(""); setIsEditMode(false); }} variant="outline" className="flex-1 w-full sm:w-auto touch-target">New Note</Button>
               </div>
 
               {/* Collapsible Details */}
               {(medicareViolations.length > 0 || complianceResults?.quality_analysis?.suggestions?.length > 0) && (
-                <details className="group">
+                <details className="group w-full">
                   <summary className="cursor-pointer list-none">
-                    <Card className="hover:shadow-md transition-shadow">
-                      <CardHeader className="pb-3">
+                    <Card className="hover:shadow-md transition-shadow w-full">
+                      <CardHeader className="pb-3 p-3 sm:p-4 md:p-6">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">Compliance & Quality Details</span>
-                          <span className="text-xs text-slate-500 group-open:hidden">Click to expand</span>
-                          <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
+                          <span className="text-xs sm:text-sm font-medium">Compliance & Quality Details</span>
+                          <span className="text-[10px] sm:text-xs text-slate-500 group-open:hidden">Click to expand</span>
+                          <span className="text-[10px] sm:text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
                         </div>
                       </CardHeader>
                     </Card>
                   </summary>
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-3 space-y-3 w-full">
                     <UnifiedComplianceAudit complianceResults={complianceResults} medicareViolations={medicareViolations} regulatoryWarnings={regulatoryWarnings} qualityAnalysis={complianceResults?.quality_analysis} />
                     <UnifiedSuggestionsPanel qualityAnalysis={complianceResults?.quality_analysis} suggestedTasks={suggestedTasks} noteContent={isEditMode ? editedNote : enhancedNote} visitType={visitType} diagnosis={selectedDiagnosis} userEmail={currentUser?.email} selectedPatient={selectedPatient} onNoteUpdate={(updatedNote) => { setEditedNote(updatedNote); setEnhancedNote(updatedNote); setIsEditMode(false); }} onTaskAdd={() => setSuggestedTasks([])} />
                   </div>
@@ -1012,19 +1014,19 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               )}
 
               {/* Collapsible Tools */}
-              <details className="group">
+              <details className="group w-full">
                 <summary className="cursor-pointer list-none">
-                  <Card className="hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
+                  <Card className="hover:shadow-md transition-shadow w-full">
+                    <CardHeader className="pb-3 p-3 sm:p-4 md:p-6">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Clinical Tools & Education</span>
-                        <span className="text-xs text-slate-500 group-open:hidden">Click to expand</span>
-                        <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
+                        <span className="text-xs sm:text-sm font-medium">Clinical Tools & Education</span>
+                        <span className="text-[10px] sm:text-xs text-slate-500 group-open:hidden">Click to expand</span>
+                        <span className="text-[10px] sm:text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
                       </div>
                     </CardHeader>
                   </Card>
                 </summary>
-                <div className="mt-3 space-y-3">
+                <div className="mt-3 space-y-3 w-full">
                   {(providerType === 'MD' || providerType === 'NP') && (
                     <AdvancedMedicalCodingAssistant
                       enhancedNote={isEditMode ? editedNote : enhancedNote}
@@ -1051,11 +1053,11 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
         {/* Create Patient Dialog */}
         {(showCreatePatient || selectedPatient === "create_new") &&
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md mx-4">
-              <CardHeader>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-md">
+              <CardHeader className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
-                  <CardTitle>Create New Patient</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">Create New Patient</CardTitle>
                   <Button
                   size="icon"
                   variant="ghost"
@@ -1068,9 +1070,9 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
                 <div>
-                  <Label>First Name *</Label>
+                  <Label className="text-xs sm:text-sm">First Name *</Label>
                   <Input
                   value={newPatientData.first_name}
                   onChange={(e) =>
@@ -1079,11 +1081,12 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                     first_name: e.target.value
                   })
                   }
-                  placeholder="John" />
+                  placeholder="John"
+                  className="h-11" />
 
                 </div>
                 <div>
-                  <Label>Last Name *</Label>
+                  <Label className="text-xs sm:text-sm">Last Name *</Label>
                   <Input
                   value={newPatientData.last_name}
                   onChange={(e) =>
@@ -1092,11 +1095,12 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                     last_name: e.target.value
                   })
                   }
-                  placeholder="Doe" />
+                  placeholder="Doe"
+                  className="h-11" />
 
                 </div>
                 <div>
-                  <Label>Date of Birth</Label>
+                  <Label className="text-xs sm:text-sm">Date of Birth</Label>
                   <Input
                   type="date"
                   value={newPatientData.date_of_birth}
@@ -1105,11 +1109,12 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                     ...newPatientData,
                     date_of_birth: e.target.value
                   })
-                  } />
+                  }
+                  className="h-11" />
 
                 </div>
                 <div>
-                  <Label>Medical Record Number</Label>
+                  <Label className="text-xs sm:text-sm">Medical Record Number</Label>
                   <Input
                   value={newPatientData.medical_record_number}
                   onChange={(e) =>
@@ -1118,13 +1123,14 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                     medical_record_number: e.target.value
                   })
                   }
-                  placeholder="MRN-12345" />
+                  placeholder="MRN-12345"
+                  className="h-11" />
 
                 </div>
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
                   <Button
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 w-full touch-target"
                   onClick={() => {
                     setShowCreatePatient(false);
                     setSelectedPatient("no_patient");
@@ -1133,7 +1139,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                     Cancel
                   </Button>
                   <Button
-                  className="flex-1"
+                  className="flex-1 w-full touch-target"
                   onClick={createNewPatient}
                   disabled={creatingPatient}>
 
