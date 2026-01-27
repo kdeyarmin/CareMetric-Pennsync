@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, Zap, Users, FileText, Brain, Mic, Target, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle, WifiOff, GitBranch, Sparkles, Video } from "lucide-react";
+import { Download, Zap, Users, FileText, Brain, Mic, Target, Shield, BarChart3, GraduationCap, ListTodo, Lock, AlertCircle, WifiOff, GitBranch, Sparkles } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const FEATURES = [
@@ -132,12 +132,7 @@ const FEATURES = [
   description: "Leverage AI to automatically summarize documents and extract key information, enhancing metadata and searchability.",
   category: "AI"
 },
-{
-  icon: Video,
-  title: "Telehealth",
-  description: "Secure, HIPAA-compliant video consultations with integrated documentation, real-time transcription, and AI-powered visit summaries.",
-  category: "Clinical"
-}];
+];
 
 
 const CATEGORIES = ["All", ...new Set(FEATURES.map((f) => f.category))];

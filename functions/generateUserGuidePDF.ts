@@ -321,28 +321,7 @@ const FEATURES_GUIDE = [
     ],
     importance: "Reduces hospital readmission rates by 25-30%, prevents Medicare penalties for excess readmissions, improves patient outcomes through proactive intervention, and demonstrates quality of care for value-based reimbursement programs."
   },
-  {
-    title: "Telehealth",
-    description: "Conduct secure, HIPAA-compliant virtual patient visits with integrated video conferencing, real-time documentation, and automated visit summaries.",
-    howToUse: [
-      "1. Navigate to Telehealth section and click 'Schedule New Visit'",
-      "2. Select patient and confirm visit details",
-      "3. Generate secure video conference room and send link to patient",
-      "4. Start call when patient joins - video, audio, and screen sharing available",
-      "5. Document visit in real-time or use AI scribe during call",
-      "6. System automatically generates visit summary and clinical notes"
-    ],
-    bestPractices: [
-      "Test technology and internet connection 5 minutes before patient visit",
-      "Ensure private, quiet environment with professional appearance",
-      "Verify patient identity before beginning clinical visit",
-      "Document all clinical findings, vital signs, and patient responses",
-      "Use screen sharing to educate patients on health topics",
-      "Send visit summary to patient via secure portal",
-      "Maintain HIPAA compliance - no screenshots without consent"
-    ],
-    importance: "Expands patient access to care, reduces transportation barriers, captures real-time clinical observations, maintains documentation workflow, and improves patient engagement through virtual care"
-  },
+
   {
     title: "Provider-Specific Customization",
     description: "Tailored documentation templates, compliance rules, AI prompts, and workflow settings specific to your provider type (RN, LPN, PT, OT, ST, MSW, etc.).",
