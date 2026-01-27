@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mic, Upload, CheckCircle2, AlertCircle, Loader, Edit3, ArrowRight, Sparkles, Lightbulb } from "lucide-react";
+import { Mic, Upload, CheckCircle2, AlertCircle, Loader, Edit3, ArrowRight, Sparkles, Lightbulb, Users, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import EnhancedDocumentationAssistant from "./EnhancedDocumentationAssistant";
@@ -66,6 +66,8 @@ export default function MedicalScribeWithReview({
   const [differentialDiagnoses, setDifferentialDiagnoses] = useState([]);
   const [suggestedCodes, setSuggestedCodes] = useState({ icd10: [], cpt: [] });
   const [qualityAnalysis, setQualityAnalysis] = useState(null);
+  const [speakerSegments, setSpeakerSegments] = useState([]);
+  const [categorizedSections, setCategorizedSections] = useState([]);
 
   const { data: patientData } = useQuery({
     queryKey: ['patient', patientId],
@@ -164,6 +166,21 @@ export default function MedicalScribeWithReview({
       
       // Store raw transcription for accuracy feedback
       setRawTranscription(transcribedText);
+
+      // Store speaker segments if available
+      if (data.speaker_segments) {
+        setSpeakerSegments(data.speaker_segments);
+      }
+
+      // Store categorized sections if available
+      if (data.categorized_sections) {
+        setCategorizedSections(data.categorized_sections);
+        // Format sections into readable text
+        const sectionsText = data.categorized_sections
+          .map(section => `\n[${section.category}]\n${section.content}`)
+          .join('\n');
+        transcribedText = sectionsText || transcribedText;
+      }
 
       // Pre-populate with template if selected
       if (selectedTemplate?.sections) {
@@ -515,6 +532,41 @@ Provide specific, actionable suggestions for:
                 compact={true}
               />
             </div>
+            {/* Speaker Identification Summary */}
+            {speakerSegments.length > 0 && (
+              <Alert className="bg-blue-50 border-blue-200">
+                <Users className="w-4 h-4 text-blue-600" />
+                <AlertDescription>
+                  <p className="font-semibold text-sm mb-2">Speaker Identification:</p>
+                  <div className="flex gap-2">
+                    <Badge className="bg-blue-600">
+                      Provider: {speakerSegments.filter(s => s.speaker === 'provider').length} segments
+                    </Badge>
+                    <Badge className="bg-green-600">
+                      Patient: {speakerSegments.filter(s => s.speaker === 'patient').length} segments
+                    </Badge>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Categorized Sections Summary */}
+            {categorizedSections.length > 0 && (
+              <Alert className="bg-purple-50 border-purple-200">
+                <Stethoscope className="w-4 h-4 text-purple-600" />
+                <AlertDescription>
+                  <p className="font-semibold text-sm mb-2">Auto-Categorized Sections:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {categorizedSections.map((section, idx) => (
+                      <Badge key={idx} variant="outline" className="text-xs">
+                        {section.category}
+                      </Badge>
+                    ))}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Transcribed Text</label>
@@ -544,7 +596,7 @@ Provide specific, actionable suggestions for:
                 className="min-h-40 font-mono text-sm"
               />
               <p className="text-xs text-gray-500">
-                {editedTranscription.length} characters
+                {editedTranscription.length} characters • Editable before generating note
               </p>
             </div>
 
