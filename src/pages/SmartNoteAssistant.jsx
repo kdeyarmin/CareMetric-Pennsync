@@ -83,6 +83,9 @@ import UnifiedSuggestionsPanel from '../components/smartNote/UnifiedSuggestionsP
 import NoteCompletenessTracker from '../components/smartNote/NoteCompletenessTracker';
 import QuickTemplateInserter from '../components/smartNote/QuickTemplateInserter';
 import AIPhraseSuggestionWidget from '../components/smartNote/AIPhraseSuggestionWidget';
+import ICD10CodeSuggester from '../components/smartNote/ICD10CodeSuggester';
+import FollowUpTaskGenerator from '../components/smartNote/FollowUpTaskGenerator';
+import RealtimeComplianceChecker from '../components/smartNote/RealtimeComplianceChecker';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -759,6 +762,20 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
+                {/* Real-Time HIPAA Compliance Checker - Physicians & NPs only */}
+                {(providerType === 'MD' || providerType === 'NP') && visitType && roughNotes && roughNotes.length > 100 && (
+                  <RealtimeComplianceChecker
+                    noteContent={roughNotes}
+                    providerType={providerType}
+                    visitType={visitType}
+                    onComplianceUpdate={(result) => {
+                      if (result.score < 85) {
+                        console.log('Compliance issues detected:', result.issues);
+                      }
+                    }}
+                  />
+                )}
+
                 {/* Real-Time Compliance Monitor */}
                 {visitType && selectedDiagnosis && roughNotes && roughNotes.length > 100 && (
                   <RealTimeComplianceMonitor
@@ -1028,15 +1045,37 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 </summary>
                 <div className="mt-3 space-y-3 w-full">
                   {(providerType === 'MD' || providerType === 'NP') && (
-                    <AdvancedMedicalCodingAssistant
-                      enhancedNote={isEditMode ? editedNote : enhancedNote}
-                      extractedData={extractedData}
-                      diagnosis={selectedDiagnosis}
-                      visitType={visitType}
-                      onCodesGenerated={(codes) => {
-                        console.log('Medical codes generated:', codes);
-                      }}
-                    />
+                    <>
+                      <ICD10CodeSuggester
+                        noteContent={isEditMode ? editedNote : enhancedNote}
+                        diagnosis={selectedDiagnosis}
+                        visitType={visitType}
+                        onCodesSelected={(codes) => {
+                          console.log('ICD-10 codes selected:', codes);
+                          toast.success(`${codes.length} code(s) selected`);
+                        }}
+                      />
+
+                      <FollowUpTaskGenerator
+                        noteContent={isEditMode ? editedNote : enhancedNote}
+                        diagnosis={selectedDiagnosis}
+                        patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                        currentUserEmail={currentUser?.email}
+                        onTasksCreated={(tasks) => {
+                          console.log('Follow-up tasks created:', tasks);
+                        }}
+                      />
+
+                      <AdvancedMedicalCodingAssistant
+                        enhancedNote={isEditMode ? editedNote : enhancedNote}
+                        extractedData={extractedData}
+                        diagnosis={selectedDiagnosis}
+                        visitType={visitType}
+                        onCodesGenerated={(codes) => {
+                          console.log('Medical codes generated:', codes);
+                        }}
+                      />
+                    </>
                   )}
                   <MedicalCodingAssistant enhancedNote={enhancedNote} diagnosis={selectedDiagnosis} visitType={visitType} providerType={providerType} patientContext={patientData ? { patient_name: `${patientData.first_name} ${patientData.last_name}`, primary_diagnosis: patientData.primary_diagnosis, secondary_diagnoses: patientData.secondary_diagnoses, current_medications: patientData.current_medications } : null} currentUser={currentUser} />
                   {patientData && (providerType === 'RN' || providerType === 'MSW' || providerType === 'NP' || providerType === 'PT' || providerType === 'OT' || providerType === 'ST') && (
