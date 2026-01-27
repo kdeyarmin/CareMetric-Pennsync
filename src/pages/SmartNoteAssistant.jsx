@@ -123,6 +123,7 @@ export default function SmartNoteAssistant() {
   const [suggestedEducation, setSuggestedEducation] = useState([]);
   const [providedEducation, setProvidedEducation] = useState([]);
   const [noteRating, setNoteRating] = useState(null);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const location = useLocation();
   const { isOnline, saveOfflineNote } = useOfflineNotes();
 
@@ -610,65 +611,12 @@ export default function SmartNoteAssistant() {
   return (
     <div className="min-h-screen p-2 sm:p-4 md:p-6 pb-20 sm:pb-6 overflow-x-hidden">
       <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full">
-        {!showResults && (
-          <ProviderNoteTypeSelector
-            providerType={providerType}
-            onProviderTypeChange={() => {}} 
-            selectedNoteType={visitType}
-            onNoteTypeChange={setVisitType}
-            currentNoteContent={roughNotes}
-            showChecklist={roughNotes.length > 50}
-          />
-        )}
+        {/* Hide provider note type selector to streamline - visit type is below */}
 
-        {/* Enhanced Note Checklist */}
-        {showResults && enhancedNote && (
-          <ProviderNoteTypeSelector
-            providerType={providerType}
-            onProviderTypeChange={() => {}}
-            selectedNoteType={visitType}
-            onNoteTypeChange={setVisitType}
-            currentNoteContent={isEditMode ? editedNote : enhancedNote}
-            showChecklist={true}
-          />
-        )}
-
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="space-y-1 sm:space-y-2">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">Smart Note Assistant</h1>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-              AI-powered documentation with compliance checking
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowPreferences(!showPreferences)}
-            className="w-full sm:w-auto"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            AI Preferences
-          </Button>
-        </div>
-
-        {/* AI Preferences Panel */}
-        {showPreferences && (
-          <AIPreferencesPanel currentUser={currentUser} />
-        )}
+        {/* Streamlined - removed checklist for efficiency */}
 
         {/* Offline Sync Status */}
-        <OfflineSyncNotification currentUser={currentUser} />
-
-        {/* Offline Note Capture */}
-        {selectedPatient !== 'no_patient' && !navigator.onLine && (
-          <OfflineNoteCapture
-            patientId={selectedPatient}
-            visitType={visitType}
-            diagnosis={selectedDiagnosis}
-            onNoteSaved={() => toast.success('Note saved locally')}
-          />
-        )}
+        {!isOnline && <OfflineSyncNotification currentUser={currentUser} />}
 
         {!showResults ?
         <>
@@ -973,331 +921,147 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 providerType={providerType}
               />
 
-              {/* Enhanced Note Display */}
-              <Card className="border-green-300 bg-green-50 dark:bg-green-950">
-               <CardHeader>
-                 <CardTitle className="flex items-center justify-between flex-wrap gap-2">
-                   <div className="flex flex-col gap-2 flex-1">
-                     <span className="flex items-center gap-2">
-                       <CheckCircle2 className="w-5 h-5 text-green-600" />
-                       {isEditMode ? 'Edit Note' : 'Enhanced Compliant Note'}
-                     </span>
-                     {!isEditMode && currentUser?.email && (
-                       <AIOutputRating
-                         outputType="note_enhancement"
-                         outputContent={enhancedNote}
-                         outputMetadata={{
-                           visit_type: visitType,
-                           diagnosis: selectedDiagnosis,
-                           provider_type: providerType,
-                           compliance_score: complianceResults?.compliance_score,
-                           quality_score: complianceResults?.quality_analysis?.overall_quality_score
-                         }}
-                         userEmail={currentUser.email}
-                         onFeedbackSubmitted={(rating, feedback) => {
-                           setNoteRating({ rating, feedback });
-                           // Learn from explicit feedback
-                           if (rating === 'not_helpful' || rating === 'flagged') {
-                             base44.functions.invoke('learnFromUserEdits', {
-                               original_enhanced_note: enhancedNote,
-                               edited_note: editedNote || enhancedNote,
-                               visit_type: visitType,
-                               provider_type: providerType,
-                               compliance_issues_before: medicareViolations,
-                               compliance_issues_after: [],
-                               explicit_rating: rating,
-                               explicit_feedback: feedback
-                             }).catch(console.error);
-                           }
-                         }}
-                       />
+              {/* Enhanced Note Display - Streamlined */}
+              <Card>
+               <CardHeader className="pb-3">
+                 <CardTitle className="flex items-center justify-between text-base">
+                   <span className="flex items-center gap-2">
+                     <CheckCircle2 className="w-5 h-5 text-green-600" />
+                     Enhanced Note
+                   </span>
+                   <div className="flex gap-2">
+                     <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied"); }} variant="outline" size="sm">Copy</Button>
+                     {patientData && (
+                       <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700" size="sm">
+                         {savingToPatient ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                       </Button>
                      )}
                    </div>
-                    <div className="flex gap-2">
-                      {!isEditMode && (
-                        <>
-                          <Button
-                            onClick={() => {
-                              setIsEditMode(true);
-                              setEditedNote(enhancedNote);
-                            }}
-                            variant="outline"
-                            size="sm"
-                          >
-                            Edit Note
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              navigator.clipboard.writeText(enhancedNote);
-                              toast.success("Enhanced note copied");
-                            }}
-                            variant="outline"
-                            size="sm"
-                          >
-                            Copy Note
-                          </Button>
-                          <NoteEmailDialog
-                            noteContent={enhancedNote}
-                            patientData={patientData}
-                            visitType={visitType}
-                            currentUser={currentUser}
-                          />
-                          {patientData && (
-                            <Button
-                              onClick={saveToPatientRecord}
-                              disabled={savingToPatient}
-                              className="bg-green-600 hover:bg-green-700"
-                              size="sm"
-                            >
-                              {savingToPatient ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                                  Saving...
-                                </>
-                              ) : (
-                                'Save to Patient Record'
-                              )}
-                            </Button>
-                          )}
-                        </>
-                      )}
-                      {isEditMode && (
-                        <>
-                          <Button
-                            onClick={recheckCompliance}
-                            variant="outline"
-                            size="sm"
-                          >
-                            Re-check Compliance
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setEnhancedNote(editedNote);
-                              setIsEditMode(false);
-                            }}
-                            className="bg-green-600 hover:bg-green-700"
-                            size="sm"
-                          >
-                            Save Changes
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setEditedNote(enhancedNote);
-                              setIsEditMode(false);
-                            }}
-                            variant="outline"
-                            size="sm"
-                          >
-                            Cancel
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </CardTitle>
+                 </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {isEditMode ? (
-                    <textarea
-                      value={editedNote}
-                      onChange={(e) => setEditedNote(e.target.value)}
-                      className="w-full h-96 p-4 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-green-500"
-                    />
+                    <div className="space-y-2">
+                      <textarea
+                        value={editedNote}
+                        onChange={(e) => setEditedNote(e.target.value)}
+                        className="w-full h-80 p-3 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
+                      />
+                      <div className="flex gap-2">
+                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600" size="sm">Save & Recheck</Button>
+                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline" size="sm">Cancel</Button>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-lg text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
+                    <div className="space-y-3">
+                      <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg text-sm whitespace-pre-wrap max-h-80 overflow-y-auto border">
+                        {enhancedNote}
+                      </div>
+                      <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm" className="w-full">Edit Note</Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Enhanced Note - Streamlined Display */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                      <span className="font-semibold">Enhanced Note</span>
+                      {complianceResults?.compliance_score && (
+                        <Badge variant={complianceResults.compliance_score >= 85 ? "default" : "outline"} className="bg-green-100 text-green-800">
+                          {complianceResults.compliance_score}% Compliant
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied!"); }} variant="outline" size="sm">Copy</Button>
+                      {!isEditMode && <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm">Edit</Button>}
+                      {patientData && !isEditMode && (
+                        <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700" size="sm">
+                          {savingToPatient ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save to Record'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isEditMode ? (
+                    <div className="space-y-2">
+                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-72 p-3 border rounded-lg text-sm focus:ring-2 focus:ring-green-500" />
+                      <div className="flex gap-2">
+                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600" size="sm">Save & Recheck</Button>
+                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline" size="sm">Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg text-sm whitespace-pre-wrap max-h-72 overflow-y-auto border">
                       {enhancedNote}
                     </div>
                   )}
                 </CardContent>
               </Card>
 
-              {/* Unified Compliance & Quality Audit - ALL CHECKS IN ONE PLACE */}
-              <UnifiedComplianceAudit
-                complianceResults={complianceResults}
-                medicareViolations={medicareViolations}
-                regulatoryWarnings={regulatoryWarnings}
-                qualityAnalysis={complianceResults?.quality_analysis}
-              />
+              {/* Quick Actions Row */}
+              <div className="flex gap-2">
+                <ResolveAllIssues
+                  issues={[...(complianceResults?.issues || []), ...medicareViolations.map(v => ({ element: v.violation, severity: v.severity, problem: v.cop_reference, suggestion: v.remediation }))]}
+                  gaps={complianceResults?.quality_analysis?.missing_elements}
+                  suggestions={complianceResults?.quality_analysis?.suggestions}
+                  noteContent={isEditMode ? editedNote : enhancedNote}
+                  visitType={visitType}
+                  diagnosis={selectedDiagnosis}
+                  onResolved={(correctedNote, summary) => { setEditedNote(correctedNote); setEnhancedNote(correctedNote); setIsEditMode(false); toast.success(summary); recheckCompliance(); }}
+                />
+                <Button onClick={() => { setShowResults(false); setEnhancedNote(null); setRoughNotes(""); setIsEditMode(false); }} variant="outline" className="flex-1">New Note</Button>
+              </div>
 
-              {/* One-Click Resolve All Issues */}
-              <ResolveAllIssues
-                issues={[
-                  ...(complianceResults?.issues || []),
-                  ...medicareViolations.map(v => ({
-                    element: v.violation,
-                    severity: v.severity,
-                    problem: v.cop_reference,
-                    suggestion: v.remediation
-                  }))
-                ]}
-                gaps={complianceResults?.quality_analysis?.missing_elements}
-                suggestions={complianceResults?.quality_analysis?.suggestions}
-                noteContent={isEditMode ? editedNote : enhancedNote}
-                visitType={visitType}
-                diagnosis={selectedDiagnosis}
-                onResolved={(correctedNote, summary) => {
-                  setEditedNote(correctedNote);
-                  setEnhancedNote(correctedNote);
-                  setIsEditMode(false);
-                  toast.success(summary);
-                  recheckCompliance();
-                }}
-              />
+              {/* Collapsible Details */}
+              {(medicareViolations.length > 0 || complianceResults?.quality_analysis?.suggestions?.length > 0) && (
+                <details className="group">
+                  <summary className="cursor-pointer list-none">
+                    <Card className="hover:shadow-md transition-shadow">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Compliance & Quality Details</span>
+                          <span className="text-xs text-slate-500 group-open:hidden">Click to expand</span>
+                          <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
+                        </div>
+                      </CardHeader>
+                    </Card>
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <UnifiedComplianceAudit complianceResults={complianceResults} medicareViolations={medicareViolations} regulatoryWarnings={regulatoryWarnings} qualityAnalysis={complianceResults?.quality_analysis} />
+                    <UnifiedSuggestionsPanel qualityAnalysis={complianceResults?.quality_analysis} suggestedTasks={suggestedTasks} noteContent={isEditMode ? editedNote : enhancedNote} visitType={visitType} diagnosis={selectedDiagnosis} userEmail={currentUser?.email} selectedPatient={selectedPatient} onNoteUpdate={(updatedNote) => { setEditedNote(updatedNote); setEnhancedNote(updatedNote); setIsEditMode(false); }} onTaskAdd={() => setSuggestedTasks([])} />
+                  </div>
+                </details>
+              )}
 
-              {/* Unified Suggestions & Actions - ALL FIXES IN ONE PLACE */}
-              <UnifiedSuggestionsPanel
-                qualityAnalysis={complianceResults?.quality_analysis}
-                suggestedTasks={suggestedTasks}
-                noteContent={isEditMode ? editedNote : enhancedNote}
-                visitType={visitType}
-                diagnosis={selectedDiagnosis}
-                userEmail={currentUser?.email}
-                selectedPatient={selectedPatient}
-                onNoteUpdate={(updatedNote) => {
-                  setEditedNote(updatedNote);
-                  setEnhancedNote(updatedNote);
-                  setIsEditMode(false);
-                }}
-                onTaskAdd={() => {
-                  setSuggestedTasks([]);
-                }}
-              />
-
-
-
-              {/* Clinical Tools - Collapsible Section */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Clinical Tools & Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {/* Medical Coding */}
-                  <MedicalCodingAssistant
-                    enhancedNote={enhancedNote}
-                    diagnosis={selectedDiagnosis}
-                    visitType={visitType}
-                    providerType={providerType}
-                    patientContext={patientData ? {
-                      patient_name: `${patientData.first_name} ${patientData.last_name}`,
-                      primary_diagnosis: patientData.primary_diagnosis,
-                      secondary_diagnoses: patientData.secondary_diagnoses,
-                      current_medications: patientData.current_medications
-                    } : null}
-                    currentUser={currentUser}
-                  />
-
-                  {/* Care Plan Suggestions */}
-                  {patientData && (providerType === 'RN' || providerType === 'MSW' ||
-                                   providerType === 'NP' || providerType === 'PT' || 
-                                   providerType === 'OT' || providerType === 'ST') &&
-                    <CarePlanSuggestionsPanel
-                      patientId={patientData.id}
-                      visitType={visitType}
-                      diagnosis={selectedDiagnosis}
-                      noteContent={enhancedNote}
-                      providerType={providerType}
-                    />
-                  }
-                </CardContent>
-              </Card>
-
-
-              {/* Additional Actions - Collapsible */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Additional Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {/* Patient Education */}
+              {/* Collapsible Tools */}
+              <details className="group">
+                <summary className="cursor-pointer list-none">
+                  <Card className="hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Clinical Tools & Education</span>
+                        <span className="text-xs text-slate-500 group-open:hidden">Click to expand</span>
+                        <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <MedicalCodingAssistant enhancedNote={enhancedNote} diagnosis={selectedDiagnosis} visitType={visitType} providerType={providerType} patientContext={patientData ? { patient_name: `${patientData.first_name} ${patientData.last_name}`, primary_diagnosis: patientData.primary_diagnosis, secondary_diagnoses: patientData.secondary_diagnoses, current_medications: patientData.current_medications } : null} currentUser={currentUser} />
+                  {patientData && (providerType === 'RN' || providerType === 'MSW' || providerType === 'NP' || providerType === 'PT' || providerType === 'OT' || providerType === 'ST') && (
+                    <CarePlanSuggestionsPanel patientId={patientData.id} visitType={visitType} diagnosis={selectedDiagnosis} noteContent={enhancedNote} providerType={providerType} />
+                  )}
                   {patientData && (
-                    <>
-                      <PersonalizedEducationGenerator 
-                        diagnosis={selectedDiagnosis}
-                        visitType={visitType}
-                        clinicalNote={enhancedNote}
-                        patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                        patientContext={{
-                          patient_name: `${patientData.first_name} ${patientData.last_name}`,
-                          age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                          primary_diagnosis: patientData.primary_diagnosis,
-                          allergies: patientData.allergies,
-                          current_medications: patientData.current_medications
-                        }}
-                        onMaterialGenerated={(material, method) => {
-                          setProvidedEducation(prev => [...prev, { material, method }]);
-                          toast.success('Education documented - will be added to note');
-                        }}
-                      />
-                      
-                      <PatientEducationPanel
-                        suggestedMaterials={suggestedEducation}
-                        patientId={selectedPatient}
-                        patientEmail={patientData?.email}
-                        onEducationProvided={(material, method) => {
-                          setProvidedEducation(prev => [...prev, { material, method }]);
-                          toast.success('Education documented - will be added to note');
-                        }}
-                      />
-                    </>
+                    <PatientEducationPanel suggestedMaterials={suggestedEducation} patientId={selectedPatient} patientEmail={patientData?.email} onEducationProvided={(material, method) => { setProvidedEducation(prev => [...prev, { material, method }]); toast.success('Education documented'); }} />
                   )}
-
-                  {/* Care Coordination */}
-                  <AICareCoordinationPanel
-                    enhancedNote={isEditMode ? editedNote : enhancedNote}
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    patientId={selectedPatient}
-                    vitalSigns={vitalSigns}
-                    patientContext={patientData ? {
-                      age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                      primary_diagnosis: patientData.primary_diagnosis,
-                      secondary_diagnoses: patientData.secondary_diagnoses,
-                      allergies: patientData.allergies,
-                      current_medications: patientData.current_medications
-                    } : null}
-                    onActionCreated={(actionType) => {
-                      console.log('Care coordination action created:', actionType);
-                    }}
-                  />
-
-                  {/* Training Recommendations */}
-                  {currentUser?.email && (
-                    <ComplianceBasedTrainingRecommender
-                      complianceResults={complianceResults}
-                      documentationGaps={complianceResults?.quality_analysis?.missing_elements}
-                      visitType={visitType}
-                      providerType={providerType}
-                      nurseEmail={currentUser.email}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Start Over Button */}
-              <Button
-                onClick={() => {
-                  setShowResults(false);
-                  setEnhancedNote(null);
-                  setEditedNote("");
-                  setComplianceResults(null);
-                  setMedicareViolations([]);
-                  setRegulatoryWarnings([]);
-                  setSuggestedTasks([]);
-                  setRoughNotes("");
-                  setVitalSigns({
-                    temperature: "",
-                    heart_rate: "",
-                    respiratory_rate: "",
-                    bp_systolic: "",
-                    bp_diastolic: "",
-                    oxygen_saturation: ""
-                  });
-                  setIsEditMode(false);
-                }}
-                variant="outline"
-                className="w-full"
-              >
-                Create Another Note
-              </Button>
+                </div>
+              </details>
             </div>
           </>
         }
