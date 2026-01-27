@@ -12,6 +12,7 @@ import AgencyCollaboration from './pages/AgencyCollaboration';
 import AgencyDashboard from './pages/AgencyDashboard';
 import AgencyTemplates from './pages/AgencyTemplates';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import AnalyticsHub from './pages/AnalyticsHub';
 import AuditLog from './pages/AuditLog';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
 import Billing from './pages/Billing';
@@ -21,18 +22,21 @@ import BillingOptimization from './pages/BillingOptimization';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalDecisionSupport from './pages/ClinicalDecisionSupport';
+import ClinicalHub from './pages/ClinicalHub';
 import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
 import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
 import ClinicalReasoning from './pages/ClinicalReasoning';
 import Compliance from './pages/Compliance';
 import ComplianceAutomation from './pages/ComplianceAutomation';
 import ComplianceDashboard from './pages/ComplianceDashboard';
+import ComplianceHub from './pages/ComplianceHub';
 import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
 import ComplianceTraining from './pages/ComplianceTraining';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
 import DocumentAnalyzer from './pages/DocumentAnalyzer';
+import DocumentCenter from './pages/DocumentCenter';
 import DocumentGenerator from './pages/DocumentGenerator';
 import DocumentManagement from './pages/DocumentManagement';
 import DocumentSignatureTemplates from './pages/DocumentSignatureTemplates';
@@ -117,15 +121,11 @@ import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
 import Test2FA from './pages/Test2FA';
 import TestCrossPlatform from './pages/TestCrossPlatform';
+import TrainingHub from './pages/TrainingHub';
 import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import ComplianceHub from './pages/ComplianceHub';
-import TrainingHub from './pages/TrainingHub';
-import DocumentCenter from './pages/DocumentCenter';
-import ClinicalHub from './pages/ClinicalHub';
-import AnalyticsHub from './pages/AnalyticsHub';
 import __Layout from './Layout.jsx';
 
 
@@ -144,6 +144,7 @@ export const PAGES = {
     "AgencyDashboard": AgencyDashboard,
     "AgencyTemplates": AgencyTemplates,
     "AnalyticsDashboard": AnalyticsDashboard,
+    "AnalyticsHub": AnalyticsHub,
     "AuditLog": AuditLog,
     "AutomaticCarePlans": AutomaticCarePlans,
     "Billing": Billing,
@@ -153,18 +154,21 @@ export const PAGES = {
     "CareCoordinationDashboard": CareCoordinationDashboard,
     "CarePlanManagement": CarePlanManagement,
     "ClinicalDecisionSupport": ClinicalDecisionSupport,
+    "ClinicalHub": ClinicalHub,
     "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
     "ClinicalPathwayManager": ClinicalPathwayManager,
     "ClinicalReasoning": ClinicalReasoning,
     "Compliance": Compliance,
     "ComplianceAutomation": ComplianceAutomation,
     "ComplianceDashboard": ComplianceDashboard,
+    "ComplianceHub": ComplianceHub,
     "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
     "ComplianceTraining": ComplianceTraining,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
     "DocumentAnalysisHistory": DocumentAnalysisHistory,
     "DocumentAnalyzer": DocumentAnalyzer,
+    "DocumentCenter": DocumentCenter,
     "DocumentGenerator": DocumentGenerator,
     "DocumentManagement": DocumentManagement,
     "DocumentSignatureTemplates": DocumentSignatureTemplates,
@@ -249,15 +253,11 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "Test2FA": Test2FA,
     "TestCrossPlatform": TestCrossPlatform,
+    "TrainingHub": TrainingHub,
     "UserActivityLog": UserActivityLog,
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "ComplianceHub": ComplianceHub,
-    "TrainingHub": TrainingHub,
-    "DocumentCenter": DocumentCenter,
-    "ClinicalHub": ClinicalHub,
-    "AnalyticsHub": AnalyticsHub,
 }
 
 export const pagesConfig = {

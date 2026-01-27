@@ -706,8 +706,8 @@ export default function SmartNoteAssistant() {
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
                         {filteredDiagnoses.length > 0 ? (
-                          filteredDiagnoses.map((diagnosis, idx) => (
-                            <SelectItem key={idx} value={diagnosis}>
+                          filteredDiagnoses.map((diagnosis) => (
+                            <SelectItem key={diagnosis} value={diagnosis}>
                               {diagnosis}
                             </SelectItem>
                           ))
