@@ -1074,9 +1074,10 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                         procedures={extractedData?.procedures || ''}
                         patientAge={patientData?.age}
                         visitType={visitType}
+                        patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
+                        visitId={visitId}
                         onCodesSelected={(codes) => {
                           console.log('Codes selected:', codes);
-                          toast.success(`${codes.length} code(s) selected`);
                         }}
                       />
 

@@ -14,12 +14,15 @@ export default function EnhancedMedicalCodingAssistant({
   procedures,
   patientAge,
   visitType,
+  patientId,
+  visitId,
   onCodesSelected
 }) {
   const [loading, setLoading] = useState(false);
   const [codes, setCodes] = useState(null);
   const [selectedCodes, setSelectedCodes] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const generateCodes = async () => {
     if (!noteContent || !diagnosis) {
@@ -65,18 +68,34 @@ export default function EnhancedMedicalCodingAssistant({
     });
   };
 
-  const insertCodes = () => {
+  const insertCodes = async () => {
     if (selectedCodes.length === 0) {
       toast.error('Select at least one code');
       return;
     }
 
-    const codeText = selectedCodes
-      .map(({ code, type }) => `${type.toUpperCase()}: ${code.code}`)
-      .join(' | ');
+    setSaving(true);
+    try {
+      // Save codes to database with audit trail
+      const response = await base44.functions.invoke('saveMedicalCodes', {
+        patient_id: patientId,
+        visit_id: visitId,
+        codes: selectedCodes,
+        note_excerpt: noteContent?.substring(0, 500)
+      });
 
-    onCodesSelected?.(selectedCodes);
-    toast.success(`${selectedCodes.length} code(s) selected`);
+      if (response.data?.success) {
+        onCodesSelected?.(selectedCodes);
+        toast.success(`${selectedCodes.length} code(s) saved for review`);
+      } else {
+        toast.error('Failed to save codes');
+      }
+    } catch (error) {
+      console.error('Error saving codes:', error);
+      toast.error('Error saving codes');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filteredIcd10 = codes?.icd10_codes?.filter(c =>
@@ -272,10 +291,20 @@ export default function EnhancedMedicalCodingAssistant({
                     </p>
                     <Button
                       onClick={insertCodes}
+                      disabled={saving || !patientId}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs h-8"
                     >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Insert {selectedCodes.length} Code(s)
+                      {saving ? (
+                        <>
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-3 h-3 mr-1" />
+                          Save & Insert {selectedCodes.length} Code(s)
+                        </>
+                      )}
                     </Button>
                   </div>
                 )}
