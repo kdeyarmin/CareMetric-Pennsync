@@ -451,9 +451,25 @@ export default function UserManagement({ users, currentUser }) {
                         {invitation.expires_at && ` • Expires ${format(new Date(invitation.expires_at), 'MMM d, yyyy')}`}
                       </p>
                     </div>
-                    <Badge variant="outline" className="border-yellow-300 text-yellow-700">
-                      Pending
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="border-yellow-300 text-yellow-700">
+                        Pending
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (confirm(`Delete invitation for ${invitation.email}?`)) {
+                            deleteInvitationMutation.mutate(invitation.id);
+                          }
+                        }}
+                        disabled={deleteInvitationMutation.isPending}
+                        title="Delete invitation"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
