@@ -53,10 +53,10 @@ export default function SubscriptionPlans() {
   });
 
   const plans = [
-    { name: 'Monthly', price: 39.99, priceId: 'price_1Qr3FJGbdOIAhzqI2X5K8L9M', period: '/ month', popular: false },
-    { name: '6 Month', price: 210.00, priceId: 'price_1Qr3FJGbdOIAhzqI3Y6L9M0N', period: '/ 6 months', popular: false },
-    { name: '3 Month', price: 115.00, priceId: 'price_1Qr3FJGbdOIAhzqI4Z7M0N1O', period: '/ 3 months', popular: true },
-    { name: 'Yearly', price: 350.00, priceId: 'price_1Qr3FJGbdOIAhzqI5A8N1O2P', period: '/ year', popular: false },
+    { name: 'Monthly', price: 29.99, priceId: 'price_1Qr3FJGbdOIAhzqI2X5K8L9M', period: '/ month', popular: false },
+    { name: '3 Month', price: 79.99, priceId: 'price_1Qr3FJGbdOIAhzqI4Z7M0N1O', period: '/ 3 months', popular: true },
+    { name: '6 Month', price: 149.99, priceId: 'price_1Qr3FJGbdOIAhzqI3Y6L9M0N', period: '/ 6 months', popular: false },
+    { name: 'Yearly', price: 264.99, priceId: 'price_1Qr3FJGbdOIAhzqI5A8N1O2P', period: '/ year', popular: false },
   ];
 
   const handleCheckout = async (priceId) => {
