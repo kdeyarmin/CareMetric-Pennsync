@@ -264,7 +264,7 @@ export default function SubscriptionPlans() {
                 <Button
                   onClick={() => handleAppleCheckout(plan)}
                   disabled={processingApple}
-                  className={`w-full mt-auto touch-target ${plan.popular ? 'bg-black hover:bg-gray-900' : 'bg-gray-800 hover:bg-gray-900'}`}
+                  className={`w-full mt-auto touch-target ${plan.popular ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
                 >
                   {processingApple ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -279,7 +279,7 @@ export default function SubscriptionPlans() {
                 <Button
                   onClick={() => handleCheckout(plan.priceId)}
                   disabled={!plan.priceId || loadingPriceId === plan.priceId}
-                  className={`w-full mt-auto touch-target ${plan.popular ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                  className={`w-full mt-auto touch-target ${plan.popular ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
                 >
                   {loadingPriceId === plan.priceId ? <Loader2 className="animate-spin" /> : 'Choose Plan'}
                 </Button>
