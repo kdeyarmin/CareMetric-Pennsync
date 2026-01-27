@@ -25,8 +25,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Step 1: Transcribe audio using AI
-    const transcriptionPrompt = `Transcribe the following medical conversation audio file. Provide a clear, accurate transcription of the spoken words.`;
+    // Step 1: Transcribe audio with speaker identification
+    const transcriptionPrompt = `Transcribe the following medical conversation audio file. 
+    
+IMPORTANT: Identify and label each speaker as either "PROVIDER" or "PATIENT" throughout the conversation.
+Format each speaker's dialogue on a new line with the speaker label in brackets, like:
+[PROVIDER] How are you feeling today?
+[PATIENT] I've been having some chest pain.
+
+Provide a clear, accurate transcription with speaker identification throughout.`;
     
     const transcriptionResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
       prompt: transcriptionPrompt,
@@ -34,6 +41,55 @@ Deno.serve(async (req) => {
     });
 
     const fullTranscript = transcriptionResponse;
+
+    // Step 1.5: Parse speaker segments
+    const speakerSegments = [];
+    const lines = fullTranscript.split('\n');
+    for (const line of lines) {
+      const providerMatch = line.match(/\[PROVIDER\]\s*(.+)/i);
+      const patientMatch = line.match(/\[PATIENT\]\s*(.+)/i);
+      
+      if (providerMatch) {
+        speakerSegments.push({ speaker: 'provider', text: providerMatch[1].trim() });
+      } else if (patientMatch) {
+        speakerSegments.push({ speaker: 'patient', text: patientMatch[1].trim() });
+      }
+    }
+
+    // Step 1.6: Auto-categorize conversation sections
+    const categorizationPrompt = `Analyze this medical conversation transcript and categorize it into clinical sections.
+
+Transcript:
+${fullTranscript}
+
+Categorize the conversation into the following sections (include only sections with content):
+- Chief Complaint: Main reason for visit
+- History of Present Illness: Details about current condition
+- Review of Systems: Body systems review
+- Physical Examination: Objective findings
+- Assessment: Clinical impressions
+- Plan: Treatment plan and follow-up
+
+Return only sections that have actual content from the conversation.`;
+
+    const categorizedSections = await base44.asServiceRole.integrations.Core.InvokeLLM({
+      prompt: categorizationPrompt,
+      response_json_schema: {
+        type: 'object',
+        properties: {
+          sections: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                category: { type: 'string' },
+                content: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    });
 
     // Step 2: Extract structured clinical data
     const extractionPrompt = `You are a medical scribe assistant. Analyze the following patient-provider conversation transcript and extract structured clinical information.
@@ -163,6 +219,8 @@ Format it as a cohesive, professional clinical note.`;
     return Response.json({
       success: true,
       transcript: fullTranscript,
+      speaker_segments: speakerSegments,
+      categorized_sections: categorizedSections.sections || [],
       structured_data: structuredData,
       clinical_narrative: clinicalNarrative
     });
