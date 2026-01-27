@@ -134,11 +134,46 @@ CareMetric AI`
       console.warn('⚠️ No admin users found to notify');
     }
 
-    // Send welcome email sequence
+    // Send welcome email with onboarding link
     try {
-      await base44.asServiceRole.functions.invoke('sendWelcomeEmailSequence', {
-        user_email: user.email,
-        user_name: user.full_name || 'there'
+      const appUrl = Deno.env.get('APP_URL') || 'https://app.caremetricai.com';
+      const onboardingUrl = `${appUrl}/onboarding`;
+      
+      await base44.asServiceRole.integrations.Core.SendEmail({
+        to: user.email,
+        from_name: 'CareMetric AI',
+        subject: '🎉 Welcome to CareMetric AI - Your Free Trial Starts Now!',
+        body: `Hello ${user.full_name || 'there'},
+
+Welcome to CareMetric AI! Your 14-day free trial is now active, giving you full access to all features.
+
+🚀 Next Steps:
+1. Complete your profile with your professional details
+2. Explore the dashboard and available tools
+3. Try creating your first AI-powered note
+4. Add a patient to see the full workflow
+
+📍 Get Started: ${onboardingUrl}
+
+What You Can Do Right Now:
+✓ Smart Note Assistant - AI-powered clinical documentation
+✓ Patient Management - Centralized patient records
+✓ Care Plans - Automated care plan generation
+✓ Document Center - Professional templates and E-signatures
+✓ Compliance Tools - Real-time compliance monitoring
+✓ Analytics - Track your performance
+
+Your 14-Day Free Trial Includes:
+• Full access to all features
+• Unlimited patient records
+• AI-powered note generation
+• Care plan automation
+• Compliance monitoring
+
+Questions? Check our help section or reach out to support@caremetricai.com
+
+Best regards,
+CareMetric AI Team`
       });
       console.log('Welcome email sent to:', user.email);
     } catch (emailError) {

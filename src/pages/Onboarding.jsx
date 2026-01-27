@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import ProviderOnboardingFlow from "../components/onboarding/ProviderOnboardingFlow";
+import ComprehensiveOnboarding from "../components/onboarding/ComprehensiveOnboarding";
 import { Loader2 } from "lucide-react";
 
 export const publicPage = true;
@@ -43,7 +43,7 @@ export default function Onboarding() {
   }
 
   return (
-    <ProviderOnboardingFlow 
+    <ComprehensiveOnboarding 
       currentUser={currentUser}
       onComplete={() => navigate(createPageUrl('Dashboard'))}
     />
