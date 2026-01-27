@@ -853,23 +853,7 @@ export default function SmartNoteAssistant() {
                   </div>
                 </div>
 
-                {/* Quick Template & Phrase Inserter */}
-                <QuickTemplateInserter
-                  onInsert={(content) => {
-                    setRoughNotes(content);
-                  }}
-                  visitType={visitType}
-                  providerType={providerType}
-                  currentNoteContent={roughNotes}
-                />
 
-                {/* AI Phrase Learning & Suggestions */}
-                {currentUser?.email && (
-                  <AIPhraseSuggestionWidget
-                    providerType={providerType}
-                    currentUser={currentUser}
-                  />
-                )}
 
                 {/* Patient Context Quick Insert */}
                 {selectedPatient !== 'no_patient' && patientData && (
