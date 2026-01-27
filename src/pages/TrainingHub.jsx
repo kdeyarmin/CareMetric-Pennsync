@@ -115,23 +115,23 @@ export default function TrainingHub() {
   const activeGaps = skillGaps.filter(g => g.status === 'identified' || g.status === 'in_progress').length;
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-          <GraduationCap className="w-8 h-8 text-blue-600" />
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <GraduationCap className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
           Training Hub
         </h1>
-        <p className="text-slate-600 dark:text-slate-400 mt-1">
+        <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
           Personalized learning, skill development, and certifications
         </p>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 mb-4 sm:mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-blue-700">{completed.length}</p>
-            <p className="text-xs text-blue-600 mt-1">Completed</p>
+          <CardContent className="p-3 sm:p-4 text-center">
+            <p className="text-xl sm:text-2xl font-bold text-blue-700">{completed.length}</p>
+            <p className="text-[10px] sm:text-xs text-blue-600 mt-1">Completed</p>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
@@ -160,18 +160,18 @@ export default function TrainingHub() {
         </Card>
       </div>
 
-      <Tabs defaultValue={activeView} onValueChange={setActiveView}>
-        <TabsList className="w-full overflow-x-auto">
-          <div className="flex w-max min-w-full space-x-1 p-1">
-            <TabsTrigger value="my-training">My Training</TabsTrigger>
-            <TabsTrigger value="assigned">Assigned ({assigned.length + inProgress.length})</TabsTrigger>
-            <TabsTrigger value="ai-recommendations">AI Recommendations</TabsTrigger>
-            <TabsTrigger value="library">Library</TabsTrigger>
-            <TabsTrigger value="skills">Skill Gaps</TabsTrigger>
-            <TabsTrigger value="badges">Badges</TabsTrigger>
-            {isAdmin && <TabsTrigger value="staff">Staff Progress</TabsTrigger>}
-          </div>
-        </TabsList>
+      <Tabs defaultValue={activeView} onValueChange={setActiveView} className="w-full">
+        <div className="w-full overflow-x-auto mb-4">
+          <TabsList className="flex w-max min-w-full gap-1 p-1">
+            <TabsTrigger value="my-training" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">My Training</TabsTrigger>
+            <TabsTrigger value="assigned" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Assigned ({assigned.length + inProgress.length})</TabsTrigger>
+            <TabsTrigger value="ai-recommendations" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">AI Recommendations</TabsTrigger>
+            <TabsTrigger value="library" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Library</TabsTrigger>
+            <TabsTrigger value="skills" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Skill Gaps</TabsTrigger>
+            <TabsTrigger value="badges" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Badges</TabsTrigger>
+            {isAdmin && <TabsTrigger value="staff" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Staff Progress</TabsTrigger>}
+          </TabsList>
+        </div>
 
         <TabsContent value="my-training" className="space-y-4 mt-6">
           <PersonalTrainingDashboard 
@@ -181,19 +181,19 @@ export default function TrainingHub() {
           />
         </TabsContent>
 
-        <TabsContent value="assigned" className="space-y-4 mt-6">
+        <TabsContent value="assigned" className="space-y-3 sm:space-y-4 mt-6 w-full">
           {[...assigned, ...inProgress].map(training => {
             const module = trainingModules.find(m => m.id === training.training_module_id);
             if (!module) return null;
             const isOverdue = training.due_date && new Date(training.due_date) < new Date();
 
             return (
-              <Card key={training.id} className={isOverdue ? "border-red-200" : ""}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CardTitle className="text-lg">{module.title}</CardTitle>
+              <Card key={training.id} className={`${isOverdue ? "border-red-200" : ""} w-full`}>
+                <CardHeader className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                    <div className="flex-1 w-full min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <CardTitle className="text-base sm:text-lg break-words">{module.title}</CardTitle>
                         {training.status === 'in_progress' && <Badge className="bg-blue-100 text-blue-800">In Progress</Badge>}
                         {isOverdue && <Badge className="bg-red-100 text-red-800">Overdue</Badge>}
                       </div>
@@ -203,7 +203,7 @@ export default function TrainingHub() {
                         {training.due_date && <span className={isOverdue ? "text-red-600 font-medium" : ""}>Due: {format(new Date(training.due_date), 'MMM d, yyyy')}</span>}
                       </div>
                     </div>
-                    <Button onClick={() => setSelectedTraining(training)} className="bg-blue-600">
+                    <Button onClick={() => setSelectedTraining(training)} className="bg-blue-600 w-full sm:w-auto touch-target">
                       <PlayCircle className="w-4 h-4 mr-2" />
                       {training.status === 'in_progress' ? 'Continue' : 'Start'}
                     </Button>

@@ -41,19 +41,19 @@ export default function ClinicalHub() {
   });
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-          <Brain className="w-8 h-8 text-blue-600" />
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+          <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
           Clinical Decision Support
         </h1>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
           AI-powered clinical tools for diagnosis, medication safety, and evidence-based care
         </p>
       </div>
 
-      <Tabs defaultValue="reasoning">
-        <TabsList className="grid w-full grid-cols-2">
+      <Tabs defaultValue="reasoning" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 h-auto">
           <TabsTrigger value="reasoning">AI Differential Diagnosis</TabsTrigger>
           <TabsTrigger value="patient-tools">Patient-Specific Tools</TabsTrigger>
         </TabsList>
@@ -62,13 +62,13 @@ export default function ClinicalHub() {
           <EvidenceBasedClinicalReasoning />
         </TabsContent>
 
-        <TabsContent value="patient-tools" className="mt-6 space-y-6">
+        <TabsContent value="patient-tools" className="mt-4 sm:mt-6 space-y-4 sm:space-y-6 w-full">
           {/* Patient Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Select Patient</CardTitle>
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Select Patient</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 sm:p-6 pt-0">
               <SearchablePatientSelect
                 patients={patients}
                 selectedPatientId={selectedPatientId}
@@ -78,8 +78,8 @@ export default function ClinicalHub() {
           </Card>
 
           {selectedPatient ? (
-            <Tabs defaultValue="alerts">
-              <TabsList className="grid w-full grid-cols-3">
+            <Tabs defaultValue="alerts" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 h-auto">
                 <TabsTrigger value="alerts">
                   <AlertTriangle className="w-4 h-4 mr-2" />
                   Best Practices
@@ -94,15 +94,15 @@ export default function ClinicalHub() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="alerts" className="mt-6">
+              <TabsContent value="alerts" className="mt-4 sm:mt-6 w-full">
                 <ClinicalBestPracticeAlerts patient={selectedPatient} visits={visits} />
               </TabsContent>
 
-              <TabsContent value="medications" className="mt-6">
+              <TabsContent value="medications" className="mt-4 sm:mt-6 w-full">
                 <MedicationInteractionChecker patient={selectedPatient} />
               </TabsContent>
 
-              <TabsContent value="diagnosis" className="mt-6">
+              <TabsContent value="diagnosis" className="mt-4 sm:mt-6 w-full">
                 <DifferentialDiagnosisGenerator patient={selectedPatient} />
               </TabsContent>
             </Tabs>

@@ -170,32 +170,32 @@ export default function ComplianceHub() {
 
   return (
     <PullToRefresh onRefresh={() => queryClient.invalidateQueries()}>
-      <div className="p-4 md:p-6 max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Shield className="w-8 h-8 text-blue-600" />
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
             Compliance Hub
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
             Monitor compliance, regulatory updates, and training
           </p>
         </div>
 
-        <Tabs defaultValue="dashboard">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="dashboard" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="updates">Regulatory Updates</TabsTrigger>
             <TabsTrigger value="training">Compliance Training</TabsTrigger>
           </TabsList>
 
           {/* Dashboard Tab */}
-          <TabsContent value="dashboard" className="space-y-6">
+          <TabsContent value="dashboard" className="space-y-4 sm:space-y-6 w-full">
             {canAccessDashboard ? (
               <>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Compliance Monitoring</h2>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <h2 className="text-lg sm:text-xl font-semibold">Compliance Monitoring</h2>
                   <Select value={timeframe} onValueChange={setTimeframe}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="w-full sm:w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -239,20 +239,20 @@ export default function ComplianceHub() {
                 </div>
 
                 {/* Filters */}
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex gap-3 items-center">
-                      <div className="flex-1 relative">
+                <Card className="w-full">
+                  <CardContent className="p-3 sm:p-4">
+                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full">
+                      <div className="flex-1 relative w-full">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <Input
                           placeholder="Search violations..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10"
+                          className="pl-10 h-11"
                         />
                       </div>
                       <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-                        <SelectTrigger className="w-40">
+                        <SelectTrigger className="w-full sm:w-40 h-11">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -264,7 +264,7 @@ export default function ComplianceHub() {
                         </SelectContent>
                       </Select>
                       <Select value={filterStatus} onValueChange={setFilterStatus}>
-                        <SelectTrigger className="w-32">
+                        <SelectTrigger className="w-full sm:w-32 h-11">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -278,7 +278,7 @@ export default function ComplianceHub() {
                 </Card>
 
                 {/* Violations */}
-                <div className="space-y-3">
+                <div className="space-y-3 w-full">
                   {filteredViolations.length === 0 ? (
                     <Card>
                       <CardContent className="p-12 text-center">
@@ -288,28 +288,28 @@ export default function ComplianceHub() {
                     </Card>
                   ) : (
                     filteredViolations.slice(0, 10).map((violation) => (
-                      <Card key={violation.id} className={`border-l-4 ${
-                        violation.severity === 'critical' ? 'border-l-red-500' :
-                        violation.severity === 'high' ? 'border-l-orange-500' : 'border-l-yellow-500'
+                      <Card key={violation.id} className={`border-l-4 w-full ${
+                       violation.severity === 'critical' ? 'border-l-red-500' :
+                       violation.severity === 'high' ? 'border-l-orange-500' : 'border-l-yellow-500'
                       }`}>
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <h4 className="font-semibold">{violation.rule_name}</h4>
+                       <CardContent className="p-3 sm:p-4">
+                         <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+                            <div className="flex-1 w-full min-w-0">
+                              <div className="flex items-start flex-wrap gap-2 mb-2">
+                                <h4 className="font-semibold text-sm sm:text-base break-words">{violation.rule_name}</h4>
                                 <Badge className={violation.severity === 'critical' ? 'bg-red-600' : violation.severity === 'high' ? 'bg-orange-600' : 'bg-yellow-600'}>
                                   {violation.severity}
                                 </Badge>
                                 {violation.auto_fix_available && <Badge className="bg-green-600"><Wand2 className="w-3 h-3 mr-1" />Auto-Fix</Badge>}
                               </div>
-                              <p className="text-sm text-gray-700 mb-2">{violation.violation_description}</p>
-                              <div className="flex items-center gap-4 text-xs text-gray-500">
-                                <span>{violation.user_email}</span>
-                                <span>•</span>
+                              <p className="text-xs sm:text-sm text-gray-700 mb-2 break-words">{violation.violation_description}</p>
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-gray-500">
+                                <span className="break-all">{violation.user_email}</span>
+                                <span className="hidden sm:inline">•</span>
                                 <span>{formatEastern(violation.created_date, 'MMM d, yyyy')}</span>
                               </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-shrink-0 w-full sm:w-auto">
                               <Button size="sm" variant="outline" onClick={() => { setSelectedViolation(violation); setDetailDialog(true); }}>
                                 <Eye className="w-4 h-4" />
                               </Button>
@@ -338,9 +338,9 @@ export default function ComplianceHub() {
           </TabsContent>
 
           {/* Regulatory Updates Tab */}
-          <TabsContent value="updates" className="space-y-4">
-            <h2 className="text-xl font-semibold mb-4">Regulatory Compliance Center</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+          <TabsContent value="updates" className="space-y-4 w-full">
+            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Regulatory Compliance Center</h2>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-4 sm:mb-6">
               Latest healthcare regulatory changes and compliance requirements
             </p>
 
@@ -353,7 +353,7 @@ export default function ComplianceHub() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                 {regulatoryUpdates.map((update) => (
                   <Card key={update.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader>
@@ -391,9 +391,9 @@ export default function ComplianceHub() {
           </TabsContent>
 
           {/* Training Tab */}
-          <TabsContent value="training" className="space-y-6">
+          <TabsContent value="training" className="space-y-4 sm:space-y-6 w-full">
             {/* Training Stats */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
               <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
                 <CardContent className="p-4">
                   <Award className="w-8 h-8 text-purple-600 mb-2" />
@@ -418,8 +418,8 @@ export default function ComplianceHub() {
             </div>
 
             {/* Training Content */}
-            <Tabs value={activeTrainingTab} onValueChange={setActiveTrainingTab}>
-              <TabsList className="grid w-full grid-cols-3">
+            <Tabs value={activeTrainingTab} onValueChange={setActiveTrainingTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3 h-auto">
                 <TabsTrigger value="analysis">Error Analysis</TabsTrigger>
                 <TabsTrigger value="training" disabled={!selectedErrorPatterns}>Content</TabsTrigger>
                 <TabsTrigger value="quiz" disabled={!trainingContent}>Quiz</TabsTrigger>

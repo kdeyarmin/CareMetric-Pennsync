@@ -107,15 +107,15 @@ export default function AnalyticsHub() {
   }, [userActivity, noteConversions]);
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">Analytics & Optimization</h1>
-            <p className="text-slate-600 dark:text-slate-400">Performance insights, billing optimization, and AI coaching</p>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">Analytics & Optimization</h1>
+            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Performance insights, billing optimization, and AI coaching</p>
           </div>
           <Select value={dateRange.toString()} onValueChange={(val) => setDateRange(parseInt(val))}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-full sm:w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -128,15 +128,15 @@ export default function AnalyticsHub() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <Card className="bg-slate-200">
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-700 font-medium">Notes Enhanced</p>
-                  <p className="text-3xl font-bold text-slate-900">{stats.noteConversions}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-700 font-medium">Notes Enhanced</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.noteConversions}</p>
                 </div>
-                <BarChart3 className="w-10 h-10 text-slate-600" />
+                <BarChart3 className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600" />
               </div>
             </CardContent>
           </Card>
@@ -176,14 +176,16 @@ export default function AnalyticsHub() {
         </div>
       </div>
 
-      <Tabs defaultValue="performance">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="gaps">Gaps</TabsTrigger>
-          <TabsTrigger value="ai-usage">AI Usage</TabsTrigger>
-          <TabsTrigger value="coaching">Coaching</TabsTrigger>
-          <TabsTrigger value="billing">Billing</TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="performance" className="w-full">
+        <div className="w-full overflow-x-auto mb-4">
+          <TabsList className="flex w-max min-w-full gap-1 p-1">
+            <TabsTrigger value="performance" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Performance</TabsTrigger>
+            <TabsTrigger value="gaps" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Gaps</TabsTrigger>
+            <TabsTrigger value="ai-usage" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">AI Usage</TabsTrigger>
+            <TabsTrigger value="coaching" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Coaching</TabsTrigger>
+            <TabsTrigger value="billing" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Billing</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="performance" className="mt-6">
           <NursePerformanceTrends noteConversions={noteConversions} complianceAudits={complianceAudits} dateRange={dateRange} />

@@ -172,11 +172,11 @@ export default function Features() {
   };
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
       {/* Header */}
-      <div className="mb-12">
-        <h1 className="text-4xl font-bold mb-4">CareMetric AI Features</h1>
-        <p className="text-lg text-slate-600 dark:text-slate-400 mb-6">Comprehensive tools designed to streamline documentation, enhance compliance, and improve patient outcomes.
+      <div className="mb-6 sm:mb-8 md:mb-12">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">CareMetric AI Features</h1>
+        <p className="text-sm sm:text-base md:text-lg text-slate-600 dark:text-slate-400 mb-4 sm:mb-6">Comprehensive tools designed to streamline documentation, enhance compliance, and improve patient outcomes.
 
         </p>
         
@@ -190,7 +190,7 @@ export default function Features() {
       </div>
 
       {/* Category Filter */}
-      <div className="mb-8 flex flex-wrap gap-2">
+      <div className="mb-4 sm:mb-6 md:mb-8 flex flex-wrap gap-2">
         {CATEGORIES.map((category) =>
         <Badge
           key={category}
@@ -203,7 +203,7 @@ export default function Features() {
       </div>
 
       {/* Features Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {filteredFeatures.map((feature, idx) => {
           const Icon = feature.icon;
           return (

@@ -78,14 +78,14 @@ export default function OASIS() {
 
   return (
     <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['currentUser'] })}>
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6 text-slate-900 dark:text-slate-100">OASIS Documentation Assistant</h1>
+      <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-slate-900 dark:text-slate-100">OASIS Documentation Assistant</h1>
 
-        <Card className="mb-6">
-          <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
+        <Card className="mb-4 sm:mb-6 w-full">
+          <CardHeader className="bg-slate-200 p-4 sm:p-6 flex flex-col space-y-1.5">
             <CardTitle className="flex items-center gap-2"><UploadCloud className="w-5 h-5" /> Upload OASIS Assessment</CardTitle>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-6 space-y-4">
+          <CardContent className="bg-slate-100 pt-0 p-4 sm:p-6 space-y-4">
             <div>
               <Label htmlFor="oasis-file">OASIS Assessment File (PDF, Image)</Label>
               <Input id="oasis-file" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} />
@@ -104,7 +104,7 @@ export default function OASIS() {
             <Button
               onClick={analyzeOASIS}
               disabled={isAnalyzing || !oasisFile && !narrative.trim()}
-              className="w-full">
+              className="w-full touch-target h-11 sm:h-12">
 
               {isAnalyzing ?
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</> :
