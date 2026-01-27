@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Phone, Video, Shield, Target, Activity, ListTodo, ChevronRight } from "lucide-react";
+import { Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Shield, Target, Activity, ListTodo, ChevronRight } from "lucide-react";
 import { formatEastern, todayEastern } from "../components/utils/timezone";
 import { isValid } from "date-fns";
 import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
