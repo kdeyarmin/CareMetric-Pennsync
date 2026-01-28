@@ -78,9 +78,9 @@ export default function Layout({ children, currentPageName }) {
   } : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800" style={{background: 'linear-gradient(135deg, #e5e7eb 0%, #d1d5db 50%, #9ca3af 100%)'}}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 dark:from-slate-900 dark:via-blue-950/30 dark:to-slate-900">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+      <header className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-4">
             <Button
@@ -91,17 +91,17 @@ export default function Layout({ children, currentPageName }) {
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <img 
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
                 alt="CareMetric AI" 
-                className="h-8 w-8 rounded-lg"
+                className="h-9 w-9 rounded-xl shadow-sm"
               />
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white">CareMetric AI</h1>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">CareMetric AI</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400 hidden md:block">
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-400 hidden md:block">
               {currentPageName}
             </span>
           </div>
@@ -113,22 +113,22 @@ export default function Layout({ children, currentPageName }) {
         <aside
           className={`${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transition-transform duration-300 lg:translate-x-0 overflow-y-auto`}
+          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-r border-slate-200/60 dark:border-slate-800/60 transition-transform duration-300 lg:translate-x-0 overflow-y-auto shadow-lg lg:shadow-none`}
         >
-          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="p-4 border-b border-slate-200/60 dark:border-slate-800/60">
             <div className="flex items-center gap-2">
               <img 
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
                 alt="CareMetric AI" 
-                className="h-6 w-6 rounded"
+                className="h-7 w-7 rounded-lg shadow-sm"
               />
-              <span className="font-bold text-gray-900 dark:text-white">CareMetric AI</span>
+              <span className="font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">CareMetric AI</span>
             </div>
           </div>
           <nav className="p-4 space-y-6">
             {navigationGroups.map((group) => (
               <div key={group.title}>
-                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                   {group.title}
                 </h3>
                 <div className="space-y-1">
