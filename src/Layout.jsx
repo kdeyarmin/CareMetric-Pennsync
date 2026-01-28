@@ -92,7 +92,11 @@ export default function Layout({ children, currentPageName }) {
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
             <div className="flex items-center gap-2">
-              <Activity className="h-6 w-6 text-blue-600" />
+              <img 
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
+                alt="CareMetric AI" 
+                className="h-8 w-8 rounded-lg"
+              />
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">CareMetric AI</h1>
             </div>
           </div>
@@ -113,7 +117,11 @@ export default function Layout({ children, currentPageName }) {
         >
           <div className="p-4 border-b border-gray-200 dark:border-gray-800">
             <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-blue-600" />
+              <img 
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
+                alt="CareMetric AI" 
+                className="h-6 w-6 rounded"
+              />
               <span className="font-bold text-gray-900 dark:text-white">CareMetric AI</span>
             </div>
           </div>
