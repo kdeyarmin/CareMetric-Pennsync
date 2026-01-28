@@ -76,15 +76,16 @@ Deno.serve(async (req) => {
         p.context === pattern.context
       );
 
-      if (existing) {
-        // Update frequency
-        await base44.asServiceRole.entities.LearnedFormatPattern.update(existing.id, {
-          frequency_count: (existing.frequency_count || 1) + 1,
-          examples: [...(existing.examples || []), pattern.example].slice(-5) // Keep last 5
-        });
-      } else {
-        // Create new pattern
-        await base44.asServiceRole.entities.LearnedFormatPattern.create({
+      try {
+        if (existing) {
+          // Update frequency
+          await base44.asServiceRole.entities.LearnedFormatPattern.update(existing.id, {
+            frequency_count: (existing.frequency_count || 1) + 1,
+            examples: [...(existing.examples || []), pattern.example].slice(-5) // Keep last 5
+          });
+        } else {
+          // Create new pattern
+          await base44.asServiceRole.entities.LearnedFormatPattern.create({
           provider_email: user.email,
           provider_name: user.full_name,
           provider_type: provider_type,
@@ -93,9 +94,12 @@ Deno.serve(async (req) => {
           examples: [pattern.example],
           frequency_count: 1,
           last_applied: new Date().toISOString()
-        });
-      }
-    }
+          });
+          }
+          } catch (patternError) {
+          console.error(`Failed to save pattern ${pattern.pattern_type}:`, patternError);
+          }
+          }
 
     return Response.json({
       success: true,
