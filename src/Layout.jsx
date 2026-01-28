@@ -79,7 +79,7 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-50/95 via-blue-50/95 to-slate-50/95 dark:from-slate-900/95 dark:via-slate-800/95 dark:to-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-700/60 shadow-soft">
+      <header className="sticky top-0 z-50 bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 backdrop-blur-md border-b border-blue-400/30 dark:border-blue-600/30 shadow-elevated">
         <div className="flex items-start justify-between px-4 py-2">
           <div className="flex items-start gap-4 flex-1">
             <Button
@@ -97,7 +97,7 @@ export default function Layout({ children, currentPageName }) {
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hidden sm:block">
+            <span className="text-xs sm:text-sm font-medium text-white/90 hidden sm:block">
               {currentPageName}
             </span>
           </div>
@@ -118,7 +118,7 @@ export default function Layout({ children, currentPageName }) {
                     alt="CareMetric AI" 
                     className="h-8 w-8 rounded-lg shadow-sm"
                   />
-                  <span className="hidden sm:inline font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">CareMetric AI</span>
+                  <span className="hidden sm:inline font-bold text-white">CareMetric AI</span>
                 </div>
           </div>
           <nav className="p-4 space-y-6">
