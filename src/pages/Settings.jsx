@@ -119,28 +119,28 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">Settings</h1>
-         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage your account and data preferences</p>
-      </div>
+    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+      <div className="mb-3 sm:mb-4 md:mb-6">
+         <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-1 sm:mb-2">Settings</h1>
+          <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-400">Manage account and preferences</p>
+       </div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <div className="w-full overflow-x-auto mb-6">
-          <TabsList className="grid w-max min-w-full grid-cols-2 sm:grid-cols-4 gap-1 p-1">
-            <TabsTrigger value="profile" className="text-xs sm:text-sm px-2 sm:px-4">Profile</TabsTrigger>
-            <TabsTrigger value="notifications" className="text-xs sm:text-sm px-2 sm:px-4">Notifications</TabsTrigger>
-            <TabsTrigger value="security" className="text-xs sm:text-sm px-2 sm:px-4">Security</TabsTrigger>
-            <TabsTrigger value="advanced" className="text-xs sm:text-sm px-2 sm:px-4">Advanced</TabsTrigger>
-          </TabsList>
-        </div>
+         <div className="w-full overflow-x-auto mb-3 sm:mb-4 md:mb-6">
+           <TabsList className="grid w-max min-w-full grid-cols-2 sm:grid-cols-4 gap-1 p-1">
+             <TabsTrigger value="profile" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Profile</TabsTrigger>
+             <TabsTrigger value="notifications" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Alerts</TabsTrigger>
+             <TabsTrigger value="security" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Security</TabsTrigger>
+             <TabsTrigger value="advanced" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Advanced</TabsTrigger>
+           </TabsList>
+         </div>
 
-        <TabsContent value="profile" className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
+         <TabsContent value="profile" className="space-y-3 sm:space-y-4 md:space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Profile Info */}
         <Card className="w-full max-w-full overflow-hidden">
-          <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-slate-900 dark:text-slate-100">
+          <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+              <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base lg:text-lg text-slate-900 dark:text-slate-100">
                 <User className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
                 Profile Information
               </CardTitle>
@@ -184,7 +184,7 @@ export default function Settings() {
               }
             </div>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-6 space-y-3 sm:space-y-4">
+          <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
             {isEditing ?
             <>
                 <div>
@@ -377,15 +377,15 @@ export default function Settings() {
 
         {/* Two-Factor Authentication */}
         <Card className="w-full max-w-full overflow-hidden">
-          <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
-            <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
-              <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+          <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
+            <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base text-slate-900 dark:text-slate-100">
+              <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
               Two-Factor Authentication
             </CardTitle>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-6">
-            <div className="space-y-4">
-              <p className="text-slate-600 dark:text-slate-400">
+          <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6">
+            <div className="space-y-3 sm:space-y-4">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                 Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
               </p>
               <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-4">
@@ -413,22 +413,22 @@ export default function Settings() {
         <ReferralCodeDisplay user={currentUser} />
         </TabsContent>
 
-        <TabsContent value="notifications" className="space-y-4 sm:space-y-6">
-          <NotificationPreferences currentUser={currentUser} />
-        </TabsContent>
+        <TabsContent value="notifications" className="space-y-3 sm:space-y-4 md:space-y-6">
+           <NotificationPreferences currentUser={currentUser} />
+         </TabsContent>
 
-        <TabsContent value="security" className="space-y-4 sm:space-y-6">
+         <TabsContent value="security" className="space-y-3 sm:space-y-4 md:space-y-6">
           {/* Two-Factor Authentication */}
           <Card className="w-full max-w-full overflow-hidden">
-            <CardHeader className="bg-slate-200 p-6 flex flex-col space-y-1.5">
-              <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
-                <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+            <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
+              <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base text-slate-900 dark:text-slate-100">
+                <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
                 Two-Factor Authentication
               </CardTitle>
             </CardHeader>
-            <CardContent className="bg-slate-100 pt-0 p-6">
-              <div className="space-y-4">
-                <p className="text-slate-600 dark:text-slate-400">
+            <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6">
+              <div className="space-y-3 sm:space-y-4">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                   Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
                 </p>
                 <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-4">
@@ -469,7 +469,7 @@ export default function Settings() {
           <DataRetentionSettings />
         </TabsContent>
 
-        <TabsContent value="advanced" className="space-y-4 sm:space-y-6">
+        <TabsContent value="advanced" className="space-y-3 sm:space-y-4 md:space-y-6">
           {/* Provider Profile */}
           <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
 
@@ -494,14 +494,14 @@ export default function Settings() {
 
           {/* Danger Zone */}
           <Card className="border-slate-300 dark:border-slate-600 w-full max-w-full overflow-hidden">
-           <CardHeader className="bg-slate-200 dark:bg-slate-800">
-             <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100 text-base sm:text-lg">
+           <CardHeader className="bg-slate-200 dark:bg-slate-800 p-3 sm:p-4 md:p-6">
+             <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100 text-xs sm:text-sm md:text-base lg:text-lg">
               <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
               Danger Zone
             </CardTitle>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-4 p-6 sm:pt-6">
-            <div className="space-y-3 sm:space-y-4">
+          <CardContent className="bg-slate-100 pt-3 sm:pt-4 p-3 sm:p-4 md:p-6">
+            <div className="space-y-3">
               <div>
                 <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-2 text-sm sm:text-base">Delete Account</h3>
                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
