@@ -124,7 +124,7 @@ export default function Layout({ children, currentPageName }) {
           <div className="p-4 border-b border-slate-200/40 dark:border-slate-700/40">
             <div className="flex items-center gap-2">
                     <img 
-                      src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
+                      src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/879f7eecc_caremetric_ai_logo-removebg-preview.png" 
                       alt="CareMetric AI" 
                       className="h-8 w-8 rounded-lg shadow-sm"
                     />
