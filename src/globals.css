@@ -90,25 +90,9 @@ css
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
     }
-    body { /* Modified: Removed background, added z-index */
+    body {
       @apply text-foreground;
-      position: relative;
-      z-index: 1;
     }
-    body::before { /* Modified: z-index changed */
-      content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: 
-        radial-gradient(ellipse at 20% 30%, rgba(156, 163, 175, 0.08) 0%, transparent 40%),
-        radial-gradient(ellipse at 80% 70%, rgba(107, 114, 128, 0.06) 0%, transparent 40%);
-      pointer-events: none;
-      z-index: -1;
-    }
-    /* The previous comment "Removed: .dark body and .dark body::before from this layer based on outline" referred to changes already reflected in the outline. */
   }
 
 /* Mobile optimizations */
