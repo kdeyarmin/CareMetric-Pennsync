@@ -6,11 +6,11 @@
 
 @layer base {
   html, body, #root {
-    background: linear-gradient(to bottom right, #94a3b8, #60a5fa, #64748b) !important;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%) !important;
     min-height: 100vh;
   }
   .dark html, .dark body, .dark #root {
-    background: linear-gradient(to bottom right, #0f172a, #1e3a8a, #1e293b) !important;
+    background: linear-gradient(135deg, #0f172a 0%, #1a1f35 50%, #1e293b 100%) !important;
     min-height: 100vh;
   }
   :root {
