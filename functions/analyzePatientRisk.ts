@@ -11,13 +11,15 @@ Deno.serve(async (req) => {
 
     const { patient_id } = await req.json();
 
-    // Fetch patient data
-    const patient = await base44.entities.Patient.filter({ id: patient_id });
-    if (!patient || patient.length === 0) {
-      return Response.json({ error: 'Patient not found' }, { status: 404 });
+    if (!patient_id) {
+      return Response.json({ error: 'patient_id is required' }, { status: 400 });
     }
 
-    const patientData = patient[0];
+    // Fetch patient data
+    const patientData = await base44.entities.Patient.get(patient_id);
+    if (!patientData) {
+      return Response.json({ error: 'Patient not found' }, { status: 404 });
+    }
 
     // Fetch related data
     const [visits, carePlans, incidents] = await Promise.all([
@@ -99,11 +101,11 @@ Provide a detailed risk analysis including:
       }
     });
 
-    // Calculate overall risk score
+    // Calculate overall risk score with null checks
     const overallScore = Math.round(
-      (riskAnalysis.hospitalization_risk.score + 
-       riskAnalysis.fall_risk.score + 
-       riskAnalysis.readmission_risk.score) / 3
+      ((riskAnalysis?.hospitalization_risk?.score || 0) + 
+       (riskAnalysis?.fall_risk?.score || 0) + 
+       (riskAnalysis?.readmission_risk?.score || 0)) / 3
     );
 
     return Response.json({

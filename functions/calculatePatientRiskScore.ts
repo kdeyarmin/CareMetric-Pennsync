@@ -17,6 +17,10 @@ Deno.serve(async (req) => {
 
     // Fetch comprehensive patient data
     const patient = await base44.entities.Patient.get(patient_id);
+
+    if (!patient) {
+      return Response.json({ error: 'Patient not found' }, { status: 404 });
+    }
     
     // Fetch recent visits with vitals trends
     const visits = await base44.entities.Visit.filter(
@@ -181,16 +185,20 @@ Be evidence-based and specific to THIS patient's actual data.`,
       }
     });
 
-    // Store risk assessment in patient record
-    await base44.asServiceRole.entities.Patient.update(patient_id, {
-      risk_assessment: {
-        score: response.overall_risk_score,
-        level: response.risk_level,
-        last_calculated: new Date().toISOString(),
-        confidence: response.confidence_score,
-        category_scores: response.category_scores
-      }
-    });
+    // Store risk assessment in patient record with null checks
+    try {
+      await base44.asServiceRole.entities.Patient.update(patient_id, {
+        risk_assessment: {
+          score: response?.overall_risk_score || 0,
+          level: response?.risk_level || 'low',
+          last_calculated: new Date().toISOString(),
+          confidence: response?.confidence_score || 0,
+          category_scores: response?.category_scores || {}
+        }
+      });
+    } catch (updateError) {
+      console.error('Failed to store risk assessment:', updateError);
+    }
 
     return Response.json({
       success: true,
