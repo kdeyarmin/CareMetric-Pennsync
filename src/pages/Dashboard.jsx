@@ -332,7 +332,7 @@ export default function Dashboard() {
                 {tasks.slice(0, 5).map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    className="flex items-start gap-3 p-3 rounded-lg border bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors card-hover"
                   >
                     <div className={`mt-1 ${task.status === "completed" ? "text-green-500" : "text-gray-400"}`}>
                       <CheckCircle className="h-4 w-4" />
@@ -428,7 +428,7 @@ export default function Dashboard() {
                 {patientAlerts.slice(0, 5).map((alert) => (
                   <div
                     key={alert.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    className="flex items-start gap-3 p-3 rounded-lg border bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors card-hover"
                   >
                     <Bell className="h-4 w-4 text-blue-500 mt-1" />
                     <div className="flex-1 min-w-0">
