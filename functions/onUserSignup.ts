@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { Resend } from 'npm:resend@4.0.0';
 
 Deno.serve(async (req) => {
@@ -182,7 +182,7 @@ CareMetric AI Team`
 
     return Response.json({ 
       success: true, 
-      message: `Notification sent to ${admins.length} admin(s)` 
+      message: `User account created. Notification sent to ${admins?.length || 0} admin(s)` 
     });
 
   } catch (error) {
