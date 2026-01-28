@@ -6,15 +6,12 @@ css
 @tailwind utilities;
 
 @layer base {
-  html, body, #root { /* Modified: Added #root */
-    background: transparent !important;
+  html, body, #root {
+    background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 50%, #9ca3af 100%);
   }
-  body { /* Added: Body background moved here with !important */
-        background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 50%, #9ca3af 100%) !important;
-      }
-      .dark body { /* Added: Dark body background moved here with !important */
-        background: linear-gradient(135deg, #1f2937 0%, #374151 50%, #4b5563 100%) !important;
-      }
+  .dark html, .dark body, .dark #root {
+    background: linear-gradient(135deg, #1f2937 0%, #374151 50%, #4b5563 100%);
+  }
   :root {
     --background: 0 0% 100%;
     --foreground: 220 12% 18%;
@@ -111,7 +108,7 @@ css
       pointer-events: none;
       z-index: -1;
     }
-    /* Removed: .dark body and .dark body::before from this layer based on outline */
+    /* The previous comment "Removed: .dark body and .dark body::before from this layer based on outline" referred to changes already reflected in the outline. */
   }
 
 /* Mobile optimizations */
