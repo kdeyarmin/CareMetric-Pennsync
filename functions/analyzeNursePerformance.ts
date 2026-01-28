@@ -17,15 +17,23 @@ Deno.serve(async (req) => {
     const dateThreshold = new Date();
     dateThreshold.setDate(dateThreshold.getDate() - date_range_days);
 
-    // Fetch all relevant data
-    const [activities, recommendations, audits, visits, patients, carePlans, incidents] = await Promise.all([
+    // Fetch all relevant data (filter to reduce data fetch)
+    const [activities, recommendations, audits, visits] = await Promise.all([
       base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail }),
       base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }),
       base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
-      base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }),
-      base44.asServiceRole.entities.Patient.list(),
-      base44.asServiceRole.entities.CarePlan.list(),
-      base44.asServiceRole.entities.Incident.list()
+      base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail })
+    ]);
+
+    // Only fetch carePlans and incidents for patients the nurse worked with
+    const nursePatientIds = [...new Set(visits.map(v => v.patient_id).filter(Boolean))];
+    const [carePlans, incidents] = await Promise.all([
+      nursePatientIds.length > 0 
+        ? base44.asServiceRole.entities.CarePlan.filter({ patient_id: { $in: nursePatientIds } })
+        : Promise.resolve([]),
+      nursePatientIds.length > 0
+        ? base44.asServiceRole.entities.Incident.filter({ patient_id: { $in: nursePatientIds } })
+        : Promise.resolve([])
     ]);
 
     // Calculate metrics
@@ -207,7 +215,8 @@ ${recommendations.filter(r => !r.addressed).slice(0, 5).map(r => `- ${r.recommen
 
 Provide actionable, specific insights. Be constructive and focus on growth opportunities.`;
 
-    const insights = await base44.asServiceRole.integrations.Core.InvokeLLM({
+    try {
+      var insights = await base44.integrations.Core.InvokeLLM({
       prompt: analysisPrompt,
       response_json_schema: {
         type: 'object',
@@ -246,9 +255,20 @@ Provide actionable, specific insights. Be constructive and focus on growth oppor
           performance_grade: { type: 'string' }
         }
       }
-    });
+      });
+      } catch (insightError) {
+      console.error('Failed to generate AI insights:', insightError);
+      insights = {
+        strengths: [],
+        areas_for_improvement: [],
+        training_recommendations: [],
+        risk_factors: [],
+        overall_summary: 'Unable to generate AI insights',
+        performance_grade: 'U'
+      };
+      }
 
-    // Calculate skill gaps
+      // Calculate skill gaps
     const skillGaps = [];
     
     // Low compliance = documentation training needed
@@ -309,8 +329,7 @@ Provide actionable, specific insights. Be constructive and focus on growth oppor
     }
 
     // Calculate patient outcomes
-    const nursePatientIds = [...new Set(visits.map(v => v.patient_id))];
-    const nurseCarePlans = carePlans.filter(cp => nursePatientIds.includes(cp.patient_id));
+    const nurseCarePlans = carePlans;
     const metGoals = nurseCarePlans.filter(cp => cp.status === 'met').length;
     const activeGoals = nurseCarePlans.filter(cp => cp.status === 'active').length;
     
@@ -367,35 +386,48 @@ QUALITY INDICATORS:
 
 Assess burnout risk (low/moderate/high) and provide specific warning signs and recommendations.`;
 
-    const burnoutAnalysis = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: burnoutPrompt,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          risk_level: { 
-            type: 'string',
-            enum: ['low', 'moderate', 'high', 'critical']
-          },
-          risk_score: { type: 'number' },
-          warning_signs: {
-            type: 'array',
-            items: { type: 'string' }
-          },
-          contributing_factors: {
-            type: 'array',
-            items: { type: 'string' }
-          },
-          recommendations: {
-            type: 'array',
-            items: { type: 'string' }
-          },
-          positive_indicators: {
-            type: 'array',
-            items: { type: 'string' }
+    let burnoutAnalysis;
+    try {
+      burnoutAnalysis = await base44.integrations.Core.InvokeLLM({
+        prompt: burnoutPrompt,
+        response_json_schema: {
+          type: 'object',
+          properties: {
+            risk_level: { 
+              type: 'string',
+              enum: ['low', 'moderate', 'high', 'critical']
+            },
+            risk_score: { type: 'number' },
+            warning_signs: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            contributing_factors: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            recommendations: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            positive_indicators: {
+              type: 'array',
+              items: { type: 'string' }
+            }
           }
         }
-      }
-    });
+      });
+    } catch (burnoutError) {
+      console.error('Failed to analyze burnout risk:', burnoutError);
+      burnoutAnalysis = {
+        risk_level: 'moderate',
+        risk_score: 50,
+        warning_signs: [],
+        contributing_factors: [],
+        recommendations: [],
+        positive_indicators: []
+      };
+    }
 
     return Response.json({
       success: true,
