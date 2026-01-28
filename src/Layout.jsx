@@ -95,9 +95,9 @@ export default function Layout({ children, currentPageName }) {
               <img 
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
                 alt="CareMetric AI" 
-                className="h-11 w-11 rounded-xl shadow-sm"
+                className="h-10 sm:h-11 w-10 sm:w-11 rounded-xl shadow-sm"
               />
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">CareMetric AI</h1>
+              <h1 className="hidden sm:block text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">CareMetric AI</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -117,13 +117,13 @@ export default function Layout({ children, currentPageName }) {
         >
           <div className="p-4 border-b border-slate-200/60 dark:border-slate-800/60">
             <div className="flex items-center gap-2">
-              <img 
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
-                alt="CareMetric AI" 
-                className="h-7 w-7 rounded-lg shadow-sm"
-              />
-              <span className="font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">CareMetric AI</span>
-            </div>
+                  <img 
+                    src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
+                    alt="CareMetric AI" 
+                    className="h-8 w-8 rounded-lg shadow-sm"
+                  />
+                  <span className="hidden sm:inline font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">CareMetric AI</span>
+                </div>
           </div>
           <nav className="p-4 space-y-6">
             {navigationGroups.map((group) => (

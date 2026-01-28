@@ -107,20 +107,20 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
+    <div className="p-4 sm:p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-700 to-blue-900 bg-clip-text text-transparent">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-700 to-blue-900 bg-clip-text text-transparent">
             Welcome back, {user?.full_name || "User"}
           </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
             Here's what's happening with your patients today
           </p>
         </div>
         {user?.role === "admin" && (
           <Link to={createPageUrl("AdminDashboard")}>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="touch-target">
               <Award className="h-4 w-4 mr-2" />
               Admin Panel
             </Button>
@@ -154,7 +154,7 @@ export default function Dashboard() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
@@ -246,13 +246,13 @@ export default function Dashboard() {
       {/* Quick Actions */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="text-lg sm:text-base flex items-center gap-2">
             <Activity className="h-5 w-5" />
             Quick Actions
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-8">
+          <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
             {quickActions.map((action) => (
               <Link key={action.page} to={createPageUrl(action.page)}>
                 <Button
@@ -271,7 +271,7 @@ export default function Dashboard() {
       </Card>
 
       {/* High Risk Patients & Recent Activity */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         {/* High Risk Patients */}
         <Card>
           <CardHeader>
@@ -357,7 +357,7 @@ export default function Dashboard() {
       </div>
 
       {/* Compliance Alerts & Patient Alerts */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         {/* Compliance Alerts */}
         <Card>
           <CardHeader>
