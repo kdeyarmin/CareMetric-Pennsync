@@ -247,10 +247,15 @@ export default function Dashboard() {
 
   const fullName = currentUser?.full_name || 'there';
 
+  console.log('Dashboard state:', { userLoading, userError, currentUser });
+
   if (userLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-600 dark:border-slate-400 border-t-transparent"></div>
+      <div className="flex items-center justify-center min-h-screen bg-transparent">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-slate-600 dark:text-slate-400">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -258,11 +263,12 @@ export default function Dashboard() {
   if (userError) {
     console.error('User error:', userError);
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold mb-2 text-red-600">Error Loading User</h2>
-          <p className="text-gray-600">{userError.message || 'Unknown error'}</p>
-          <Button onClick={() => window.location.reload()} className="mt-4">Reload</Button>
+      <div className="flex items-center justify-center min-h-screen bg-transparent">
+        <div className="text-center p-6">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2 text-red-600 dark:text-red-400">Error Loading Dashboard</h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-4">{userError.message || 'Unknown error'}</p>
+          <Button onClick={() => window.location.reload()} className="bg-blue-600 hover:bg-blue-700">Reload Page</Button>
         </div>
       </div>
     );
@@ -270,10 +276,12 @@ export default function Dashboard() {
 
   if (!currentUser) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold mb-2">Not Authenticated</h2>
-          <p className="text-gray-600">Please log in to access the dashboard.</p>
+      <div className="flex items-center justify-center min-h-screen bg-transparent">
+        <div className="text-center p-6">
+          <User className="w-16 h-16 text-slate-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2 text-slate-800 dark:text-slate-200">Not Authenticated</h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-4">Please log in to access the dashboard.</p>
+          <Button onClick={() => base44.auth.redirectToLogin()} className="bg-blue-600 hover:bg-blue-700">Log In</Button>
         </div>
       </div>
     );
