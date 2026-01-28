@@ -89,7 +89,7 @@ export default function Layout({ children, currentPageName }) {
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="lg:hidden"
             >
-              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {sidebarOpen ? <X className="h-5 w-5 transition-transform duration-300" /> : <Menu className="h-5 w-5 transition-transform duration-300" />}
             </Button>
             <div className="flex items-center gap-3">
               <img 
