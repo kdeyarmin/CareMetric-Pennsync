@@ -133,15 +133,15 @@ export default function Layout({ children, currentPageName }) {
                     return (
                       <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
                         <Button
-                          variant={isActive ? "secondary" : "ghost"}
-                          className={`w-full justify-start gap-3 rounded-lg transition-all duration-200 ${
+                          variant="ghost"
+                          className={`w-full justify-start gap-3 rounded-lg transition-all duration-300 border-l-4 pl-3 ${
                             isActive
-                              ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg dark:from-blue-600 dark:to-blue-700"
-                              : "text-slate-700 dark:text-slate-300 hover:bg-white/10 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-blue-400"
+                              ? "border-l-blue-600 bg-blue-50/50 text-blue-700 font-medium dark:border-l-blue-400 dark:bg-blue-900/20 dark:text-blue-200"
+                              : "border-l-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 hover:text-blue-600 dark:hover:bg-slate-700/30 dark:hover:text-blue-300"
                           }`}
                         >
                           <item.icon className="h-4 w-4" />
-                          <span className="text-sm">{item.name}</span>
+                          <span className="text-sm font-medium">{item.name}</span>
                         </Button>
                       </Link>
                     );
@@ -161,15 +161,15 @@ export default function Layout({ children, currentPageName }) {
                      return (
                        <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
                          <Button
-                           variant={isActive ? "secondary" : "ghost"}
-                           className={`w-full justify-start gap-3 rounded-lg transition-all duration-200 ${
+                           variant="ghost"
+                           className={`w-full justify-start gap-3 rounded-lg transition-all duration-300 border-l-4 pl-3 ${
                              isActive
-                               ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg dark:from-blue-600 dark:to-blue-700"
-                               : "text-slate-700 dark:text-slate-300 hover:bg-white/10 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-blue-400"
+                               ? "border-l-blue-600 bg-blue-50/50 text-blue-700 font-medium dark:border-l-blue-400 dark:bg-blue-900/20 dark:text-blue-200"
+                               : "border-l-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 hover:text-blue-600 dark:hover:bg-slate-700/30 dark:hover:text-blue-300"
                            }`}
                          >
                            <item.icon className="h-4 w-4" />
-                           <span className="text-sm">{item.name}</span>
+                           <span className="text-sm font-medium">{item.name}</span>
                          </Button>
                        </Link>
                      );
