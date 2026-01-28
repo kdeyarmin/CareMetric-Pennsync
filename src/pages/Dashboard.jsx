@@ -257,7 +257,7 @@ export default function Dashboard() {
               <Link key={action.page} to={createPageUrl(action.page)}>
                 <Button
                   variant="outline"
-                  className="w-full h-20 flex flex-col items-center justify-center gap-2 hover:shadow-lg transition-all"
+                  className="w-full h-20 flex flex-col items-center justify-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:shadow-md transition-all rounded-lg card-hover"
                 >
                   <div className={`p-2 rounded-lg ${action.color}`}>
                     <action.icon className="h-5 w-5 text-white" />
@@ -296,7 +296,7 @@ export default function Dashboard() {
               <div className="space-y-3">
                 {highRiskPatients.map((patient) => (
                   <Link key={patient.id} to={createPageUrl("PatientDetails") + `?id=${patient.id}`}>
-                    <div className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 hover:shadow-md transition-all card-hover">
                       <div>
                         <p className="text-sm font-medium">{patient.full_name}</p>
                         <p className="text-xs text-muted-foreground">
@@ -380,7 +380,7 @@ export default function Dashboard() {
                 {complianceViolations.slice(0, 5).map((violation) => (
                   <div
                     key={violation.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-900/20"
+                    className="flex items-start gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-900/20 card-hover"
                   >
                     <AlertTriangle className="h-4 w-4 text-orange-500 mt-1" />
                     <div className="flex-1 min-w-0">
