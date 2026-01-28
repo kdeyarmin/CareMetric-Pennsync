@@ -26,6 +26,16 @@ import {
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  // Determine current page name from URL path
+  const getPageNameFromPath = (pathname) => {
+    const path = pathname.split('/').filter(Boolean)[0];
+    if (!path) return 'Dashboard';
+    return path.charAt(0).toUpperCase() + path.slice(1);
+  };
+
+  const displayPageName = getPageNameFromPath(location.pathname) || currentPageName || 'Dashboard';
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
