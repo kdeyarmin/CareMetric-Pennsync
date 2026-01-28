@@ -90,13 +90,13 @@ export default function Layout({ children, currentPageName }) {
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-0.5">
               <img 
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
                 alt="CareMetric AI" 
                 className="h-10 sm:h-11 w-10 sm:w-11 rounded-xl flex-shrink-0"
               />
-              <h1 className="text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent whitespace-nowrap">CareMetric AI</h1>
+              <h1 className="text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent whitespace-nowrap leading-tight">CareMetric AI</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
