@@ -47,7 +47,6 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import About from './pages/About';
 import Admin from './pages/Admin';
 import AdminBillingPackages from './pages/AdminBillingPackages';
 import AdminDashboard from './pages/AdminDashboard';
@@ -64,9 +63,6 @@ import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import AnalyticsHub from './pages/AnalyticsHub';
 import AuditLog from './pages/AuditLog';
 import AutomaticCarePlans from './pages/AutomaticCarePlans';
-import Billing from './pages/Billing';
-import BillingInvoicing from './pages/BillingInvoicing';
-import BillingModule from './pages/BillingModule';
 import BillingOptimization from './pages/BillingOptimization';
 import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
@@ -86,12 +82,8 @@ import DataArchivalManagement from './pages/DataArchivalManagement';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
 import DocumentAnalyzer from './pages/DocumentAnalyzer';
-import DocumentCenter from './pages/DocumentCenter';
-import DocumentGenerator from './pages/DocumentGenerator';
-import DocumentManagement from './pages/DocumentManagement';
 import DocumentSignatureTemplates from './pages/DocumentSignatureTemplates';
 import DocumentationTraining from './pages/DocumentationTraining';
-import DuplicatePatients from './pages/DuplicatePatients';
 import EULA from './pages/EULA';
 import EnterpriseAdminDashboard from './pages/EnterpriseAdminDashboard';
 import FAQ from './pages/FAQ';
@@ -99,9 +91,7 @@ import Features from './pages/Features';
 import HIPAACompliance from './pages/HIPAACompliance';
 import HIPAAComplianceDashboard from './pages/HIPAAComplianceDashboard';
 import HealthRecords from './pages/HealthRecords';
-import Home from './pages/Home';
 import HowToGuide from './pages/HowToGuide';
-import ImportPatients from './pages/ImportPatients';
 import ManageNewFeatures from './pages/ManageNewFeatures';
 import MedicalScribe from './pages/MedicalScribe';
 import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
@@ -125,9 +115,7 @@ import OASISDocumentationReview from './pages/OASISDocumentationReview';
 import OASISRevenueAnalysis from './pages/OASISRevenueAnalysis';
 import OASISReview from './pages/OASISReview';
 import OfflineMode from './pages/OfflineMode';
-import Onboarding from './pages/Onboarding';
 import PatientAlerts from './pages/PatientAlerts';
-import PatientBilling from './pages/PatientBilling';
 import PatientDashboard from './pages/PatientDashboard';
 import PatientDataManagement from './pages/PatientDataManagement';
 import PatientDetails from './pages/PatientDetails';
@@ -137,7 +125,6 @@ import PatientEducationGenerator from './pages/PatientEducationGenerator';
 import PatientEducationHub from './pages/PatientEducationHub';
 import PatientEducationLibrary from './pages/PatientEducationLibrary';
 import PatientMessaging from './pages/PatientMessaging';
-import PatientOnboarding from './pages/PatientOnboarding';
 import PatientRecordDashboard from './pages/PatientRecordDashboard';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
@@ -148,7 +135,6 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import ProviderSettings from './pages/ProviderSettings';
 import ProviderTrainingHub from './pages/ProviderTrainingHub';
 import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
-import ReferralProcessor from './pages/ReferralProcessor';
 import RegulatoryCompliance from './pages/RegulatoryCompliance';
 import RegulatoryUpdates from './pages/RegulatoryUpdates';
 import SecurityAudit from './pages/SecurityAudit';
@@ -178,7 +164,6 @@ import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
-    "About": About,
     "Admin": Admin,
     "AdminBillingPackages": AdminBillingPackages,
     "AdminDashboard": AdminDashboard,
@@ -195,9 +180,6 @@ export const PAGES = {
     "AnalyticsHub": AnalyticsHub,
     "AuditLog": AuditLog,
     "AutomaticCarePlans": AutomaticCarePlans,
-    "Billing": Billing,
-    "BillingInvoicing": BillingInvoicing,
-    "BillingModule": BillingModule,
     "BillingOptimization": BillingOptimization,
     "CareCoordinationDashboard": CareCoordinationDashboard,
     "CarePlanManagement": CarePlanManagement,
@@ -217,12 +199,8 @@ export const PAGES = {
     "DeleteAccount": DeleteAccount,
     "DocumentAnalysisHistory": DocumentAnalysisHistory,
     "DocumentAnalyzer": DocumentAnalyzer,
-    "DocumentCenter": DocumentCenter,
-    "DocumentGenerator": DocumentGenerator,
-    "DocumentManagement": DocumentManagement,
     "DocumentSignatureTemplates": DocumentSignatureTemplates,
     "DocumentationTraining": DocumentationTraining,
-    "DuplicatePatients": DuplicatePatients,
     "EULA": EULA,
     "EnterpriseAdminDashboard": EnterpriseAdminDashboard,
     "FAQ": FAQ,
@@ -230,9 +208,7 @@ export const PAGES = {
     "HIPAACompliance": HIPAACompliance,
     "HIPAAComplianceDashboard": HIPAAComplianceDashboard,
     "HealthRecords": HealthRecords,
-    "Home": Home,
     "HowToGuide": HowToGuide,
-    "ImportPatients": ImportPatients,
     "ManageNewFeatures": ManageNewFeatures,
     "MedicalScribe": MedicalScribe,
     "MedicareComplianceDashboard": MedicareComplianceDashboard,
@@ -256,9 +232,7 @@ export const PAGES = {
     "OASISRevenueAnalysis": OASISRevenueAnalysis,
     "OASISReview": OASISReview,
     "OfflineMode": OfflineMode,
-    "Onboarding": Onboarding,
     "PatientAlerts": PatientAlerts,
-    "PatientBilling": PatientBilling,
     "PatientDashboard": PatientDashboard,
     "PatientDataManagement": PatientDataManagement,
     "PatientDetails": PatientDetails,
@@ -268,7 +242,6 @@ export const PAGES = {
     "PatientEducationHub": PatientEducationHub,
     "PatientEducationLibrary": PatientEducationLibrary,
     "PatientMessaging": PatientMessaging,
-    "PatientOnboarding": PatientOnboarding,
     "PatientRecordDashboard": PatientRecordDashboard,
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
@@ -279,7 +252,6 @@ export const PAGES = {
     "ProviderSettings": ProviderSettings,
     "ProviderTrainingHub": ProviderTrainingHub,
     "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
-    "ReferralProcessor": ReferralProcessor,
     "RegulatoryCompliance": RegulatoryCompliance,
     "RegulatoryUpdates": RegulatoryUpdates,
     "SecurityAudit": SecurityAudit,
