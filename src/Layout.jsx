@@ -156,7 +156,7 @@ export default function Layout({ children, currentPageName }) {
             
             {adminNavigationGroup && (
               <div key={adminNavigationGroup.title}>
-                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                   {adminNavigationGroup.title}
                 </h3>
                 <div className="space-y-1">
