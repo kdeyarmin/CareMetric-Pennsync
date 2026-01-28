@@ -13,9 +13,16 @@ Deno.serve(async (req) => {
     const { patient_id, auto_create_tasks = false } = await req.json();
 
     // Fetch active patients (or specific patient if provided)
-    const patients = patient_id 
-      ? [await base44.entities.Patient.get(patient_id)]
-      : await base44.entities.Patient.filter({ status: 'active' });
+    let patients = [];
+    if (patient_id) {
+      const patient = await base44.entities.Patient.get(patient_id);
+      if (!patient) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
+      }
+      patients = [patient];
+    } else {
+      patients = await base44.entities.Patient.filter({ status: 'active' });
+    }
 
     const allAlerts = [];
     const allTasks = [];
