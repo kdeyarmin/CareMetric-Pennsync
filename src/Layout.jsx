@@ -113,7 +113,7 @@ export default function Layout({ children, currentPageName }) {
         <aside
           className={`${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-r border-slate-200/60 dark:border-slate-800/60 transition-transform duration-300 lg:translate-x-0 overflow-y-auto shadow-lg lg:shadow-none`}
+          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/40 dark:border-slate-700/40 transition-all duration-300 ease-out lg:translate-x-0 overflow-y-auto shadow-xl lg:shadow-none`}
         >
           <div className="p-4 border-b border-slate-200/60 dark:border-slate-800/60">
             <div className="flex items-center gap-2">
