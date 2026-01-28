@@ -155,52 +155,52 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
+        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
-            <Users className="h-4 w-4 text-blue-600" />
+            <Users className="h-4 w-4 text-blue-700" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalPatients}</div>
-            <p className="text-xs text-muted-foreground">Active in your care</p>
+            <p className="text-xs text-slate-600">Active in your care</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-50 to-blue-100 border-slate-300">
+        <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Upcoming Visits</CardTitle>
-            <Calendar className="h-4 w-4 text-blue-600" />
+            <Calendar className="h-4 w-4 text-blue-700" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{upcomingVisits}</div>
-            <p className="text-xs text-muted-foreground">Next 7 days</p>
+            <p className="text-xs text-slate-600">Next 7 days</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
+        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-            <Clock className="h-4 w-4 text-blue-600" />
+            <Clock className="h-4 w-4 text-blue-700" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pendingTasks}</div>
-            <p className="text-xs text-muted-foreground">To be completed</p>
+            <p className="text-xs text-slate-600">To be completed</p>
             {completedTasksToday > 0 && (
-              <p className="text-xs text-green-600 mt-1">
+              <p className="text-xs text-green-700 mt-1">
                 +{completedTasksToday} completed today
               </p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-50 to-blue-100 border-slate-300">
+        <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Compliance Status</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-blue-600" />
+            <AlertTriangle className="h-4 w-4 text-blue-700" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{openViolations}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-slate-600">
               {openViolations === 0 ? "All clear!" : "Open alerts"}
             </p>
           </CardContent>
@@ -209,36 +209,36 @@ export default function Dashboard() {
 
       {/* Secondary Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
+        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Care Plans</CardTitle>
-            <Target className="h-4 w-4 text-blue-600" />
+            <Target className="h-4 w-4 text-blue-700" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{activeCarePlans}</div>
-            <p className="text-xs text-muted-foreground">In progress</p>
+            <p className="text-xs text-slate-600">In progress</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-50 to-blue-100 border-slate-300">
+        <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">High Risk Patients</CardTitle>
-            <AlertCircle className="h-4 w-4 text-blue-600" />
+            <AlertCircle className="h-4 w-4 text-blue-700" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{highRiskPatients.length}</div>
-            <p className="text-xs text-muted-foreground">Require attention</p>
+            <p className="text-xs text-slate-600">Require attention</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
+        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Patient Alerts</CardTitle>
-            <Bell className="h-4 w-4 text-blue-600" />
+            <Bell className="h-4 w-4 text-blue-700" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{patientAlerts.length}</div>
-            <p className="text-xs text-muted-foreground">Active notifications</p>
+            <p className="text-xs text-slate-600">Active notifications</p>
           </CardContent>
         </Card>
       </div>
