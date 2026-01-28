@@ -307,43 +307,52 @@ export default function Dashboard() {
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header with integrated banners */}
-      <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading header</div>}>
-        <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
-      </ErrorBoundary>
+      <div className="mb-6">
+        <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading header</div>}>
+          <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
+        </ErrorBoundary>
+      </div>
 
       {/* Proactive Insights */}
-      <ErrorBoundary>
-        <ProactiveInsights userEmail={currentUser?.email} />
-      </ErrorBoundary>
+      <div className="mb-6">
+        <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg mb-4">Insights temporarily unavailable</div>}>
+          <ProactiveInsights userEmail={currentUser?.email} />
+        </ErrorBoundary>
+      </div>
 
       {/* Quick Stats */}
-      <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading stats</div>}>
-        <QuickStatsSummary stats={{
-          activePatients: patients?.length || 0,
-          completedVisits: visits?.length || 0,
-          pendingAlerts: 0,
-          upcomingVisits: 0
-        }} />
-      </ErrorBoundary>
+      <div className="mb-6">
+        <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading stats</div>}>
+          <QuickStatsSummary stats={{
+            activePatients: patients?.length || 0,
+            completedVisits: visits?.length || 0,
+            pendingAlerts: 0,
+            upcomingVisits: 0
+          }} />
+        </ErrorBoundary>
+      </div>
 
       {/* Workflow Shortcuts */}
-      <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg mb-4">Error loading shortcuts</div>}>
-        <WorkflowShortcuts />
-      </ErrorBoundary>
+      <div className="mb-6">
+        <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg mb-4">Error loading shortcuts</div>}>
+          <WorkflowShortcuts />
+        </ErrorBoundary>
+      </div>
 
       {/* Skill Gap & Risk Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
-        <ErrorBoundary>
+        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg">Skill gap data unavailable</div>}>
           <SkillGapWidget userEmail={currentUser?.email} />
         </ErrorBoundary>
-        <ErrorBoundary>
+        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg">Patient risk data unavailable</div>}>
           <HighRiskPatientsList limit={8} showAnalyzeButton={true} />
         </ErrorBoundary>
       </div>
 
       {/* My Tasks Widget */}
       {canAccessWidget('tasks') && (
-        <ErrorBoundary>
+        <div className="mb-6">
+        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg mb-4">Tasks unavailable</div>}>
         <Card className="hover-lift">
           <CardHeader className="bg-slate-100 pb-2 p-6 space-y-1.5 flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -435,6 +444,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
         </ErrorBoundary>
+        </div>
       )}
 
 
@@ -449,7 +459,8 @@ export default function Dashboard() {
 
       {/* Critical Alerts & Compliance Section - only for providers with access */}
       {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) && (
-        <ErrorBoundary>
+        <div className="mb-6">
+        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg">Alerts & compliance section unavailable</div>}>
         <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden mb-4">
             {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
@@ -481,6 +492,7 @@ export default function Dashboard() {
           </ErrorBoundary>
           </DashboardSection>
           </ErrorBoundary>
+          </div>
       )}
 
           </div>
