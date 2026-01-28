@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Users, FileText, ListTodo, Activity, Plus, Calendar, AlertCircle, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
-import { createPageUrl } from "./utils";
+import { createPageUrl } from "../utils";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
