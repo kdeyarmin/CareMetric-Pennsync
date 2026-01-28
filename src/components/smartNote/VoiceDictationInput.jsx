@@ -50,9 +50,9 @@ export default function VoiceDictationInput({ value, onChange, placeholder }) {
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
       setIsRecording(false);
       setIsProcessing(true);
+      mediaRecorderRef.current.stop();
     }
   };
 
@@ -83,13 +83,13 @@ export default function VoiceDictationInput({ value, onChange, placeholder }) {
       // Append to existing text
       const newText = value ? `${value}\n\n${transcribedText}` : transcribedText;
       onChange({ target: { value: newText } });
-      
+
+      setIsProcessing(false);
       toast.success("Transcription complete!");
     } catch (error) {
       console.error('Transcription error:', error);
-      toast.error("Failed to transcribe audio. Please try again.");
-    } finally {
       setIsProcessing(false);
+      toast.error("Failed to transcribe audio. Please try again.");
     }
   };
 
