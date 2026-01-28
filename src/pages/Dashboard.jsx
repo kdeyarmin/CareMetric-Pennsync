@@ -56,10 +56,12 @@ export default function Dashboard() {
     queryKey: ['currentUser'],
     queryFn: async () => {
       try {
-        return await base44.auth.me();
+        const user = await base44.auth.me();
+        console.log('User loaded:', user);
+        return user;
       } catch (error) {
         console.error('Auth error:', error);
-        return null;
+        throw error;
       }
     }
   });
@@ -87,17 +89,33 @@ export default function Dashboard() {
   const { data: visits, isLoading, error: visitsError } = useQuery({
     queryKey: ['todayVisits'],
     queryFn: async () => {
-      const today = todayEastern();
-      return base44.entities.Visit.filter({ visit_date: today });
+      try {
+        const today = todayEastern();
+        const data = await base44.entities.Visit.filter({ visit_date: today });
+        return data || [];
+      } catch (error) {
+        console.error('Visits error:', error);
+        return [];
+      }
     },
     initialData: [],
+    enabled: !!currentUser,
     staleTime: 60000
   });
 
   const { data: patients, error: patientsError } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(500, '-updated_date'),
+    queryFn: async () => {
+      try {
+        const data = await base44.entities.Patient.list(500, '-updated_date');
+        return data || [];
+      } catch (error) {
+        console.error('Patients error:', error);
+        return [];
+      }
+    },
     initialData: [],
+    enabled: !!currentUser,
     staleTime: 300000
   });
 
