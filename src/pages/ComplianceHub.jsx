@@ -395,26 +395,26 @@ export default function ComplianceHub() {
           {/* Training Tab */}
           <TabsContent value="training" className="space-y-4 sm:space-y-6 w-full">
             {/* Training Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
               <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-                <CardContent className="p-4">
-                  <Award className="w-8 h-8 text-purple-600 mb-2" />
-                  <p className="text-2xl font-bold">{completedModules.length}</p>
-                  <p className="text-xs text-gray-600">Modules Completed</p>
+                <CardContent className="p-3 sm:p-4">
+                  <Award className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 mb-1 sm:mb-2 flex-shrink-0" />
+                  <p className="text-xl sm:text-2xl font-bold">{completedModules.length}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-600 truncate">Modules Done</p>
                 </CardContent>
               </Card>
               <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-                <CardContent className="p-4">
-                  <TrendingUp className="w-8 h-8 text-blue-600 mb-2" />
-                  <p className="text-2xl font-bold">{avgTrainingScore}%</p>
-                  <p className="text-xs text-gray-600">Avg Quiz Score</p>
+                <CardContent className="p-3 sm:p-4">
+                  <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 mb-1 sm:mb-2 flex-shrink-0" />
+                  <p className="text-xl sm:text-2xl font-bold">{avgTrainingScore}%</p>
+                  <p className="text-[10px] sm:text-xs text-gray-600 truncate">Avg Quiz</p>
                 </CardContent>
               </Card>
               <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-                <CardContent className="p-4">
-                  <Brain className="w-8 h-8 text-green-600 mb-2" />
-                  <p className="text-2xl font-bold">{trainingProgress.length}</p>
-                  <p className="text-xs text-gray-600">Total Sessions</p>
+                <CardContent className="p-3 sm:p-4">
+                  <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 mb-1 sm:mb-2 flex-shrink-0" />
+                  <p className="text-xl sm:text-2xl font-bold">{trainingProgress.length}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-600 truncate">Sessions</p>
                 </CardContent>
               </Card>
             </div>

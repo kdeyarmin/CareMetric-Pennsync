@@ -713,19 +713,19 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
-        <div className="w-full overflow-x-auto">
-          <TabsList className="w-max min-w-full grid-cols-none gap-1 h-auto p-1 sm:p-2">
-            <TabsTrigger value="overview" className="text-xs sm:text-sm py-2 whitespace-nowrap">📊 Overview</TabsTrigger>
-            <TabsTrigger value="analytics" className="text-xs sm:text-sm py-2 whitespace-nowrap">📈 Analytics</TabsTrigger>
-            <TabsTrigger value="agencies" className="text-xs sm:text-sm py-2 whitespace-nowrap">🏢 Agencies</TabsTrigger>
-            <TabsTrigger value="revenue" className="text-xs sm:text-sm py-2 whitespace-nowrap">💰 Revenue</TabsTrigger>
-            <TabsTrigger value="users" className="text-xs sm:text-sm py-2 whitespace-nowrap">👥 Users</TabsTrigger>
-            <TabsTrigger value="compliance" className="text-xs sm:text-sm py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
-            <TabsTrigger value="security" className="text-xs sm:text-sm py-2 whitespace-nowrap">🔒 Security</TabsTrigger>
-            <TabsTrigger value="training" className="text-xs sm:text-sm py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
-            <TabsTrigger value="system-health" className="text-xs sm:text-sm py-2 whitespace-nowrap">⚡ System</TabsTrigger>
-            <TabsTrigger value="activity" className="text-xs sm:text-sm py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
-            <TabsTrigger value="export" className="text-xs sm:text-sm py-2 whitespace-nowrap">📥 Export</TabsTrigger>
+        <div className="w-full overflow-x-auto scrollbar-hide mb-4">
+          <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
+            <TabsTrigger value="overview" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📊 Overview</TabsTrigger>
+            <TabsTrigger value="analytics" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📈 Analytics</TabsTrigger>
+            <TabsTrigger value="agencies" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🏢 Agencies</TabsTrigger>
+            <TabsTrigger value="revenue" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">💰 Revenue</TabsTrigger>
+            <TabsTrigger value="users" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">👥 Users</TabsTrigger>
+            <TabsTrigger value="compliance" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
+            <TabsTrigger value="security" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🔒 Security</TabsTrigger>
+            <TabsTrigger value="training" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
+            <TabsTrigger value="system-health" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">⚡ System</TabsTrigger>
+            <TabsTrigger value="activity" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
+            <TabsTrigger value="export" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📥 Export</TabsTrigger>
           </TabsList>
         </div>
 
@@ -761,46 +761,44 @@ export default function AdminDashboard() {
             payments={allPayments}
           />
           {/* Revenue Overview Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <DollarSign className="w-8 h-8 text-slate-700 dark:text-slate-400" />
-                  <TrendingUp className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+           <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+             <CardContent className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1 sm:mb-2">
+                 <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 flex-shrink-0" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
-                <p className="text-xs text-gray-600">Monthly Recurring Revenue</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
+                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Monthly Recurring</p>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <CreditCard className="w-8 h-8 text-blue-600" />
-                  <Badge className="bg-blue-600">{subscriptionStats.activeSubscriptions}</Badge>
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1 sm:mb-2">
+                  <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
-                <p className="text-xs text-gray-600">Active Subscriptions</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
+                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Active Subs</p>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <TrendingUp className="w-8 h-8 text-purple-600" />
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1 sm:mb-2">
+                  <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 flex-shrink-0" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(2)}</p>
-                <p className="text-xs text-gray-600">Total Revenue (All Time)</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(2)}</p>
+                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Total Revenue</p>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <Users className="w-8 h-8 text-orange-600" />
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1 sm:mb-2">
+                  <Users className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600 flex-shrink-0" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">${subscriptionStats.avgRevenuePerUser.toFixed(2)}</p>
-                <p className="text-xs text-gray-600">Avg Revenue Per User</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.avgRevenuePerUser.toFixed(2)}</p>
+                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Avg/User</p>
               </CardContent>
             </Card>
           </div>

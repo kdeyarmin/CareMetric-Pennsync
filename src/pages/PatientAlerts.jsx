@@ -132,19 +132,19 @@ export default function PatientAlerts() {
         </p>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
         {/* Main Alerts Dashboard */}
         <div className="lg:col-span-2 min-w-0 max-w-full overflow-hidden">
           <PatientAlertsDashboard showAllPatients={true} />
         </div>
 
         {/* Sidebar - Analyzer & Quick Actions */}
-        <div className="space-y-6 min-w-0 max-w-full overflow-hidden">
+        <div className="space-y-3 sm:space-y-4 md:space-y-6 min-w-0 max-w-full overflow-hidden">
           {/* Patient Selector for Analysis */}
           <Card className="border-slate-300 dark:border-slate-600">
-            <CardHeader className="py-3 sm:py-4 bg-slate-100 dark:bg-slate-800">
-              <CardTitle className="text-sm sm:text-base flex items-center gap-2 text-slate-900 dark:text-slate-100">
-                <Brain className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
+            <CardHeader className="p-3 sm:p-4 bg-slate-100 dark:bg-slate-800">
+              <CardTitle className="text-xs sm:text-sm md:text-base flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                <Brain className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-slate-700 dark:text-slate-400" />
                 Analyze Patient
               </CardTitle>
             </CardHeader>
@@ -244,12 +244,12 @@ export default function PatientAlerts() {
 
           {/* Quick Tips */}
           <Card className="bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-600">
-            <CardContent className="p-4">
-              <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
-                <Zap className="w-4 h-4" />
+            <CardContent className="p-3 sm:p-4">
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2 text-xs sm:text-sm">
+                <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
                 Alert Response Guide
               </h3>
-              <ul className="text-sm text-slate-800 dark:text-slate-200 space-y-2">
+              <ul className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 space-y-2">
                 <li className="flex items-start gap-2">
                   <Badge className="bg-slate-700 text-white text-xs shrink-0">Critical</Badge>
                   <span>Immediate action within 1 hour</span>
