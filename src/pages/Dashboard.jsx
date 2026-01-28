@@ -286,12 +286,17 @@ export default function Dashboard() {
 
       {/* Skill Gap & Risk Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
-        <SkillGapWidget userEmail={currentUser?.email} />
-        <HighRiskPatientsList limit={8} showAnalyzeButton={true} />
+        <ErrorBoundary>
+          <SkillGapWidget userEmail={currentUser?.email} />
+        </ErrorBoundary>
+        <ErrorBoundary>
+          <HighRiskPatientsList limit={8} showAnalyzeButton={true} />
+        </ErrorBoundary>
       </div>
 
       {/* My Tasks Widget */}
-      {canAccessWidget('tasks') &&
+      {canAccessWidget('tasks') && (
+        <ErrorBoundary>
         <Card className="hover-lift">
           <CardHeader className="bg-slate-100 pb-2 p-6 space-y-1.5 flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -382,7 +387,8 @@ export default function Dashboard() {
             }
           </CardContent>
         </Card>
-        }
+        </ErrorBoundary>
+      )}
 
 
 
@@ -395,7 +401,8 @@ export default function Dashboard() {
 
 
       {/* Critical Alerts & Compliance Section - only for providers with access */}
-      {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) &&
+      {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) && (
+        <ErrorBoundary>
         <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden mb-4">
             {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) &&
@@ -422,7 +429,8 @@ export default function Dashboard() {
             }}
           />
           </DashboardSection>
-          }
+          </ErrorBoundary>
+      )}
 
           </div>
           </PullToRefresh>

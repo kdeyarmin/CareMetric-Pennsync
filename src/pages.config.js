@@ -33,6 +33,7 @@ import ComplianceHub from './pages/ComplianceHub';
 import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
 import ComplianceTraining from './pages/ComplianceTraining';
 import Dashboard from './pages/Dashboard';
+import DataArchivalManagement from './pages/DataArchivalManagement';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
 import DocumentAnalyzer from './pages/DocumentAnalyzer';
@@ -113,6 +114,7 @@ import StaffTrainingHub from './pages/StaffTrainingHub';
 import StaffTrainingModule from './pages/StaffTrainingModule';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
+import SystemHealthMonitoring from './pages/SystemHealthMonitoring';
 import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
 import TemplateLibrary from './pages/TemplateLibrary';
@@ -124,8 +126,6 @@ import UserActivityLog from './pages/UserActivityLog';
 import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
 import WorkflowAutomation from './pages/WorkflowAutomation';
-import SystemHealthMonitoring from './pages/SystemHealthMonitoring';
-import DataArchivalManagement from './pages/DataArchivalManagement';
 import __Layout from './Layout.jsx';
 
 
@@ -165,6 +165,7 @@ export const PAGES = {
     "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
     "ComplianceTraining": ComplianceTraining,
     "Dashboard": Dashboard,
+    "DataArchivalManagement": DataArchivalManagement,
     "DeleteAccount": DeleteAccount,
     "DocumentAnalysisHistory": DocumentAnalysisHistory,
     "DocumentAnalyzer": DocumentAnalyzer,
@@ -245,6 +246,7 @@ export const PAGES = {
     "StaffTrainingModule": StaffTrainingModule,
     "SubscriptionPlans": SubscriptionPlans,
     "Support": Support,
+    "SystemHealthMonitoring": SystemHealthMonitoring,
     "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
     "TemplateLibrary": TemplateLibrary,
@@ -256,8 +258,6 @@ export const PAGES = {
     "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
     "WorkflowAutomation": WorkflowAutomation,
-    "SystemHealthMonitoring": SystemHealthMonitoring,
-    "DataArchivalManagement": DataArchivalManagement,
 }
 
 export const pagesConfig = {
