@@ -824,18 +824,18 @@ export default function SmartNoteAssistant() {
 
                 {/* Vital Signs */}
                 <div className="w-full">
-                  <Label className="text-xs sm:text-sm font-medium">Vital Signs</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 mt-2">
+                 <Label className="text-xs sm:text-sm font-medium">Vital Signs</Label>
+                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
                     <div>
-                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Temperature (°F)</label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="98.6"
-                        value={vitalSigns.temperature}
-                        onChange={(e) => setVitalSigns({...vitalSigns, temperature: e.target.value})}
-                        className="h-9"
-                      />
+                     <label className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 block mb-1">Temp (°F)</label>
+                     <Input
+                       type="number"
+                       step="0.1"
+                       placeholder="98.6"
+                       value={vitalSigns.temperature}
+                       onChange={(e) => setVitalSigns({...vitalSigns, temperature: e.target.value})}
+                       className="h-9 text-sm"
+                     />
                     </div>
                     <div>
                       <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Heart Rate (bpm)</label>

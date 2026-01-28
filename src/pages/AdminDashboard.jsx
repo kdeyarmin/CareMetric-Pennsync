@@ -500,70 +500,70 @@ export default function AdminDashboard() {
       </div>
 
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.activeUsers}/{stats.totalUsers}</Badge>
+          <CardContent className="p-2 sm:p-3">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[9px] sm:text-[10px]">{stats.activeUsers}/{stats.totalUsers}</Badge>
             </div>
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.activeUsers}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">Active Users</p>
+            <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">{stats.activeUsers}</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-600 dark:text-slate-400">Active Users</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[10px] sm:text-xs">{stats.activePatients}</Badge>
+          <CardContent className="p-2 sm:p-3">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <Badge className="bg-slate-600 dark:bg-slate-500 text-slate-100 text-[9px] sm:text-[10px]">{stats.activePatients}</Badge>
             </div>
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalPatients}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">Total Patients</p>
+            <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalPatients}</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-600 dark:text-slate-400">Total Patients</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3">
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.upcomingAppointments}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">Upcoming Appts</p>
+          <CardContent className="p-2 sm:p-3">
+            <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">{stats.upcomingAppointments}</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-600 dark:text-slate-400">Upcoming Appts</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3">
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.completedVisits}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">Visits ({dateRange}d)</p>
+          <CardContent className="p-2 sm:p-3">
+            <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">{stats.completedVisits}</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-600 dark:text-slate-400">Visits ({dateRange}d)</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3">
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.activeCarePlans}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">Active Care Plans</p>
+          <CardContent className="p-2 sm:p-3">
+            <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">{stats.activeCarePlans}</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-600 dark:text-slate-400">Active Care Plans</p>
           </CardContent>
         </Card>
         </motion.div>
 
         <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 300 }}>
           <Card className="bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover-lift">
-          <CardContent className="p-3">
-            <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalIncidents}</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">Total Incidents</p>
+          <CardContent className="p-2 sm:p-3">
+            <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">{stats.totalIncidents}</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-600 dark:text-slate-400">Total Incidents</p>
           </CardContent>
         </Card>
         </motion.div>
       </div>
 
       {/* Secondary Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -673,40 +673,40 @@ export default function AdminDashboard() {
       )}
 
       {/* Quick Action Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
         <Link to={createPageUrl("UserManagement")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-blue-200 bg-blue-50 dark:bg-blue-950 h-full">
-            <CardContent className="p-4 text-center">
-              <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <p className="font-medium text-sm">Manage Users</p>
-              <p className="text-xs text-slate-600 mt-1">{stats.pendingUsers} pending</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-blue-200 bg-blue-50 dark:bg-blue-950 h-full touch-target">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <Users className="w-6 sm:w-8 h-6 sm:h-8 text-blue-600 mx-auto mb-1 sm:mb-2" />
+              <p className="font-medium text-xs sm:text-sm">Manage Users</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">{stats.pendingUsers} pending</p>
             </CardContent>
           </Card>
         </Link>
         <Link to={createPageUrl("AgencyTemplates")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 bg-purple-50 dark:bg-purple-950 h-full">
-            <CardContent className="p-4 text-center">
-              <FileText className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <p className="font-medium text-sm">Agency Templates</p>
-              <p className="text-xs text-slate-600 mt-1">Documentation</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 bg-purple-50 dark:bg-purple-950 h-full touch-target">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <FileText className="w-6 sm:w-8 h-6 sm:h-8 text-purple-600 mx-auto mb-1 sm:mb-2" />
+              <p className="font-medium text-xs sm:text-sm">Agency Templates</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">Documentation</p>
             </CardContent>
           </Card>
         </Link>
         <Link to={createPageUrl("AuditLog")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-amber-200 bg-amber-50 dark:bg-amber-950 h-full">
-            <CardContent className="p-4 text-center">
-              <Shield className="w-8 h-8 text-amber-600 mx-auto mb-2" />
-              <p className="font-medium text-sm">Audit Trail</p>
-              <p className="text-xs text-slate-600 mt-1">HIPAA Logs</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-amber-200 bg-amber-50 dark:bg-amber-950 h-full touch-target">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <Shield className="w-6 sm:w-8 h-6 sm:h-8 text-amber-600 mx-auto mb-1 sm:mb-2" />
+              <p className="font-medium text-xs sm:text-sm">Audit Trail</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">HIPAA Logs</p>
             </CardContent>
           </Card>
         </Link>
         <Link to={createPageUrl("EnterpriseAdminDashboard")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 bg-green-50 dark:bg-green-950 h-full">
-            <CardContent className="p-4 text-center">
-              <Brain className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <p className="font-medium text-sm">Enterprise</p>
-              <p className="text-xs text-slate-600 mt-1">Agency Settings</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 bg-green-50 dark:bg-green-950 h-full touch-target">
+            <CardContent className="p-3 sm:p-4 text-center">
+              <Brain className="w-6 sm:w-8 h-6 sm:h-8 text-green-600 mx-auto mb-1 sm:mb-2" />
+              <p className="font-medium text-xs sm:text-sm">Enterprise</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">Agency Settings</p>
             </CardContent>
           </Card>
         </Link>
@@ -761,7 +761,7 @@ export default function AdminDashboard() {
             payments={allPayments}
           />
           {/* Revenue Overview Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -1482,7 +1482,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Quick Action Links */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
             <Link to={createPageUrl("UserManagement")}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full active:scale-95">
                 <CardContent className="p-3 sm:p-4 text-center touch-target flex flex-col items-center justify-center">

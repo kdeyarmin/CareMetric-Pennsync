@@ -126,12 +126,14 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="advanced">Advanced</TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto mb-6">
+          <TabsList className="grid w-max min-w-full grid-cols-2 sm:grid-cols-4 gap-1 p-1">
+            <TabsTrigger value="profile" className="text-xs sm:text-sm px-2 sm:px-4">Profile</TabsTrigger>
+            <TabsTrigger value="notifications" className="text-xs sm:text-sm px-2 sm:px-4">Notifications</TabsTrigger>
+            <TabsTrigger value="security" className="text-xs sm:text-sm px-2 sm:px-4">Security</TabsTrigger>
+            <TabsTrigger value="advanced" className="text-xs sm:text-sm px-2 sm:px-4">Advanced</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="profile" className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Profile Info */}
