@@ -10,9 +10,9 @@ Deno.serve(async (req) => {
         }
 
         // Get all completed visits that don't have an associated invoice
-        const visits = await base44.entities.Visit.list();
-        const invoices = await base44.entities.Invoice.list();
-        const serviceCodes = await base44.entities.ServiceCode.list();
+        const visits = await base44.asServiceRole.entities.Visit.list();
+        const invoices = await base44.asServiceRole.entities.Invoice.list();
+        const serviceCodes = await base44.asServiceRole.entities.ServiceCode.list();
 
         const visitIds = new Set(invoices.flatMap(inv => inv.visit_ids));
         const completedVisitsNeedingInvoice = visits.filter(v => 
@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
 
         for (const visit of completedVisitsNeedingInvoice) {
              // Get patient data
-             const patient = await base44.entities.Patient.get(visit.patient_id);
+             const patient = await base44.asServiceRole.entities.Patient.get(visit.patient_id);
 
              if (!patient) continue;
 
@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
                 amount: serviceCode.default_price
             };
 
-            await base44.entities.Invoice.create({
+            await base44.asServiceRole.entities.Invoice.create({
                 patient_id: visit.patient_id,
                 visit_ids: [visit.id],
                 invoice_number: invoiceNumber,

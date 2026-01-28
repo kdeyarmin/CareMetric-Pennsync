@@ -66,9 +66,9 @@ Return JSON array of line items.`;
       }
     });
 
-    const lineItems = (aiResponse.line_items || []).map(item => ({
+    const lineItems = (aiResponse?.line_items || []).map(item => ({
        ...item,
-       total: item.quantity * item.unit_price
+       total: (item?.quantity || 0) * (item?.unit_price || 0)
      }));
 
     const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
