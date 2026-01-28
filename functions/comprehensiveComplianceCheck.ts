@@ -33,8 +33,7 @@ Deno.serve(async (req) => {
     } = await req.json();
 
     // Fetch patient data for context
-    const patient = patientId ? await base44.entities.Patient.filter({ id: patientId }) : null;
-    const patientData = patient?.[0];
+    const patientData = patientId ? await base44.entities.Patient.get(patientId) : null;
 
     // Build compliance prompt with provider customization
     let complianceContext = `Analyze this ${providerType} clinical note for compliance.`;
@@ -266,7 +265,7 @@ Flag any:
         if (!roughNote) {
           return { remaining_gaps: [] };
         }
-        return base44.integrations.Core.InvokeLLM({
+        return await base44.integrations.Core.InvokeLLM({
         prompt: `Compare rough note to enhanced note and identify remaining documentation gaps.
 
 ROUGH NOTE: ${roughNote}

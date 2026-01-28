@@ -121,13 +121,14 @@ Be specific and actionable. Focus on risks that are preventable with proper inte
         const createdRisks = [];
         for (const risk of risks) {
             // Check if similar active risk already exists
-            const similarRisk = existingRisks.find(er => 
-                er.risk_type === risk.risk_type && 
-                er.status === 'active'
-            );
+             const similarRisk = existingRisks.find(er => 
+                 er.risk_type === risk.risk_type && 
+                 er.status === 'active'
+             );
 
-            if (!similarRisk) {
-                const newRisk = await base44.asServiceRole.entities.PatientRiskAssessment.create({
+             if (!similarRisk) {
+                 try {
+                     const newRisk = await base44.asServiceRole.entities.PatientRiskAssessment.create({
                     patient_id,
                     risk_type: risk.risk_type,
                     risk_level: risk.risk_level,
@@ -141,8 +142,10 @@ Be specific and actionable. Focus on risks that are preventable with proper inte
                     ai_model_version: 'v1.0'
                 });
                 createdRisks.push(newRisk);
-            }
-        }
+                } catch (riskError) {
+                console.error(`Failed to create risk assessment for ${risk.risk_type}:`, riskError);
+                }
+                }
 
         return Response.json({ 
             success: true,
