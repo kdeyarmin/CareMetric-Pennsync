@@ -279,6 +279,8 @@ export default function Dashboard() {
     );
   }
 
+  console.log('Rendering Dashboard with user:', currentUser);
+
   return (
     <>
       {currentUser && !currentUser.onboarding_completed && (
