@@ -32,7 +32,6 @@ import ComplianceDashboard from './pages/ComplianceDashboard';
 import ComplianceHub from './pages/ComplianceHub';
 import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
 import ComplianceTraining from './pages/ComplianceTraining';
-import Dashboard from './pages/Dashboard';
 import DataArchivalManagement from './pages/DataArchivalManagement';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
@@ -164,7 +163,6 @@ export const PAGES = {
     "ComplianceHub": ComplianceHub,
     "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
     "ComplianceTraining": ComplianceTraining,
-    "Dashboard": Dashboard,
     "DataArchivalManagement": DataArchivalManagement,
     "DeleteAccount": DeleteAccount,
     "DocumentAnalysisHistory": DocumentAnalysisHistory,
@@ -261,7 +259,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "Dashboard",
+    mainPage: "About",
     Pages: PAGES,
     Layout: __Layout,
 };
