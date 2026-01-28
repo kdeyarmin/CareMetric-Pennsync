@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
         let invoicesGenerated = 0;
 
-        for (const visit of completedVisitsNeedingVisit) {
+        for (const visit of completedVisitsNeedingInvoice) {
             // Get patient data
             const [patients] = await Promise.all([
                 base44.entities.Patient.filter({ id: visit.patient_id })

@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
     ];
 
     // Create templates
-    const createdTemplates = await base44.entities.DocumentTemplate.bulkCreate(defaultTemplates);
+    const createdTemplates = await base44.asServiceRole.entities.DocumentTemplate.bulkCreate(defaultTemplates);
 
     return Response.json({
       success: true,
