@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 
 export default function Layout({ children, currentPageName }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
