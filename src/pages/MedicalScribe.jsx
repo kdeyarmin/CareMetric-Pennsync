@@ -136,26 +136,26 @@ export default function MedicalScribe() {
           </AlertDescription>
         </Alert>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6 w-full overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 w-full overflow-hidden">
           {/* Setup Section */}
-          <div className="lg:col-span-1 space-y-4">
+          <div className="lg:col-span-1 space-y-3 sm:space-y-4">
             <Card className="lg:sticky lg:top-4 overflow-hidden">
-              <CardHeader className="bg-slate-200 pb-2 p-6 flex flex-col space-y-1.5 sm:pb-3">
+              <CardHeader className="bg-slate-200 pb-2 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
                 <CardTitle className="text-sm sm:text-base">Setup</CardTitle>
               </CardHeader>
-              <CardContent className="bg-slate-100 pt-0 p-6 space-y-3 sm:space-y-4">
+              <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
                 <div>
-                   <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
-                   <Select value={selectedPatientId} onValueChange={(id) => {
-                      if (id === '__add_new__') {
-                        setShowAddPatientDialog(true);
-                        return;
-                      }
-                      setSelectedPatientId(id);
-                    }}>
-                     <SelectTrigger className="h-10 text-sm">
-                       <SelectValue placeholder="Select patient..." />
-                     </SelectTrigger>
+                  <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
+                  <Select value={selectedPatientId} onValueChange={(id) => {
+                     if (id === '__add_new__') {
+                       setShowAddPatientDialog(true);
+                       return;
+                     }
+                     setSelectedPatientId(id);
+                   }}>
+                    <SelectTrigger className="h-10 sm:h-11 text-sm">
+                      <SelectValue placeholder="Select patient..." />
+                    </SelectTrigger>
                      <SelectContent>
                        <SelectItem value="__add_new__" className="text-sm font-bold text-slate-700 dark:text-slate-300 border-b mb-1">
                          ➕ Add New Patient

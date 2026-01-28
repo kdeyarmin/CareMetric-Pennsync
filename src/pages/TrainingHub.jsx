@@ -127,49 +127,49 @@ export default function TrainingHub() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 mb-4 sm:mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 mb-4 sm:mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-3 sm:p-4 text-center">
+          <CardContent className="p-3 text-center">
             <p className="text-xl sm:text-2xl font-bold text-blue-700">{completed.length}</p>
             <p className="text-[10px] sm:text-xs text-blue-600 mt-1">Completed</p>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-amber-700">{inProgress.length}</p>
-            <p className="text-xs text-amber-600 mt-1">In Progress</p>
+          <CardContent className="p-3 text-center">
+            <p className="text-xl sm:text-2xl font-bold text-amber-700">{inProgress.length}</p>
+            <p className="text-[10px] sm:text-xs text-amber-600 mt-1">In Progress</p>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-purple-700">{completionRate}%</p>
-            <p className="text-xs text-purple-600 mt-1">Completion</p>
+          <CardContent className="p-3 text-center">
+            <p className="text-xl sm:text-2xl font-bold text-purple-700">{completionRate}%</p>
+            <p className="text-[10px] sm:text-xs text-purple-600 mt-1">Completion</p>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-700">{earnedCerts.length}</p>
-            <p className="text-xs text-green-600 mt-1">Certifications</p>
+          <CardContent className="p-3 text-center">
+            <p className="text-xl sm:text-2xl font-bold text-green-700">{earnedCerts.length}</p>
+            <p className="text-[10px] sm:text-xs text-green-600 mt-1">Certifications</p>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-orange-700">{activeGaps}</p>
-            <p className="text-xs text-orange-600 mt-1">Skill Gaps</p>
+          <CardContent className="p-3 text-center">
+            <p className="text-xl sm:text-2xl font-bold text-orange-700">{activeGaps}</p>
+            <p className="text-[10px] sm:text-xs text-orange-600 mt-1">Skill Gaps</p>
           </CardContent>
         </Card>
       </div>
 
       <Tabs defaultValue={activeView} onValueChange={setActiveView} className="w-full">
-        <div className="w-full overflow-x-auto mb-4">
-          <TabsList className="flex w-max min-w-full gap-1 p-1">
-            <TabsTrigger value="my-training" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">My Training</TabsTrigger>
-            <TabsTrigger value="assigned" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Assigned ({assigned.length + inProgress.length})</TabsTrigger>
-            <TabsTrigger value="ai-recommendations" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">AI Recommendations</TabsTrigger>
-            <TabsTrigger value="library" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Library</TabsTrigger>
-            <TabsTrigger value="skills" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Skill Gaps</TabsTrigger>
-            <TabsTrigger value="badges" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Badges</TabsTrigger>
-            {isAdmin && <TabsTrigger value="staff" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Staff Progress</TabsTrigger>}
+        <div className="w-full overflow-x-auto mb-4 scrollbar-hide">
+          <TabsList className="inline-flex w-max min-w-full gap-1 p-1">
+            <TabsTrigger value="my-training" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">My Training</TabsTrigger>
+            <TabsTrigger value="assigned" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Assigned ({assigned.length + inProgress.length})</TabsTrigger>
+            <TabsTrigger value="ai-recommendations" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">AI Recs</TabsTrigger>
+            <TabsTrigger value="library" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Library</TabsTrigger>
+            <TabsTrigger value="skills" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Skills</TabsTrigger>
+            <TabsTrigger value="badges" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Badges</TabsTrigger>
+            {isAdmin && <TabsTrigger value="staff" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Staff</TabsTrigger>}
           </TabsList>
         </div>
 

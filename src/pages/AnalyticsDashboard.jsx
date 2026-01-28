@@ -455,8 +455,8 @@ export default function AnalyticsDashboard() {
 
       {/* Filters */}
       <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <CardContent className="p-3 sm:p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div>
               <Label className="text-xs mb-1">Date Range</Label>
               <Select value={dateRange} onValueChange={handleDateRangeChange}>
@@ -504,7 +504,7 @@ export default function AnalyticsDashboard() {
       </Card>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
         <PerformanceMetricsCard
           title="Avg Doc Time"
           value={`${metrics.avgDocTime} min`}
@@ -524,9 +524,9 @@ export default function AnalyticsDashboard() {
 
       {/* Charts */}
       <Tabs defaultValue="time" className="mb-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="time">Documentation Time</TabsTrigger>
-          <TabsTrigger value="ai">AI Utilization</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 gap-1 p-1">
+          <TabsTrigger value="time" className="text-xs sm:text-sm">Documentation Time</TabsTrigger>
+          <TabsTrigger value="ai" className="text-xs sm:text-sm">AI Utilization</TabsTrigger>
         </TabsList>
 
         <TabsContent value="time">

@@ -82,23 +82,24 @@ export default function OASIS() {
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-slate-900 dark:text-slate-100">OASIS Documentation Assistant</h1>
 
         <Card className="mb-4 sm:mb-6 w-full">
-          <CardHeader className="bg-slate-200 p-4 sm:p-6 flex flex-col space-y-1.5">
-            <CardTitle className="flex items-center gap-2"><UploadCloud className="w-5 h-5" /> Upload OASIS Assessment</CardTitle>
+          <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
+            <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><UploadCloud className="w-4 h-4 sm:w-5 sm:h-5" /> Upload OASIS Assessment</CardTitle>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-4 sm:p-6 space-y-4">
+          <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
             <div>
-              <Label htmlFor="oasis-file">OASIS Assessment File (PDF, Image)</Label>
-              <Input id="oasis-file" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} />
-              {oasisFile && <p className="text-sm text-slate-500 mt-2">Selected: {oasisFile.name}</p>}
+              <Label htmlFor="oasis-file" className="text-xs sm:text-sm">OASIS Assessment File (PDF, Image)</Label>
+              <Input id="oasis-file" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} className="h-10 sm:h-11 text-sm" />
+              {oasisFile && <p className="text-xs sm:text-sm text-slate-500 mt-2">Selected: {oasisFile.name}</p>}
             </div>
             <div>
-              <Label htmlFor="oasis-narrative">OASIS Narrative / Notes</Label>
+              <Label htmlFor="oasis-narrative" className="text-xs sm:text-sm">OASIS Narrative / Notes</Label>
               <Textarea
                 id="oasis-narrative"
                 placeholder="Enter the detailed narrative notes related to the OASIS assessment..."
                 value={narrative}
                 onChange={(e) => setNarrative(e.target.value)}
-                rows={8} />
+                rows={6}
+                className="text-sm" />
 
             </div>
             <Button
@@ -127,17 +128,17 @@ export default function OASIS() {
         }
 
         {analysisResult &&
-        <Card className="mt-6">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2"><FileText className="w-5 h-5" /> Analysis Results</span>
+        <Card className="mt-4 sm:mt-6">
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-sm sm:text-base"><FileText className="w-4 h-4 sm:w-5 sm:h-5" /> Analysis Results</span>
                 {getStatusBadge(analysisResult.overall_status)}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-4 md:p-6 pt-0">
               <div>
-                <h3 className="text-lg font-semibold">Overall Status:</h3>
-                <p className="text-sm">{analysisResult.summary_message}</p>
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold">Overall Status:</h3>
+                <p className="text-xs sm:text-sm">{analysisResult.summary_message}</p>
               </div>
               {analysisResult.inconsistencies && analysisResult.inconsistencies.length > 0 &&
             <div>
