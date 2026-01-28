@@ -73,10 +73,15 @@ Deno.serve(async (req) => {
     ` : '';
 
     // Import provider-specific context
-    const { getProviderSpecificPromptAdditions, getCareLocationPromptAdditions } = await import('../components/utils/providerSpecificPrompts.js');
-    
-    const providerContext = getProviderSpecificPromptAdditions(provider_type);
-    const locationContext = getCareLocationPromptAdditions(user?.service_type || 'home_health');
+     let providerContext = '';
+     let locationContext = '';
+     try {
+       const { getProviderSpecificPromptAdditions, getCareLocationPromptAdditions } = await import('../components/utils/providerSpecificPrompts.js');
+       providerContext = getProviderSpecificPromptAdditions(provider_type) || '';
+       locationContext = getCareLocationPromptAdditions(user?.service_type || 'home_health') || '';
+     } catch (importError) {
+       console.warn('Could not import provider-specific context:', importError.message);
+     }
 
     const enhancementPrompt = `You are an elite healthcare documentation specialist. Your task is to craft the highest quality Medicare-compliant clinical narrative that demonstrates clinical excellence and regulatory mastery.
 

@@ -15,12 +15,10 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Invoice ID, amount, and payment method required' }, { status: 400 });
         }
 
-        const invoices = await base44.entities.Invoice.filter({ id: invoiceId });
-        if (!invoices || invoices.length === 0) {
-            return Response.json({ error: 'Invoice not found' }, { status: 404 });
-        }
-
-        const invoice = invoices[0];
+        const invoice = await base44.entities.Invoice.get(invoiceId);
+         if (!invoice) {
+             return Response.json({ error: 'Invoice not found' }, { status: 404 });
+         }
 
         // Create payment record
         const payment = await base44.entities.Payment.create({
