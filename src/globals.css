@@ -7,7 +7,7 @@ css
 
 @layer base {
   html, body, #root {
-    background: linear-gradient(135deg, #f8fafc 0%, #dbeafe 50%, #e2e8f0 100%) !important;
+    background: linear-gradient(135deg, #e2e8f0 0%, #bfdbfe 50%, #cbd5e1 100%) !important;
     min-height: 100vh;
   }
   .dark html, .dark body, .dark #root {

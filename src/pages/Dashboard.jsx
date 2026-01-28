@@ -107,7 +107,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+    <div className="p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

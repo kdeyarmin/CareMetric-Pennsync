@@ -78,7 +78,7 @@ export default function Layout({ children, currentPageName }) {
   } : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 dark:from-slate-900 dark:via-blue-950/30 dark:to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300 dark:from-slate-900 dark:via-blue-950/30 dark:to-slate-900">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
