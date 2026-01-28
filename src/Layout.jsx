@@ -167,7 +167,7 @@ export default function Layout({ children, currentPageName }) {
                 </h3>
                 <div className="space-y-0.5">
                   {adminNavigationGroup.items.map((item) => {
-                     const isActive = currentPageName === item.name;
+                     const isActive = displayPageName === item.name;
                      return (
                        <Link 
                          key={item.page} 
