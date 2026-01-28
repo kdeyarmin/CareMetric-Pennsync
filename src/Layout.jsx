@@ -42,15 +42,14 @@ export default function Layout({ children, currentPageName }) {
       ]
     },
     {
-      title: "Clinical",
-      items: [
-        { name: "Smart Note", icon: FileText, page: "SmartNoteAssistant" },
-        { name: "Medical Scribe", icon: Activity, page: "MedicalScribe" },
-        { name: "Document Visit", icon: Calendar, page: "DocumentVisit" },
-        { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
-        { name: "OASIS", icon: FileText, page: "OASIS" },
-      ]
-    },
+       title: "Clinical",
+       items: [
+         { name: "Smart Note", icon: FileText, page: "SmartNoteAssistant" },
+         { name: "Medical Scribe", icon: Activity, page: "MedicalScribe" },
+         { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+         { name: "OASIS", icon: FileText, page: "OASIS" },
+       ]
+     },
     {
       title: "Compliance & Analytics",
       items: [
