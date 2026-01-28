@@ -155,10 +155,10 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Users className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalPatients}</div>
@@ -166,10 +166,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-slate-50 to-blue-100 border-slate-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Upcoming Visits</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Calendar className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{upcomingVisits}</div>
@@ -177,10 +177,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <Clock className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pendingTasks}</div>
@@ -193,10 +193,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-slate-50 to-blue-100 border-slate-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Compliance Status</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            <AlertTriangle className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{openViolations}</div>
@@ -209,10 +209,10 @@ export default function Dashboard() {
 
       {/* Secondary Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Care Plans</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
+            <Target className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{activeCarePlans}</div>
@@ -220,10 +220,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-slate-50 to-blue-100 border-slate-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">High Risk Patients</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+            <AlertCircle className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{highRiskPatients.length}</div>
@@ -231,10 +231,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 to-slate-100 border-blue-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Patient Alerts</CardTitle>
-            <Bell className="h-4 w-4 text-muted-foreground" />
+            <Bell className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{patientAlerts.length}</div>
