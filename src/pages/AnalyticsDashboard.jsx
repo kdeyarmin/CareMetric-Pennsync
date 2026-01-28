@@ -532,10 +532,10 @@ export default function AnalyticsDashboard() {
         <TabsContent value="time">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Average Documentation Time</CardTitle>
+              <CardTitle className="text-sm sm:text-base md:text-lg">Average Documentation Time</CardTitle>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+            <CardContent className="p-2 sm:p-4">
+              <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={trendData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" style={{ fontSize: '12px' }} />
@@ -559,10 +559,10 @@ export default function AnalyticsDashboard() {
         <TabsContent value="ai">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">AI Feature Usage Rate</CardTitle>
+              <CardTitle className="text-sm sm:text-base md:text-lg">AI Feature Usage Rate</CardTitle>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+            <CardContent className="p-2 sm:p-4">
+              <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={trendData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" style={{ fontSize: '12px' }} />
