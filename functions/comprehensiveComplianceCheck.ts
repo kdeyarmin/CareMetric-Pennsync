@@ -36,6 +36,20 @@ Deno.serve(async (req) => {
     const patient = patientId ? await base44.entities.Patient.filter({ id: patientId }) : null;
     const patientData = patient?.[0];
 
+    // Build compliance prompt with provider customization
+    let complianceContext = `Analyze this ${providerType} clinical note for compliance.`;
+    if (providerConfig?.compliance_prompt) {
+      complianceContext = providerConfig.compliance_prompt.replace('{visitType}', visitType);
+    }
+
+    // Add provider-specific checklist
+    let providerChecklist = '';
+    if (providerConfig?.documentation_checklist?.length > 0) {
+      providerChecklist = `\n\nPROVIDER-SPECIFIC REQUIREMENTS:\n${providerConfig.documentation_checklist.map(item => 
+        `- ${item.element} (${item.priority}): ${item.description}`
+      ).join('\n')}`;
+    }
+
     // Run all compliance checks in parallel
     const [
       medicareCompliance,
@@ -48,20 +62,6 @@ Deno.serve(async (req) => {
       hipaaCompliance,
       stateRegulatory
     ] = await Promise.all([
-      // Build compliance prompt with provider customization
-      let complianceContext = `Analyze this ${providerType} clinical note for compliance.`;
-      if (providerConfig?.compliance_prompt) {
-        complianceContext = providerConfig.compliance_prompt.replace('{visitType}', visitType);
-      }
-
-      // Add provider-specific checklist
-      let providerChecklist = '';
-      if (providerConfig?.documentation_checklist?.length > 0) {
-        providerChecklist = `\n\nPROVIDER-SPECIFIC REQUIREMENTS:\n${providerConfig.documentation_checklist.map(item => 
-          `- ${item.element} (${item.priority}): ${item.description}`
-        ).join('\n')}`;
-      }
-
       // 1. Medicare CoP Compliance - Using ChatGPT
       (async () => {
         const prompt = `${complianceContext}
@@ -262,7 +262,11 @@ Flag any:
       }),
 
       // 7. Documentation Quality Gaps
-      base44.integrations.Core.InvokeLLM({
+      (async () => {
+        if (!roughNote) {
+          return { remaining_gaps: [] };
+        }
+        return base44.integrations.Core.InvokeLLM({
         prompt: `Compare rough note to enhanced note and identify remaining documentation gaps.
 
 ROUGH NOTE: ${roughNote}
@@ -285,6 +289,70 @@ What areas need nurse's clinical judgment or additional data collection?`,
                 }
               }
             }
+          }
+        });
+      })(),
+
+      // 8. HIPAA Compliance Check
+      base44.integrations.Core.InvokeLLM({
+        prompt: `Analyze this clinical note for HIPAA compliance issues.
+
+NOTE: ${enhancedNote}
+
+Check for:
+- Unnecessary PHI disclosure
+- Proper authorization documentation
+- Minimum necessary standard
+- Security risks in documentation
+- Privacy violations`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            overall_risk_level: { type: "string", enum: ["low", "medium", "high", "critical"] },
+            violations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  violation_type: { type: "string" },
+                  risk_level: { type: "string" },
+                  description: { type: "string" },
+                  remediation: { type: "string" }
+                }
+              }
+            },
+            compliant_areas: { type: "array", items: { type: "string" } },
+            proactive_recommendations: { type: "array", items: { type: "string" } }
+          }
+        }
+      }),
+
+      // 9. State Regulatory Compliance
+      base44.integrations.Core.InvokeLLM({
+        prompt: `Analyze this clinical note for potential state regulatory compliance issues.
+
+NOTE: ${enhancedNote}
+VISIT TYPE: ${visitType}
+
+Check for state-level requirements and best practices.`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            risk_score: { type: "number" },
+            potential_violations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  violation_type: { type: "string" },
+                  severity: { type: "string" },
+                  description: { type: "string" },
+                  remediation: { type: "string" }
+                }
+              }
+            },
+            best_practices: { type: "array", items: { type: "string" } },
+            state_specific_alerts: { type: "array", items: { type: "string" } }
           }
         }
       })
