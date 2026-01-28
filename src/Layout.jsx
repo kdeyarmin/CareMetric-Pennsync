@@ -80,7 +80,7 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 glass-effect border-b shadow-sm">
+      <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-50/95 via-blue-50/95 to-slate-50/95 dark:from-slate-900/95 dark:via-slate-800/95 dark:to-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-700/60 shadow-soft">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-4">
             <Button
@@ -113,9 +113,9 @@ export default function Layout({ children, currentPageName }) {
         <aside
           className={`${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 glass-effect border-r transition-all duration-300 lg:translate-x-0 overflow-y-auto shadow-lg lg:shadow-none`}
+          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-gradient-to-b from-slate-50/80 via-slate-50/60 to-blue-50/40 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/40 border-r border-slate-200/40 dark:border-slate-700/40 transition-all duration-300 lg:translate-x-0 overflow-y-auto shadow-elevated lg:shadow-soft backdrop-blur-sm`}
         >
-          <div className="p-4 border-b border-white/20 dark:border-white/10">
+          <div className="p-4 border-b border-slate-200/40 dark:border-slate-700/40">
             <div className="flex items-center gap-2">
                   <img 
                     src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
