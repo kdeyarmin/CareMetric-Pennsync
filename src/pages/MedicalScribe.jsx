@@ -114,9 +114,9 @@ export default function MedicalScribe() {
         onPatientCreated={handlePatientCreated} />
 
     <div className="w-full max-w-full overflow-hidden min-w-0">
-      <div className="p-2 sm:p-4 md:p-6 max-w-5xl mx-auto pb-24 sm:pb-8 w-full overflow-hidden">
+      <div className="p-3 sm:p-4 max-w-5xl mx-auto pb-20 sm:pb-8 w-full overflow-hidden">
          {/* Header */}
-         <div className="mb-3 sm:mb-6">
+         <div className="mb-3 sm:mb-4 md:mb-6">
            <div className="flex items-center gap-2 sm:gap-3 mb-2">
              <div className="p-2 sm:p-2.5 bg-slate-200 dark:bg-slate-700 rounded-full flex-shrink-0">
                <Mic className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700 dark:text-slate-300" />
@@ -140,12 +140,12 @@ export default function MedicalScribe() {
           {/* Setup Section */}
           <div className="lg:col-span-1 space-y-3 sm:space-y-4">
             <Card className="lg:sticky lg:top-4 overflow-hidden">
-              <CardHeader className="bg-slate-200 pb-2 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
-                <CardTitle className="text-sm sm:text-base">Setup</CardTitle>
-              </CardHeader>
-              <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+              <CardHeader className="bg-slate-200 pb-2 p-3 sm:p-4 flex flex-col space-y-1.5">
+                 <CardTitle className="text-xs sm:text-sm md:text-base">Setup</CardTitle>
+               </CardHeader>
+               <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 space-y-3">
                 <div>
-                  <Label className="text-xs sm:text-sm mb-2 block">Patient</Label>
+                  <Label className="text-[10px] sm:text-xs md:text-sm mb-1.5 block">Patient</Label>
                   <Select value={selectedPatientId} onValueChange={(id) => {
                      if (id === '__add_new__') {
                        setShowAddPatientDialog(true);
@@ -153,7 +153,7 @@ export default function MedicalScribe() {
                      }
                      setSelectedPatientId(id);
                    }}>
-                    <SelectTrigger className="h-10 sm:h-11 text-sm">
+                    <SelectTrigger className="h-9 sm:h-10 text-xs sm:text-sm">
                       <SelectValue placeholder="Select patient..." />
                     </SelectTrigger>
                      <SelectContent>

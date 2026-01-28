@@ -48,10 +48,10 @@ export default function ClinicalDecisionSupport() {
 
   return (
     <div className="w-full max-w-full overflow-x-hidden min-w-0">
-      <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto pb-20 sm:pb-6">
-        <div className="mb-4 sm:mb-6">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
-            <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+        <div className="mb-3 sm:mb-4 md:mb-6">
+          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+            <Brain className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-blue-600" />
             Clinical Decision Support
           </h1>
           <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400">
@@ -60,9 +60,9 @@ export default function ClinicalDecisionSupport() {
         </div>
 
         {/* Patient Selection */}
-        <Card className="mb-4 sm:mb-6">
-          <CardHeader className="p-3 sm:p-4 md:p-6">
-            <CardTitle className="text-sm sm:text-base">Select Patient</CardTitle>
+        <Card className="mb-3 sm:mb-4 md:mb-6">
+          <CardHeader className="p-3 sm:p-4">
+            <CardTitle className="text-xs sm:text-sm md:text-base">Select Patient</CardTitle>
           </CardHeader>
         <CardContent>
           <SearchablePatientSelect

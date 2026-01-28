@@ -435,10 +435,10 @@ export default function AnalyticsDashboard() {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Performance Analytics</h1>
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+         <div>
+           <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900">Performance Analytics</h1>
           <p className="text-sm text-gray-600 mt-1">Track metrics, trends, and outcomes</p>
         </div>
         <div className="flex gap-2">
@@ -454,9 +454,9 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* Filters */}
-      <Card className="mb-6">
+      <Card className="mb-4 sm:mb-6">
         <CardContent className="p-3 sm:p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
             <div>
               <Label className="text-xs mb-1">Date Range</Label>
               <Select value={dateRange} onValueChange={handleDateRangeChange}>
@@ -504,7 +504,7 @@ export default function AnalyticsDashboard() {
       </Card>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
         <PerformanceMetricsCard
           title="Avg Doc Time"
           value={`${metrics.avgDocTime} min`}
@@ -523,10 +523,10 @@ export default function AnalyticsDashboard() {
 
 
       {/* Charts */}
-      <Tabs defaultValue="time" className="mb-6">
+      <Tabs defaultValue="time" className="mb-4 sm:mb-6">
         <TabsList className="grid w-full grid-cols-2 gap-1 p-1">
-          <TabsTrigger value="time" className="text-xs sm:text-sm">Documentation Time</TabsTrigger>
-          <TabsTrigger value="ai" className="text-xs sm:text-sm">AI Utilization</TabsTrigger>
+          <TabsTrigger value="time" className="text-[10px] sm:text-xs md:text-sm">Doc Time</TabsTrigger>
+          <TabsTrigger value="ai" className="text-[10px] sm:text-xs md:text-sm">AI Usage</TabsTrigger>
         </TabsList>
 
         <TabsContent value="time">
