@@ -4,8 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, FileText, ListTodo, Activity, Plus, Calendar, AlertCircle, TrendingUp } from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "../utils";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
@@ -117,30 +115,30 @@ export default function Dashboard() {
             <CardDescription>Common tasks and workflows</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3">
-            <Link to={createPageUrl('SmartNoteAssistant')}>
+            <a href="/SmartNoteAssistant">
               <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
                 <FileText className="w-5 h-5" />
                 <span className="text-sm">Create Note</span>
               </Button>
-            </Link>
-            <Link to={createPageUrl('Patients')}>
+            </a>
+            <a href="/Patients">
               <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
                 <Users className="w-5 h-5" />
                 <span className="text-sm">View Patients</span>
               </Button>
-            </Link>
-            <Link to={createPageUrl('Tasks')}>
+            </a>
+            <a href="/Tasks">
               <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
                 <ListTodo className="w-5 h-5" />
                 <span className="text-sm">My Tasks</span>
               </Button>
-            </Link>
-            <Link to={createPageUrl('DocumentGenerator')}>
+            </a>
+            <a href="/DocumentGenerator">
               <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
                 <Plus className="w-5 h-5" />
                 <span className="text-sm">Generate Doc</span>
               </Button>
-            </Link>
+            </a>
           </CardContent>
         </Card>
 
