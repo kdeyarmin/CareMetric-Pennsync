@@ -54,17 +54,23 @@ Return as JSON array with fields: title, description, priority, due_timeframe, a
     // Batch create tasks (avoid sequential creates)
     if (patientId && result.tasks?.length > 0) {
       const tasksToCreate = result.tasks.map(task => ({
+        patient_id: patientId,
         title: task.title,
         description: task.description,
         priority: task.priority || 'medium',
         type: 'followup',
         due_timeframe: task.due_timeframe,
         source: 'ai_generated',
-        patient_id: patientId,
-        status: 'pending'
+        status: 'pending',
+        assigned_to: user.email
       }));
 
-      await base44.entities.Task.bulkCreate(tasksToCreate);
+      try {
+        await base44.asServiceRole.entities.Task.bulkCreate(tasksToCreate);
+      } catch (createError) {
+        console.warn('Failed to create tasks:', createError.message);
+        // Don't throw - return results even if task creation fails
+      }
     }
 
     return Response.json({ 

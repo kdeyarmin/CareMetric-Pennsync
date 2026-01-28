@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
   try {
@@ -68,14 +68,14 @@ Deno.serve(async (req) => {
     };
 
     // Calculate visit duration
-    const visitsWithDuration = visits.filter(v => v.start_time && v.end_time);
-    if (visitsWithDuration.length > 0) {
-      const totalMinutes = visitsWithDuration.reduce((sum, v) => {
+    const visitsWithTime = visits.filter(v => v.start_time && v.end_time);
+    if (visitsWithTime.length > 0) {
+      const totalMinutes = visitsWithTime.reduce((sum, v) => {
         const start = new Date(`2000-01-01T${v.start_time}`);
         const end = new Date(`2000-01-01T${v.end_time}`);
         return sum + ((end - start) / (1000 * 60));
       }, 0);
-      metrics.avg_visit_duration = Math.round(totalMinutes / visitsWithDuration.length);
+      metrics.avg_visit_duration = Math.round(totalMinutes / visitsWithTime.length);
     }
 
     // Visits by type
