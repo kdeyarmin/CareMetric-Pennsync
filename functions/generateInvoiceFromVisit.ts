@@ -66,10 +66,10 @@ Return JSON array of line items.`;
       }
     });
 
-    const lineItems = aiResponse.line_items.map(item => ({
-      ...item,
-      total: item.quantity * item.unit_price
-    }));
+    const lineItems = (aiResponse.line_items || []).map(item => ({
+       ...item,
+       total: item.quantity * item.unit_price
+     }));
 
     const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
     const tax_rate = 0; // Adjust based on jurisdiction
