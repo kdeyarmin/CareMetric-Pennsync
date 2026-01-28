@@ -107,14 +107,14 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-700 to-blue-900 bg-clip-text text-transparent">
             Welcome back, {user?.full_name || "User"}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <p className="text-slate-600 dark:text-slate-400 mt-1">
             Here's what's happening with your patients today
           </p>
         </div>
