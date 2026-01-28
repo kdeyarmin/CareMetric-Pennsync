@@ -288,24 +288,14 @@ export default function Dashboard() {
   }
 
   console.log('Rendering Dashboard with user:', currentUser);
+  console.log('Accessible widgets:', accessibleWidgets);
+  console.log('Can access tasks:', canAccessWidget('tasks'));
 
   return (
-    <>
+    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0 bg-transparent">
       {currentUser && !currentUser.onboarding_completed && (
         <RoleBasedOnboarding user={currentUser} />
       )}
-      
-      <PullToRefresh onRefresh={async () => {
-      await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
-      queryClient.invalidateQueries({ queryKey: ['myPatients'] }),
-      queryClient.invalidateQueries({ queryKey: ['myVisits'] }),
-      queryClient.invalidateQueries({ queryKey: ['nurseNoteConversions'] }),
-      queryClient.invalidateQueries({ queryKey: ['myAlerts'] }),
-      queryClient.invalidateQueries({ queryKey: ['nurseTasks'] })]
-      );
-    }}>
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header with integrated banners */}
       <div className="mb-6">
         <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading header</div>}>
@@ -495,8 +485,16 @@ export default function Dashboard() {
           </div>
       )}
 
-          </div>
-          </PullToRefresh>
-    </>
+      {/* Debug Info */}
+      <div className="mt-6 p-4 bg-white dark:bg-slate-800 rounded-lg border">
+        <h3 className="font-semibold mb-2">Debug Info</h3>
+        <p className="text-sm">User: {currentUser?.full_name}</p>
+        <p className="text-sm">Credential: {currentUser?.credential_type}</p>
+        <p className="text-sm">Widgets: {accessibleWidgets.join(', ')}</p>
+        <p className="text-sm">Patients: {patients?.length || 0}</p>
+        <p className="text-sm">Visits: {visits?.length || 0}</p>
+      </div>
+
+    </div>
   );
 }
