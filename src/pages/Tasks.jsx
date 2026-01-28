@@ -27,7 +27,7 @@ export default function Tasks() {
   const [showRecurringSettings, setShowRecurringSettings] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("pending");
+  const [filterStatus, setFilterStatus] = useState("all");
   const queryClient = useQueryClient();
 
   const [newTask, setNewTask] = useState({

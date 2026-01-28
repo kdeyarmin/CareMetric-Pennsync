@@ -101,22 +101,21 @@ export default function Settings() {
   };
 
   const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== 'DELETE') {
-      toast.warning('Please type DELETE to confirm');
-      return;
-    }
+     if (deleteConfirmText !== 'DELETE') {
+       toast.warning('Please type DELETE to confirm');
+       return;
+     }
 
-    setIsDeleting(true);
-    try {
-      const { deleteAccount } = await import('@/functions/deleteAccount');
-      await deleteAccount();
-      // Logout and redirect
-      base44.auth.logout();
-    } catch (error) {
-      toast.error('Failed to delete account. Please try again or contact support.');
-      setIsDeleting(false);
-    }
-  };
+     setIsDeleting(true);
+     try {
+       await base44.functions.invoke('deleteAccount');
+       // Logout and redirect
+       base44.auth.logout();
+     } catch (error) {
+       toast.error('Failed to delete account. Please try again or contact support.');
+       setIsDeleting(false);
+     }
+   };
 
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
@@ -157,20 +156,20 @@ export default function Settings() {
 
               <div className="flex gap-2 w-full sm:w-auto">
                   <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setFormData({
-                      full_name: currentUser?.full_name || '',
-                      credential_type: currentUser?.credential_type || 'RN',
-                      preferred_language: currentUser?.preferred_language || 'en-US'
-                    });
-                  }}
-                  disabled={isSaving}>
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setFormData({
+                          full_name: currentUser?.full_name || '',
+                          credential_type: currentUser?.credential_type || 'RN',
+                          preferred_language: currentUser?.preferred_language || 'en-US'
+                        });
+                      }}
+                      disabled={isSaving}>
 
-                    
-                  </Button>
+                        <X className="w-4 h-4" />
+                      </Button>
                   <Button
                   size="sm"
                   onClick={handleSaveProfile}

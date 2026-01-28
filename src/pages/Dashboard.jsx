@@ -298,7 +298,7 @@ export default function Dashboard() {
                   <Link key={patient.id} to={createPageUrl("PatientDetails") + `?id=${patient.id}`}>
                     <div className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 hover:shadow-md transition-all card-hover">
                       <div>
-                        <p className="text-sm font-medium">{patient.full_name}</p>
+                        <p className="text-sm font-medium">{patient.first_name} {patient.last_name}</p>
                         <p className="text-xs text-muted-foreground">
                           {patient.primary_diagnosis || "No diagnosis"}
                         </p>
