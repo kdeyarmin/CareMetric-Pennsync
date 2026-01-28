@@ -79,7 +79,7 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 backdrop-blur-md border-b border-slate-400/40 dark:border-slate-600/30 shadow-elevated">
+      <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 backdrop-blur-md border-b border-slate-300/40 dark:border-slate-600/30 shadow-elevated">
         <div className="flex items-start justify-between px-4 py-2">
           <div className="flex items-start gap-4 flex-1">
             <Button
