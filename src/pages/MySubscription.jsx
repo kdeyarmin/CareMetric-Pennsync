@@ -145,12 +145,12 @@ export default function MySubscription() {
   const webhookEvents = subscription?.webhook_events || [];
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold">My Subscription</h1>
-          <p className="text-muted-foreground mt-1">Manage your billing and payment details</p>
+          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold">Subscription</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Manage billing</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh}>
@@ -188,10 +188,10 @@ export default function MySubscription() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {/* Alerts for subscription issues */}
-          {subscription.status === 'past_due' && (
-            <Alert className="border-red-200 bg-red-50">
+        <div className="space-y-3 sm:space-y-4 md:space-y-6">
+           {/* Alerts for subscription issues */}
+           {subscription.status === 'past_due' && (
+             <Alert className="border-red-200 bg-red-50 text-xs sm:text-sm">
               <AlertCircle className="h-5 w-5 text-red-600" />
               <AlertDescription className="text-red-800">
                 Your payment is past due. Please update your payment method to avoid service interruption.
@@ -223,18 +223,18 @@ export default function MySubscription() {
 
           {/* Current Subscription Details */}
           <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between">
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <div className="flex items-start justify-between gap-2">
                 <div>
-                  <CardTitle className="text-2xl">Current Subscription</CardTitle>
-                  <CardDescription>Your plan and billing details</CardDescription>
+                  <CardTitle className="text-base sm:text-lg md:text-xl lg:text-2xl">Current Subscription</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm">Your plan and billing</CardDescription>
                 </div>
                 {getStatusBadge(subscription.status)}
               </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
               {/* Plan Details */}
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid md:grid-cols-2 gap-3 sm:gap-4 md:gap-6">
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Plan Name</p>
                   <p className="text-xl font-semibold">{subscription.plan_name || 'CareMetric AI'}</p>
@@ -333,14 +333,14 @@ export default function MySubscription() {
 
           {/* Payment Method */}
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="w-5 h-5" />
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+                    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
                     Payment Method
                   </CardTitle>
-                  <CardDescription>Your default payment method</CardDescription>
+                  <CardDescription className="text-xs sm:text-sm">Default method</CardDescription>
                 </div>
                 <Button onClick={handleManageSubscription} variant="outline" size="sm" disabled={isManagingPortal}>
                   {isManagingPortal ? (
@@ -354,26 +354,26 @@ export default function MySubscription() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-3 sm:p-4 md:p-6">
               {loadingBilling ? (
-                <div className="flex justify-center p-6">
+                <div className="flex justify-center p-4 sm:p-6">
                   <Loader2 className="w-5 h-5 animate-spin" />
                 </div>
               ) : paymentMethods.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {paymentMethods.map((pm) => (
                     <div 
                       key={pm.id} 
-                      className="flex items-center gap-4 p-4 border rounded-lg bg-white dark:bg-slate-900 hover:shadow-md transition-shadow"
+                      className="flex items-center gap-2 sm:gap-3 md:gap-4 p-2 sm:p-3 md:p-4 border rounded-lg bg-white dark:bg-slate-900 hover:shadow-md transition-shadow text-xs sm:text-sm"
                     >
-                      <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                        <CreditCard className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+                      <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg flex-shrink-0">
+                        <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 dark:text-slate-400" />
                       </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold break-words">
                           {pm.card.brand.charAt(0).toUpperCase() + pm.card.brand.slice(1)} •••• {pm.card.last4}
                         </p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-muted-foreground mt-0.5">
                           Expires {pm.card.exp_month}/{pm.card.exp_year}
                         </p>
                       </div>
@@ -399,24 +399,24 @@ export default function MySubscription() {
 
           {/* Billing History */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <History className="w-5 h-5" />
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+                <History className="w-4 h-4 sm:w-5 sm:h-5" />
                 Billing History
               </CardTitle>
-              <CardDescription>View your past invoices and payments</CardDescription>
+              <CardDescription className="text-xs sm:text-sm">Past invoices</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-3 sm:p-4 md:p-6">
               {loadingBilling ? (
                 <div className="flex justify-center p-6">
                   <Loader2 className="w-5 h-5 animate-spin" />
                 </div>
               ) : invoices.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-2 text-xs sm:text-sm">
                   {invoices.map((invoice) => (
                     <div 
                       key={invoice.id} 
-                      className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 md:gap-4 p-2 sm:p-3 md:p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -529,10 +529,10 @@ export default function MySubscription() {
 
           {/* Quick Actions */}
           <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="text-base sm:text-lg md:text-xl">Quick Actions</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="p-3 sm:p-4 md:p-6 space-y-2 sm:space-y-3">
               <Button 
                 variant="outline" 
                 className="w-full justify-start" 
