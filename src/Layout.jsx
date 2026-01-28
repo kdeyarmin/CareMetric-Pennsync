@@ -128,7 +128,7 @@ export default function Layout({ children, currentPageName }) {
                       alt="CareMetric AI" 
                       className="h-8 w-8 rounded-lg shadow-sm"
                     />
-                    <span className="hidden sm:inline font-bold text-white">{displayPageName}</span>
+                    <span className="hidden sm:inline font-bold text-blue-900">{displayPageName}</span>
                   </div>
           </div>
           <nav className="p-4 space-y-6">
