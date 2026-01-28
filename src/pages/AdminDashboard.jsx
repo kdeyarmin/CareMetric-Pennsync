@@ -876,14 +876,14 @@ export default function AdminDashboard() {
 
           {/* Revenue Trend Chart */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-slate-700 dark:text-slate-400" />
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
                 30-Day Revenue Trend
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+            <CardContent className="p-2 sm:p-4">
+              <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={mrrTrendData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
@@ -1338,14 +1338,14 @@ export default function AdminDashboard() {
 
           {/* Compliance Trend - Line Chart */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-slate-700 dark:text-slate-400" />
-                30-Day Compliance Score Trend
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
+                30-Day Compliance Trend
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+            <CardContent className="p-2 sm:p-4">
+              <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={complianceTrendData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
@@ -1385,14 +1385,14 @@ export default function AdminDashboard() {
 
           {/* Visit Types Chart */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-slate-700 dark:text-slate-400" />
-                Visit Types Completed
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
+                Visit Types
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+            <CardContent className="p-2 sm:p-4">
+              <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={visitTypeData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
