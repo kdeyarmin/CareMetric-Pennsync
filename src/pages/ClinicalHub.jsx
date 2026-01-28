@@ -53,9 +53,9 @@ export default function ClinicalHub() {
       </div>
 
       <Tabs defaultValue="reasoning" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 h-auto">
-          <TabsTrigger value="reasoning">AI Differential Diagnosis</TabsTrigger>
-          <TabsTrigger value="patient-tools">Patient-Specific Tools</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 gap-1 p-1 h-auto">
+          <TabsTrigger value="reasoning" className="text-xs sm:text-sm py-2">AI Diagnosis</TabsTrigger>
+          <TabsTrigger value="patient-tools" className="text-xs sm:text-sm py-2">Patient Tools</TabsTrigger>
         </TabsList>
 
         <TabsContent value="reasoning" className="mt-6">
@@ -78,21 +78,24 @@ export default function ClinicalHub() {
           </Card>
 
           {selectedPatient ? (
-            <Tabs defaultValue="alerts" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-auto">
-                <TabsTrigger value="alerts">
-                  <AlertTriangle className="w-4 h-4 mr-2" />
-                  Best Practices
-                </TabsTrigger>
-                <TabsTrigger value="medications">
-                  <Pill className="w-4 h-4 mr-2" />
-                  Medications
-                </TabsTrigger>
-                <TabsTrigger value="diagnosis">
-                  <Brain className="w-4 h-4 mr-2" />
-                  Diagnosis
-                </TabsTrigger>
-              </TabsList>
+           <Tabs defaultValue="alerts" className="w-full">
+             <TabsList className="grid w-full grid-cols-3 gap-1 p-1 h-auto">
+               <TabsTrigger value="alerts" className="text-xs sm:text-sm px-1 py-2">
+                 <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                 <span className="hidden sm:inline">Best Practices</span>
+                 <span className="sm:hidden">Alerts</span>
+               </TabsTrigger>
+               <TabsTrigger value="medications" className="text-xs sm:text-sm px-1 py-2">
+                 <Pill className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                 <span className="hidden sm:inline">Medications</span>
+                 <span className="sm:hidden">Meds</span>
+               </TabsTrigger>
+               <TabsTrigger value="diagnosis" className="text-xs sm:text-sm px-1 py-2">
+                 <Brain className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                 <span className="hidden sm:inline">Diagnosis</span>
+                 <span className="sm:hidden">Dx</span>
+               </TabsTrigger>
+             </TabsList>
 
               <TabsContent value="alerts" className="mt-4 sm:mt-6 w-full">
                 <ClinicalBestPracticeAlerts patient={selectedPatient} visits={visits} />
@@ -107,13 +110,13 @@ export default function ClinicalHub() {
               </TabsContent>
             </Tabs>
           ) : (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">Select a Patient</h3>
-                <p className="text-gray-500">Choose a patient to access clinical tools</p>
-              </CardContent>
-            </Card>
+           <Card>
+             <CardContent className="p-6 sm:p-8 md:p-12 text-center">
+               <Activity className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
+               <h3 className="text-base sm:text-lg font-semibold text-gray-700 mb-2">Select a Patient</h3>
+               <p className="text-xs sm:text-sm text-gray-500">Choose a patient to access clinical tools</p>
+             </CardContent>
+           </Card>
           )}
         </TabsContent>
       </Tabs>

@@ -182,11 +182,13 @@ export default function ComplianceHub() {
         </div>
 
         <Tabs defaultValue="dashboard" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-auto">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="updates">Regulatory Updates</TabsTrigger>
-            <TabsTrigger value="training">Compliance Training</TabsTrigger>
-          </TabsList>
+         <div className="w-full overflow-x-auto mb-4 scrollbar-hide">
+           <TabsList className="inline-flex w-max min-w-full gap-1 p-1">
+             <TabsTrigger value="dashboard" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">Dashboard</TabsTrigger>
+             <TabsTrigger value="updates" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">Updates</TabsTrigger>
+             <TabsTrigger value="training" className="text-xs sm:text-sm px-2 sm:px-3 whitespace-nowrap">Training</TabsTrigger>
+           </TabsList>
+         </div>
 
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-4 sm:space-y-6 w-full">
@@ -207,9 +209,9 @@ export default function ComplianceHub() {
                 </div>
 
                 {/* Key Metrics */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
                   <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-                    <CardContent className="p-4">
+                    <CardContent className="p-3 sm:p-4">
                       <TrendingUp className="w-8 h-8 text-blue-600 mb-2" />
                       <p className="text-2xl font-bold text-gray-900">{metrics.avgScore}%</p>
                       <p className="text-xs text-gray-600">Avg Compliance</p>
@@ -419,10 +421,10 @@ export default function ComplianceHub() {
 
             {/* Training Content */}
             <Tabs value={activeTrainingTab} onValueChange={setActiveTrainingTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-auto">
-                <TabsTrigger value="analysis">Error Analysis</TabsTrigger>
-                <TabsTrigger value="training" disabled={!selectedErrorPatterns}>Content</TabsTrigger>
-                <TabsTrigger value="quiz" disabled={!trainingContent}>Quiz</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-3 gap-1 p-1 h-auto">
+                <TabsTrigger value="analysis" className="text-xs sm:text-sm">Error Analysis</TabsTrigger>
+                <TabsTrigger value="training" disabled={!selectedErrorPatterns} className="text-xs sm:text-sm">Content</TabsTrigger>
+                <TabsTrigger value="quiz" disabled={!trainingContent} className="text-xs sm:text-sm">Quiz</TabsTrigger>
               </TabsList>
 
               <TabsContent value="analysis" className="space-y-4 mt-6">

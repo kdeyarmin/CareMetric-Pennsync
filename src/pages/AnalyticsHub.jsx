@@ -128,48 +128,48 @@ export default function AnalyticsHub() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           <Card className="bg-slate-200">
-            <CardContent className="p-3 sm:p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] sm:text-xs text-slate-700 font-medium">Notes Enhanced</p>
-                  <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.noteConversions}</p>
+            <CardContent className="p-2 sm:p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[9px] sm:text-xs text-slate-700 font-medium truncate">Notes Enhanced</p>
+                  <p className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900">{stats.noteConversions}</p>
                 </div>
-                <BarChart3 className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600" />
+                <BarChart3 className="w-6 h-6 sm:w-8 sm:h-8 text-slate-600 flex-shrink-0" />
               </div>
             </CardContent>
           </Card>
           <Card className="bg-slate-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-slate-700 font-medium">Time Saved</p>
-                  <p className="text-2xl font-bold text-slate-900">{stats.timeSavedDisplay}</p>
+            <CardContent className="p-2 sm:p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[9px] sm:text-xs text-slate-700 font-medium truncate">Time Saved</p>
+                  <p className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 truncate">{stats.timeSavedDisplay}</p>
                 </div>
-                <Clock className="w-10 h-10 text-slate-600" />
+                <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-slate-600 flex-shrink-0" />
               </div>
             </CardContent>
           </Card>
           <Card className="bg-slate-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-slate-700 font-medium">Avg Compliance</p>
-                  <p className="text-3xl font-bold text-slate-900">{performanceData.avgCompliance}%</p>
+            <CardContent className="p-2 sm:p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[9px] sm:text-xs text-slate-700 font-medium truncate">Avg Compliance</p>
+                  <p className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900">{performanceData.avgCompliance}%</p>
                 </div>
-                <Target className="w-10 h-10 text-slate-600" />
+                <Target className="w-6 h-6 sm:w-8 sm:h-8 text-slate-600 flex-shrink-0" />
               </div>
             </CardContent>
           </Card>
           <Card className="bg-slate-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-slate-700 font-medium">Total Visits</p>
-                  <p className="text-3xl font-bold text-slate-900">{visits.length}</p>
+            <CardContent className="p-2 sm:p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[9px] sm:text-xs text-slate-700 font-medium truncate">Total Visits</p>
+                  <p className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900">{visits.length}</p>
                 </div>
-                <Calendar className="w-10 h-10 text-slate-600" />
+                <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-slate-600 flex-shrink-0" />
               </div>
             </CardContent>
           </Card>
@@ -177,13 +177,13 @@ export default function AnalyticsHub() {
       </div>
 
       <Tabs defaultValue="performance" className="w-full">
-        <div className="w-full overflow-x-auto mb-4">
-          <TabsList className="flex w-max min-w-full gap-1 p-1">
-            <TabsTrigger value="performance" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Performance</TabsTrigger>
-            <TabsTrigger value="gaps" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Gaps</TabsTrigger>
-            <TabsTrigger value="ai-usage" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">AI Usage</TabsTrigger>
-            <TabsTrigger value="coaching" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Coaching</TabsTrigger>
-            <TabsTrigger value="billing" className="text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0">Billing</TabsTrigger>
+        <div className="w-full overflow-x-auto mb-3 sm:mb-4 scrollbar-hide">
+          <TabsList className="inline-flex w-max min-w-full gap-1 p-1">
+            <TabsTrigger value="performance" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Performance</TabsTrigger>
+            <TabsTrigger value="gaps" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Gaps</TabsTrigger>
+            <TabsTrigger value="ai-usage" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">AI</TabsTrigger>
+            <TabsTrigger value="coaching" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Coaching</TabsTrigger>
+            <TabsTrigger value="billing" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Billing</TabsTrigger>
           </TabsList>
         </div>
 
