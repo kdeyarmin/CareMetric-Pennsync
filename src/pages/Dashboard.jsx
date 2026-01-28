@@ -9,7 +9,7 @@ import { createPageUrl } from "../utils";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
-  const { data: currentUser } = useQuery({
+  const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
@@ -43,12 +43,20 @@ export default function Dashboard() {
 
   const { data: alerts = [] } = useQuery({
     queryKey: ['patientAlerts'],
-    queryFn: () => base44.entities.PatientAlert.filter({ 
-      status: 'active',
-      severity: { "$in": ["high", "critical"] }
-    }),
+    queryFn: () => base44.entities.PatientAlert.list(),
     enabled: !!currentUser
   });
+
+  if (userLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Activity className="w-8 h-8 animate-spin mx-auto mb-2" />
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) return null;
 
