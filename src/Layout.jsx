@@ -95,7 +95,7 @@ export default function Layout({ children, currentPageName }) {
               <img 
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
                 alt="CareMetric AI" 
-                className="h-10 sm:h-11 w-10 sm:w-11 rounded-xl shadow-sm flex-shrink-0"
+                className="h-10 sm:h-11 w-10 sm:w-11 rounded-xl flex-shrink-0"
               />
               <h1 className="hidden sm:block text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent truncate">CareMetric AI</h1>
             </div>
