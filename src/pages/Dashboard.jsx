@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import {
@@ -13,7 +14,13 @@ import {
   FileText,
   TrendingUp,
   Clock,
-  Activity
+  Activity,
+  AlertCircle,
+  Bell,
+  Megaphone,
+  BarChart3,
+  Target,
+  Award
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -46,6 +53,24 @@ export default function Dashboard() {
     initialData: [],
   });
 
+  const { data: announcements = [] } = useQuery({
+    queryKey: ["announcements"],
+    queryFn: () => base44.entities.Announcement.filter({ is_active: true }),
+    initialData: [],
+  });
+
+  const { data: carePlans = [] } = useQuery({
+    queryKey: ["carePlans"],
+    queryFn: () => base44.entities.CarePlan.list(),
+    initialData: [],
+  });
+
+  const { data: patientAlerts = [] } = useQuery({
+    queryKey: ["patientAlerts"],
+    queryFn: () => base44.entities.PatientAlert.filter({ status: "active" }),
+    initialData: [],
+  });
+
   // Calculate stats
   const totalPatients = patients.length;
   const pendingTasks = tasks.filter(t => t.status !== "completed").length;
@@ -57,24 +82,76 @@ export default function Dashboard() {
     return visitDate >= today && visitDate <= nextWeek;
   }).length;
 
+  const activeCarePlans = carePlans.filter(cp => cp.status === "active").length;
+  const completedTasksToday = tasks.filter(t => {
+    const completedDate = new Date(t.completed_date);
+    const today = new Date();
+    return t.status === "completed" && 
+           completedDate.toDateString() === today.toDateString();
+  }).length;
+
+  // High risk patients
+  const highRiskPatients = patients
+    .filter(p => p.risk_level === "high" || p.risk_score > 70)
+    .slice(0, 5);
+
   const quickActions = [
     { label: "Create Note", icon: FileText, page: "SmartNoteAssistant", color: "bg-blue-500" },
     { label: "View Patients", icon: Users, page: "Patients", color: "bg-green-500" },
     { label: "Document Visit", icon: Calendar, page: "DocumentVisit", color: "bg-purple-500" },
     { label: "Check Compliance", icon: CheckCircle, page: "ComplianceDashboard", color: "bg-orange-500" },
+    { label: "OASIS Review", icon: FileText, page: "OASIS", color: "bg-indigo-500" },
+    { label: "Medical Scribe", icon: Activity, page: "MedicalScribe", color: "bg-pink-500" },
+    { label: "Care Plans", icon: Target, page: "CarePlanManagement", color: "bg-cyan-500" },
+    { label: "Analytics", icon: BarChart3, page: "AnalyticsDashboard", color: "bg-emerald-500" },
   ];
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-          Welcome back, {user?.full_name || "User"}
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">
-          Here's what's happening with your patients today
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+            Welcome back, {user?.full_name || "User"}
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Here's what's happening with your patients today
+          </p>
+        </div>
+        {user?.role === "admin" && (
+          <Link to={createPageUrl("AdminDashboard")}>
+            <Button variant="outline" size="sm">
+              <Award className="h-4 w-4 mr-2" />
+              Admin Panel
+            </Button>
+          </Link>
+        )}
       </div>
+
+      {/* Announcements */}
+      {announcements.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Megaphone className="h-4 w-4" />
+              Announcements
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {announcements.slice(0, 3).map((announcement) => (
+                <div key={announcement.id} className="flex items-start gap-2">
+                  <Bell className="h-4 w-4 text-blue-500 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">{announcement.title}</p>
+                    <p className="text-xs text-muted-foreground">{announcement.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -108,19 +185,60 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{pendingTasks}</div>
             <p className="text-xs text-muted-foreground">To be completed</p>
+            {completedTasksToday > 0 && (
+              <p className="text-xs text-green-600 mt-1">
+                +{completedTasksToday} completed today
+              </p>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Compliance Alerts</CardTitle>
+            <CardTitle className="text-sm font-medium">Compliance Status</CardTitle>
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{openViolations}</div>
             <p className="text-xs text-muted-foreground">
-              {openViolations === 0 ? "All clear!" : "Needs attention"}
+              {openViolations === 0 ? "All clear!" : "Open alerts"}
             </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Secondary Stats */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Care Plans</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeCarePlans}</div>
+            <p className="text-xs text-muted-foreground">In progress</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">High Risk Patients</CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{highRiskPatients.length}</div>
+            <p className="text-xs text-muted-foreground">Require attention</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Patient Alerts</CardTitle>
+            <Bell className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{patientAlerts.length}</div>
+            <p className="text-xs text-muted-foreground">Active notifications</p>
           </CardContent>
         </Card>
       </div>
@@ -134,17 +252,17 @@ export default function Dashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-8">
             {quickActions.map((action) => (
               <Link key={action.page} to={createPageUrl(action.page)}>
                 <Button
                   variant="outline"
-                  className="w-full h-24 flex flex-col items-center justify-center gap-2 hover:shadow-lg transition-all"
+                  className="w-full h-20 flex flex-col items-center justify-center gap-2 hover:shadow-lg transition-all"
                 >
                   <div className={`p-2 rounded-lg ${action.color}`}>
-                    <action.icon className="h-6 w-6 text-white" />
+                    <action.icon className="h-5 w-5 text-white" />
                   </div>
-                  <span className="text-sm font-medium">{action.label}</span>
+                  <span className="text-xs font-medium text-center">{action.label}</span>
                 </Button>
               </Link>
             ))}
@@ -152,8 +270,48 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Recent Activity & Alerts */}
+      {/* High Risk Patients & Recent Activity */}
       <div className="grid gap-4 md:grid-cols-2">
+        {/* High Risk Patients */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-500" />
+                High Risk Patients
+              </span>
+              <Link to={createPageUrl("Patients")}>
+                <Button variant="ghost" size="sm">View All</Button>
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {highRiskPatients.length === 0 ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                <p className="text-sm font-medium text-green-600">All Stable</p>
+                <p className="text-xs text-muted-foreground">No high-risk patients</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {highRiskPatients.map((patient) => (
+                  <Link key={patient.id} to={createPageUrl("PatientDetails") + `?id=${patient.id}`}>
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 hover:shadow-md transition-all">
+                      <div>
+                        <p className="text-sm font-medium">{patient.full_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {patient.primary_diagnosis || "No diagnosis"}
+                        </p>
+                      </div>
+                      <Badge variant="destructive">High Risk</Badge>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Recent Tasks */}
         <Card>
           <CardHeader>
@@ -185,13 +343,21 @@ export default function Dashboard() {
                         {task.priority} priority • {task.status}
                       </p>
                     </div>
+                    {task.due_date && (
+                      <Badge variant="outline" className="text-xs">
+                        {new Date(task.due_date).toLocaleDateString()}
+                      </Badge>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+      </div>
 
+      {/* Compliance Alerts & Patient Alerts */}
+      <div className="grid gap-4 md:grid-cols-2">
         {/* Compliance Alerts */}
         <Card>
           <CardHeader>
@@ -223,6 +389,57 @@ export default function Dashboard() {
                         {violation.violation_description}
                       </p>
                     </div>
+                    <Badge 
+                      variant="outline" 
+                      className={`text-xs ${
+                        violation.severity === "critical" ? "border-red-500 text-red-700" :
+                        violation.severity === "high" ? "border-orange-500 text-orange-700" :
+                        "border-yellow-500 text-yellow-700"
+                      }`}
+                    >
+                      {violation.severity}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Patient Alerts */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Patient Alerts</span>
+              <Link to={createPageUrl("PatientAlerts")}>
+                <Button variant="ghost" size="sm">View All</Button>
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {patientAlerts.length === 0 ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                <p className="text-sm font-medium text-green-600">No Alerts</p>
+                <p className="text-xs text-muted-foreground">All patients stable</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {patientAlerts.slice(0, 5).map((alert) => (
+                  <div
+                    key={alert.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <Bell className="h-4 w-4 text-blue-500 mt-1" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{alert.alert_type}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {alert.description}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {alert.priority}
+                    </Badge>
                   </div>
                 ))}
               </div>
