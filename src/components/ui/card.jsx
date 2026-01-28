@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 const Card = React.forwardRef(({ className, ...props }, ref) => (
         <div
           ref={ref}
-          className={cn("rounded-xl border border-slate-200/60 bg-gradient-to-br from-white/98 to-slate-50/95 text-card-foreground shadow-soft hover:shadow-elevated transition-all duration-300 dark:border-slate-700/60 dark:bg-gradient-to-br dark:from-slate-900/98 dark:to-slate-800/95 backdrop-blur-xs card-hover", className)}
+          className={cn("rounded-xl border-2 border-slate-300/80 bg-gradient-to-br from-white to-white text-card-foreground shadow-soft hover:shadow-elevated transition-all duration-300 dark:border-slate-600/80 dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-800/95 backdrop-blur-xs card-hover", className)}
           {...props} />
       ))
 Card.displayName = "Card"
@@ -49,3 +49,4 @@ const CardFooter = React.forwardRef(({ className, ...props }, ref) => (
 CardFooter.displayName = "CardFooter"
 
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
+
