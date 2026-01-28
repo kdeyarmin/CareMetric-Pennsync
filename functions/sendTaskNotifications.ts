@@ -63,12 +63,18 @@ Deno.serve(async (req) => {
       `;
       
       try {
-        // Send email notification
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          to: task.assigned_to,
-          subject,
-          body
-        });
+         // Validate task assignment
+         if (!task.assigned_to) {
+           console.warn(`Task ${task.id} has no assigned_to email, skipping notification`);
+           continue;
+         }
+
+         // Send email notification
+         await base44.asServiceRole.integrations.Core.SendEmail({
+           to: task.assigned_to,
+           subject,
+           body
+         });
         
         // Update last notification sent timestamp
         await base44.asServiceRole.entities.Task.update(task.id, {

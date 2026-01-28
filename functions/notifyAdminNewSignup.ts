@@ -9,11 +9,8 @@ Deno.serve(async (req) => {
     const adminEmail = Deno.env.get('ADMIN_EMAIL') || 'admin@caremetricai.com';
 
     if (!user_email) {
-      return new Response(
-        JSON.stringify({ error: 'Missing user_email' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+       return Response.json({ error: 'Missing user_email' }, { status: 400 });
+     }
 
     // Send email notification
     await base44.integrations.Core.SendEmail({
@@ -30,15 +27,9 @@ User Details:
 Log in to the admin dashboard to view more details.`
     });
 
-    return new Response(
-      JSON.stringify({ success: true, message: 'Admin notified' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Admin notification error:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+    return Response.json({ success: true, message: 'Admin notified' });
+    } catch (error) {
+     console.error('Admin notification error:', error);
+     return Response.json({ error: error.message }, { status: 500 });
+    }
 });

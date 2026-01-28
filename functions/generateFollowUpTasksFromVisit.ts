@@ -131,21 +131,25 @@ Only generate tasks that are truly needed - don't create unnecessary work.`;
                         break;
                 }
 
-                const createdTask = await base44.entities.Task.create({
-                    patient_id,
-                    title: task.title,
-                    description: task.description,
-                    type: task.type,
-                    priority: task.priority,
-                    due_date: dueDate.toISOString().split('T')[0],
-                    due_timeframe: task.due_timeframe,
-                    assigned_to: user.email,
-                    source: 'ai_generated',
-                    ai_reason: task.ai_reason,
-                    related_visit_id: visit_id,
-                    status: 'pending'
-                });
-                createdTasks.push(createdTask);
+                try {
+                             const createdTask = await base44.asServiceRole.entities.Task.create({
+                                 patient_id,
+                                 title: task.title,
+                                 description: task.description,
+                                 type: task.type,
+                                 priority: task.priority,
+                                 due_date: dueDate.toISOString().split('T')[0],
+                                 due_timeframe: task.due_timeframe,
+                                 assigned_to: user.email,
+                                 source: 'ai_generated',
+                                 ai_reason: task.ai_reason,
+                                 related_visit_id: visit_id,
+                                 status: 'pending'
+                             });
+                             createdTasks.push(createdTask);
+                         } catch (taskError) {
+                             console.error(`Failed to create task: ${task.title}`, taskError);
+                         }
             }
         }
 
