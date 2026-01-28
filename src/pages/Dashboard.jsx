@@ -1,157 +1,36 @@
-import React, { useState, useMemo } from "react";
+import React from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import RoleBasedOnboarding from "@/components/onboarding/RoleBasedOnboarding";
-import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { Clock, MapPin, User, Plus, CheckCircle2, AlertCircle, FileText, Mic, Brain, Shield, Target, Activity, ListTodo, ChevronRight } from "lucide-react";
-import { formatEastern, todayEastern } from "../components/utils/timezone";
-import { isValid } from "date-fns";
-import ComplianceDashboardWidget from "../components/compliance/ComplianceDashboardWidget";
-import ComplianceErrorAnalyzer from "../components/training/ComplianceErrorAnalyzer";
-import { useNavigate } from "react-router-dom";
-
-import RealTimePatientAlerts from "../components/dashboard/RealTimePatientAlerts";
-
-import NurseRegulatoryAlerts from "../components/compliance/NurseRegulatoryAlerts";
-import PDGMPredictiveAnalytics from "../components/pdgm/PDGMPredictiveAnalytics";
-import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
-
-import ComplianceAlertNotifications from "../components/alerts/ComplianceAlertNotifications";
-import ProactiveClinicalSupport from "../components/clinical/ProactiveClinicalSupport";
-import NewFeaturesBanner from "../components/dashboard/NewFeaturesBanner";
-import AnnouncementsWidget from "../components/dashboard/AnnouncementsWidget";
-import { calculateNurseStats } from "@/components/utils/statsCalculator";
-import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
-import TaskNotifications from "../components/tasks/TaskNotifications";
-import TrialStatusBanner from "../components/subscription/TrialStatusBanner";
-import EmptyState from "../components/ui/EmptyState";
-import { motion } from "framer-motion";
-import PullToRefresh from "../components/mobile/PullToRefresh";
-import ClinicalStaffPerformanceInsights from "../components/analytics/ClinicalStaffPerformanceInsights";
-
-import DashboardCustomizer from "../components/dashboard/DashboardCustomizer";
-import { getAccessibleWidgets } from "../components/utils/providerAccessControl";
-import DashboardHeader from "../components/dashboard/DashboardHeader";
-import QuickAccessCards from "../components/dashboard/QuickAccessCards";
-import DashboardSection from "../components/dashboard/DashboardSection";
-import QuickStatsSummary from "../components/dashboard/QuickStatsSummary";
-import WorkflowShortcuts from "../components/dashboard/WorkflowShortcuts";
-import SkillGapWidget from "../components/dashboard/SkillGapWidget";
-import PatientRiskWidget from "../components/dashboard/PatientRiskWidget";
-import ProactiveInsights from "../components/insights/ProactiveInsights";
-import { ErrorBoundary } from "../components/utils/ErrorBoundary";
-import HighRiskPatientsWidget from "../components/dashboard/HighRiskPatientsWidget";
-import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
-import HighRiskPatientsList from "../components/dashboard/HighRiskPatientsList";
+import { todayEastern } from "../components/utils/timezone";
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  const { data: currentUser, isLoading: userLoading, error: userError } = useQuery({
+  const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
-      try {
-        const user = await base44.auth.me();
-        console.log('User loaded:', user);
-        return user;
-      } catch (error) {
-        console.error('Auth error:', error);
-        throw error;
-      }
+      const user = await base44.auth.me();
+      console.log('User loaded:', user);
+      return user;
     }
   });
 
-  // Get role-specific widgets
-  const accessibleWidgets = currentUser?.credential_type ?
-  getAccessibleWidgets(currentUser.credential_type) :
-  [];
-
-  const canAccessWidget = (widgetName) => accessibleWidgets.includes(widgetName);
-
-  // Onboarding will show as overlay instead of redirect
-
-  // Log page visit with user context
-  React.useEffect(() => {
-    if (currentUser?.email) {
-      logActivity(ActivityActions.PAGE_VISIT, {
-        page: 'Dashboard',
-        page_title: 'Dashboard',
-        user_role: currentUser.role
-      });
-    }
-  }, [currentUser?.email]);
-
-  const { data: visits, isLoading, error: visitsError } = useQuery({
+  const { data: visits = [] } = useQuery({
     queryKey: ['todayVisits'],
     queryFn: async () => {
-      try {
-        const today = todayEastern();
-        const data = await base44.entities.Visit.filter({ visit_date: today });
-        return data || [];
-      } catch (error) {
-        console.error('Visits error:', error);
-        return [];
-      }
+      const today = todayEastern();
+      const data = await base44.entities.Visit.filter({ visit_date: today });
+      return data || [];
     },
-    initialData: [],
-    enabled: !!currentUser,
-    staleTime: 60000
+    enabled: !!currentUser
   });
 
-  const { data: patients, error: patientsError } = useQuery({
+  const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
     queryFn: async () => {
-      try {
-        const data = await base44.entities.Patient.list(500, '-updated_date');
-        return data || [];
-      } catch (error) {
-        console.error('Patients error:', error);
-        return [];
-      }
+      const data = await base44.entities.Patient.list(500, '-updated_date');
+      return data || [];
     },
-    initialData: [],
-    enabled: !!currentUser,
-    staleTime: 300000
-  });
-
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ['allCarePlans'],
-    queryFn: () => base44.entities.CarePlan.list(200, '-updated_date'),
-    initialData: [],
-    staleTime: 300000
-  });
-
-  const { data: incidents = [] } = useQuery({
-    queryKey: ['recentIncidents'],
-    queryFn: () => base44.entities.Incident.list(50, '-incident_date'),
-    initialData: [],
-    staleTime: 180000
-  });
-
-  const { data: noteConversions = [] } = useQuery({
-    queryKey: ['nurseNoteConversions', currentUser?.email],
-    queryFn: () => base44.entities.NoteConversion.filter({ nurse_email: currentUser?.email }),
-    enabled: !!currentUser?.email,
-    initialData: []
-  });
-
-  const { data: nurseTrainingRecommendations = [] } = useQuery({
-    queryKey: ['nurseTrainingRecommendations', currentUser?.email],
-    queryFn: () => base44.entities.TrainingRecommendation.filter({ nurse_email: currentUser?.email, addressed: false }),
-    enabled: !!currentUser?.email,
-    initialData: []
-  });
-
-  const { data: nurseComplianceAudits = [] } = useQuery({
-    queryKey: ['nurseComplianceAudits', currentUser?.email],
-    queryFn: () => base44.entities.ComplianceAudit.filter({ nurse_email: currentUser?.email }),
-    enabled: !!currentUser?.email,
-    initialData: []
+    enabled: !!currentUser
   });
 
   const { data: nurseTasks = [] } = useQuery({
@@ -160,115 +39,15 @@ export default function Dashboard() {
       assigned_to: currentUser?.email,
       status: { "$ne": "completed" }
     }),
-    enabled: !!currentUser?.email,
-    initialData: []
+    enabled: !!currentUser?.email
   });
-
-  const { data: nurseActivity = [] } = useQuery({
-    queryKey: ['nurseRecentActivity', currentUser?.email],
-    queryFn: () => base44.entities.UserActivity.filter({ user_email: currentUser?.email }),
-    enabled: !!currentUser?.email,
-    initialData: []
-  });
-
-  const { data: subscription } = useQuery({
-    queryKey: ['userSubscription', currentUser?.email],
-    queryFn: () => base44.entities.Subscription.filter({ user_email: currentUser.email }),
-    enabled: !!currentUser?.email,
-    select: (data) => data[0]
-  });
-
-  // Handle errors gracefully (logged server-side)
-
-  const getPatient = (patientId) => {
-    return patients.find((p) => p.id === patientId);
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      scheduled: "bg-blue-100 text-blue-800 border-blue-200",
-      in_progress: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      completed: "bg-green-100 text-green-800 border-green-200",
-      cancelled: "bg-gray-100 text-gray-800 border-gray-200"
-    };
-    return colors[status] || colors.scheduled;
-  };
-
-  const getVisitTypeLabel = (type) => {
-    const labels = {
-      skilled_nursing: "Skilled Nursing",
-      admission: "Admission",
-      recertification: "Recertification",
-      discharge: "Discharge",
-      routine_visit: "Routine Visit",
-      prn: "PRN Visit"
-    };
-    return labels[type] || type;
-  };
-
-  // Voice command handler
-  const handleVoiceCommand = (action, spokenText) => {
-    switch (action) {
-      case 'navigate_patients':
-        navigate(createPageUrl("Patients"));
-        break;
-      case 'refresh_data':
-        queryClient.invalidateQueries({ queryKey: ['todayVisits'] });
-        break;
-      case 'search':
-        // Extract search term from spoken text
-        const searchTerm = spokenText.replace(/search for|find patient|look for/gi, '').trim();
-        if (searchTerm) {
-          navigate(`${createPageUrl("Patients")}?search=${encodeURIComponent(searchTerm)}`);
-        }
-        break;
-      case 'navigate_dashboard':
-        window.location.reload();
-        break;
-      default:
-      // Unhandled command
-    }
-  };
-
-  const stats = useMemo(() => {
-    return calculateNurseStats(currentUser?.email, {
-      visits,
-      noteConversions,
-      dateRange: 30
-    });
-  }, [visits, noteConversions, currentUser]);
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 18) return "Good Afternoon";
-    return "Good Evening";
-  };
-
-  const fullName = currentUser?.full_name || 'there';
-
-  console.log('Dashboard state:', { userLoading, userError, currentUser });
 
   if (userLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-transparent">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-slate-600 dark:text-slate-400">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (userError) {
-    console.error('User error:', userError);
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-transparent">
-        <div className="text-center p-6">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2 text-red-600 dark:text-red-400">Error Loading Dashboard</h2>
-          <p className="text-slate-600 dark:text-slate-400 mb-4">{userError.message || 'Unknown error'}</p>
-          <Button onClick={() => window.location.reload()} className="bg-blue-600 hover:bg-blue-700">Reload Page</Button>
+          <p className="text-slate-600">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -276,225 +55,56 @@ export default function Dashboard() {
 
   if (!currentUser) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-transparent">
-        <div className="text-center p-6">
-          <User className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2 text-slate-800 dark:text-slate-200">Not Authenticated</h2>
-          <p className="text-slate-600 dark:text-slate-400 mb-4">Please log in to access the dashboard.</p>
-          <Button onClick={() => base44.auth.redirectToLogin()} className="bg-blue-600 hover:bg-blue-700">Log In</Button>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Please log in</p>
       </div>
     );
   }
 
-  console.log('Rendering Dashboard with user:', currentUser);
-  console.log('Accessible widgets:', accessibleWidgets);
-  console.log('Can access tasks:', canAccessWidget('tasks'));
-
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0 bg-transparent">
-      {currentUser && !currentUser.onboarding_completed && (
-        <RoleBasedOnboarding user={currentUser} />
-      )}
-      {/* Header with integrated banners */}
-      <div className="mb-6">
-        <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading header</div>}>
-          <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
-        </ErrorBoundary>
-      </div>
+    <div className="p-6 max-w-7xl mx-auto min-h-screen">
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Dashboard - {currentUser?.full_name}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <p>✅ Dashboard loaded successfully</p>
+            <p>Email: {currentUser?.email}</p>
+            <p>Role: {currentUser?.role}</p>
+            <p>Credential: {currentUser?.credential_type || 'None'}</p>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Proactive Insights */}
-      <div className="mb-6">
-        <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg mb-4">Insights temporarily unavailable</div>}>
-          <ProactiveInsights userEmail={currentUser?.email} />
-        </ErrorBoundary>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="mb-6">
-        <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading stats</div>}>
-          <QuickStatsSummary stats={{
-            activePatients: patients?.length || 0,
-            completedVisits: visits?.length || 0,
-            pendingAlerts: 0,
-            upcomingVisits: 0
-          }} />
-        </ErrorBoundary>
-      </div>
-
-      {/* Workflow Shortcuts */}
-      <div className="mb-6">
-        <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg mb-4">Error loading shortcuts</div>}>
-          <WorkflowShortcuts />
-        </ErrorBoundary>
-      </div>
-
-      {/* Skill Gap & Risk Widgets */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
-        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg">Skill gap data unavailable</div>}>
-          <SkillGapWidget userEmail={currentUser?.email} />
-        </ErrorBoundary>
-        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg">Patient risk data unavailable</div>}>
-          <HighRiskPatientsList limit={8} showAnalyzeButton={true} />
-        </ErrorBoundary>
-      </div>
-
-      {/* My Tasks Widget */}
-      {canAccessWidget('tasks') && (
-        <div className="mb-6">
-        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg mb-4">Tasks unavailable</div>}>
-        <Card className="hover-lift">
-          <CardHeader className="bg-slate-100 pb-2 p-6 space-y-1.5 flex flex-row items-center justify-between">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <ListTodo className="w-5 h-5 text-blue-600" />
-              My Tasks
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate(createPageUrl('Tasks'))}
-              className="text-xs">
-
-              View All
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Patients</CardTitle>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-6">
-            {nurseTasks && nurseTasks.length > 0 ?
-            <div className="space-y-2">
-                {nurseTasks.slice(0, 5).map((task) => {
-                const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.due_date !== new Date().toISOString().split('T')[0];
-                const isDueToday = task.due_date && task.due_date === new Date().toISOString().split('T')[0];
-
-                return (
-                  <div
-                    key={task.id}
-                    className={`p-3 rounded-lg border ${
-                    isOverdue ? 'border-red-300 bg-red-50 dark:bg-red-950' :
-                    isDueToday ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950' :
-                    'border-slate-200 bg-slate-50 dark:bg-slate-800'}`
-                    }>
-
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge className={
-                          task.priority === 'critical' ? 'bg-red-600' :
-                          task.priority === 'high' ? 'bg-orange-500' :
-                          task.priority === 'medium' ? 'bg-yellow-500' :
-                          'bg-blue-500'
-                          }>
-                              {task.priority}
-                            </Badge>
-                            <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{task.title}</span>
-                          </div>
-                          {task.due_date &&
-                        <p className="text-xs text-slate-600 dark:text-slate-400">
-                              Due: {new Date(task.due_date).toLocaleDateString()}
-                              {isOverdue && <span className="text-red-600 ml-1">• Overdue</span>}
-                              {isDueToday && <span className="text-yellow-600 ml-1">• Due Today</span>}
-                            </p>
-                        }
-                        </div>
-                        <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={async () => {
-                          await base44.entities.Task.update(task.id, { status: 'completed' });
-                          queryClient.invalidateQueries({ queryKey: ['nurseTasks'] });
-                        }}
-                        className="flex-shrink-0">
-
-                          <CheckCircle2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>);
-
-              })}
-                {nurseTasks.length > 5 &&
-              <p className="text-xs text-center text-slate-500 dark:text-slate-400 pt-2">
-                    +{nurseTasks.length - 5} more tasks
-                  </p>
-              }
-              </div> :
-
-            <div className="text-center py-8">
-                <ListTodo className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                <p className="text-sm text-slate-500 dark:text-slate-400">No pending tasks</p>
-                <Button
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={() => navigate(createPageUrl('Tasks'))}>
-
-                  Create Task
-                </Button>
-              </div>
-            }
+          <CardContent>
+            <p className="text-3xl font-bold">{patients?.length || 0}</p>
           </CardContent>
         </Card>
-        </ErrorBoundary>
-        </div>
-      )}
-
-
-
-
-
-
-
-
-
-
-
-      {/* Critical Alerts & Compliance Section - only for providers with access */}
-      {(canAccessWidget('complianceScore') || canAccessWidget('clinicalSupport')) && (
-        <div className="mb-6">
-        <ErrorBoundary fallback={<div className="p-4 bg-gray-50 rounded-lg">Alerts & compliance section unavailable</div>}>
-        <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden mb-4">
-            {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
-            <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg">Compliance alerts unavailable</div>}>
-              <ComplianceAlertNotifications
-                nurseEmail={currentUser?.email}
-                showAll={false}
-                maxAlerts={5}
-                compact={true} />
-            </ErrorBoundary>
-            )}
-            {canAccessWidget('clinicalSupport') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits?.length > 0 && visits[0]?.patient_id && (
-            <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg">Clinical support unavailable</div>}>
-              <ProactiveClinicalSupport
-                patientId={visits[0].patient_id}
-                compact={true} />
-            </ErrorBoundary>
-            )}
-          </div>
-
-          {/* Compliance Training Widget */}
-          <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg">Compliance analyzer unavailable</div>}>
-            <ComplianceErrorAnalyzer
-              userEmail={currentUser?.email}
-              onGenerateTraining={(patterns) => {
-                navigate(createPageUrl("ComplianceTraining"));
-              }}
-            />
-          </ErrorBoundary>
-          </DashboardSection>
-          </ErrorBoundary>
-          </div>
-      )}
-
-      {/* Debug Info */}
-      <div className="mt-6 p-4 bg-white dark:bg-slate-800 rounded-lg border">
-        <h3 className="font-semibold mb-2">Debug Info</h3>
-        <p className="text-sm">User: {currentUser?.full_name}</p>
-        <p className="text-sm">Credential: {currentUser?.credential_type}</p>
-        <p className="text-sm">Widgets: {accessibleWidgets.join(', ')}</p>
-        <p className="text-sm">Patients: {patients?.length || 0}</p>
-        <p className="text-sm">Visits: {visits?.length || 0}</p>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Visits Today</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{visits?.length || 0}</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Pending Tasks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{nurseTasks?.length || 0}</p>
+          </CardContent>
+        </Card>
       </div>
-
     </div>
   );
 }
