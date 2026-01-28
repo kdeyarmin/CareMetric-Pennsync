@@ -257,7 +257,7 @@ export default function Dashboard() {
               <Link key={action.page} to={createPageUrl(action.page)}>
                 <Button
                   variant="outline"
-                  className="w-full h-20 flex flex-col items-center justify-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:shadow-md transition-all rounded-lg card-hover"
+                  className="w-full h-20 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-slate-800/60 dark:to-slate-900/40 hover:from-blue-100 hover:to-slate-100 dark:hover:from-slate-700/60 dark:hover:to-slate-800/40 hover:shadow-md transition-all rounded-lg card-hover"
                 >
                   <div className={`p-2 rounded-lg ${action.color}`}>
                     <action.icon className="h-5 w-5 text-white" />
@@ -332,7 +332,7 @@ export default function Dashboard() {
                 {tasks.slice(0, 5).map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors card-hover"
+                    className="flex items-start gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 hover:from-blue-100/60 hover:to-slate-100/60 dark:hover:from-slate-700/40 dark:hover:to-slate-800/30 transition-colors card-hover"
                   >
                     <div className={`mt-1 ${task.status === "completed" ? "text-green-500" : "text-gray-400"}`}>
                       <CheckCircle className="h-4 w-4" />
@@ -428,7 +428,7 @@ export default function Dashboard() {
                 {patientAlerts.slice(0, 5).map((alert) => (
                   <div
                     key={alert.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors card-hover"
+                    className="flex items-start gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 hover:from-blue-100/60 hover:to-slate-100/60 dark:hover:from-slate-700/40 dark:hover:to-slate-800/30 transition-colors card-hover"
                   >
                     <Bell className="h-4 w-4 text-blue-500 mt-1" />
                     <div className="flex-1 min-w-0">
