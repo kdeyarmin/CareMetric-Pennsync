@@ -96,7 +96,7 @@ export default function AnalyticsDashboard() {
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date'),
     select: (data) => data.filter(ca => {
       const caDate = new Date(ca.created_date);
-      const inDateRange = caDate >= new Date(caDate) && caDate <= new Date(endDate);
+      const inDateRange = caDate >= new Date(startDate) && caDate <= new Date(endDate);
       const userMatch = selectedUser === 'all' || ca.nurse_email === selectedUser;
       return inDateRange && userMatch;
     }),

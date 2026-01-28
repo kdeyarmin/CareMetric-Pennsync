@@ -69,10 +69,14 @@ export default function OASIS() {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'compliant':return <Badge className="bg-green-500 text-white">Compliant</Badge>;
-      case 'flagged':return <Badge className="bg-orange-500 text-white">Flagged</Badge>;
-      case 'critical':return <Badge className="bg-red-500 text-white">Critical Issues</Badge>;
-      default:return <Badge variant="secondary">Unknown</Badge>;
+      case 'compliant':
+        return <Badge className="bg-green-500 text-white">Compliant</Badge>;
+      case 'flagged':
+        return <Badge className="bg-orange-500 text-white">Flagged</Badge>;
+      case 'critical':
+        return <Badge className="bg-red-500 text-white">Critical Issues</Badge>;
+      default:
+        return <Badge variant="secondary">Unknown</Badge>;
     }
   };
 

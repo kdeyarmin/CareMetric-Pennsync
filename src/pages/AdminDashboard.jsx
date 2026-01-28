@@ -125,7 +125,8 @@ export default function AdminDashboard() {
 
   const { data: allAppointments = [] } = useQuery({
     queryKey: ['allAppointments'],
-    queryFn: () => base44.entities.Appointment.list('-appointment_date'),
+    queryFn: () => [],
+    initialData: []
   });
 
   const { data: allCarePlans = [] } = useQuery({

@@ -18,8 +18,6 @@ import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
 import NoteTemplateSelector from "../components/smartNote/NoteTemplateSelector";
 import LanguageSelector from "../components/scribe/LanguageSelector";
 import TerminologyGlossaryManager from "../components/scribe/TerminologyGlossaryManager";
-import { Badge } from "@/components/ui/badge";
-
 const commonDiagnoses = [
 "CHF (Congestive Heart Failure)",
 "COPD (Chronic Obstructive Pulmonary Disease)",

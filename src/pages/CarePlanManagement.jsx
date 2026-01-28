@@ -672,7 +672,7 @@ export default function CarePlanManagement() {
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => navigate(`${createPageUrl("PatientDetails")}?patientId=${patientId}`)}
+                        onClick={() => navigate(`${createPageUrl("PatientDetails")}?id=${patientId}`)}
                         variant="outline"
                         className="w-full sm:flex-1 touch-target text-xs"
                       >
