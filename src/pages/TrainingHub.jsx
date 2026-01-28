@@ -127,9 +127,9 @@ export default function TrainingHub() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 mb-4 sm:mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-2 md:gap-3 mb-3 sm:mb-4 md:mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-3 text-center">
+          <CardContent className="p-2 sm:p-3 text-center">
             <p className="text-xl sm:text-2xl font-bold text-blue-700">{completed.length}</p>
             <p className="text-[10px] sm:text-xs text-blue-600 mt-1">Completed</p>
           </CardContent>

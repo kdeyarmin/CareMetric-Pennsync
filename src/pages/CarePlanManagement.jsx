@@ -301,11 +301,11 @@ export default function CarePlanManagement() {
       allowTrial={true}
     >
     <div className="w-full overflow-x-hidden">
-      <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 overflow-hidden">
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 overflow-hidden">
         <Button
           variant="outline"
           onClick={() => navigate(createPageUrl("Dashboard"))}
-          className="mb-3 sm:mb-4 w-full sm:w-auto touch-target"
+          className="mb-2 sm:mb-3 md:mb-4 w-full sm:w-auto touch-target h-9 text-xs sm:text-sm"
           size="sm"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -328,13 +328,13 @@ export default function CarePlanManagement() {
         </div>
 
         {/* Statistics */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6 w-full">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2 md:gap-3 mb-3 sm:mb-4 md:mb-6 w-full">
         <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
-          <CardContent className="p-3 sm:p-4">
+          <CardContent className="p-2 sm:p-3 md:p-4">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Total Plans</p>
-                <p className="text-2xl sm:text-3xl font-bold">{totalPlans}</p>
+                <p className="text-slate-600 dark:text-slate-300 text-[9px] sm:text-[10px] md:text-xs font-medium mb-0.5 truncate">Total Plans</p>
+                <p className="text-lg sm:text-2xl md:text-3xl font-bold">{totalPlans}</p>
               </div>
               <Target className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
             </div>

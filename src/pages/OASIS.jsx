@@ -82,10 +82,10 @@ export default function OASIS() {
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-slate-900 dark:text-slate-100">OASIS Documentation Assistant</h1>
 
         <Card className="mb-4 sm:mb-6 w-full">
-          <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
-            <CardTitle className="flex items-center gap-2 text-sm sm:text-base"><UploadCloud className="w-4 h-4 sm:w-5 sm:h-5" /> Upload OASIS Assessment</CardTitle>
+          <CardHeader className="bg-slate-200 p-3 sm:p-4 flex flex-col space-y-1.5">
+            <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base"><UploadCloud className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" /> Upload OASIS Assessment</CardTitle>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+          <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 space-y-3 sm:space-y-3">
             <div>
               <Label htmlFor="oasis-file" className="text-xs sm:text-sm">OASIS Assessment File (PDF, Image)</Label>
               <Input id="oasis-file" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} className="h-10 sm:h-11 text-sm" />
@@ -128,17 +128,17 @@ export default function OASIS() {
         }
 
         {analysisResult &&
-        <Card className="mt-4 sm:mt-6">
-            <CardHeader className="p-3 sm:p-4 md:p-6">
-              <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-sm sm:text-base"><FileText className="w-4 h-4 sm:w-5 sm:h-5" /> Analysis Results</span>
+         <Card className="mt-3 sm:mt-4 md:mt-6">
+             <CardHeader className="p-3 sm:p-4">
+               <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs sm:text-sm md:text-base">
+                 <span className="flex items-center gap-2"><FileText className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" /> Analysis Results</span>
                 {getStatusBadge(analysisResult.overall_status)}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-4 md:p-6 pt-0">
+            <CardContent className="space-y-3 p-3 sm:p-4 pt-0">
               <div>
-                <h3 className="text-sm sm:text-base md:text-lg font-semibold">Overall Status:</h3>
-                <p className="text-xs sm:text-sm">{analysisResult.summary_message}</p>
+                <h3 className="text-xs sm:text-sm md:text-base font-semibold">Overall Status:</h3>
+                <p className="text-[10px] sm:text-xs md:text-sm">{analysisResult.summary_message}</p>
               </div>
               {analysisResult.inconsistencies && analysisResult.inconsistencies.length > 0 &&
             <div>
