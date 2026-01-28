@@ -1108,10 +1108,10 @@ Generate the complete clinical narrative based on the audio and context:`;
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
         <div className="lg:col-span-2 space-y-3 sm:space-y-4 md:space-y-6">
-          <Tabs defaultValue="document" className="space-y-4 sm:space-y-6">
+          <Tabs defaultValue="document" className="space-y-3 sm:space-y-4 md:space-y-6">
             <TabsList className="grid w-full grid-cols-2 gap-1 p-1 h-auto">
-              <TabsTrigger value="document" className="text-xs sm:text-sm md:text-base py-2">Documentation</TabsTrigger>
-              <TabsTrigger value="workflow" className="text-xs sm:text-sm md:text-base py-2">AI Workflow</TabsTrigger>
+              <TabsTrigger value="document" className="text-xs sm:text-sm py-2">Documentation</TabsTrigger>
+              <TabsTrigger value="workflow" className="text-xs sm:text-sm py-2">AI Workflow</TabsTrigger>
             </TabsList>
 
             <TabsContent value="document" className="space-y-4 sm:space-y-6">
@@ -1163,14 +1163,14 @@ Generate the complete clinical narrative based on the audio and context:`;
               />
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="w-5 h-5" />
+                <CardHeader className="p-3 sm:p-4 md:p-6">
+                  <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
                     Visit Times
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <CardContent className="p-3 sm:p-4 md:p-6 pt-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                     <div>
                       <Label htmlFor="start_time" className="text-xs sm:text-sm">Start Time</Label>
                       <Input
@@ -1196,10 +1196,10 @@ Generate the complete clinical narrative based on the audio and context:`;
               <QuickTemplatesLibrary onInsertTemplate={handleInsertTemplate} />
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Vital Signs</CardTitle>
+                <CardHeader className="p-3 sm:p-4">
+                  <CardTitle className="text-xs sm:text-sm md:text-base">Vital Signs</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-3 sm:p-4 pt-0">
                   <SmartVitalsInput 
                     vitalSigns={vitalSigns}
                     onChange={setVitalSigns}
@@ -1309,9 +1309,9 @@ Generate the complete clinical narrative based on the audio and context:`;
               />
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
+                <CardHeader className="p-3 sm:p-4 md:p-6">
+                  <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                    <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                     Clinical Narrative
                     {recognizedCommand && (
                       <Badge className="bg-green-500 text-white animate-pulse ml-auto">

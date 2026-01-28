@@ -628,13 +628,13 @@ export default function SmartNoteAssistant() {
         <>
             {/* Streamlined Input Form */}
             <Card className="w-full max-w-full overflow-hidden">
-              <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
-                <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
-                  <Wand2 className="w-4 h-4 sm:w-5 sm:h-5" />
+              <CardHeader className="bg-slate-200 p-3 sm:p-4 flex flex-col space-y-1.5">
+                <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base">
+                  <Wand2 className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
                   Clinical Documentation
                 </CardTitle>
               </CardHeader>
-              <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+              <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 space-y-3">
                 {/* Patient Selection Dropdown */}
                 <div className="bg-slate-100 w-full">
                   <Label className="text-xs sm:text-sm font-medium">Patient *</Label>
@@ -825,9 +825,9 @@ export default function SmartNoteAssistant() {
                 {/* Vital Signs */}
                 <div className="w-full">
                  <Label className="text-xs sm:text-sm font-medium">Vital Signs</Label>
-                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                    <div>
-                     <label className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 block mb-1">Temp (°F)</label>
+                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-1 sm:mt-2">
+                   <div>
+                    <label className="text-[9px] sm:text-[10px] md:text-xs text-slate-600 dark:text-slate-400 block mb-1">Temp (°F)</label>
                      <Input
                        type="number"
                        step="0.1"
@@ -956,8 +956,8 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
 
               {/* Enhanced Note Display - Streamlined */}
               <Card className="w-full max-w-full overflow-hidden">
-                <CardHeader className="pb-3 p-3 sm:p-4 md:p-6">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                <CardHeader className="pb-3 p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
                       <span className="font-semibold text-sm sm:text-base">Enhanced Note</span>
@@ -978,17 +978,17 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="p-3 sm:p-4 md:p-6 pt-0">
+                <CardContent className="p-3 sm:p-4 pt-0">
                   {isEditMode ? (
                     <div className="space-y-2">
-                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-64 sm:h-72 p-3 border rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-green-500" />
+                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-56 sm:h-64 md:h-72 p-2 sm:p-3 border rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-green-500" />
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600 w-full sm:w-auto touch-target" size="sm">Save & Recheck</Button>
                         <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline" className="w-full sm:w-auto" size="sm">Cancel</Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-slate-50 dark:bg-slate-900 p-3 sm:p-4 rounded-lg text-xs sm:text-sm whitespace-pre-wrap max-h-64 sm:max-h-72 overflow-y-auto border break-words">
+                    <div className="bg-slate-50 dark:bg-slate-900 p-2 sm:p-3 md:p-4 rounded-lg text-xs sm:text-sm whitespace-pre-wrap max-h-56 sm:max-h-64 md:max-h-72 overflow-y-auto border break-words">
                       {enhancedNote}
                     </div>
                   )}
