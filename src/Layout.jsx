@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "./utils";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import {
   Home,
   Users,
@@ -17,11 +19,18 @@ import {
   Award,
   BookOpen,
   Bell,
-  Shield
+  Shield,
+  UserCog,
+  Building2
 } from "lucide-react";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const { data: user } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
 
   const navigationGroups = [
     {
@@ -58,6 +67,15 @@ export default function Layout({ children, currentPageName }) {
       ]
     }
   ];
+
+  const adminNavigationGroup = user?.role === "admin" ? {
+    title: "Administration",
+    items: [
+      { name: "Admin Dashboard", icon: Award, page: "AdminDashboard" },
+      { name: "User Management", icon: UserCog, page: "UserManagement" },
+      { name: "Agency Management", icon: Building2, page: "AgencyDashboard" },
+    ]
+  } : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
@@ -121,6 +139,34 @@ export default function Layout({ children, currentPageName }) {
                 </div>
               </div>
             ))}
+            
+            {adminNavigationGroup && (
+              <div key={adminNavigationGroup.title}>
+                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                  {adminNavigationGroup.title}
+                </h3>
+                <div className="space-y-1">
+                  {adminNavigationGroup.items.map((item) => {
+                    const isActive = currentPageName === item.name;
+                    return (
+                      <Link key={item.page} to={createPageUrl(item.page)}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className={`w-full justify-start gap-3 ${
+                            isActive
+                              ? "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <span className="text-sm">{item.name}</span>
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </nav>
         </aside>
 
