@@ -80,7 +80,7 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300 dark:from-slate-900 dark:via-blue-950/30 dark:to-slate-900">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/40 dark:border-slate-700/40 shadow-lg dark:shadow-slate-950/50">
+      <header className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-4">
             <Button
@@ -89,7 +89,7 @@ export default function Layout({ children, currentPageName }) {
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="lg:hidden"
             >
-              {sidebarOpen ? <X className="h-5 w-5 transition-transform duration-300" /> : <Menu className="h-5 w-5 transition-transform duration-300" />}
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
             <div className="flex items-center gap-3">
               <img 
@@ -113,7 +113,7 @@ export default function Layout({ children, currentPageName }) {
         <aside
           className={`${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/40 dark:border-slate-700/40 transition-all duration-300 ease-out lg:translate-x-0 overflow-y-auto shadow-xl lg:shadow-none`}
+          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-r border-slate-200/60 dark:border-slate-800/60 transition-transform duration-300 lg:translate-x-0 overflow-y-auto shadow-lg lg:shadow-none`}
         >
           <div className="p-4 border-b border-slate-200/60 dark:border-slate-800/60">
             <div className="flex items-center gap-2">
@@ -138,10 +138,10 @@ export default function Layout({ children, currentPageName }) {
                       <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
                         <Button
                           variant={isActive ? "secondary" : "ghost"}
-                          className={`w-full justify-start gap-3 transition-all duration-200 rounded-lg ${
+                          className={`w-full justify-start gap-3 transition-all ${
                             isActive
-                              ? "bg-gradient-to-r from-blue-100 to-blue-50 text-blue-700 shadow-md dark:from-blue-950/50 dark:to-blue-900/40 dark:text-blue-300 border-l-3 border-blue-500"
-                              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-blue-600 dark:hover:text-blue-400"
+                              ? "bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 shadow-sm dark:from-blue-950/40 dark:to-blue-900/30 dark:text-blue-400 border-l-2 border-blue-500"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-blue-600 dark:hover:text-blue-400"
                           }`}
                         >
                           <item.icon className="h-4 w-4" />
@@ -166,10 +166,10 @@ export default function Layout({ children, currentPageName }) {
                       <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
                         <Button
                           variant={isActive ? "secondary" : "ghost"}
-                          className={`w-full justify-start gap-3 transition-all duration-200 rounded-lg ${
+                          className={`w-full justify-start gap-3 transition-all ${
                             isActive
-                              ? "bg-gradient-to-r from-blue-100 to-blue-50 text-blue-700 shadow-md dark:from-blue-950/50 dark:to-blue-900/40 dark:text-blue-300 border-l-3 border-blue-500"
-                              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-blue-600 dark:hover:text-blue-400"
+                              ? "bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 shadow-sm dark:from-blue-950/40 dark:to-blue-900/30 dark:text-blue-400 border-l-2 border-blue-500"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-blue-600 dark:hover:text-blue-400"
                           }`}
                         >
                           <item.icon className="h-4 w-4" />
