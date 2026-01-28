@@ -1106,12 +1106,12 @@ Generate the complete clinical narrative based on the audio and context:`;
         visitId={visitId}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+        <div className="lg:col-span-2 space-y-3 sm:space-y-4 md:space-y-6">
           <Tabs defaultValue="document" className="space-y-4 sm:space-y-6">
-            <TabsList className="grid w-full grid-cols-2 h-auto">
-              <TabsTrigger value="document" className="text-sm sm:text-base py-2">Documentation</TabsTrigger>
-              <TabsTrigger value="workflow" className="text-sm sm:text-base py-2">AI Workflow</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 gap-1 p-1 h-auto">
+              <TabsTrigger value="document" className="text-xs sm:text-sm md:text-base py-2">Documentation</TabsTrigger>
+              <TabsTrigger value="workflow" className="text-xs sm:text-sm md:text-base py-2">AI Workflow</TabsTrigger>
             </TabsList>
 
             <TabsContent value="document" className="space-y-4 sm:space-y-6">
@@ -1170,9 +1170,9 @@ Generate the complete clinical narrative based on the audio and context:`;
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                      <Label htmlFor="start_time">Start Time</Label>
+                      <Label htmlFor="start_time" className="text-xs sm:text-sm">Start Time</Label>
                       <Input
                         id="start_time"
                         type="time"
@@ -1181,7 +1181,7 @@ Generate the complete clinical narrative based on the audio and context:`;
                       />
                     </div>
                     <div>
-                      <Label htmlFor="end_time">End Time</Label>
+                      <Label htmlFor="end_time" className="text-xs sm:text-sm">End Time</Label>
                       <Input
                         id="end_time"
                         type="time"
@@ -1652,8 +1652,8 @@ Generate the complete clinical narrative based on the audio and context:`;
           </Tabs>
         </div>
 
-        <div className="space-y-4 sm:space-y-6">
-          {/* Adaptive Learning Dashboard */}
+        <div className="space-y-3 sm:space-y-4 md:space-y-6">
+           {/* Adaptive Learning Dashboard */}
           <AdaptiveLearningDashboard userEmail={patient?.created_by} />
 
           {/* Real-Time Task Generator */}
