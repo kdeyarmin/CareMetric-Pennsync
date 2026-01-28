@@ -101,7 +101,7 @@ export default function Layout({ children, currentPageName }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-400 hidden md:block">
+            <span className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hidden sm:block">
               {currentPageName}
             </span>
           </div>
