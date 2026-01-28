@@ -111,6 +111,12 @@ export default function Layout({ children, currentPageName }) {
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transition-transform duration-300 lg:translate-x-0 overflow-y-auto`}
         >
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-blue-600" />
+              <span className="font-bold text-gray-900 dark:text-white">CareMetric AI</span>
+            </div>
+          </div>
           <nav className="p-4 space-y-6">
             {navigationGroups.map((group) => (
               <div key={group.title}>
@@ -121,7 +127,7 @@ export default function Layout({ children, currentPageName }) {
                   {group.items.map((item) => {
                     const isActive = currentPageName === item.name;
                     return (
-                      <Link key={item.page} to={createPageUrl(item.page)}>
+                      <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
                         <Button
                           variant={isActive ? "secondary" : "ghost"}
                           className={`w-full justify-start gap-3 ${
@@ -149,7 +155,7 @@ export default function Layout({ children, currentPageName }) {
                   {adminNavigationGroup.items.map((item) => {
                     const isActive = currentPageName === item.name;
                     return (
-                      <Link key={item.page} to={createPageUrl(item.page)}>
+                      <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
                         <Button
                           variant={isActive ? "secondary" : "ghost"}
                           className={`w-full justify-start gap-3 ${
