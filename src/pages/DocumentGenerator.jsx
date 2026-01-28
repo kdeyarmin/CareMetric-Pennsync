@@ -93,35 +93,35 @@ export default function DocumentGenerator() {
 
   return (
     <PullToRefresh onRefresh={async () => {
-      await queryClient.invalidateQueries({ queryKey: ['documentTemplates', 'generatedDocuments'] });
-    }}>
-      <div className="p-4 md:p-6 max-w-6xl mx-auto">
-        <Tabs value={step === 'preview' && selectedHistoryDoc ? 'history' : (step === 'select' ? 'templates' : 'templates')} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="templates">
-              <FileText className="w-4 h-4 mr-2" />
-              Create Document
-            </TabsTrigger>
-            <TabsTrigger value="history">
-              <History className="w-4 h-4 mr-2" />
-              My Documents
-            </TabsTrigger>
+       await queryClient.invalidateQueries({ queryKey: ['documentTemplates', 'generatedDocuments'] });
+     }}>
+       <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto">
+         <Tabs value={step === 'preview' && selectedHistoryDoc ? 'history' : (step === 'select' ? 'templates' : 'templates')} className="w-full">
+           <TabsList className="grid w-full grid-cols-2 gap-1 p-1">
+             <TabsTrigger value="templates" className="text-[10px] sm:text-xs md:text-sm gap-1">
+               <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+               <span className="hidden sm:inline">Create</span>
+             </TabsTrigger>
+             <TabsTrigger value="history" className="text-[10px] sm:text-xs md:text-sm gap-1">
+               <History className="w-3 h-3 sm:w-4 sm:h-4" />
+               <span className="hidden sm:inline">History</span>
+             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="templates" className="space-y-6 mt-6">
+          <TabsContent value="templates" className="space-y-4 sm:space-y-6 mt-4 sm:mt-6">
             {step === 'select' && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Create Document</h2>
-                  <p className="text-slate-600 dark:text-slate-400 mb-4">
+                  <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1 sm:mb-2">Create Document</h2>
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-3 sm:mb-4">
                     Select a patient to see AI-recommended templates tailored to their clinical profile.
                   </p>
                 </div>
 
                 {!selectedPatientForDoc ? (
                   <Card>
-                    <CardContent className="p-6">
-                      <Label className="text-base font-semibold mb-3 block">Select Patient</Label>
+                    <CardContent className="p-3 sm:p-4 md:p-6">
+                      <Label className="text-xs sm:text-sm md:text-base font-semibold mb-2 sm:mb-3 block">Select Patient</Label>
                       <Select value={selectedPatientForDoc || ''} onValueChange={setSelectedPatientForDoc}>
                         <SelectTrigger>
                           <SelectValue placeholder="Choose a patient..." />
@@ -218,10 +218,10 @@ export default function DocumentGenerator() {
             )}
           </TabsContent>
 
-          <TabsContent value="history" className="space-y-4 mt-6">
+          <TabsContent value="history" className="space-y-4 sm:space-y-6 mt-4 sm:mt-6">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">My Generated Documents</h2>
-              <p className="text-slate-600 dark:text-slate-400">View, edit, and resend previously generated documents.</p>
+              <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1 sm:mb-2">Generated Documents</h2>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">View and manage documents.</p>
             </div>
 
             {generatedDocuments.length === 0 ? (
@@ -231,7 +231,7 @@ export default function DocumentGenerator() {
                 description="Create your first patient document to get started."
               />
             ) : (
-              <div className="grid gap-4">
+              <div className="grid gap-3 sm:gap-4">
                 {generatedDocuments.map((doc) => (
                   <Card
                     key={doc.id}
@@ -242,17 +242,17 @@ export default function DocumentGenerator() {
                       setStep('preview');
                     }}
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <h3 className="font-semibold text-slate-900 dark:text-slate-100">
+                          <h3 className="text-xs sm:text-sm md:text-base font-semibold text-slate-900 dark:text-slate-100">
                             {doc.document_name}
                           </h3>
-                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                          <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">
                             Patient: {doc.patient_name}
                           </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
-                            Created: {new Date(doc.created_date).toLocaleDateString()}
+                          <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-500 mt-1">
+                            {new Date(doc.created_date).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="text-right">

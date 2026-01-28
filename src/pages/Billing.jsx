@@ -156,9 +156,9 @@ export default function Billing() {
 
   if (isLoading) {
     return (
-      <div className="p-8 max-w-4xl mx-auto">
+      <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto">
         <Card>
-          <CardContent className="p-12 text-center text-gray-500">
+          <CardContent className="p-6 sm:p-8 md:p-12 text-center text-xs sm:text-sm text-gray-500">
             Loading billing information...
           </CardContent>
         </Card>
@@ -169,18 +169,18 @@ export default function Billing() {
   const hasSubscription = subscription && (subscription.status === 'active' || subscription.status === 'trialing');
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Billing & Subscription</h1>
-        <p className="text-gray-600">Manage your subscription and view pricing options</p>
-      </div>
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="mb-4 sm:mb-6 md:mb-8">
+         <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">Billing & Subscription</h1>
+         <p className="text-xs sm:text-sm md:text-base text-gray-600">Manage subscription and pricing</p>
+       </div>
 
       {/* Trial Status Banner */}
-      {subscription && <TrialStatusBanner subscription={subscription} />}
+       {subscription && <TrialStatusBanner subscription={subscription} />}
 
-      {/* Apple IAP Notice */}
-      {isApple && (
-        <Alert className="mb-6 bg-gray-900 border-gray-700">
+       {/* Apple IAP Notice */}
+       {isApple && (
+         <Alert className="mb-4 sm:mb-6 bg-gray-900 border-gray-700">
           <Apple className="w-4 h-4 text-white" />
           <AlertDescription className="text-white">
             Your subscription is managed through Apple. Changes must be made in iOS Settings.
@@ -189,11 +189,11 @@ export default function Billing() {
       )}
 
       {/* Current Plan */}
-      <Card className="mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-2">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+      <Card className="mb-4 sm:mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-2">
+        <CardHeader className="p-3 sm:p-4 md:p-6">
+          <CardTitle className="flex items-center justify-between text-xs sm:text-sm md:text-base lg:text-lg">
             <span className="flex items-center gap-2">
-              <Crown className="w-6 h-6 text-indigo-600" />
+              <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
               Subscription Status
             </span>
             <Badge className={getStatusColor(subscription?.status || 'inactive')} variant="outline">
@@ -206,10 +206,10 @@ export default function Billing() {
             {hasSubscription && (
               <>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Monthly Amount</p>
-                  <p className="text-2xl font-bold text-gray-900">${subscription?.monthly_amount || 'N/A'}/month</p>
+                  <p className="text-xs sm:text-sm text-gray-600 mb-1">Monthly Amount</p>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">${subscription?.monthly_amount || 'N/A'}/month</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
                   <div>
                     <p className="text-sm text-gray-600 mb-1 flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
@@ -282,11 +282,11 @@ export default function Billing() {
             Payment & Billing
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {isApple ? (
-              <>
-                <p className="text-gray-600">
+        <CardContent className="p-3 sm:p-4 md:p-6">
+           <div className="space-y-3 sm:space-y-4">
+             {isApple ? (
+               <>
+                 <p className="text-xs sm:text-sm text-gray-600">
                   Manage your Apple subscription:
                 </p>
                 <ul className="space-y-2 ml-4">
@@ -316,7 +316,7 @@ export default function Billing() {
               </>
             ) : (
               <>
-                <p className="text-gray-600">
+                <p className="text-xs sm:text-sm text-gray-600">
                   Use the Stripe Customer Portal to:
                 </p>
                 <ul className="space-y-2 ml-4">

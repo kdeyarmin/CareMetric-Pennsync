@@ -251,20 +251,20 @@ export default function ComplianceDashboard() {
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries();
     }}>
-      <div className="p-4 md:p-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Shield className="w-8 h-8 text-blue-600" />
-              Compliance Dashboard
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+         {/* Header */}
+         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-0">
+           <div>
+             <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+               <Shield className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-blue-600" />
+               Compliance
+             </h1>
+             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
               {isAgencyAdmin ? 'Agency-wide compliance monitoring' : 'System-wide compliance monitoring'}
             </p>
           </div>
           <Select value={timeframe} onValueChange={setTimeframe}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-28 sm:w-32 text-xs sm:text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -276,20 +276,20 @@ export default function ComplianceDashboard() {
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-3 sm:p-4">
-            <TrendingUp className="w-6 sm:w-8 h-6 sm:h-8 text-blue-600 mb-2" />
-            <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.avgScore}%</p>
-            <p className="text-xs text-gray-600">Avg Compliance Score</p>
+          <CardContent className="p-2 sm:p-3 md:p-4">
+            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-blue-600 mb-1 sm:mb-2" />
+            <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900">{metrics.avgScore}%</p>
+            <p className="text-[10px] sm:text-xs text-gray-600">Avg Score</p>
           </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-           <CardContent className="p-3 sm:p-4">
-             <AlertTriangle className="w-6 sm:w-8 h-6 sm:h-8 text-red-600 mb-2" />
-             <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.openViolations}</p>
-             <p className="text-xs text-gray-600">Open Issues</p>
+           <CardContent className="p-2 sm:p-3 md:p-4">
+             <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-red-600 mb-1 sm:mb-2" />
+             <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900">{metrics.openViolations}</p>
+             <p className="text-[10px] sm:text-xs text-gray-600">Issues</p>
            </CardContent>
           </Card>
 
@@ -310,15 +310,15 @@ export default function ComplianceDashboard() {
           </Card>
         </div>
 
-        <Tabs defaultValue="violations" className="space-y-6">
+        <Tabs defaultValue="violations" className="space-y-4 sm:space-y-6">
           <div className="w-full overflow-x-auto">
           <TabsList className="grid w-max min-w-full gap-1 p-1 grid-cols-4">
-            <TabsTrigger value="violations" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">
-              Issues ({metrics.openViolations})
+            <TabsTrigger value="violations" className="text-[10px] sm:text-xs md:text-sm px-1.5 sm:px-3 whitespace-nowrap">
+              Issues
             </TabsTrigger>
-            <TabsTrigger value="trends" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">Trends</TabsTrigger>
-            <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">Performance</TabsTrigger>
-            <TabsTrigger value="audits" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">Audits</TabsTrigger>
+            <TabsTrigger value="trends" className="text-[10px] sm:text-xs md:text-sm px-1.5 sm:px-3 whitespace-nowrap">Trends</TabsTrigger>
+            <TabsTrigger value="users" className="text-[10px] sm:text-xs md:text-sm px-1.5 sm:px-3 whitespace-nowrap">Perf</TabsTrigger>
+            <TabsTrigger value="audits" className="text-[10px] sm:text-xs md:text-sm px-1.5 sm:px-3 whitespace-nowrap">Audits</TabsTrigger>
           </TabsList>
           </div>
 
