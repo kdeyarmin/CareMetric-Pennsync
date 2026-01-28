@@ -22,11 +22,15 @@ Deno.serve(async (req) => {
     } = await req.json();
 
     // Fetch patient data and history if requested
-    let patient_context = null;
-    if (patient_id && include_patient_history) {
-      const patient = await base44.asServiceRole.entities.Patient.get(patient_id);
-      
-      const recent_visits = await base44.asServiceRole.entities.Visit.filter(
+     let patient_context = null;
+     if (patient_id && include_patient_history) {
+       const patient = await base44.asServiceRole.entities.Patient.get(patient_id);
+
+       if (!patient) {
+         return Response.json({ error: 'Patient not found' }, { status: 404 });
+       }
+
+       const recent_visits = await base44.asServiceRole.entities.Visit.filter(
         { patient_id },
         '-visit_date',
         5
@@ -51,10 +55,10 @@ Deno.serve(async (req) => {
           past_medical_history: patient.past_medical_history || []
         },
         recent_notes: recent_visits.slice(0, 3).map(v => ({
-          date: v.visit_date,
-          type: v.visit_type,
-          summary: v.nurse_notes?.substring(0, 200) + '...'
-        })),
+           date: v.visit_date,
+           type: v.visit_type,
+           summary: (v.nurse_notes?.substring(0, 200) || 'No notes') + '...'
+         })),
         active_care_plans: active_care_plans.map(cp => ({
           problem: cp.problem,
           goal: cp.goal,
