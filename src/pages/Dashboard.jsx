@@ -237,6 +237,19 @@ export default function Dashboard() {
     );
   }
 
+  if (userError) {
+    console.error('User error:', userError);
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-2 text-red-600">Error Loading User</h2>
+          <p className="text-gray-600">{userError.message || 'Unknown error'}</p>
+          <Button onClick={() => window.location.reload()} className="mt-4">Reload</Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -266,7 +279,9 @@ export default function Dashboard() {
     }}>
     <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header with integrated banners */}
-      <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
+      <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading header</div>}>
+        <DashboardHeader fullName={fullName} subscription={subscription} providerType={currentUser?.credential_type || currentUser?.provider_type} />
+      </ErrorBoundary>
 
       {/* Proactive Insights */}
       <ErrorBoundary>
@@ -274,15 +289,19 @@ export default function Dashboard() {
       </ErrorBoundary>
 
       {/* Quick Stats */}
-      <QuickStatsSummary stats={{
-          activePatients: patients.length,
-          completedVisits: visits.length,
+      <ErrorBoundary fallback={<div className="p-4 bg-red-50 rounded-lg mb-4">Error loading stats</div>}>
+        <QuickStatsSummary stats={{
+          activePatients: patients?.length || 0,
+          completedVisits: visits?.length || 0,
           pendingAlerts: 0,
           upcomingVisits: 0
         }} />
+      </ErrorBoundary>
 
       {/* Workflow Shortcuts */}
-      <WorkflowShortcuts />
+      <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg mb-4">Error loading shortcuts</div>}>
+        <WorkflowShortcuts />
+      </ErrorBoundary>
 
       {/* Skill Gap & Risk Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
@@ -405,29 +424,33 @@ export default function Dashboard() {
         <ErrorBoundary>
         <DashboardSection title="Alerts & Compliance" icon={AlertCircle} defaultOpen={true} collapsible={true}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 w-full max-w-full overflow-x-hidden mb-4">
-            {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) &&
-            <ComplianceAlertNotifications
-              nurseEmail={currentUser?.email}
-              showAll={false}
-              maxAlerts={5}
-              compact={true} />
-
-            }
-            {canAccessWidget('clinicalSupport') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits.length > 0 && visits[0]?.patient_id &&
-            <ProactiveClinicalSupport
-              patientId={visits[0].patient_id}
-              compact={true} />
-
-            }
+            {canAccessWidget('complianceScore') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.complianceScore) && (
+            <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg">Compliance alerts unavailable</div>}>
+              <ComplianceAlertNotifications
+                nurseEmail={currentUser?.email}
+                showAll={false}
+                maxAlerts={5}
+                compact={true} />
+            </ErrorBoundary>
+            )}
+            {canAccessWidget('clinicalSupport') && (!currentUser?.dashboard_config || currentUser.dashboard_config?.clinicalSupport) && visits?.length > 0 && visits[0]?.patient_id && (
+            <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg">Clinical support unavailable</div>}>
+              <ProactiveClinicalSupport
+                patientId={visits[0].patient_id}
+                compact={true} />
+            </ErrorBoundary>
+            )}
           </div>
 
           {/* Compliance Training Widget */}
-          <ComplianceErrorAnalyzer
-            userEmail={currentUser?.email}
-            onGenerateTraining={(patterns) => {
-              navigate(createPageUrl("ComplianceTraining"));
-            }}
-          />
+          <ErrorBoundary fallback={<div className="p-4 bg-yellow-50 rounded-lg">Compliance analyzer unavailable</div>}>
+            <ComplianceErrorAnalyzer
+              userEmail={currentUser?.email}
+              onGenerateTraining={(patterns) => {
+                navigate(createPageUrl("ComplianceTraining"));
+              }}
+            />
+          </ErrorBoundary>
           </DashboardSection>
           </ErrorBoundary>
       )}
