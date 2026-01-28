@@ -156,40 +156,48 @@ Only flag genuine concerns - avoid false positives.`,
 
       // Create PatientAlert entities
       for (const alertData of response.alerts || []) {
-        const alert = await base44.asServiceRole.entities.PatientAlert.create({
-          patient_id: patient.id,
-          alert_type: alertData.alert_type,
-          severity: alertData.severity,
-          title: alertData.title,
-          message: alertData.message,
-          contributing_factors: alertData.contributing_factors,
-          recommended_actions: alertData.recommended_actions,
-          data_sources: alertData.data_points,
-          status: 'active',
-          flagged_urgent: alertData.severity === 'critical',
-          assigned_to: user.email
-        });
+        try {
+          const alert = await base44.asServiceRole.entities.PatientAlert.create({
+            patient_id: patient.id,
+            alert_type: alertData.alert_type,
+            severity: alertData.severity,
+            title: alertData.title,
+            message: alertData.message,
+            contributing_factors: alertData.contributing_factors,
+            recommended_actions: alertData.recommended_actions,
+            data_sources: alertData.data_points,
+            status: 'active',
+            flagged_urgent: alertData.severity === 'critical',
+            assigned_to: user.email
+          });
 
-        allAlerts.push(alert);
+          allAlerts.push(alert);
 
-        // Optionally create tasks
-        if (auto_create_tasks && alertData.suggested_tasks) {
-          for (const taskData of alertData.suggested_tasks) {
-            const task = await base44.asServiceRole.entities.Task.create({
-              patient_id: patient.id,
-              title: taskData.title,
-              description: taskData.description,
-              type: 'followup',
-              priority: taskData.priority,
-              status: 'pending',
-              due_timeframe: taskData.due_timeframe,
-              source: 'ai_generated',
-              ai_reason: `Generated from alert: ${alertData.title}`,
-              assigned_to: user.email
-            });
+          // Optionally create tasks
+          if (auto_create_tasks && alertData.suggested_tasks) {
+            for (const taskData of alertData.suggested_tasks) {
+              try {
+                const task = await base44.asServiceRole.entities.Task.create({
+                  patient_id: patient.id,
+                  title: taskData.title,
+                  description: taskData.description,
+                  type: 'followup',
+                  priority: taskData.priority,
+                  status: 'pending',
+                  due_timeframe: taskData.due_timeframe,
+                  source: 'ai_generated',
+                  ai_reason: `Generated from alert: ${alertData.title}`,
+                  assigned_to: user.email
+                });
 
-            allTasks.push(task);
+                allTasks.push(task);
+              } catch (taskError) {
+                console.error(`Failed to create task for alert ${alertData.title}:`, taskError);
+              }
+            }
           }
+        } catch (alertError) {
+          console.error(`Failed to create alert for patient ${patient.id}:`, alertError);
         }
       }
     }

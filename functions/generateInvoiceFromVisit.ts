@@ -23,9 +23,13 @@ Deno.serve(async (req) => {
     }
 
     // Get patient
-    const patient = await base44.entities.Patient.get(visit.patient_id);
+     const patient = await base44.entities.Patient.get(visit.patient_id);
 
-    // Use AI to generate invoice line items based on visit
+     if (!patient) {
+       return Response.json({ error: 'Patient not found' }, { status: 404 });
+     }
+
+     // Use AI to generate invoice line items based on visit
     const prompt = `Based on the following home health visit, generate appropriate invoice line items with service codes and pricing:
 
 Visit Type: ${visit.visit_type}

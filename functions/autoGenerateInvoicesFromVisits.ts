@@ -22,13 +22,10 @@ Deno.serve(async (req) => {
         let invoicesGenerated = 0;
 
         for (const visit of completedVisitsNeedingInvoice) {
-            // Get patient data
-            const [patients] = await Promise.all([
-                base44.entities.Patient.filter({ id: visit.patient_id })
-            ]);
+             // Get patient data
+             const patient = await base44.entities.Patient.get(visit.patient_id);
 
-            const patient = patients[0];
-            if (!patient) continue;
+             if (!patient) continue;
 
             // Determine service code from visit type or tags
             const serviceCode = serviceCodes.find(sc => 
