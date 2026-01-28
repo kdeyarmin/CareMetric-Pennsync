@@ -138,10 +138,10 @@ export default function Layout({ children, currentPageName }) {
                       <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
                         <Button
                           variant={isActive ? "secondary" : "ghost"}
-                          className={`w-full justify-start gap-3 transition-all ${
+                          className={`w-full justify-start gap-3 rounded-lg transition-all duration-200 ${
                             isActive
-                              ? "bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 shadow-sm dark:from-blue-950/40 dark:to-blue-900/30 dark:text-blue-400 border-l-2 border-blue-500"
-                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-blue-600 dark:hover:text-blue-400"
+                              ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg dark:from-blue-600 dark:to-blue-700"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-white/10 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-blue-400"
                           }`}
                         >
                           <item.icon className="h-4 w-4" />
@@ -161,23 +161,23 @@ export default function Layout({ children, currentPageName }) {
                 </h3>
                 <div className="space-y-1">
                   {adminNavigationGroup.items.map((item) => {
-                    const isActive = currentPageName === item.name;
-                    return (
-                      <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
-                        <Button
-                          variant={isActive ? "secondary" : "ghost"}
-                          className={`w-full justify-start gap-3 transition-all ${
-                            isActive
-                              ? "bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 shadow-sm dark:from-blue-950/40 dark:to-blue-900/30 dark:text-blue-400 border-l-2 border-blue-500"
-                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-blue-600 dark:hover:text-blue-400"
-                          }`}
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <span className="text-sm">{item.name}</span>
-                        </Button>
-                      </Link>
-                    );
-                  })}
+                     const isActive = currentPageName === item.name;
+                     return (
+                       <Link key={item.page} to={createPageUrl(item.page)} onClick={() => setSidebarOpen(false)}>
+                         <Button
+                           variant={isActive ? "secondary" : "ghost"}
+                           className={`w-full justify-start gap-3 rounded-lg transition-all duration-200 ${
+                             isActive
+                               ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg dark:from-blue-600 dark:to-blue-700"
+                               : "text-slate-700 dark:text-slate-300 hover:bg-white/10 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-blue-400"
+                           }`}
+                         >
+                           <item.icon className="h-4 w-4" />
+                           <span className="text-sm">{item.name}</span>
+                         </Button>
+                       </Link>
+                     );
+                   })}
                 </div>
               </div>
             )}
