@@ -251,9 +251,9 @@ export default function Tasks() {
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries({ queryKey: ['allTasks'] });
     }}>
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">My Tasks</h1>
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
+         <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100">Tasks</h1>
          <Button
             onClick={() => {
               setShowForm(true);
@@ -283,11 +283,11 @@ export default function Tasks() {
       <TaskNotifications userEmail={currentUser?.email} compact={true} />
 
       {(showForm || showRecurringSettings) &&
-        <Card className="mb-6 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800">
-             <CardHeader>
-               <CardTitle className="text-slate-900 dark:text-slate-100">{editingTask ? 'Edit Task' : 'Create New Task'}</CardTitle>
+        <Card className="mb-4 sm:mb-6 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800">
+             <CardHeader className="p-3 sm:p-4 md:p-6">
+               <CardTitle className="text-xs sm:text-sm md:text-base text-slate-900 dark:text-slate-100">{editingTask ? 'Edit Task' : 'Create New Task'}</CardTitle>
              </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
             {!showRecurringSettings ?
             <>
                 <div>
@@ -410,7 +410,7 @@ export default function Tasks() {
         </Card>
         }
 
-      <div className="mb-6 flex flex-col gap-3">
+      <div className="mb-4 sm:mb-6 flex flex-col gap-2 sm:gap-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
           <Input
@@ -445,29 +445,29 @@ export default function Tasks() {
         </div>
       </div>
 
-      <Tabs defaultValue="overdue" className="space-y-4 w-full max-w-full overflow-x-hidden">
+      <Tabs defaultValue="overdue" className="space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden">
         <div className="w-full overflow-x-auto">
           <TabsList className="flex w-max min-w-full gap-1 p-1">
-            <TabsTrigger value="overdue" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
+            <TabsTrigger value="overdue" className="relative text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">
             Overdue
             {categorizedTasks.overdue.length > 0 &&
                 <Badge className="ml-2 bg-slate-600 dark:bg-slate-500 text-slate-100">{categorizedTasks.overdue.length}</Badge>
                 }
           </TabsTrigger>
-          <TabsTrigger value="today" className="relative text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
+          <TabsTrigger value="today" className="relative text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">
             Today
             {categorizedTasks.today.length > 0 &&
-                <Badge className="ml-2">{categorizedTasks.today.length}</Badge>
+                <Badge className="ml-1 sm:ml-2 text-[10px] sm:text-xs">{categorizedTasks.today.length}</Badge>
                 }
           </TabsTrigger>
-          <TabsTrigger value="upcoming" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">
-            Upcoming
+          <TabsTrigger value="upcoming" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">
+            Soon
             {categorizedTasks.upcoming.length > 0 &&
-                <Badge className="ml-2">{categorizedTasks.upcoming.length}</Badge>
+                <Badge className="ml-1 sm:ml-2 text-[10px] sm:text-xs">{categorizedTasks.upcoming.length}</Badge>
                 }
           </TabsTrigger>
-          <TabsTrigger value="noDueDate" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">No Due Date</TabsTrigger>
-          <TabsTrigger value="completed" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap shrink-0">Completed</TabsTrigger>
+          <TabsTrigger value="noDueDate" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">No Date</TabsTrigger>
+          <TabsTrigger value="completed" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap shrink-0">Done</TabsTrigger>
         </TabsList>
         </div>
 

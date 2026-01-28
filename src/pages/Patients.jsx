@@ -336,13 +336,13 @@ export default function Patients() {
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries({ queryKey: ['patients'] });
     }}>
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
-      <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
-          <div className="flex items-start gap-2 flex-1">
-            <div className="flex-1">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">My Patients</h1>
-              <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">Your personal patient roster - detailed patient information helps AI provide better recommendations</p>
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+       <div className="flex flex-col gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
+         <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-3">
+           <div className="flex items-start gap-2 flex-1">
+             <div className="flex-1">
+               <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100">My Patients</h1>
+               <p className="text-[10px] sm:text-xs md:text-sm text-slate-600 dark:text-slate-400 mt-0.5 sm:mt-1">Patient roster</p>
             </div>
             <FavoriteButton type="page" id="Patients" name="Patients" />
           </div>

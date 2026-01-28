@@ -41,10 +41,10 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">User Management</h1>
-        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Manage user accounts, roles, and permissions</p>
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="mb-3 sm:mb-4 md:mb-6">
+        <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1 sm:mb-2">User Management</h1>
+        <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400">Manage users and roles</p>
       </div>
 
       {usersLoading ? (
