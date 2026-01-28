@@ -276,67 +276,69 @@ export default function ComplianceDashboard() {
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <CardContent className="p-4">
-              <TrendingUp className="w-8 h-8 text-blue-600 mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{metrics.avgScore}%</p>
-              <p className="text-xs text-gray-600">Avg Compliance Score</p>
-            </CardContent>
+          <CardContent className="p-3 sm:p-4">
+            <TrendingUp className="w-6 sm:w-8 h-6 sm:h-8 text-blue-600 mb-2" />
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.avgScore}%</p>
+            <p className="text-xs text-gray-600">Avg Compliance Score</p>
+          </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-            <CardContent className="p-4">
-              <AlertTriangle className="w-8 h-8 text-red-600 mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{metrics.openViolations}</p>
-              <p className="text-xs text-gray-600">Open Issues</p>
-            </CardContent>
+           <CardContent className="p-3 sm:p-4">
+             <AlertTriangle className="w-6 sm:w-8 h-6 sm:h-8 text-red-600 mb-2" />
+             <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.openViolations}</p>
+             <p className="text-xs text-gray-600">Open Issues</p>
+           </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-            <CardContent className="p-4">
-              <XCircle className="w-8 h-8 text-orange-600 mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{metrics.criticalOpen}</p>
-              <p className="text-xs text-gray-600">Critical Issues</p>
-            </CardContent>
+           <CardContent className="p-3 sm:p-4">
+             <XCircle className="w-6 sm:w-8 h-6 sm:h-8 text-orange-600 mb-2" />
+             <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.criticalOpen}</p>
+             <p className="text-xs text-gray-600">Critical Issues</p>
+           </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <CardContent className="p-4">
-              <CheckCircle2 className="w-8 h-8 text-green-600 mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{metrics.passedAudits}</p>
-              <p className="text-xs text-gray-600">Passed Audits</p>
-            </CardContent>
+           <CardContent className="p-3 sm:p-4">
+             <CheckCircle2 className="w-6 sm:w-8 h-6 sm:h-8 text-green-600 mb-2" />
+             <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.passedAudits}</p>
+             <p className="text-xs text-gray-600">Passed Audits</p>
+           </CardContent>
           </Card>
         </div>
 
         <Tabs defaultValue="violations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="violations">
+          <div className="w-full overflow-x-auto">
+          <TabsList className="grid w-max min-w-full gap-1 p-1 grid-cols-4">
+            <TabsTrigger value="violations" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">
               Issues ({metrics.openViolations})
             </TabsTrigger>
-            <TabsTrigger value="trends">Trends</TabsTrigger>
-            <TabsTrigger value="users">User Performance</TabsTrigger>
-            <TabsTrigger value="audits">Audit History</TabsTrigger>
+            <TabsTrigger value="trends" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">Trends</TabsTrigger>
+            <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">Performance</TabsTrigger>
+            <TabsTrigger value="audits" className="text-xs sm:text-sm px-2 sm:px-4 whitespace-nowrap">Audits</TabsTrigger>
           </TabsList>
+          </div>
 
           {/* Violations Tab */}
           <TabsContent value="violations" className="space-y-4">
             {/* Filters */}
             <Card>
-              <CardContent className="p-4">
-                <div className="flex gap-3 items-center">
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                       placeholder="Search violations..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 text-sm"
                     />
                   </div>
                   <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-                    <SelectTrigger className="w-40">
+                    <SelectTrigger className="w-full sm:w-40">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -348,7 +350,7 @@ export default function ComplianceDashboard() {
                     </SelectContent>
                   </Select>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="w-full sm:w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -498,8 +500,8 @@ export default function ComplianceDashboard() {
                   Compliance Score Trend
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+              <CardContent className="p-2 sm:p-4">
+                <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={complianceTrend}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} />
@@ -532,7 +534,7 @@ export default function ComplianceDashboard() {
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {/* Violations by Severity */}
               <Card>
                 <CardHeader>
@@ -543,7 +545,7 @@ export default function ComplianceDashboard() {
                 </CardHeader>
                 <CardContent>
                   {violationsBySeverity.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={250}>
+                    <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
                         <Pie
                           data={violationsBySeverity}
@@ -577,7 +579,7 @@ export default function ComplianceDashboard() {
                 </CardHeader>
                 <CardContent>
                   {violationsByCategory.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={250}>
+                    <ResponsiveContainer width="100%" height={220}>
                       <BarChart data={violationsByCategory}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="category" tick={{ fontSize: 11 }} />
@@ -692,8 +694,8 @@ export default function ComplianceDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
+                  <table className="w-full text-xs sm:text-sm">
                     <thead>
                       <tr className="border-b border-gray-200">
                         <th className="text-left p-2">User</th>
