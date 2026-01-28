@@ -80,23 +80,23 @@ export default function Layout({ children, currentPageName }) {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-50/95 via-blue-50/95 to-slate-50/95 dark:from-slate-900/95 dark:via-slate-800/95 dark:to-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-700/60 shadow-soft">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-4 flex-1">
+        <div className="flex items-start justify-between px-4 py-2">
+          <div className="flex items-start gap-4 flex-1">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden"
+              className="lg:hidden mt-1"
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <div className="flex flex-col items-center gap-0.5">
+            <div className="flex flex-col items-center gap-0">
               <img 
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/6fa1398f8_CareMetric.png" 
                 alt="CareMetric AI" 
                 className="h-10 sm:h-11 w-10 sm:w-11 rounded-xl flex-shrink-0"
               />
-              <h1 className="text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent whitespace-nowrap leading-tight">CareMetric AI</h1>
+              <h1 className="text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent whitespace-nowrap leading-none">CareMetric AI</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
