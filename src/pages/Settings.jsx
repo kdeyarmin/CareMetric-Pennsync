@@ -119,7 +119,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       <div className="mb-3 sm:mb-4 md:mb-6">
          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-1 sm:mb-2">Settings</h1>
           <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-400">Manage account and preferences</p>
@@ -184,7 +184,7 @@ export default function Settings() {
               }
             </div>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+          <CardContent className="bg-gradient-to-r from-blue-50/40 to-slate-50/40 dark:from-slate-800/20 dark:to-slate-900/20 pt-0 p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
             {isEditing ?
             <>
                 <div>
@@ -377,19 +377,19 @@ export default function Settings() {
 
         {/* Two-Factor Authentication */}
         <Card className="w-full max-w-full overflow-hidden">
-          <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
+          <CardHeader className="bg-gradient-to-r from-blue-100/60 to-slate-100/60 dark:from-slate-800/40 dark:to-slate-900/30 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
             <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base text-slate-900 dark:text-slate-100">
               <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
               Two-Factor Authentication
             </CardTitle>
           </CardHeader>
-          <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 md:p-6">
+          <CardContent className="bg-gradient-to-r from-blue-50/40 to-slate-50/40 dark:from-slate-800/20 dark:to-slate-900/20 pt-0 p-3 sm:p-4 md:p-6">
             <div className="space-y-3 sm:space-y-4">
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                 Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
               </p>
-              <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-4">
-                <div className="flex items-start gap-3">
+              <div className="bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 border border-slate-300 dark:border-slate-600 rounded-lg p-4">
+               <div className="flex items-start gap-3">
                   <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-900 dark:text-slate-100">Status: {currentUser?.two_factor_enabled ? 'Enabled' : 'Disabled'}</p>
@@ -420,7 +420,7 @@ export default function Settings() {
          <TabsContent value="security" className="space-y-3 sm:space-y-4 md:space-y-6">
           {/* Two-Factor Authentication */}
           <Card className="w-full max-w-full overflow-hidden">
-            <CardHeader className="bg-slate-200 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
+            <CardHeader className="bg-gradient-to-r from-blue-100/60 to-slate-100/60 dark:from-slate-800/40 dark:to-slate-900/30 p-3 sm:p-4 md:p-6 flex flex-col space-y-1.5">
               <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base text-slate-900 dark:text-slate-100">
                 <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-400" />
                 Two-Factor Authentication
@@ -431,7 +431,7 @@ export default function Settings() {
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                   Two-factor authentication adds an extra layer of security to your account by requiring a verification code sent to your phone when you log in.
                 </p>
-                <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-4">
+                <div className="bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 border border-slate-300 dark:border-slate-600 rounded-lg p-4">
                   <div className="flex items-start gap-3">
                     <Shield className="w-5 h-5 text-slate-700 dark:text-slate-400 mt-0.5" />
                     <div>
@@ -494,13 +494,13 @@ export default function Settings() {
 
           {/* Danger Zone */}
           <Card className="border-slate-300 dark:border-slate-600 w-full max-w-full overflow-hidden">
-           <CardHeader className="bg-slate-200 dark:bg-slate-800 p-3 sm:p-4 md:p-6">
+           <CardHeader className="bg-gradient-to-r from-red-100/40 to-slate-100/40 dark:from-red-900/20 dark:to-slate-900/30 p-3 sm:p-4 md:p-6">
              <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100 text-xs sm:text-sm md:text-base lg:text-lg">
               <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
               Danger Zone
             </CardTitle>
-          </CardHeader>
-          <CardContent className="bg-slate-100 pt-3 sm:pt-4 p-3 sm:p-4 md:p-6">
+           </CardHeader>
+           <CardContent className="bg-gradient-to-r from-red-50/30 to-slate-50/30 dark:from-red-900/10 dark:to-slate-900/20 pt-3 sm:pt-4 p-3 sm:p-4 md:p-6">
             <div className="space-y-3">
               <div>
                 <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-2 text-sm sm:text-base">Delete Account</h3>

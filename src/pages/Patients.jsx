@@ -336,7 +336,7 @@ export default function Patients() {
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries({ queryKey: ['patients'] });
     }}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
        <div className="flex flex-col gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
          <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-3">
            <div className="flex items-start gap-2 flex-1">

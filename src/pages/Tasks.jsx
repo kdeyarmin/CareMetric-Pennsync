@@ -175,7 +175,7 @@ export default function Tasks() {
     animate={{ opacity: 1, y: 0 }}
     whileHover={{ y: -2 }}>
 
-      <Card className={`${category === 'overdue' ? 'border-slate-400 bg-slate-200 dark:bg-slate-800' : 'dark:bg-slate-800'} hover-lift w-full max-w-full overflow-hidden`}>
+      <Card className={`${category === 'overdue' ? 'border-slate-400 bg-gradient-to-r from-red-50/60 to-slate-50/60 dark:from-slate-800 dark:to-slate-900/40' : 'bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30'} hover-lift w-full max-w-full overflow-hidden`}>
         <CardContent className="p-3 sm:p-4 overflow-hidden">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -251,7 +251,7 @@ export default function Tasks() {
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries({ queryKey: ['allTasks'] });
     }}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100">Tasks</h1>
          <Button
@@ -283,7 +283,7 @@ export default function Tasks() {
       <TaskNotifications userEmail={currentUser?.email} compact={true} />
 
       {(showForm || showRecurringSettings) &&
-        <Card className="mb-4 sm:mb-6 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800">
+        <Card className="mb-4 sm:mb-6 border-slate-300 dark:border-slate-600 bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30">
              <CardHeader className="p-3 sm:p-4 md:p-6">
                <CardTitle className="text-xs sm:text-sm md:text-base text-slate-900 dark:text-slate-100">{editingTask ? 'Edit Task' : 'Create New Task'}</CardTitle>
              </CardHeader>
