@@ -149,9 +149,21 @@ Identify:
 Format as specific, actionable findings.`;
 
       try {
-        const complianceResponse = await invokeClaude({
-          prompt: complianceCheckPrompt,
-          response_json_schema: {
+        const complianceClaudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicApiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: complianceCheckPrompt }],
+            tools: [{
+              name: 'generate_structured_response',
+              description: 'Generate a structured JSON response',
+              input_schema: {
             type: "object",
             properties: {
               compliance_flags: {
@@ -167,9 +179,21 @@ Format as specific, actionable findings.`;
                 }
               }
             }
-          }
+          },
+            tool_choice: {
+              type: 'tool',
+              name: 'generate_structured_response'
+            }
+          })
         });
-        complianceFlags = complianceResponse.compliance_flags || [];
+
+        if (complianceClaudeResponse.ok) {
+          const complianceResult = await complianceClaudeResponse.json();
+          const complianceResponse = complianceResult.content?.[0]?.type === 'tool_use' 
+            ? complianceResult.content[0].input 
+            : {};
+          complianceFlags = complianceResponse.compliance_flags || [];
+        }
       } catch (error) {
         console.error('Compliance check error:', error);
       }
@@ -193,9 +217,21 @@ Provide:
 2. Appropriate ICD-10 codes with descriptions
 3. Recommended CPT codes for documented services`;
 
-      const diagnosticResponse = await invokeClaude({
-        prompt: diagnosticPrompt,
-        response_json_schema: {
+      const diagnosticClaudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicApiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: diagnosticPrompt }],
+          tools: [{
+            name: 'generate_structured_response',
+            description: 'Generate a structured JSON response',
+            input_schema: {
           type: "object",
           properties: {
             differential_diagnoses: {
@@ -232,14 +268,26 @@ Provide:
               }
             }
           }
-        }
+        },
+          tool_choice: {
+            type: 'tool',
+            name: 'generate_structured_response'
+          }
+        })
       });
 
-      differentialDiagnoses = diagnosticResponse.differential_diagnoses || [];
-      suggestedCodes = {
-        icd10: diagnosticResponse.icd10_codes || [],
-        cpt: diagnosticResponse.cpt_codes || []
-      };
+      if (diagnosticClaudeResponse.ok) {
+        const diagnosticResult = await diagnosticClaudeResponse.json();
+        const diagnosticResponse = diagnosticResult.content?.[0]?.type === 'tool_use' 
+          ? diagnosticResult.content[0].input 
+          : {};
+        
+        differentialDiagnoses = diagnosticResponse.differential_diagnoses || [];
+        suggestedCodes = {
+          icd10: diagnosticResponse.icd10_codes || [],
+          cpt: diagnosticResponse.cpt_codes || []
+        };
+      }
     }
 
     // Generate quality analysis
@@ -261,9 +309,21 @@ Rate the note on:
 Provide scores (0-100) and specific feedback.`;
 
       try {
-        const qualityResponse = await invokeClaude({
-          prompt: qualityPrompt,
-          response_json_schema: {
+        const qualityClaudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicApiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: qualityPrompt }],
+            tools: [{
+              name: 'generate_structured_response',
+              description: 'Generate a structured JSON response',
+              input_schema: {
             type: "object",
             properties: {
               overall_quality_score: { type: "number" },
@@ -290,9 +350,20 @@ Provide scores (0-100) and specific feedback.`;
                 items: { type: "string" }
               }
             }
-          }
+          },
+            tool_choice: {
+              type: 'tool',
+              name: 'generate_structured_response'
+            }
+          })
         });
-        qualityAnalysis = qualityResponse;
+
+        if (qualityClaudeResponse.ok) {
+          const qualityResult = await qualityClaudeResponse.json();
+          qualityAnalysis = qualityResult.content?.[0]?.type === 'tool_use' 
+            ? qualityResult.content[0].input 
+            : null;
+        }
       } catch (error) {
         console.error('Quality analysis error:', error);
       }
