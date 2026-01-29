@@ -92,7 +92,7 @@ For each identified issue, provide:
 
 IMPORTANT: Only suggest NEW alerts that don't duplicate existing active alerts. Focus on actionable clinical issues.`;
 
-    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const { invokeClaude } = await import('./helpers/claudeClient.js');
     const response = await invokeClaude({
       prompt: analysisPrompt,
       response_json_schema: {

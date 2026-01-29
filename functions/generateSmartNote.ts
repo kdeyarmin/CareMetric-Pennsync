@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
     const schema = getNoteSchema(note_type);
 
     // Generate note using Claude
-    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const { invokeClaude } = await import('./helpers/claudeClient.js');
     const generated_note = await invokeClaude({
       prompt,
       response_json_schema: schema

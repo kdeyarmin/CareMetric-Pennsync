@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
 
     const { analysisResults, diagnoses, vitals, patientId } = await req.json();
 
-    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const { invokeClaude } = await import('./helpers/claudeClient.js');
     const result = await invokeClaude({
       prompt: `Generate actionable follow-up tasks based on the clinical analysis.
 

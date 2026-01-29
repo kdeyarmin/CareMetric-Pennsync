@@ -96,7 +96,7 @@ CRITICAL: Flag potential compliance issues including:
 
 Output the enhanced clinical note only, properly formatted.`;
 
-    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const { invokeClaude } = await import('./helpers/claudeClient.js');
     const response = await invokeClaude({
       prompt: enhancePrompt
     });

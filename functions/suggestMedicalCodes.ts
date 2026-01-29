@@ -74,7 +74,7 @@ For each code, provide: code number, description, rationale, confidence level (h
 
 Format your response as JSON with these exact sections.`;
 
-    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const { invokeClaude } = await import('./helpers/claudeClient.js');
     const result = await invokeClaude({
       prompt: codingPrompt,
       response_json_schema: {

@@ -1,5 +1,7 @@
-// Helper module for Claude API interactions
-// This is a shared utility - import it in backend functions
+/**
+ * Helper module for Claude API interactions
+ * Usage: import { invokeClaude } from './helpers/claudeClient.js';
+ */
 
 export async function invokeClaude({ prompt, response_json_schema = null, max_tokens = 4096 }) {
   const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
