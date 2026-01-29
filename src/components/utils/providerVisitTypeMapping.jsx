@@ -271,6 +271,44 @@ export const PROVIDER_VISIT_TYPES = {
       'Patient response',
       'Functional improvement'
     ]
+  },
+
+  // Backward compatibility aliases
+  PHYSICIAN: {
+    label: "Physician (MD/DO)",
+    canAccessSettings: [
+      CARE_SETTINGS.HOME_HEALTH,
+      CARE_SETTINGS.TELEHEALTH,
+      CARE_SETTINGS.CLINIC_OUTPATIENT,
+      CARE_SETTINGS.HOSPITAL_INPATIENT,
+      CARE_SETTINGS.SKILLED_NURSING,
+      CARE_SETTINGS.HOSPICE
+    ],
+    requiresAssessment: true,
+    requiresCarePlanReview: true,
+    canEstablishCarePlan: true,
+    canOversee: true,
+    canPrescribe: true
+  },
+
+  THERAPIST: {
+    label: "Therapist (PT/OT/ST)",
+    canAccessSettings: [
+      CARE_SETTINGS.HOME_HEALTH,
+      CARE_SETTINGS.TELEHEALTH,
+      CARE_SETTINGS.CLINIC_OUTPATIENT,
+      CARE_SETTINGS.HOSPITAL_INPATIENT,
+      CARE_SETTINGS.SKILLED_NURSING
+    ],
+    requiresAssessment: true,
+    requiresCarePlanReview: false,
+    canEstablishCarePlan: true,
+    noteRequirements: [
+      'Functional/specialty assessment',
+      'Therapeutic interventions performed',
+      'Patient tolerance and response',
+      'Progress toward therapy goals'
+    ]
   }
 };
 
