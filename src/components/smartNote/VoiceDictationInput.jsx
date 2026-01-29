@@ -58,27 +58,20 @@ export default function VoiceDictationInput({ value, onChange, placeholder }) {
 
   const transcribeAudio = async (audioBlob) => {
     try {
+      const { transcribeWithDeepgram } = await import('@/functions/transcribeWithDeepgram');
+      
       // Create form data
       const formData = new FormData();
       formData.append('file', audioBlob, 'recording.webm');
-      formData.append('model', 'whisper-1');
-      formData.append('language', 'en');
 
-      // Call OpenAI Whisper API
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || ''}`
-        },
-        body: formData
-      });
+      // Call Deepgram via backend function
+      const response = await transcribeWithDeepgram(formData);
 
-      if (!response.ok) {
-        throw new Error('Transcription failed');
+      if (!response.data?.text) {
+        throw new Error('No transcription received');
       }
 
-      const result = await response.json();
-      const transcribedText = result.text;
+      const transcribedText = response.data.text;
 
       // Append to existing text
       const newText = value ? `${value}\n\n${transcribedText}` : transcribedText;

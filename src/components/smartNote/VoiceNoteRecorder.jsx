@@ -1,104 +1,95 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function VoiceNoteRecorder({ onTranscriptionComplete, appendMode = true }) {
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const recognitionRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const wsRef = useRef(null);
 
-  useEffect(() => {
-    // Check if browser supports speech recognition
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition not supported in this browser");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcriptPiece = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcriptPiece + ' ';
-        } else {
-          interimTranscript += transcriptPiece;
-        }
-      }
-
-      setTranscript(prev => prev + finalTranscript);
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error === 'no-speech') {
-        toast.error('No speech detected. Please try again.');
-      } else if (event.error === 'not-allowed') {
-        toast.error('Microphone access denied. Please enable microphone permissions.');
-      } else {
-        toast.error('Error recognizing speech: ' + event.error);
-      }
-      setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      if (isRecording) {
-        // Auto-restart if still recording
-        try {
-          recognition.start();
-        } catch (err) {
-          console.error('Error restarting recognition:', err);
-          setIsRecording(false);
-        }
-      }
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [isRecording]);
-
-  const startRecording = () => {
-    if (!recognitionRef.current) {
-      toast.error('Speech recognition not supported in this browser. Please use Chrome or Edge.');
-      return;
-    }
-
+  const startRecording = async () => {
     try {
-      setTranscript("");
-      recognitionRef.current.start();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      // Initialize Deepgram WebSocket for real-time transcription
+      const deepgramApiKey = import.meta.env.VITE_DEEPGRAM_API_KEY;
+      if (deepgramApiKey) {
+        const ws = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', [
+          'token',
+          deepgramApiKey
+        ]);
+
+        ws.onopen = () => {
+          console.log('Deepgram WebSocket connected');
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          const transcriptText = data.channel?.alternatives?.[0]?.transcript;
+          
+          if (transcriptText && data.is_final) {
+            setTranscript(prev => prev + transcriptText + ' ');
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+        };
+
+        wsRef.current = ws;
+      }
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+          
+          // Send audio to Deepgram WebSocket for real-time transcription
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(event.data);
+          }
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Close WebSocket
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+
+        // If we have transcript, use it
+        if (transcript.trim()) {
+          onTranscriptionComplete(transcript.trim());
+          toast.success('Transcription completed');
+          setTranscript("");
+        } else {
+          toast.warning('No speech was detected');
+        }
+      };
+
+      mediaRecorder.start(250); // Send data every 250ms for real-time
       setIsRecording(true);
       toast.success('Recording started. Speak clearly into your microphone.');
     } catch (err) {
-      console.error('Error starting recognition:', err);
-      toast.error('Failed to start recording. Please try again.');
+      console.error('Error starting recording:', err);
+      toast.error('Failed to start recording. Please allow microphone access.');
     }
   };
 
   const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
-      
-      if (transcript.trim()) {
-        onTranscriptionComplete(transcript.trim());
-        toast.success('Transcription completed');
-      } else {
-        toast.warning('No speech was detected');
-      }
     }
   };
 
@@ -108,11 +99,17 @@ export default function VoiceNoteRecorder({ onTranscriptionComplete, appendMode 
         <Button
           type="button"
           onClick={isRecording ? stopRecording : startRecording}
+          disabled={isProcessing}
           variant={isRecording ? "destructive" : "outline"}
           size="sm"
           className={isRecording ? "animate-pulse" : ""}
         >
-          {isRecording ? (
+          {isProcessing ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Processing...
+            </>
+          ) : isRecording ? (
             <>
               <MicOff className="w-4 h-4 mr-2" />
               Stop Recording

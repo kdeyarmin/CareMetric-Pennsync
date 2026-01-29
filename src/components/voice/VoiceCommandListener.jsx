@@ -17,79 +17,9 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
   const [transcript, setTranscript] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [error, setError] = useState(null);
-  const recognitionRef = useRef(null);
-
-  useEffect(() => {
-    // Check if browser supports speech recognition
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      setError("Voice commands not supported in this browser. Please use Chrome, Edge, or Safari.");
-      return;
-    }
-
-    // Initialize speech recognition
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      setError(null);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-      // Restart if it was manually stopped
-      if (recognitionRef.current === recognition) {
-        try {
-          recognition.start();
-        } catch (e) {
-          // Already started
-        }
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error === 'no-speech') {
-        // Ignore no-speech errors
-        return;
-      }
-      setError(`Voice recognition error: ${event.error}`);
-    };
-
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
-        }
-      }
-
-      const fullTranscript = finalTranscript || interimTranscript;
-      setTranscript(fullTranscript);
-
-      // Check if transcript matches any commands
-      if (finalTranscript) {
-        processCommand(finalTranscript.toLowerCase().trim());
-      }
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [commands]);
+  const mediaRecorderRef = useRef(null);
+  const wsRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   const processCommand = (spokenText) => {
     // Find matching command
@@ -118,21 +48,98 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
     }
   };
 
-  const toggleListening = () => {
-    if (!recognitionRef.current) return;
+  const startListening = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
 
-    if (isListening) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-      setIsListening(false);
-    } else {
-      try {
-        recognitionRef.current.start();
-      } catch (error) {
-        console.error('Error starting recognition:', error);
+      // Initialize Deepgram WebSocket for real-time transcription
+      const deepgramApiKey = import.meta.env.VITE_DEEPGRAM_API_KEY;
+      if (!deepgramApiKey) {
+        setError('Deepgram API key not configured');
+        return;
       }
+
+      const ws = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', [
+        'token',
+        deepgramApiKey
+      ]);
+
+      ws.onopen = () => {
+        console.log('Deepgram WebSocket connected for voice commands');
+        setIsListening(true);
+        setError(null);
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const transcriptText = data.channel?.alternatives?.[0]?.transcript;
+        
+        if (transcriptText) {
+          setTranscript(transcriptText);
+          
+          if (data.is_final) {
+            processCommand(transcriptText.toLowerCase().trim());
+          }
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setError('Voice recognition error. Please try again.');
+      };
+
+      ws.onclose = () => {
+        console.log('Deepgram WebSocket closed');
+        setIsListening(false);
+      };
+
+      wsRef.current = ws;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(event.data);
+        }
+      };
+
+      mediaRecorder.start(250); // Send data every 250ms
+    } catch (err) {
+      console.error('Error starting voice commands:', err);
+      setError('Could not access microphone. Please check permissions.');
     }
   };
+
+  const stopListening = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null;
+    }
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    setIsListening(false);
+    setTranscript("");
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopListening();
+    };
+  }, []);
 
   return (
     <>
@@ -271,7 +278,7 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
                   <li>Speak clearly and at normal pace</li>
                   <li>Wait for visual confirmation before next command</li>
                   <li>Commands work best in quiet environments</li>
-                  <li>Use Chrome, Edge, or Safari for best results</li>
+                  <li>Powered by Deepgram for accurate voice recognition</li>
                 </ul>
               </AlertDescription>
             </Alert>
