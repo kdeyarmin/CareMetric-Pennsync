@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Code, Copy, CheckCircle2, AlertCircle, Info, Plus } from "lucide-react";
 import { toast } from "sonner";
 import AISuggestionFeedback from "../feedback/AISuggestionFeedback";
-import { invokeGemini } from "../utils/geminiHelper";
 
 export default function AIMedicalCodingAssistant({ 
   clinicalNote, 
@@ -26,60 +25,15 @@ export default function AIMedicalCodingAssistant({
   const analyzeCodes = async () => {
     setAnalyzing(true);
     try {
-      const response = await invokeGemini({
-        prompt: `As a medical coding specialist, analyze this clinical documentation and suggest appropriate ICD-10 and CPT codes.
-
-**Clinical Note:**
-${clinicalNote}
-
-**Patient Context:**
-- Primary Diagnosis: ${patientData?.primary_diagnosis || 'Not specified'}
-- Age: ${patientData?.date_of_birth ? Math.floor((Date.now() - new Date(patientData.date_of_birth)) / 31557600000) : 'Unknown'}
-- Visit Type: ${visitType || 'Not specified'}
-
-**Instructions:**
-1. Suggest 3-5 most relevant ICD-10 codes based on the documented conditions
-2. Suggest 2-4 relevant CPT codes based on the services provided
-3. For each code, provide:
-   - Code number
-   - Description
-   - Confidence level (high/medium/low)
-   - Brief explanation of why this code is appropriate
-   - Any documentation requirements or modifiers needed
-
-Be specific and accurate. Only suggest codes that are clearly supported by the documentation.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            icd10_codes: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  code: { type: "string" },
-                  description: { type: "string" },
-                  confidence: { type: "string" },
-                  rationale: { type: "string" },
-                  documentation_notes: { type: "string" }
-                }
-              }
-            },
-            cpt_codes: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  code: { type: "string" },
-                  description: { type: "string" },
-                  confidence: { type: "string" },
-                  rationale: { type: "string" },
-                  modifiers: { type: "string" }
-                }
-              }
-            },
-            coding_summary: { type: "string" },
-            billing_considerations: { type: "string" }
-          }
+      const { suggestMedicalCodes } = await import('@/functions/suggestMedicalCodes');
+      const response = await suggestMedicalCodes({
+        clinical_note: clinicalNote,
+        diagnosis: patientData?.primary_diagnosis || 'Not specified',
+        visit_type: visitType || 'Not specified',
+        patient_context: {
+          age: patientData?.date_of_birth ? Math.floor((Date.now() - new Date(patientData.date_of_birth)) / 31557600000) : null,
+          primary_diagnosis: patientData?.primary_diagnosis,
+          secondary_diagnoses: patientData?.secondary_diagnoses
         }
       });
 
