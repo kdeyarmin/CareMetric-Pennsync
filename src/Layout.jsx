@@ -117,9 +117,9 @@ export default function Layout({ children, currentPageName }) {
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className={`${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-gradient-to-b from-slate-50/80 via-slate-50/60 to-blue-50/40 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/40 border-r border-slate-200/40 dark:border-slate-700/40 transition-all duration-300 lg:translate-x-0 overflow-y-auto shadow-elevated lg:shadow-soft backdrop-blur-sm`}
+          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-gradient-to-b from-slate-50/80 via-slate-50/60 to-blue-50/40 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/40 border-r border-slate-200/40 dark:border-slate-700/40 transition-all duration-300 overflow-y-auto shadow-elevated lg:shadow-soft backdrop-blur-sm ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          }`}
         >
           <div className="p-4 border-b border-slate-200/40 dark:border-slate-700/40">
             <div className="flex items-center gap-2">
