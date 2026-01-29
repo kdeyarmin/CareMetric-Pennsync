@@ -343,7 +343,7 @@ export default function AIMedicalCodingAssistant({
 
             {/* Validation Section */}
             {validation && (
-              <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border">
+              <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-sm flex items-center gap-2">
                     <Shield className="w-4 h-4 text-blue-600" />
@@ -360,81 +360,133 @@ export default function AIMedicalCodingAssistant({
 
                 {/* Summary */}
                 {validation.summary && (
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="grid grid-cols-3 gap-2 text-xs">
                     <div className="p-2 bg-white dark:bg-gray-800 rounded">
                       <div className="text-gray-500">Total Issues</div>
                       <div className="font-bold text-lg">{validation.summary.total_issues}</div>
                     </div>
                     <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                      <div className="text-gray-500">Critical</div>
+                      <div className="font-bold text-lg text-red-600">{validation.summary.critical_issues || 0}</div>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded">
                       <div className="text-gray-500">Denial Risk</div>
-                      <div className="font-bold text-sm">{validation.summary.estimated_denial_risk?.replace(/_/g, ' ')}</div>
+                      <div className="font-bold text-xs">{validation.summary.estimated_denial_risk?.replace(/_/g, ' ')}</div>
                     </div>
                   </div>
                 )}
 
-                {/* NCCI Violations */}
-                {validation.ncci_violations?.length > 0 && (
-                  <div className="space-y-2">
-                    <h5 className="text-xs font-semibold text-red-700 dark:text-red-300">NCCI Violations ({validation.ncci_violations.length})</h5>
-                    {validation.ncci_violations.slice(0, 3).map((v, idx) => (
-                      <div key={idx} className="p-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded text-xs">
-                        <div className="flex items-start gap-2">
-                          <AlertTriangle className="w-3 h-3 text-red-600 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1">
-                            <div className="font-semibold text-red-900 dark:text-red-100">{v.code_pair}</div>
-                            <div className="text-red-700 dark:text-red-300 mt-0.5">{v.explanation}</div>
-                            <div className="text-red-600 dark:text-red-400 mt-1 font-medium">→ {v.recommendation}</div>
+                {/* Priority Issues - Sorted by severity */}
+                {(() => {
+                  const allIssues = [
+                    ...(validation.ncci_violations || []).map(v => ({ ...v, category: 'NCCI', color: 'red' })),
+                    ...(validation.modifier_issues || []).map(m => ({ ...m, category: 'Modifier', color: 'orange' })),
+                    ...(validation.diagnosis_procedure_mismatches || []).map(d => ({ ...d, category: 'Dx-Px', color: 'purple' })),
+                    ...(validation.compliance_warnings || []).map(c => ({ ...c, category: 'Compliance', color: 'yellow' }))
+                  ].sort((a, b) => {
+                    const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+                    return severityOrder[a.severity] - severityOrder[b.severity];
+                  });
+
+                  return allIssues.length > 0 && (
+                    <div className="space-y-3">
+                      <h5 className="text-sm font-semibold flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-600" />
+                        Issues by Priority
+                      </h5>
+                      {allIssues.slice(0, 5).map((issue, idx) => (
+                        <div key={idx} className={`p-3 bg-${issue.color}-50 dark:bg-${issue.color}-950 border-l-4 border-${issue.color}-500 rounded`}>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge className={`${
+                                issue.severity === 'critical' ? 'bg-red-600 text-white' :
+                                issue.severity === 'high' ? 'bg-orange-600 text-white' :
+                                issue.severity === 'medium' ? 'bg-yellow-600 text-white' :
+                                'bg-gray-500 text-white'
+                              } text-xs`}>
+                                {issue.severity.toUpperCase()}
+                              </Badge>
+                              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{issue.category}</span>
+                            </div>
+                            {issue.financial_impact && (
+                              <span className="text-xs font-bold text-red-700 dark:text-red-300">{issue.financial_impact}</span>
+                            )}
+                          </div>
+
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <strong className="text-gray-900 dark:text-gray-100">
+                                {issue.code_pair || issue.code || issue.procedure_code || 'Issue'}
+                              </strong>
+                            </div>
+
+                            <div className="text-gray-700 dark:text-gray-300">
+                              <strong>Problem:</strong> {issue.explanation || issue.warning}
+                            </div>
+
+                            {issue.why_this_matters && (
+                              <div className="text-gray-700 dark:text-gray-300 bg-yellow-100 dark:bg-yellow-900 p-2 rounded">
+                                <strong>Why This Matters:</strong> {issue.why_this_matters}
+                              </div>
+                            )}
+
+                            <div className="text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-800 p-2 rounded">
+                              <strong>Fix:</strong> {issue.recommendation}
+                            </div>
+
+                            {issue.correct_example || issue.correct_usage_example || issue.correct_diagnosis_example ? (
+                              <div className="text-green-800 dark:text-green-200 bg-green-50 dark:bg-green-950 p-2 rounded border border-green-200 dark:border-green-800">
+                                <strong>✓ Correct Usage:</strong> {issue.correct_example || issue.correct_usage_example || issue.correct_diagnosis_example}
+                              </div>
+                            ) : null}
+
+                            {issue.documentation_needed || issue.documentation_requirement ? (
+                              <div className="text-blue-800 dark:text-blue-200 bg-blue-50 dark:bg-blue-950 p-2 rounded">
+                                <strong>Documentation Needed:</strong> {issue.documentation_needed || issue.documentation_requirement}
+                              </div>
+                            ) : null}
+
+                            {issue.documentation_example && (
+                              <div className="text-gray-700 dark:text-gray-300 italic pl-2 border-l-2 border-blue-300">
+                                Example: "{issue.documentation_example}"
+                              </div>
+                            )}
+
+                            {(issue.reference_link || issue.lcd_ncd_reference || issue.payer_policy_link) && (
+                              <div className="text-xs text-blue-600 dark:text-blue-400">
+                                <strong>Reference:</strong>{' '}
+                                <a 
+                                  href={issue.payer_policy_link || '#'} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="underline hover:text-blue-800"
+                                >
+                                  {issue.reference_link || issue.lcd_ncd_reference || 'View Guidelines'}
+                                </a>
+                              </div>
+                            )}
+
+                            {issue.compliance_steps && issue.compliance_steps.length > 0 && (
+                              <div className="text-gray-700 dark:text-gray-300 pl-3">
+                                <strong>Steps:</strong>
+                                <ol className="list-decimal list-inside mt-1 space-y-0.5">
+                                  {issue.compliance_steps.map((step, i) => (
+                                    <li key={i}>{step}</li>
+                                  ))}
+                                </ol>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Modifier Issues */}
-                {validation.modifier_issues?.length > 0 && (
-                  <div className="space-y-2">
-                    <h5 className="text-xs font-semibold text-orange-700 dark:text-orange-300">Modifier Issues ({validation.modifier_issues.length})</h5>
-                    {validation.modifier_issues.slice(0, 3).map((m, idx) => (
-                      <div key={idx} className="p-2 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded text-xs">
-                        <div className="font-semibold text-orange-900 dark:text-orange-100">{m.code} - {m.issue_type.replace(/_/g, ' ')}</div>
-                        <div className="text-orange-700 dark:text-orange-300 mt-0.5">{m.explanation}</div>
-                        {m.recommended_modifier && (
-                          <div className="text-orange-600 dark:text-orange-400 mt-1 font-medium">→ Use modifier: {m.recommended_modifier}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Diagnosis-Procedure Mismatches */}
-                {validation.diagnosis_procedure_mismatches?.length > 0 && (
-                  <div className="space-y-2">
-                    <h5 className="text-xs font-semibold text-purple-700 dark:text-purple-300">Diagnosis-Procedure Mismatches ({validation.diagnosis_procedure_mismatches.length})</h5>
-                    {validation.diagnosis_procedure_mismatches.slice(0, 2).map((d, idx) => (
-                      <div key={idx} className="p-2 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded text-xs">
-                        <div className="font-semibold text-purple-900 dark:text-purple-100">{d.procedure_code}</div>
-                        <div className="text-purple-700 dark:text-purple-300 mt-0.5">{d.explanation}</div>
-                        <div className="text-purple-600 dark:text-purple-400 mt-1 font-medium">→ {d.recommendation}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Recommended Fixes */}
-                {validation.recommended_fixes?.length > 0 && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded">
-                    <h5 className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-2">Priority Actions</h5>
-                    <ul className="space-y-1 text-xs text-blue-800 dark:text-blue-200">
-                      {validation.recommended_fixes.slice(0, 3).map((fix, idx) => (
-                        <li key={idx} className="flex gap-2">
-                          <span className="font-bold">{fix.priority}.</span>
-                          <span>{fix.action}</span>
-                        </li>
                       ))}
-                    </ul>
-                  </div>
-                )}
+                      {allIssues.length > 5 && (
+                        <p className="text-xs text-gray-500 text-center">
+                          + {allIssues.length - 5} more issues (showing top 5 by severity)
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

@@ -92,10 +92,15 @@ Perform comprehensive validation checking for:
 For each issue found, provide:
 - Issue type and severity (critical/high/medium/low)
 - Specific codes involved
-- Clear explanation of the problem
-- Actionable recommendation to fix
-- Documentation requirements needed
-- Payer-specific considerations`;
+- Clear, detailed explanation of WHY this is an issue
+- Step-by-step actionable recommendation to fix
+- Specific documentation requirements needed with examples
+- Real-world example of correct usage
+- Reference links to CMS, NCCI, or payer guidelines
+- Financial impact estimate (claim denial risk, potential revenue loss)
+- Payer-specific considerations
+
+IMPORTANT: Be extremely detailed and educational. Assume the user needs to understand not just WHAT is wrong, but WHY and HOW to fix it with concrete examples.`;
 
     const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     
@@ -137,10 +142,15 @@ For each issue found, provide:
                     severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
                     code_pair: { type: "string", description: "e.g., '99213 + 12001'" },
                     violation_type: { type: "string", description: "e.g., 'Column 1/Column 2 edit', 'Mutually exclusive'" },
-                    explanation: { type: "string" },
-                    recommendation: { type: "string" },
+                    explanation: { type: "string", description: "Detailed explanation of the NCCI issue" },
+                    why_this_matters: { type: "string", description: "Financial and compliance impact" },
+                    recommendation: { type: "string", description: "Step-by-step fix instructions" },
+                    correct_example: { type: "string", description: "Example of proper coding for this scenario" },
                     modifier_override: { type: "string", description: "e.g., 'Use modifier 59'" },
-                    payer_impact: { type: "string" }
+                    documentation_needed: { type: "string", description: "What documentation supports the modifier" },
+                    reference_link: { type: "string", description: "CMS NCCI manual chapter or page reference" },
+                    payer_impact: { type: "string" },
+                    financial_impact: { type: "string", description: "e.g., 'Risk of full claim denial - potential $X loss'" }
                   }
                 }
               },
@@ -153,9 +163,14 @@ For each issue found, provide:
                     code: { type: "string" },
                     issue_type: { type: "string", enum: ["missing_required", "inappropriate", "invalid_combination", "needs_documentation"] },
                     current_modifier: { type: "string" },
-                    explanation: { type: "string" },
+                    explanation: { type: "string", description: "Detailed explanation of modifier issue" },
+                    why_this_matters: { type: "string", description: "Impact on claim processing" },
                     recommended_modifier: { type: "string" },
-                    documentation_requirement: { type: "string" }
+                    correct_usage_example: { type: "string", description: "Example scenario showing proper modifier use" },
+                    documentation_requirement: { type: "string", description: "Specific documentation needed" },
+                    documentation_example: { type: "string", description: "Example of acceptable documentation" },
+                    reference_link: { type: "string", description: "CMS or payer guideline reference" },
+                    financial_impact: { type: "string" }
                   }
                 }
               },
@@ -168,9 +183,14 @@ For each issue found, provide:
                     procedure_code: { type: "string" },
                     diagnosis_codes: { type: "array", items: { type: "string" } },
                     mismatch_type: { type: "string", enum: ["not_medically_necessary", "missing_diagnosis", "age_inappropriate", "gender_inappropriate", "weak_support"] },
-                    explanation: { type: "string" },
-                    recommendation: { type: "string" },
-                    additional_diagnosis_needed: { type: "array", items: { type: "string" } }
+                    explanation: { type: "string", description: "Why diagnosis doesn't support procedure" },
+                    medical_necessity_criteria: { type: "string", description: "What criteria need to be met" },
+                    recommendation: { type: "string", description: "How to establish medical necessity" },
+                    correct_diagnosis_example: { type: "string", description: "Example of supporting diagnosis" },
+                    additional_diagnosis_needed: { type: "array", items: { type: "string" } },
+                    lcd_ncd_reference: { type: "string", description: "Relevant LCD/NCD policy number" },
+                    payer_policy_link: { type: "string", description: "Link to payer coverage policy" },
+                    financial_impact: { type: "string" }
                   }
                 }
               },
@@ -195,9 +215,13 @@ For each issue found, provide:
                     severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
                     category: { type: "string" },
                     warning: { type: "string" },
+                    detailed_explanation: { type: "string", description: "Comprehensive explanation of the compliance issue" },
                     codes_affected: { type: "array", items: { type: "string" } },
                     recommendation: { type: "string" },
-                    payer_specific: { type: "string" }
+                    compliance_steps: { type: "array", items: { type: "string" }, description: "Step-by-step compliance actions" },
+                    reference_link: { type: "string", description: "CMS or regulatory reference" },
+                    payer_specific: { type: "string" },
+                    financial_impact: { type: "string" }
                   }
                 }
               },
