@@ -97,10 +97,13 @@ CRITICAL: Flag potential compliance issues including:
 Output the enhanced clinical note only, properly formatted.`;
 
     const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    
+
     if (!anthropicApiKey) {
+      console.error('[enhanceNoteOptimized] ANTHROPIC_API_KEY not configured');
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
+
+    console.log('[enhanceNoteOptimized] Calling Claude API for note enhancement');
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -118,15 +121,33 @@ Output the enhanced clinical note only, properly formatted.`;
 
     if (!claudeResponse.ok) {
       const errorText = await claudeResponse.text();
-      console.error('Claude API error:', errorText);
-      throw new Error(`Claude API failed: ${claudeResponse.status}`);
+      console.error('[enhanceNoteOptimized] Claude API error:', {
+        status: claudeResponse.status,
+        statusText: claudeResponse.statusText,
+        error: errorText
+      });
+      throw new Error(`Claude API failed: ${claudeResponse.status} - ${errorText}`);
     }
 
     const claudeResult = await claudeResponse.json();
+    console.log('[enhanceNoteOptimized] Claude response structure:', {
+      hasContent: !!claudeResult.content,
+      contentLength: claudeResult.content?.length,
+      firstContentType: claudeResult.content?.[0]?.type
+    });
+
     const textContent = claudeResult.content?.find(c => c.type === 'text');
     const response = textContent?.text || '';
 
+    if (!response) {
+      console.error('[enhanceNoteOptimized] No text content in Claude response:', claudeResult);
+      throw new Error('Claude returned empty response');
+    }
+
     const enhancedNote = typeof response === 'string' ? response : response.content || response.text || '';
+    console.log('[enhanceNoteOptimized] Enhanced note generated:', {
+      length: enhancedNote.length
+    });
 
     // Generate compliance flags if enabled
     let complianceFlags = [];
@@ -195,9 +216,12 @@ Format as specific, actionable findings.`;
           complianceFlags = complianceResponse.compliance_flags || [];
         }
       } catch (error) {
-        console.error('Compliance check error:', error);
+        console.error('[enhanceNoteOptimized] Compliance check error:', {
+          message: error.message,
+          stack: error.stack
+        });
       }
-    }
+      }
 
     // Generate specialty-specific differential diagnoses and code suggestions
     let differentialDiagnoses = [];
@@ -365,9 +389,12 @@ Provide scores (0-100) and specific feedback.`;
             : null;
         }
       } catch (error) {
-        console.error('Quality analysis error:', error);
+        console.error('[enhanceNoteOptimized] Quality analysis error:', {
+          message: error.message,
+          stack: error.stack
+        });
       }
-    }
+      }
 
     return Response.json({
       success: true,
@@ -380,10 +407,15 @@ Provide scores (0-100) and specific feedback.`;
     });
 
   } catch (error) {
-    console.error('Error enhancing note:', error);
+    console.error('[enhanceNoteOptimized] Fatal error:', {
+      message: error.message,
+      stack: error.stack,
+      userEmail: user?.email
+    });
     return Response.json({
       success: false,
-      error: error.message
+      error: error.message,
+      type: error.name
     }, { status: 500 });
   }
 });

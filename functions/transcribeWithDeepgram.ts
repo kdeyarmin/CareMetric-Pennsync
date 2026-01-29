@@ -38,6 +38,7 @@ Deno.serve(async (req) => {
     }
 
     // Call Deepgram API
+    console.log('[transcribeWithDeepgram] Calling Deepgram API with custom vocabulary:', vocabulary.length);
     const deepgramResponse = await fetch(deepgramUrl, {
       method: 'POST',
       headers: {
@@ -49,20 +50,55 @@ Deno.serve(async (req) => {
 
     if (!deepgramResponse.ok) {
       const errorText = await deepgramResponse.text();
-      console.error('Deepgram API error:', errorText);
-      return Response.json({ error: 'Transcription failed' }, { status: 500 });
+      console.error('[transcribeWithDeepgram] Deepgram API error:', {
+        status: deepgramResponse.status,
+        statusText: deepgramResponse.statusText,
+        error: errorText
+      });
+      return Response.json({ 
+        error: 'Transcription failed', 
+        details: errorText 
+      }, { status: deepgramResponse.status });
     }
 
     const result = await deepgramResponse.json();
+    console.log('[transcribeWithDeepgram] Deepgram response structure:', {
+      hasResults: !!result.results,
+      hasChannels: !!result.results?.channels,
+      channelCount: result.results?.channels?.length
+    });
+
     const transcript = result.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
+    const confidence = result.results?.channels?.[0]?.alternatives?.[0]?.confidence || 0;
+
+    if (!transcript) {
+      console.warn('[transcribeWithDeepgram] No transcript returned from Deepgram');
+      return Response.json({ 
+        text: '', 
+        confidence: 0,
+        warning: 'No speech detected in audio' 
+      });
+    }
+
+    console.log('[transcribeWithDeepgram] Transcription successful:', {
+      transcriptLength: transcript.length,
+      confidence
+    });
 
     return Response.json({ 
       text: transcript,
-      confidence: result.results?.channels?.[0]?.alternatives?.[0]?.confidence || 0
+      confidence
     });
   } catch (error) {
-    console.error('Transcription error:', error);
-    return Response.json({ error: error.message || 'Transcription failed' }, { status: 500 });
+    console.error('[transcribeWithDeepgram] Unexpected error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    return Response.json({ 
+      error: error.message || 'Transcription failed',
+      type: error.name
+    }, { status: 500 });
   }
 });
 

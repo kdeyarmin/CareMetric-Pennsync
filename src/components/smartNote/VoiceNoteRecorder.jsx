@@ -21,29 +21,50 @@ export default function VoiceNoteRecorder({ onTranscriptionComplete, appendMode 
       // Initialize Deepgram WebSocket for real-time transcription
       const deepgramApiKey = import.meta.env.VITE_DEEPGRAM_API_KEY;
       if (deepgramApiKey) {
+        console.log('[VoiceNoteRecorder] Initializing Deepgram WebSocket');
         const ws = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', [
           'token',
           deepgramApiKey
         ]);
 
         ws.onopen = () => {
-          console.log('Deepgram WebSocket connected');
+          console.log('[VoiceNoteRecorder] Deepgram WebSocket connected successfully');
         };
 
         ws.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          const transcriptText = data.channel?.alternatives?.[0]?.transcript;
-          
-          if (transcriptText && data.is_final) {
-            setTranscript(prev => prev + transcriptText + ' ');
+          try {
+            const data = JSON.parse(event.data);
+            console.log('[VoiceNoteRecorder] Deepgram message received:', {
+              hasTranscript: !!data.channel?.alternatives?.[0]?.transcript,
+              isFinal: data.is_final
+            });
+            
+            const transcriptText = data.channel?.alternatives?.[0]?.transcript;
+            
+            if (transcriptText && data.is_final) {
+              setTranscript(prev => prev + transcriptText + ' ');
+            }
+          } catch (parseError) {
+            console.error('[VoiceNoteRecorder] Error parsing Deepgram message:', parseError);
           }
         };
 
         ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          console.error('[VoiceNoteRecorder] WebSocket error:', error);
+          toast.error('Real-time transcription connection failed');
+        };
+
+        ws.onclose = (event) => {
+          console.log('[VoiceNoteRecorder] WebSocket closed:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          });
         };
 
         wsRef.current = ws;
+      } else {
+        console.warn('[VoiceNoteRecorder] No Deepgram API key configured for real-time transcription');
       }
 
       mediaRecorder.ondataavailable = (event) => {
