@@ -85,11 +85,45 @@ Deno.serve(async (req) => {
     const schema = getNoteSchema(note_type);
 
     // Generate note using Claude
-    const { invokeClaude } = await import('./helpers/claudeClient.js');
-    const generated_note = await invokeClaude({
-      prompt,
-      response_json_schema: schema
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    
+    if (!anthropicApiKey) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
+    }
+
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+        tools: [{
+          name: 'generate_structured_response',
+          description: 'Generate a structured JSON response',
+          input_schema: schema
+        }],
+        tool_choice: {
+          type: 'tool',
+          name: 'generate_structured_response'
+        }
+      })
     });
+
+    if (!claudeResponse.ok) {
+      const errorText = await claudeResponse.text();
+      console.error('Claude API error:', errorText);
+      throw new Error(`Claude API failed: ${claudeResponse.status}`);
+    }
+
+    const claudeResult = await claudeResponse.json();
+    const generated_note = claudeResult.content?.[0]?.type === 'tool_use' 
+      ? claudeResult.content[0].input 
+      : {};
 
     // Format the note for display
     const formatted_note = formatGeneratedNote(generated_note, note_type);

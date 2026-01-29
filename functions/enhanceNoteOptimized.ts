@@ -96,10 +96,35 @@ CRITICAL: Flag potential compliance issues including:
 
 Output the enhanced clinical note only, properly formatted.`;
 
-    const { invokeClaude } = await import('./helpers/claudeClient.js');
-    const response = await invokeClaude({
-      prompt: enhancePrompt
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    
+    if (!anthropicApiKey) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
+    }
+
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: enhancePrompt }]
+      })
     });
+
+    if (!claudeResponse.ok) {
+      const errorText = await claudeResponse.text();
+      console.error('Claude API error:', errorText);
+      throw new Error(`Claude API failed: ${claudeResponse.status}`);
+    }
+
+    const claudeResult = await claudeResponse.json();
+    const textContent = claudeResult.content?.find(c => c.type === 'text');
+    const response = textContent?.text || '';
 
     const enhancedNote = typeof response === 'string' ? response : response.content || response.text || '';
 
