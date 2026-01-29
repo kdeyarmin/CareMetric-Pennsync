@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Code, Copy, CheckCircle2, AlertCircle, Info, Plus } from "lucide-react";
+import { Loader2, Code, Copy, CheckCircle2, AlertCircle, Info, Plus, Shield, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import AISuggestionFeedback from "../feedback/AISuggestionFeedback";
 
@@ -17,6 +17,8 @@ export default function AIMedicalCodingAssistant({
   const [suggestions, setSuggestions] = useState(null);
   const [selectedCodes, setSelectedCodes] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [validating, setValidating] = useState(false);
+  const [validation, setValidation] = useState(null);
 
   React.useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
@@ -62,6 +64,42 @@ export default function AIMedicalCodingAssistant({
   const copyCode = (code) => {
     navigator.clipboard.writeText(code);
     toast.success("Code copied to clipboard");
+  };
+
+  const validateCodes = async () => {
+    if (!suggestions) return;
+    
+    setValidating(true);
+    try {
+      const { validateMedicalCodes } = await import('@/functions/validateMedicalCodes');
+      const result = await validateMedicalCodes({
+        icd10_codes: [
+          ...(suggestions.icd10_codes || []),
+          ...(suggestions.primary_icd10_codes || []),
+          ...(suggestions.secondary_icd10_codes || [])
+        ],
+        cpt_codes: suggestions.cpt_codes || [],
+        hcpcs_codes: suggestions.hcpcs_codes || [],
+        modifiers: suggestions.recommended_modifiers?.map(m => m.modifier) || [],
+        patient_context: patientData,
+        clinical_note: clinicalNote
+      });
+      
+      setValidation(result.validation);
+      
+      if (result.validation.validation_status === 'failed') {
+        toast.error('Validation found critical issues');
+      } else if (result.validation.validation_status === 'passed_with_warnings') {
+        toast.warning('Validation passed with warnings');
+      } else {
+        toast.success('All codes validated successfully');
+      }
+    } catch (error) {
+      toast.error('Failed to validate codes');
+      console.error(error);
+    } finally {
+      setValidating(false);
+    }
   };
 
   const applySelectedCodes = () => {
@@ -303,8 +341,125 @@ export default function AIMedicalCodingAssistant({
               />
             </div>
 
+            {/* Validation Section */}
+            {validation && (
+              <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-blue-600" />
+                    Code Validation Results
+                  </h4>
+                  <Badge className={
+                    validation.validation_status === 'passed' ? 'bg-green-100 text-green-800' :
+                    validation.validation_status === 'passed_with_warnings' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }>
+                    {validation.validation_status.replace(/_/g, ' ')}
+                  </Badge>
+                </div>
+
+                {/* Summary */}
+                {validation.summary && (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                      <div className="text-gray-500">Total Issues</div>
+                      <div className="font-bold text-lg">{validation.summary.total_issues}</div>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                      <div className="text-gray-500">Denial Risk</div>
+                      <div className="font-bold text-sm">{validation.summary.estimated_denial_risk?.replace(/_/g, ' ')}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* NCCI Violations */}
+                {validation.ncci_violations?.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-semibold text-red-700 dark:text-red-300">NCCI Violations ({validation.ncci_violations.length})</h5>
+                    {validation.ncci_violations.slice(0, 3).map((v, idx) => (
+                      <div key={idx} className="p-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded text-xs">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-3 h-3 text-red-600 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <div className="font-semibold text-red-900 dark:text-red-100">{v.code_pair}</div>
+                            <div className="text-red-700 dark:text-red-300 mt-0.5">{v.explanation}</div>
+                            <div className="text-red-600 dark:text-red-400 mt-1 font-medium">→ {v.recommendation}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Modifier Issues */}
+                {validation.modifier_issues?.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-semibold text-orange-700 dark:text-orange-300">Modifier Issues ({validation.modifier_issues.length})</h5>
+                    {validation.modifier_issues.slice(0, 3).map((m, idx) => (
+                      <div key={idx} className="p-2 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded text-xs">
+                        <div className="font-semibold text-orange-900 dark:text-orange-100">{m.code} - {m.issue_type.replace(/_/g, ' ')}</div>
+                        <div className="text-orange-700 dark:text-orange-300 mt-0.5">{m.explanation}</div>
+                        {m.recommended_modifier && (
+                          <div className="text-orange-600 dark:text-orange-400 mt-1 font-medium">→ Use modifier: {m.recommended_modifier}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Diagnosis-Procedure Mismatches */}
+                {validation.diagnosis_procedure_mismatches?.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-semibold text-purple-700 dark:text-purple-300">Diagnosis-Procedure Mismatches ({validation.diagnosis_procedure_mismatches.length})</h5>
+                    {validation.diagnosis_procedure_mismatches.slice(0, 2).map((d, idx) => (
+                      <div key={idx} className="p-2 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded text-xs">
+                        <div className="font-semibold text-purple-900 dark:text-purple-100">{d.procedure_code}</div>
+                        <div className="text-purple-700 dark:text-purple-300 mt-0.5">{d.explanation}</div>
+                        <div className="text-purple-600 dark:text-purple-400 mt-1 font-medium">→ {d.recommendation}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Recommended Fixes */}
+                {validation.recommended_fixes?.length > 0 && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded">
+                    <h5 className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-2">Priority Actions</h5>
+                    <ul className="space-y-1 text-xs text-blue-800 dark:text-blue-200">
+                      {validation.recommended_fixes.slice(0, 3).map((fix, idx) => (
+                        <li key={idx} className="flex gap-2">
+                          <span className="font-bold">{fix.priority}.</span>
+                          <span>{fix.action}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex gap-2 pt-2 border-t">
+              {!validation && suggestions && (
+                <Button
+                  onClick={validateCodes}
+                  disabled={validating}
+                  variant="outline"
+                  className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                >
+                  {validating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Validating...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="w-4 h-4 mr-2" />
+                      Validate Codes
+                    </>
+                  )}
+                </Button>
+              )}
               <Button
                 onClick={applySelectedCodes}
                 disabled={selectedCodes.length === 0}
