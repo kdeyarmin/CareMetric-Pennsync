@@ -26,7 +26,9 @@ Deno.serve(async (req) => {
       hcpcs_codes,
       modifiers,
       patient_context,
-      clinical_note
+      clinical_note,
+      payer_name,
+      payer_type
     } = body;
 
     if (!icd10_codes || !cpt_codes) {
@@ -49,7 +51,14 @@ ${modifiers ? `Applied Modifiers: ${modifiers.join(', ')}` : ''}
 ${patient_context ? `PATIENT CONTEXT:
 - Age: ${patient_context.age || 'Unknown'}
 - Gender: ${patient_context.gender || 'Unknown'}
-- Insurance: ${patient_context.payor || 'Unknown'}
+- Insurance: ${patient_context.payor || payer_name || 'Unknown'}
+` : ''}
+
+${payer_name ? `SPECIFIC PAYER FOR VALIDATION: ${payer_name}
+Payer Type: ${payer_type || 'Unknown'}
+
+CRITICAL: Provide payer-specific validation rules, denial patterns, and coverage policies for ${payer_name}.
+Include specific LCD/NCD numbers, payer policy references, and direct links to ${payer_name} provider portals or guideline pages.
 ` : ''}
 
 ${clinical_note ? `CLINICAL DOCUMENTATION:
@@ -82,23 +91,31 @@ Perform comprehensive validation checking for:
    - Check for laterality requirements (RT/LT)
    - Verify code sequencing (primary vs secondary)
 
-5. **COMPLIANCE & BILLING RULES**:
-   - Medicare LCD/NCD coverage concerns
-   - Frequency limitations
+5. **PAYER-SPECIFIC RULES & POLICIES**:
+   ${payer_name ? `- ${payer_name}-specific coverage policies and LCD/NCD requirements` : '- Medicare LCD/NCD coverage concerns'}
+   ${payer_name ? `- ${payer_name} prior authorization requirements with specific procedure codes` : '- Prior authorization requirements'}
+   ${payer_name ? `- ${payer_name} frequency limitations and billing rules` : '- Frequency limitations'}
    - Time-based code requirements
    - Global period conflicts
-   - Medical necessity documentation requirements
+   ${payer_name ? `- ${payer_name} medical necessity criteria with policy numbers` : '- Medical necessity documentation requirements'}
+   ${payer_name ? `- ${payer_name} common denial reasons and how to prevent them` : '- Common denial patterns'}
+
+6. **PAYER GUIDELINE REFERENCES**:
+   - Include direct URLs to ${payer_name || 'payer'} provider portals
+   - LCD/NCD policy numbers with full citations
+   - ${payer_name || 'Payer'}-specific coding guidelines
+   - Links to ${payer_name || 'payer'} coverage determination tools
 
 For each issue found, provide:
 - Issue type and severity (critical/high/medium/low)
 - Specific codes involved
-- Clear, detailed explanation of WHY this is an issue
+- Clear, detailed explanation of WHY this is an issue ${payer_name ? `specifically for ${payer_name}` : ''}
 - Step-by-step actionable recommendation to fix
 - Specific documentation requirements needed with examples
 - Real-world example of correct usage
-- Reference links to CMS, NCCI, or payer guidelines
-- Financial impact estimate (claim denial risk, potential revenue loss)
-- Payer-specific considerations
+- **DIRECT REFERENCE LINKS**: ${payer_name ? `Include actual ${payer_name} provider portal URLs, policy page links, and LCD/NCD references` : 'Include CMS, NCCI, or payer guideline URLs'}
+- Financial impact estimate (claim denial risk, potential revenue loss) ${payer_name ? `based on ${payer_name} denial rates` : ''}
+- ${payer_name ? `${payer_name}-specific policy considerations and common denial patterns` : 'Payer-specific considerations'}
 
 IMPORTANT: Be extremely detailed and educational. Assume the user needs to understand not just WHAT is wrong, but WHY and HOW to fix it with concrete examples.`;
 
@@ -130,6 +147,10 @@ IMPORTANT: Be extremely detailed and educational. Assume the user needs to under
                 enum: ["passed", "passed_with_warnings", "failed"],
                 description: "Overall validation result"
               },
+              payer_name: {
+                type: "string",
+                description: "Name of the payer these rules apply to"
+              },
               overall_risk_score: {
                 type: "number",
                 description: "Risk score 0-100, higher = more issues"
@@ -150,7 +171,9 @@ IMPORTANT: Be extremely detailed and educational. Assume the user needs to under
                     documentation_needed: { type: "string", description: "What documentation supports the modifier" },
                     reference_link: { type: "string", description: "CMS NCCI manual chapter or page reference" },
                     payer_impact: { type: "string" },
-                    financial_impact: { type: "string", description: "e.g., 'Risk of full claim denial - potential $X loss'" }
+                    financial_impact: { type: "string", description: "e.g., 'Risk of full claim denial - potential $X loss'" },
+                    payer_policy_url: { type: "string", description: "Direct URL to payer's specific policy or portal page" },
+                    denial_rate: { type: "string", description: "Historical denial rate for this issue with this payer" }
                   }
                 }
               },

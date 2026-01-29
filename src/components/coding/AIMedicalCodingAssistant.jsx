@@ -3,8 +3,9 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Code, Copy, CheckCircle2, AlertCircle, Info, Plus, Shield, AlertTriangle } from "lucide-react";
+import { Loader2, Code, Copy, CheckCircle2, AlertCircle, Info, Plus, Shield, AlertTriangle, Building2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AISuggestionFeedback from "../feedback/AISuggestionFeedback";
 
 export default function AIMedicalCodingAssistant({ 
@@ -19,6 +20,8 @@ export default function AIMedicalCodingAssistant({
   const [currentUser, setCurrentUser] = useState(null);
   const [validating, setValidating] = useState(false);
   const [validation, setValidation] = useState(null);
+  const [selectedPayer, setSelectedPayer] = useState(patientData?.payor || "");
+  const [customPayer, setCustomPayer] = useState("");
 
   React.useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
@@ -69,6 +72,13 @@ export default function AIMedicalCodingAssistant({
   const validateCodes = async () => {
     if (!suggestions) return;
     
+    const payerName = selectedPayer === 'custom' ? customPayer : selectedPayer;
+    
+    if (!payerName) {
+      toast.error('Please select a payer for validation');
+      return;
+    }
+    
     setValidating(true);
     try {
       const { validateMedicalCodes } = await import('@/functions/validateMedicalCodes');
@@ -82,7 +92,9 @@ export default function AIMedicalCodingAssistant({
         hcpcs_codes: suggestions.hcpcs_codes || [],
         modifiers: suggestions.recommended_modifiers?.map(m => m.modifier) || [],
         patient_context: patientData,
-        clinical_note: clinicalNote
+        clinical_note: clinicalNote,
+        payer_name: payerName,
+        payer_type: getPayerType(payerName)
       });
       
       setValidation(result.validation);
@@ -100,6 +112,15 @@ export default function AIMedicalCodingAssistant({
     } finally {
       setValidating(false);
     }
+  };
+
+  const getPayerType = (payerName) => {
+    const lowerPayer = payerName.toLowerCase();
+    if (lowerPayer.includes('medicare')) return 'Medicare';
+    if (lowerPayer.includes('medicaid')) return 'Medicaid';
+    if (lowerPayer.includes('blue cross') || lowerPayer.includes('bcbs')) return 'Commercial';
+    if (lowerPayer.includes('aetna') || lowerPayer.includes('cigna') || lowerPayer.includes('united')) return 'Commercial';
+    return 'Other';
   };
 
   const applySelectedCodes = () => {
@@ -341,14 +362,63 @@ export default function AIMedicalCodingAssistant({
               />
             </div>
 
+            {/* Payer Selection for Validation */}
+            {suggestions && !validation && (
+              <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-600" />
+                  <h4 className="font-semibold text-sm">Select Payer for Validation</h4>
+                </div>
+                <Select value={selectedPayer} onValueChange={setSelectedPayer}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select payer..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Medicare Part A">Medicare Part A</SelectItem>
+                    <SelectItem value="Medicare Part B">Medicare Part B</SelectItem>
+                    <SelectItem value="Medicare Advantage">Medicare Advantage</SelectItem>
+                    <SelectItem value="Medicaid">Medicaid</SelectItem>
+                    <SelectItem value="Blue Cross Blue Shield">Blue Cross Blue Shield</SelectItem>
+                    <SelectItem value="Aetna">Aetna</SelectItem>
+                    <SelectItem value="UnitedHealthcare">UnitedHealthcare</SelectItem>
+                    <SelectItem value="Cigna">Cigna</SelectItem>
+                    <SelectItem value="Humana">Humana</SelectItem>
+                    <SelectItem value="Anthem">Anthem</SelectItem>
+                    <SelectItem value="Tricare">Tricare</SelectItem>
+                    <SelectItem value="custom">Other (Custom)</SelectItem>
+                  </SelectContent>
+                </Select>
+                {selectedPayer === 'custom' && (
+                  <input
+                    type="text"
+                    placeholder="Enter payer name..."
+                    value={customPayer}
+                    onChange={(e) => setCustomPayer(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border rounded-md"
+                  />
+                )}
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Validation rules will be customized for {selectedPayer === 'custom' ? 'your selected payer' : selectedPayer || 'the selected payer'}
+                </p>
+              </div>
+            )}
+
             {/* Validation Section */}
             {validation && (
               <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-blue-600" />
-                    Code Validation Results
-                  </h4>
+                    <div>
+                      <h4 className="font-semibold text-sm">Code Validation Results</h4>
+                      {validation.payer_name && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                          <Building2 className="w-3 h-3" />
+                          {validation.payer_name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                   <Badge className={
                     validation.validation_status === 'passed' ? 'bg-green-100 text-green-800' :
                     validation.validation_status === 'passed_with_warnings' ? 'bg-yellow-100 text-yellow-800' :
@@ -452,17 +522,26 @@ export default function AIMedicalCodingAssistant({
                               </div>
                             )}
 
-                            {(issue.reference_link || issue.lcd_ncd_reference || issue.payer_policy_link) && (
-                              <div className="text-xs text-blue-600 dark:text-blue-400">
-                                <strong>Reference:</strong>{' '}
+                            {(issue.reference_link || issue.lcd_ncd_reference || issue.payer_policy_link || issue.payer_policy_url) && (
+                              <div className="text-xs text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 p-2 rounded border border-blue-200 dark:border-blue-700">
+                                <strong className="flex items-center gap-1">
+                                  <ExternalLink className="w-3 h-3" />
+                                  Payer Guidelines:
+                                </strong>
                                 <a 
-                                  href={issue.payer_policy_link || '#'} 
+                                  href={issue.payer_policy_url || issue.payer_policy_link || '#'} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
-                                  className="underline hover:text-blue-800"
+                                  className="underline hover:text-blue-800 break-all"
                                 >
-                                  {issue.reference_link || issue.lcd_ncd_reference || 'View Guidelines'}
+                                  {issue.reference_link || issue.lcd_ncd_reference || issue.payer_policy_url || 'View Policy'}
                                 </a>
+                              </div>
+                            )}
+
+                            {issue.denial_rate && (
+                              <div className="text-xs text-red-700 dark:text-red-300 font-semibold">
+                                📊 Historical Denial Rate: {issue.denial_rate}
                               </div>
                             )}
 
