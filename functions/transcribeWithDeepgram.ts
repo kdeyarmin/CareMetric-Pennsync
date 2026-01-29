@@ -22,11 +22,23 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Deepgram API key not configured' }, { status: 500 });
     }
 
+    // Get user's custom vocabulary
+    const vocabulary = await getUserVocabulary(base44, user.email);
+
     // Convert audio file to ArrayBuffer
     const audioBuffer = await audioFile.arrayBuffer();
 
+    // Build Deepgram URL with custom parameters
+    let deepgramUrl = 'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true';
+    
+    // Add custom vocabulary if available
+    if (vocabulary.length > 0) {
+      const keywords = vocabulary.slice(0, 100).join(','); // Deepgram supports up to 100 keywords
+      deepgramUrl += `&keywords=${encodeURIComponent(keywords)}`;
+    }
+
     // Call Deepgram API
-    const deepgramResponse = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', {
+    const deepgramResponse = await fetch(deepgramUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Token ${deepgramApiKey}`,
@@ -53,3 +65,27 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message || 'Transcription failed' }, { status: 500 });
   }
 });
+
+async function getUserVocabulary(base44, userEmail) {
+  try {
+    const learningData = await base44.asServiceRole.entities.TranscriptionLearning.filter({
+      user_email: userEmail
+    });
+
+    const vocabulary = new Map();
+
+    learningData.forEach(entry => {
+      entry.custom_terms?.forEach(term => {
+        const current = vocabulary.get(term.term) || 0;
+        vocabulary.set(term.term, current + term.frequency);
+      });
+    });
+
+    return Array.from(vocabulary.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([term]) => term);
+  } catch (error) {
+    console.error('Error getting vocabulary:', error);
+    return [];
+  }
+}
