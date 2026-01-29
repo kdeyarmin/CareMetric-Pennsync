@@ -92,7 +92,8 @@ For each identified issue, provide:
 
 IMPORTANT: Only suggest NEW alerts that don't duplicate existing active alerts. Focus on actionable clinical issues.`;
 
-    const response = await base44.integrations.Core.InvokeLLM({
+    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const response = await invokeClaude({
       prompt: analysisPrompt,
       response_json_schema: {
         type: "object",

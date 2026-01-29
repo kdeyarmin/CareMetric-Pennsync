@@ -84,8 +84,9 @@ Deno.serve(async (req) => {
     // Define schema based on note type
     const schema = getNoteSchema(note_type);
 
-    // Generate note using LLM
-    const generated_note = await base44.integrations.Core.InvokeLLM({
+    // Generate note using Claude
+    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const generated_note = await invokeClaude({
       prompt,
       response_json_schema: schema
     });

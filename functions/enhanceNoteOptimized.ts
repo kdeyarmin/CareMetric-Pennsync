@@ -96,7 +96,8 @@ CRITICAL: Flag potential compliance issues including:
 
 Output the enhanced clinical note only, properly formatted.`;
 
-    const response = await base44.integrations.Core.InvokeLLM({
+    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const response = await invokeClaude({
       prompt: enhancePrompt
     });
 
@@ -123,7 +124,7 @@ Identify:
 Format as specific, actionable findings.`;
 
       try {
-        const complianceResponse = await base44.integrations.Core.InvokeLLM({
+        const complianceResponse = await invokeClaude({
           prompt: complianceCheckPrompt,
           response_json_schema: {
             type: "object",
@@ -167,7 +168,7 @@ Provide:
 2. Appropriate ICD-10 codes with descriptions
 3. Recommended CPT codes for documented services`;
 
-      const diagnosticResponse = await base44.integrations.Core.InvokeLLM({
+      const diagnosticResponse = await invokeClaude({
         prompt: diagnosticPrompt,
         response_json_schema: {
           type: "object",
@@ -235,7 +236,7 @@ Rate the note on:
 Provide scores (0-100) and specific feedback.`;
 
       try {
-        const qualityResponse = await base44.integrations.Core.InvokeLLM({
+        const qualityResponse = await invokeClaude({
           prompt: qualityPrompt,
           response_json_schema: {
             type: "object",

@@ -11,7 +11,8 @@ Deno.serve(async (req) => {
 
     const { analysisResults, diagnoses, vitals, patientId } = await req.json();
 
-    const result = await base44.integrations.Core.InvokeLLM({
+    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const result = await invokeClaude({
       prompt: `Generate actionable follow-up tasks based on the clinical analysis.
 
 Analysis Results:
@@ -30,7 +31,6 @@ Create a list of specific follow-up tasks including:
 4. Responsible party
 
 Return as JSON array with fields: title, description, priority, due_timeframe, assigned_role.`,
-      add_context_from_internet: false,
       response_json_schema: {
         type: "object",
         properties: {

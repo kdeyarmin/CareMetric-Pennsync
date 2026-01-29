@@ -74,7 +74,8 @@ For each code, provide: code number, description, rationale, confidence level (h
 
 Format your response as JSON with these exact sections.`;
 
-    const result = await base44.integrations.Core.InvokeLLM({
+    const { invokeClaude } = await import('./helpers/claudeClient.ts');
+    const result = await invokeClaude({
       prompt: codingPrompt,
       response_json_schema: {
         type: "object",
