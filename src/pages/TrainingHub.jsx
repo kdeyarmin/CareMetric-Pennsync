@@ -91,8 +91,8 @@ export default function TrainingHub() {
     if (!module) return null;
 
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <Button variant="outline" onClick={() => setSelectedTraining(null)} className="mb-4">
+      <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto pb-20 sm:pb-6">
+        <Button variant="outline" onClick={() => setSelectedTraining(null)} className="mb-3 sm:mb-4 w-full sm:w-auto touch-target">
           ← Back to Training
         </Button>
         <InteractiveTrainingViewer 

@@ -435,20 +435,20 @@ export default function AnalyticsDashboard() {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-         <div>
-           <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900">Performance Analytics</h1>
-          <p className="text-sm text-gray-600 mt-1">Track metrics, trends, and outcomes</p>
+         <div className="flex-1 min-w-0">
+           <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 truncate">Performance Analytics</h1>
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">Track metrics, trends, and outcomes</p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleExportPDF} className="bg-blue-600 hover:bg-blue-700">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button onClick={handleExportPDF} className="bg-blue-600 hover:bg-blue-700 touch-target w-full sm:w-auto" size="sm">
             <Download className="w-4 h-4 mr-2" />
-            Export PDF
+            <span className="hidden sm:inline">Export </span>PDF
           </Button>
-          <Button onClick={handleExportReport} variant="outline">
+          <Button onClick={handleExportReport} variant="outline" className="touch-target w-full sm:w-auto" size="sm">
             <Download className="w-4 h-4 mr-2" />
-            Export JSON
+            <span className="hidden sm:inline">Export </span>JSON
           </Button>
         </div>
       </div>
@@ -523,59 +523,63 @@ export default function AnalyticsDashboard() {
 
 
       {/* Charts */}
-      <Tabs defaultValue="time" className="mb-4 sm:mb-6">
+      <Tabs defaultValue="time" className="mb-4 sm:mb-6 w-full">
         <TabsList className="grid w-full grid-cols-2 gap-1 p-1">
           <TabsTrigger value="time" className="text-[10px] sm:text-xs md:text-sm">Doc Time</TabsTrigger>
           <TabsTrigger value="ai" className="text-[10px] sm:text-xs md:text-sm">AI Usage</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="time">
-          <Card>
-            <CardHeader>
+        <TabsContent value="time" className="w-full">
+          <Card className="w-full overflow-hidden">
+            <CardHeader className="p-3 sm:p-4">
               <CardTitle className="text-sm sm:text-base md:text-lg">Average Documentation Time</CardTitle>
             </CardHeader>
             <CardContent className="p-2 sm:p-4">
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" style={{ fontSize: '12px' }} />
-                  <YAxis style={{ fontSize: '12px' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="avgDocTime" 
-                    stroke="#3b82f6" 
-                    strokeWidth={2}
-                    name="Doc Time (min)"
-                    dot={{ r: 3 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <div className="w-full overflow-x-auto">
+                <ResponsiveContainer width="100%" height={250} minWidth={300}>
+                  <LineChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" style={{ fontSize: '10px' }} angle={-45} textAnchor="end" height={60} />
+                    <YAxis style={{ fontSize: '10px' }} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="avgDocTime" 
+                      stroke="#3b82f6" 
+                      strokeWidth={2}
+                      name="Doc Time (min)"
+                      dot={{ r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="ai">
-          <Card>
-            <CardHeader>
+        <TabsContent value="ai" className="w-full">
+          <Card className="w-full overflow-hidden">
+            <CardHeader className="p-3 sm:p-4">
               <CardTitle className="text-sm sm:text-base md:text-lg">AI Feature Usage Rate</CardTitle>
             </CardHeader>
             <CardContent className="p-2 sm:p-4">
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" style={{ fontSize: '12px' }} />
-                  <YAxis domain={[0, 100]} style={{ fontSize: '12px' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar 
-                    dataKey="aiUtilization" 
-                    fill="#8b5cf6" 
-                    name="AI Utilization (%)"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="w-full overflow-x-auto">
+                <ResponsiveContainer width="100%" height={250} minWidth={300}>
+                  <BarChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" style={{ fontSize: '10px' }} angle={-45} textAnchor="end" height={60} />
+                    <YAxis domain={[0, 100]} style={{ fontSize: '10px' }} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    <Bar 
+                      dataKey="aiUtilization" 
+                      fill="#8b5cf6" 
+                      name="AI Utilization (%)"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -583,11 +587,11 @@ export default function AnalyticsDashboard() {
 
       {/* User Performance Table (Admin Only) */}
       {isAdmin && userPerformance.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">User Performance Summary</CardTitle>
+        <Card className="w-full overflow-hidden">
+          <CardHeader className="p-3 sm:p-4">
+            <CardTitle className="text-sm sm:text-base md:text-lg">User Performance Summary</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-2 sm:p-4 overflow-x-auto">
             <UserPerformanceTable users={userPerformance} />
           </CardContent>
         </Card>

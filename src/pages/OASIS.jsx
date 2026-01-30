@@ -132,54 +132,54 @@ export default function OASIS() {
         }
 
         {analysisResult &&
-         <Card className="mt-3 sm:mt-4 md:mt-6">
+         <Card className="mt-3 sm:mt-4 md:mt-6 w-full overflow-hidden">
              <CardHeader className="p-3 sm:p-4">
                <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs sm:text-sm md:text-base">
                  <span className="flex items-center gap-2"><FileText className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" /> Analysis Results</span>
                 {getStatusBadge(analysisResult.overall_status)}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 p-3 sm:p-4 pt-0">
+            <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-4 pt-0">
               <div>
                 <h3 className="text-xs sm:text-sm md:text-base font-semibold">Overall Status:</h3>
-                <p className="text-[10px] sm:text-xs md:text-sm">{analysisResult.summary_message}</p>
+                <p className="text-[10px] sm:text-xs md:text-sm break-words">{analysisResult.summary_message}</p>
               </div>
               {analysisResult.inconsistencies && analysisResult.inconsistencies.length > 0 &&
             <div>
-                  <h3 className="text-lg font-semibold text-red-600">Inconsistencies Found:</h3>
-                  <ul className="list-disc pl-5 space-y-1">
+                  <h3 className="text-sm sm:text-base md:text-lg font-semibold text-red-600 mb-2">Inconsistencies Found:</h3>
+                  <ul className="list-disc pl-4 sm:pl-5 space-y-1 sm:space-y-2">
                     {analysisResult.inconsistencies.map((item, index) =>
-                <li key={index} className="text-sm text-red-700"><strong>{item.field}:</strong> {item.issue} (Suggested fix: {item.suggestion})</li>
+                <li key={index} className="text-xs sm:text-sm text-red-700 break-words"><strong className="font-semibold">{item.field}:</strong> {item.issue} <span className="text-red-600">(Fix: {item.suggestion})</span></li>
                 )}
                   </ul>
                 </div>
             }
               {analysisResult.reasonableness_flags && analysisResult.reasonableness_flags.length > 0 &&
             <div>
-                  <h3 className="text-lg font-semibold text-orange-600">Reasonableness Flags:</h3>
-                  <ul className="list-disc pl-5 space-y-1">
+                  <h3 className="text-sm sm:text-base md:text-lg font-semibold text-orange-600 mb-2">Reasonableness Flags:</h3>
+                  <ul className="list-disc pl-4 sm:pl-5 space-y-1 sm:space-y-2">
                     {analysisResult.reasonableness_flags.map((item, index) =>
-                <li key={index} className="text-sm text-orange-700"><strong>{item.field}:</strong> {item.issue} (Context: {item.context})</li>
+                <li key={index} className="text-xs sm:text-sm text-orange-700 break-words"><strong className="font-semibold">{item.field}:</strong> {item.issue} <span className="text-orange-600">(Context: {item.context})</span></li>
                 )}
                   </ul>
                 </div>
             }
               {analysisResult.compliance_warnings && analysisResult.compliance_warnings.length > 0 &&
             <div>
-                  <h3 className="text-lg font-semibold text-yellow-600">Compliance Warnings:</h3>
-                  <ul className="list-disc pl-5 space-y-1">
+                  <h3 className="text-sm sm:text-base md:text-lg font-semibold text-yellow-600 mb-2">Compliance Warnings:</h3>
+                  <ul className="list-disc pl-4 sm:pl-5 space-y-1 sm:space-y-2">
                     {analysisResult.compliance_warnings.map((item, index) =>
-                <li key={index} className="text-sm text-yellow-700"><strong>Rule:</strong> {item.rule} (Details: {item.details})</li>
+                <li key={index} className="text-xs sm:text-sm text-yellow-700 break-words"><strong className="font-semibold">Rule:</strong> {item.rule} <span className="text-yellow-600">(Details: {item.details})</span></li>
                 )}
                   </ul>
                 </div>
             }
               {analysisResult.suggestions && analysisResult.suggestions.length > 0 &&
             <div>
-                  <h3 className="text-lg font-semibold text-green-600">Suggestions for Improvement:</h3>
-                  <ul className="list-disc pl-5 space-y-1">
+                  <h3 className="text-sm sm:text-base md:text-lg font-semibold text-green-600 mb-2">Suggestions for Improvement:</h3>
+                  <ul className="list-disc pl-4 sm:pl-5 space-y-1 sm:space-y-2">
                     {analysisResult.suggestions.map((item, index) =>
-                <li key={index} className="text-sm text-green-700">{item}</li>
+                <li key={index} className="text-xs sm:text-sm text-green-700 break-words">{item}</li>
                 )}
                   </ul>
                 </div>
