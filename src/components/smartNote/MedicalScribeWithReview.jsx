@@ -148,14 +148,13 @@ export default function MedicalScribeWithReview({
     setIsProcessing(true);
 
     try {
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'audio.wav');
-      formData.append('language', selectedLanguage);
-      if (customTerminology.length > 0) {
-        formData.append('customTerminology', JSON.stringify(customTerminology));
-      }
-
-      const response = await base44.functions.invoke('transcribeAndExtractClinicalData', formData);
+      // Use Deepgram for transcription with custom terminology
+      const response = await base44.functions.invoke('transcribeAndExtractClinicalData', {
+        audio_blob: audioBlob,
+        language: selectedLanguage,
+        customTerminology: customTerminology.length > 0 ? customTerminology : null
+      });
+      
       const data = response.data || response;
 
       if (!data.success) {
@@ -167,7 +166,7 @@ export default function MedicalScribeWithReview({
       // Store raw transcription for accuracy feedback
       setRawTranscription(transcribedText);
 
-      // Store speaker segments if available
+      // Store speaker segments if available (Deepgram diarization feature)
       if (data.speaker_segments) {
         setSpeakerSegments(data.speaker_segments);
       }

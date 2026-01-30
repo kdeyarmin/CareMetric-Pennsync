@@ -58,20 +58,18 @@ export default function VoiceDictationInput({ value, onChange, placeholder }) {
 
   const transcribeAudio = async (audioBlob) => {
     try {
-      const { transcribeWithDeepgram } = await import('@/functions/transcribeWithDeepgram');
-      
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'recording.webm');
+      // Use Deepgram via backend function
+      const response = await base44.functions.invoke('transcribeWithDeepgram', {
+        audio_blob: audioBlob
+      });
 
-      // Call Deepgram via backend function
-      const response = await transcribeWithDeepgram(formData);
+      const data = response.data || response;
 
-      if (!response.data?.text) {
+      if (!data.text && !data.transcript) {
         throw new Error('No transcription received');
       }
 
-      const transcribedText = response.data.text;
+      const transcribedText = data.text || data.transcript;
 
       // Append to existing text
       const newText = value ? `${value}\n\n${transcribedText}` : transcribedText;
