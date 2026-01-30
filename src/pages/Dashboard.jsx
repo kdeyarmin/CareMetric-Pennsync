@@ -22,6 +22,7 @@ import {
   Target,
   Award
 } from "lucide-react";
+import TimeSavingsWidget from "@/components/dashboard/TimeSavingsWidget";
 
 export default function Dashboard() {
   const { data: user } = useQuery({
@@ -205,6 +206,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Time Savings Widget */}
+      <TimeSavingsWidget />
 
       {/* Secondary Stats */}
       <div className="grid gap-4 md:grid-cols-3">

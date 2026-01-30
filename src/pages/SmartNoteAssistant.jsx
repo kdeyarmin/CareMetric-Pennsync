@@ -77,6 +77,7 @@ import ComplianceBasedTrainingRecommender from "@/components/training/Compliance
 import AIOutputRating from "@/components/feedback/AIOutputRating";
 import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
 import PatientContextSidebar from '../components/smartNote/PatientContextSidebar';
+import TimeSavingsSummary from '../components/smartNote/TimeSavingsSummary';
 import AICareCoordinationPanel from '../components/coordination/AICareCoordinationPanel';
 import UnifiedComplianceAudit from '../components/smartNote/UnifiedComplianceAudit';
 import UnifiedSuggestionsPanel from '../components/smartNote/UnifiedSuggestionsPanel';
@@ -130,6 +131,7 @@ export default function SmartNoteAssistant() {
   const [providedEducation, setProvidedEducation] = useState([]);
   const [noteRating, setNoteRating] = useState(null);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [timeSavedMinutes, setTimeSavedMinutes] = useState(0);
   const location = useLocation();
   const { isOnline, saveOfflineNote } = useOfflineNotes();
 
@@ -366,6 +368,30 @@ export default function SmartNoteAssistant() {
        setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
        setSuggestedTasks(result.suggested_tasks || []);
        setSuggestedEducation(result.suggested_education_materials || []);
+
+       // Calculate time saved (estimate: 15 min manual charting saved with AI enhancement)
+       const noteLength = finalNote?.length || 0;
+       const baselineMinutes = Math.max(10, Math.min(30, noteLength / 50)); // 10-30 min based on length
+       const actualMinutes = 2; // Typical time with AI
+       const savedMinutes = baselineMinutes - actualMinutes;
+       setTimeSavedMinutes(savedMinutes);
+
+       // Record time savings
+       try {
+         await base44.entities.TimeSavings.create({
+           user_email: currentUser?.email,
+           feature_used: 'note_enhancement',
+           time_saved_minutes: savedMinutes,
+           patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
+           visit_date: new Date().toISOString().split('T')[0],
+           baseline_time_minutes: baselineMinutes,
+           actual_time_minutes: actualMinutes,
+           note_length_chars: noteLength,
+           specialty: providerType
+         });
+       } catch (saveError) {
+         console.error('Failed to save time tracking:', saveError);
+       }
 
        // Generate clinical insights in background
        generateClinicalInsights(finalNote, result.extracted_data);
@@ -945,6 +971,14 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
             {/* Results Page */}
             <div className="space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
 
+
+              {/* Time Savings Summary */}
+              {timeSavedMinutes > 0 && (
+                <TimeSavingsSummary 
+                  timeSavedMinutes={timeSavedMinutes} 
+                  feature="note_enhancement" 
+                />
+              )}
 
               {/* Note Completeness Tracker */}
               <NoteCompletenessTracker
