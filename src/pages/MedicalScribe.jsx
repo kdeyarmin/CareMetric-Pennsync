@@ -137,7 +137,7 @@ export default function MedicalScribe() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 w-full overflow-hidden">
           {/* Setup Section */}
           <div className="lg:col-span-1 space-y-3 sm:space-y-4">
-            <Card className="lg:sticky lg:top-4 overflow-hidden">
+            <Card className="overflow-hidden">
               <CardHeader className="bg-slate-200 pb-2 p-3 sm:p-4 flex flex-col space-y-1.5">
                  <CardTitle className="text-xs sm:text-sm md:text-base">Setup</CardTitle>
                </CardHeader>
@@ -229,15 +229,15 @@ export default function MedicalScribe() {
 
               {/* Patient Context Card */}
               {selectedPatient && (
-              <Card>
-                <CardHeader className="bg-blue-50 dark:bg-blue-950 pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
+              <Card className="overflow-hidden">
+                <CardHeader className="bg-blue-50 dark:bg-blue-950 pb-3 p-3 sm:p-4">
+                  <CardTitle className="text-xs sm:text-sm flex items-center gap-2">
                     <User className="w-4 h-4" />
                     Patient Context
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="pt-4 space-y-3">
-                  <div className="text-xs space-y-2">
+                <CardContent className="pt-3 sm:pt-4 p-3 sm:p-4 space-y-2 sm:space-y-3">
+                  <div className="text-[10px] sm:text-xs space-y-2">
                     <div>
                       <span className="font-semibold">Age:</span>{' '}
                       {selectedPatient.date_of_birth 
@@ -304,9 +304,9 @@ export default function MedicalScribe() {
               </div>
 
           {/* Recording Section */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 w-full overflow-hidden">
             {isReady ?
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4 w-full">
                 <NoteTemplateSelector
                   visitType={visitType}
                   providerType={currentUser?.credential_type || 'RN'}
@@ -325,14 +325,14 @@ export default function MedicalScribe() {
 
               </div> :
 
-              <Card className="border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900 h-96 flex items-center justify-center">
-                <CardContent className="text-center space-y-3">
-                  <div className="p-4 bg-slate-300 dark:bg-slate-700 rounded-full w-fit mx-auto">
-                    <Mic className="w-8 h-8 text-slate-700 dark:text-slate-300" />
+              <Card className="border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900 min-h-[24rem] flex items-center justify-center w-full overflow-hidden">
+                <CardContent className="text-center space-y-3 p-4">
+                  <div className="p-3 sm:p-4 bg-slate-300 dark:bg-slate-700 rounded-full w-fit mx-auto">
+                    <Mic className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-300" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Select patient details to begin</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Choose a patient, visit type, and diagnosis from the left panel</p>
+                    <p className="text-xs sm:text-sm font-medium text-slate-900 dark:text-slate-100">Select patient details to begin</p>
+                    <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 mt-1">Choose a patient, visit type, and diagnosis from the left panel</p>
                   </div>
                 </CardContent>
               </Card>

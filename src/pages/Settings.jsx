@@ -118,7 +118,7 @@ export default function Settings() {
    };
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
+    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300 pb-20 sm:pb-6">
       <div className="mb-3 sm:mb-4 md:mb-6">
          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-1 sm:mb-2">Settings</h1>
           <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-400">Manage account and preferences</p>
