@@ -1,45 +1,49 @@
 import React from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
-export default function PerformanceMetricsCard({ 
-  title, 
-  value, 
-  change, 
-  icon: Icon, 
-  color = "blue" 
-}) {
-  const colorMap = {
-    blue: "from-blue-500 to-blue-600",
-    green: "from-green-500 to-green-600",
-    purple: "from-purple-500 to-purple-600",
-    indigo: "from-indigo-500 to-indigo-600",
-    orange: "from-orange-500 to-orange-600"
+export default function PerformanceMetricsCard({ title, value, change, icon: Icon, color }) {
+  const colorClasses = {
+    blue: "from-blue-50 to-blue-100 border-blue-200",
+    green: "from-green-50 to-green-100 border-green-200",
+    orange: "from-orange-50 to-orange-100 border-orange-200",
+    purple: "from-purple-50 to-purple-100 border-purple-200",
+    indigo: "from-indigo-50 to-indigo-100 border-indigo-200",
   };
 
-  const hasChange = change !== undefined && change !== null;
-  const isPositive = parseFloat(change) > 0;
-  const isNegative = parseFloat(change) < 0;
+  const iconColorClasses = {
+    blue: "text-blue-600",
+    green: "text-green-600",
+    orange: "text-orange-600",
+    purple: "text-purple-600",
+    indigo: "text-indigo-600",
+  };
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-0">
-        <div className={`p-4 bg-gradient-to-br ${colorMap[color]} text-white`}>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm opacity-90">{title}</p>
-            <Icon className="w-5 h-5 opacity-75" />
-          </div>
-          <p className="text-2xl font-bold">{value}</p>
-          {hasChange && (
-            <div className="flex items-center gap-1 mt-2">
-              {isPositive ? (
-                <TrendingUp className="w-3 h-3" />
-              ) : isNegative ? (
-                <TrendingDown className="w-3 h-3" />
+    <Card className={`bg-gradient-to-br ${colorClasses[color] || colorClasses.blue} overflow-hidden`}>
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-600 truncate flex-1">
+            {title}
+          </p>
+          {Icon && (
+            <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${iconColorClasses[color] || iconColorClasses.blue} flex-shrink-0`} />
+          )}
+        </div>
+        <div className="flex items-end justify-between gap-2">
+          <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">
+            {value}
+          </p>
+          {change !== undefined && change !== null && (
+            <div className={`flex items-center gap-1 text-xs sm:text-sm ${
+              parseFloat(change) > 0 ? 'text-green-600' : parseFloat(change) < 0 ? 'text-red-600' : 'text-gray-500'
+            }`}>
+              {parseFloat(change) > 0 ? (
+                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
+              ) : parseFloat(change) < 0 ? (
+                <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4" />
               ) : null}
-              <span className="text-xs opacity-90">
-                {isPositive ? '+' : ''}{change}% vs prev period
-              </span>
+              <span className="font-medium whitespace-nowrap">{Math.abs(parseFloat(change)).toFixed(1)}%</span>
             </div>
           )}
         </div>
