@@ -154,7 +154,7 @@ export default function Dashboard() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
@@ -190,19 +190,6 @@ export default function Dashboard() {
                 +{completedTasksToday} completed today
               </p>
             )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Compliance Status</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-blue-700" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{openViolations}</div>
-            <p className="text-xs text-slate-600">
-              {openViolations === 0 ? "All clear!" : "Open alerts"}
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -248,24 +235,24 @@ export default function Dashboard() {
 
       {/* Quick Actions */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg sm:text-base flex items-center gap-2">
-            <Activity className="h-5 w-5" />
+        <CardHeader className="p-3 sm:p-4">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
             Quick Actions
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
+        <CardContent className="p-3 sm:p-4">
+          <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
             {quickActions.map((action) => (
-              <Link key={action.page} to={createPageUrl(action.page)}>
+              <Link key={action.page} to={createPageUrl(action.page)} className="block">
                 <Button
                   variant="outline"
-                  className="w-full h-20 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-slate-800/60 dark:to-slate-900/40 hover:from-blue-100 hover:to-slate-100 dark:hover:from-slate-700/60 dark:hover:to-slate-800/40 hover:shadow-md transition-all rounded-lg card-hover"
+                  className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-slate-800/60 dark:to-slate-900/40 hover:from-blue-100 hover:to-slate-100 dark:hover:from-slate-700/60 dark:hover:to-slate-800/40 hover:shadow-md transition-all rounded-lg card-hover touch-target"
                 >
-                  <div className={`p-2 rounded-lg ${action.color}`}>
-                    <action.icon className="h-5 w-5 text-white" />
+                  <div className={`p-1.5 sm:p-2 rounded-lg ${action.color}`}>
+                    <action.icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                   </div>
-                  <span className="text-xs font-medium text-center">{action.label}</span>
+                  <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-1">{action.label}</span>
                 </Button>
               </Link>
             ))}
