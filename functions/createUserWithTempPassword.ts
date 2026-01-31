@@ -132,6 +132,18 @@ Deno.serve(async (req) => {
         emailError = error.message;
       }
 
+      // Notify admin about resent invitation
+      try {
+        await base44.asServiceRole.functions.invoke('notifyAdminNewSignup', {
+          user_email: email,
+          user_full_name: full_name,
+          user_role: role || 'user'
+        });
+        console.log('✓ Admin notification sent for resent invitation');
+      } catch (notifyError) {
+        console.error('⚠️ Admin notification failed:', notifyError);
+      }
+
       console.log('=== Existing invitation updated and resent ===');
       return Response.json({ 
         success: true,
@@ -224,6 +236,19 @@ Deno.serve(async (req) => {
         console.error('⚠️ Email send failed:', error);
         console.error('Email error details:', error.message, error.stack);
         emailError = error.message;
+      }
+
+      // Step 6: Notify admin about new invitation
+      console.log('Step 6: Notifying admin about new invitation...');
+      try {
+        await base44.asServiceRole.functions.invoke('notifyAdminNewSignup', {
+          user_email: email,
+          user_full_name: full_name,
+          user_role: role || 'user'
+        });
+        console.log('✓ Admin notification sent');
+      } catch (notifyError) {
+        console.error('⚠️ Admin notification failed:', notifyError);
       }
       
       console.log('=== User invitation completed ===');
