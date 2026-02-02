@@ -6,11 +6,11 @@
 
 @layer base {
   html, body, #root {
-    background: linear-gradient(to bottom right, #94a3b8, #60a5fa, #64748b) !important;
+    background-color: #e2e8f0 !important;
     min-height: 100vh;
   }
   .dark html, .dark body, .dark #root {
-    background: linear-gradient(to bottom right, #0f172a, #1e3a8a, #1e293b) !important;
+    background-color: #1e293b !important;
     min-height: 100vh;
   }
   :root {
@@ -239,14 +239,23 @@
 
   /* Modern depth effects */
   .glass-effect {
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.3);
   }
 
   .dark .glass-effect {
-    background: rgba(15, 23, 42, 0.6);
+    background: rgba(15, 23, 42, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  @supports (backdrop-filter: blur(10px)) {
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+    }
+    .dark .glass-effect {
+      background: rgba(15, 23, 42, 0.6);
+    }
   }
 
   .card-hover {
@@ -360,16 +369,18 @@
     box-shadow: 0 0 20px 0 rgb(59 130 246 / 0.2), 0 4px 6px -1px rgb(0 0 0 / 0.1);
   }
 
-  /* Improved glass effect with more polish */
-  .glass-effect {
-    background: rgba(255, 255, 255, 0.08) !important;
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-  }
+  /* Mobile-safe glass effect */
+  @supports (backdrop-filter: blur(12px)) {
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.08) !important;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
 
-  .dark .glass-effect {
-    background: rgba(15, 23, 42, 0.5) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    .dark .glass-effect {
+      background: rgba(15, 23, 42, 0.5) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
   }
   
   /* Hide scrollbar but keep functionality */

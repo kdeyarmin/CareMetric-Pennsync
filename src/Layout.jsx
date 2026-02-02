@@ -87,9 +87,9 @@ export default function Layout({ children, currentPageName }) {
   } : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-800 backdrop-blur-md border-b border-slate-300/40 dark:border-slate-600/30 shadow-elevated">
+      <header className="sticky top-0 z-50 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="flex items-start justify-between px-4 py-2">
           <div className="flex items-start gap-4 flex-1">
             <Button
@@ -117,7 +117,7 @@ export default function Layout({ children, currentPageName }) {
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-gradient-to-b from-slate-50/80 via-slate-50/60 to-blue-50/40 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/40 border-r border-slate-200/40 dark:border-slate-700/40 transition-all duration-300 overflow-y-auto shadow-elevated lg:shadow-soft backdrop-blur-sm ${
+          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 overflow-y-auto shadow-lg lg:shadow-sm ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           }`}
         >
