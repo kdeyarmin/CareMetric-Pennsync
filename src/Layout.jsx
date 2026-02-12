@@ -72,6 +72,7 @@ export default function Layout({ children, currentPageName }) {
       title: "Training & Support",
       items: [
         { name: "Training", icon: BookOpen, page: "TrainingHub" },
+        { name: "Documentation", icon: FileText, page: "Documentation" },
         { name: "Settings", icon: Settings, page: "Settings" },
       ]
     }
