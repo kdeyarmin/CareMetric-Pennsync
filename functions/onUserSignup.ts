@@ -100,26 +100,95 @@ Deno.serve(async (req) => {
           
           await base44.asServiceRole.integrations.Core.SendEmail({
             to: admin.email,
-            subject: `✅ New User Signup - ${user.full_name || user.email}`,
-            body: `Hello ${admin.full_name || 'Admin'},
+            from_name: 'CareMetric AI System',
+            subject: `🎉 New User Signup - ${user.full_name || user.email}`,
+            body: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+    .container { max-width: 600px; margin: 20px auto; background: white; padding: 0; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; }
+    .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+    .content { padding: 30px; }
+    .info-box { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0; border-radius: 6px; }
+    .info-row { display: flex; margin: 10px 0; }
+    .info-label { font-weight: 600; color: #555; min-width: 140px; }
+    .info-value { color: #333; }
+    .cta { text-align: center; margin: 30px 0; }
+    .cta-button { display: inline-block; background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; }
+    .footer { background: #f8fafc; padding: 20px; text-align: center; color: #666; font-size: 13px; border-top: 1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎉 New User Registration</h1>
+      <p style="margin: 10px 0 0; opacity: 0.95;">CareMetric AI</p>
+    </div>
+    
+    <div class="content">
+      <p>Hello ${admin.full_name || 'Admin'},</p>
+      
+      <p>A new user has successfully registered for CareMetric AI and has been automatically approved with a 14-day free trial.</p>
 
-A new user has signed up for CareMetric AI!
+      <div class="info-box">
+        <h3 style="margin-top: 0; color: #1e40af;">User Information</h3>
+        <div class="info-row">
+          <span class="info-label">Name:</span>
+          <span class="info-value">${user.full_name || 'Not provided'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email:</span>
+          <span class="info-value">${user.email}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Signup Date:</span>
+          <span class="info-value">${new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Role:</span>
+          <span class="info-value">${user.role || 'user'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Provider Type:</span>
+          <span class="info-value">${user.credential_type || 'Not set'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Work Setting:</span>
+          <span class="info-value">${user.service_type || 'Not set'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Status:</span>
+          <span class="info-value"><strong style="color: #10b981;">Auto-approved ✓</strong></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Trial Status:</span>
+          <span class="info-value">14-day free trial active</span>
+        </div>
+      </div>
 
-User Details:
-- Name: ${user.full_name || 'Not provided'}
-- Email: ${user.email}
-- Signup Date: ${new Date().toLocaleString()}
-- Role: ${user.role || 'user'}
-- Provider Type: ${user.credential_type || 'Not set'}
-- Work Setting: ${user.service_type || 'Not set'}
-- Status: Auto-approved
+      <p style="color: #555; font-size: 14px;">
+        <strong>Next Steps:</strong> The user has received a welcome email with onboarding instructions. You may want to monitor their initial activity or reach out to offer personalized assistance.
+      </p>
 
-The user has been automatically approved and now has access to the system with a 14-day free trial.
-
-Log in to the admin dashboard to view more details.
-
-Best regards,
-CareMetric AI`
+      <div class="cta">
+        <a href="https://app.caremetricai.com/UserManagement" class="cta-button">
+          View in Admin Dashboard →
+        </a>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <p><strong>CareMetric AI Admin Notification</strong></p>
+      <p style="margin-top: 10px; font-size: 12px; color: #999;">
+        This is an automated notification sent to all administrators.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`
           });
           
           console.log('✅ Admin notification sent to:', admin.email);

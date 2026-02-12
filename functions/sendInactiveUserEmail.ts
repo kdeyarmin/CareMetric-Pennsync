@@ -172,11 +172,11 @@ Deno.serve(async (req) => {
       </div>
 
       <p style="margin-top: 30px; color: #666; font-size: 14px;">
-        <strong>Need help?</strong> We're here for you. Reply to this email with any questions, and our team will personally assist you in getting set up.
+        <strong>Questions or need assistance?</strong> We're here to help! Simply reply to this email, and our support team will personally guide you through getting started—whether it's understanding features, best practices, or technical setup.
       </p>
 
       <p style="color: #666; font-size: 14px;">
-        We're committed to making your documentation faster, more accurate, and compliant—so you can spend more time doing what you do best: caring for patients.
+        Our mission is simple: help you spend less time on documentation and more time providing excellent patient care. We're committed to your success.
       </p>
     </div>
     
