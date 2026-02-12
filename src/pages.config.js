@@ -47,30 +47,10 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import Admin from './pages/Admin';
-import AdminBillingPackages from './pages/AdminBillingPackages';
 import AdminDashboard from './pages/AdminDashboard';
-import AdminSubscriptionManagement from './pages/AdminSubscriptionManagement';
-import AdminSubscriptions from './pages/AdminSubscriptions';
-import AdminTrainingAnalytics from './pages/AdminTrainingAnalytics';
-import AdminTrainingManagement from './pages/AdminTrainingManagement';
-import AdvancedAnalyticsDashboard from './pages/AdvancedAnalyticsDashboard';
-import AgencyAnalytics from './pages/AgencyAnalytics';
-import AgencyCollaboration from './pages/AgencyCollaboration';
 import AgencyDashboard from './pages/AgencyDashboard';
-import AgencyTemplates from './pages/AgencyTemplates';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
-import AnalyticsHub from './pages/AnalyticsHub';
-import AuditLog from './pages/AuditLog';
-import AutomaticCarePlans from './pages/AutomaticCarePlans';
-import BillingOptimization from './pages/BillingOptimization';
-import CareCoordinationDashboard from './pages/CareCoordinationDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
-import ClinicalDecisionSupport from './pages/ClinicalDecisionSupport';
-import ClinicalHub from './pages/ClinicalHub';
-import ClinicalInsightsDashboard from './pages/ClinicalInsightsDashboard';
-import ClinicalPathwayManager from './pages/ClinicalPathwayManager';
-import ClinicalReasoning from './pages/ClinicalReasoning';
 import Compliance from './pages/Compliance';
 import ComplianceAutomation from './pages/ComplianceAutomation';
 import ComplianceDashboard from './pages/ComplianceDashboard';
@@ -165,30 +145,10 @@ import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
-    "Admin": Admin,
-    "AdminBillingPackages": AdminBillingPackages,
     "AdminDashboard": AdminDashboard,
-    "AdminSubscriptionManagement": AdminSubscriptionManagement,
-    "AdminSubscriptions": AdminSubscriptions,
-    "AdminTrainingAnalytics": AdminTrainingAnalytics,
-    "AdminTrainingManagement": AdminTrainingManagement,
-    "AdvancedAnalyticsDashboard": AdvancedAnalyticsDashboard,
-    "AgencyAnalytics": AgencyAnalytics,
-    "AgencyCollaboration": AgencyCollaboration,
     "AgencyDashboard": AgencyDashboard,
-    "AgencyTemplates": AgencyTemplates,
     "AnalyticsDashboard": AnalyticsDashboard,
-    "AnalyticsHub": AnalyticsHub,
-    "AuditLog": AuditLog,
-    "AutomaticCarePlans": AutomaticCarePlans,
-    "BillingOptimization": BillingOptimization,
-    "CareCoordinationDashboard": CareCoordinationDashboard,
     "CarePlanManagement": CarePlanManagement,
-    "ClinicalDecisionSupport": ClinicalDecisionSupport,
-    "ClinicalHub": ClinicalHub,
-    "ClinicalInsightsDashboard": ClinicalInsightsDashboard,
-    "ClinicalPathwayManager": ClinicalPathwayManager,
-    "ClinicalReasoning": ClinicalReasoning,
     "Compliance": Compliance,
     "ComplianceAutomation": ComplianceAutomation,
     "ComplianceDashboard": ComplianceDashboard,
