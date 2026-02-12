@@ -68,18 +68,10 @@ import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
-import SystemHealthMonitoring from './pages/SystemHealthMonitoring';
-import SystemJobMonitor from './pages/SystemJobMonitor';
 import Tasks from './pages/Tasks';
-import TemplateLibrary from './pages/TemplateLibrary';
 import TermsOfUse from './pages/TermsOfUse';
-import Test2FA from './pages/Test2FA';
-import TestCrossPlatform from './pages/TestCrossPlatform';
 import TrainingHub from './pages/TrainingHub';
-import UserActivityLog from './pages/UserActivityLog';
-import UserActivityReport from './pages/UserActivityReport';
 import UserManagement from './pages/UserManagement';
-import WorkflowAutomation from './pages/WorkflowAutomation';
 import Documentation from './pages/Documentation';
 import __Layout from './Layout.jsx';
 
@@ -106,18 +98,10 @@ export const PAGES = {
     "SmartNoteAssistant": SmartNoteAssistant,
     "SubscriptionPlans": SubscriptionPlans,
     "Support": Support,
-    "SystemHealthMonitoring": SystemHealthMonitoring,
-    "SystemJobMonitor": SystemJobMonitor,
     "Tasks": Tasks,
-    "TemplateLibrary": TemplateLibrary,
     "TermsOfUse": TermsOfUse,
-    "Test2FA": Test2FA,
-    "TestCrossPlatform": TestCrossPlatform,
     "TrainingHub": TrainingHub,
-    "UserActivityLog": UserActivityLog,
-    "UserActivityReport": UserActivityReport,
     "UserManagement": UserManagement,
-    "WorkflowAutomation": WorkflowAutomation,
     "Documentation": Documentation,
 }
 
