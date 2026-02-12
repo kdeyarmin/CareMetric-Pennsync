@@ -57,30 +57,10 @@ import DeleteAccount from './pages/DeleteAccount';
 import EULA from './pages/EULA';
 import FAQ from './pages/FAQ';
 import MedicalScribe from './pages/MedicalScribe';
-import MyAILearning from './pages/MyAILearning';
 import MySubscription from './pages/MySubscription';
-import MyTraining from './pages/MyTraining';
-import NurseAnalyticsDashboard from './pages/NurseAnalyticsDashboard';
-import NurseEducationVideos from './pages/NurseEducationVideos';
-import NursePerformanceDashboard from './pages/NursePerformanceDashboard';
-import NurseTraining from './pages/NurseTraining';
-import NurseTrainingHub from './pages/NurseTrainingHub';
 import OASIS from './pages/OASIS';
-import OASISAnalyticsDashboard from './pages/OASISAnalyticsDashboard';
-import OASISAnalyzer from './pages/OASISAnalyzer';
-import OASISAuditDashboard from './pages/OASISAuditDashboard';
-import OASISClinicalReview from './pages/OASISClinicalReview';
-import OASISComplianceReview from './pages/OASISComplianceReview';
-import OASISDocumentationReview from './pages/OASISDocumentationReview';
-import OASISRevenueAnalysis from './pages/OASISRevenueAnalysis';
-import OASISReview from './pages/OASISReview';
-import OfflineMode from './pages/OfflineMode';
 import PatientAlerts from './pages/PatientAlerts';
-import PatientDashboard from './pages/PatientDashboard';
-import PatientDataManagement from './pages/PatientDataManagement';
 import PatientDetails from './pages/PatientDetails';
-import PatientEducation from './pages/PatientEducation';
-import PatientEducationAnalytics from './pages/PatientEducationAnalytics';
 import PatientEducationGenerator from './pages/PatientEducationGenerator';
 import PatientEducationHub from './pages/PatientEducationHub';
 import PatientEducationLibrary from './pages/PatientEducationLibrary';
@@ -135,30 +115,10 @@ export const PAGES = {
     "EULA": EULA,
     "FAQ": FAQ,
     "MedicalScribe": MedicalScribe,
-    "MyAILearning": MyAILearning,
     "MySubscription": MySubscription,
-    "MyTraining": MyTraining,
-    "NurseAnalyticsDashboard": NurseAnalyticsDashboard,
-    "NurseEducationVideos": NurseEducationVideos,
-    "NursePerformanceDashboard": NursePerformanceDashboard,
-    "NurseTraining": NurseTraining,
-    "NurseTrainingHub": NurseTrainingHub,
     "OASIS": OASIS,
-    "OASISAnalyticsDashboard": OASISAnalyticsDashboard,
-    "OASISAnalyzer": OASISAnalyzer,
-    "OASISAuditDashboard": OASISAuditDashboard,
-    "OASISClinicalReview": OASISClinicalReview,
-    "OASISComplianceReview": OASISComplianceReview,
-    "OASISDocumentationReview": OASISDocumentationReview,
-    "OASISRevenueAnalysis": OASISRevenueAnalysis,
-    "OASISReview": OASISReview,
-    "OfflineMode": OfflineMode,
     "PatientAlerts": PatientAlerts,
-    "PatientDashboard": PatientDashboard,
-    "PatientDataManagement": PatientDataManagement,
     "PatientDetails": PatientDetails,
-    "PatientEducation": PatientEducation,
-    "PatientEducationAnalytics": PatientEducationAnalytics,
     "PatientEducationGenerator": PatientEducationGenerator,
     "PatientEducationHub": PatientEducationHub,
     "PatientEducationLibrary": PatientEducationLibrary,
