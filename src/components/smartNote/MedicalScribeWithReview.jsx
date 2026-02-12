@@ -13,6 +13,8 @@ import SmartNoteGuidelinesPanel from "./SmartNoteGuidelinesPanel";
 import ComplianceIssueDetector from "../scribe/ComplianceIssueDetector";
 import VisitSummarizer from "../scribe/VisitSummarizer";
 import DictationAccuracyFeedback from "../scribe/DictationAccuracyFeedback";
+import SpeakerDiarizationView from "../scribe/SpeakerDiarizationView";
+import MedicalTermCorrector from "../scribe/MedicalTermCorrector";
 import InvoiceGenerator from "../billing/InvoiceGenerator";
 import { ResolveAllIssues } from "./OneClickResolvers";
 import NoteEmailDialog from "../notes/NoteEmailDialog";
@@ -67,6 +69,12 @@ export default function MedicalScribeWithReview({
   const [suggestedCodes, setSuggestedCodes] = useState({ icd10: [], cpt: [] });
   const [qualityAnalysis, setQualityAnalysis] = useState(null);
   const [speakerSegments, setSpeakerSegments] = useState([]);
+  const [speakers, setSpeakers] = useState([]);
+  const [termCorrections, setTermCorrections] = useState([]);
+  const [safetyAlerts, setSafetyAlerts] = useState([]);
+  const [transcriptionAccuracy, setTranscriptionAccuracy] = useState(null);
+  const [termConfidenceSummary, setTermConfidenceSummary] = useState(null);
+  const [correctedTranscript, setCorrectedTranscript] = useState("");
   const [categorizedSections, setCategorizedSections] = useState([]);
 
   const { data: patientData } = useQuery({
@@ -166,9 +174,32 @@ export default function MedicalScribeWithReview({
       // Store raw transcription for accuracy feedback
       setRawTranscription(transcribedText);
 
-      // Store speaker segments if available (Deepgram diarization feature)
+      // Store speaker segments and speaker metadata
       if (data.speaker_segments) {
         setSpeakerSegments(data.speaker_segments);
+      }
+      if (data.speakers) {
+        setSpeakers(data.speakers);
+      }
+
+      // Store term corrections and safety alerts
+      if (data.term_corrections) {
+        setTermCorrections(data.term_corrections);
+      }
+      if (data.safety_alerts) {
+        setSafetyAlerts(data.safety_alerts);
+      }
+      if (data.accuracy_score) {
+        setTranscriptionAccuracy(data.accuracy_score);
+      }
+      if (data.term_confidence_summary) {
+        setTermConfidenceSummary(data.term_confidence_summary);
+      }
+
+      // Use corrected transcript if available
+      if (data.corrected_transcript) {
+        setCorrectedTranscript(data.corrected_transcript);
+        transcribedText = data.corrected_transcript;
       }
 
       // Store categorized sections if available
