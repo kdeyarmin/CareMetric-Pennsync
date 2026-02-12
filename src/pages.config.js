@@ -51,32 +51,12 @@ import AdminDashboard from './pages/AdminDashboard';
 import AgencyDashboard from './pages/AgencyDashboard';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import CarePlanManagement from './pages/CarePlanManagement';
-import Compliance from './pages/Compliance';
-import ComplianceAutomation from './pages/ComplianceAutomation';
 import ComplianceDashboard from './pages/ComplianceDashboard';
-import ComplianceHub from './pages/ComplianceHub';
-import CompliancePerformanceDashboard from './pages/CompliancePerformanceDashboard';
-import ComplianceTraining from './pages/ComplianceTraining';
 import Dashboard from './pages/Dashboard';
-import DataArchivalManagement from './pages/DataArchivalManagement';
 import DeleteAccount from './pages/DeleteAccount';
-import DocumentAnalysisHistory from './pages/DocumentAnalysisHistory';
-import DocumentAnalyzer from './pages/DocumentAnalyzer';
-import DocumentSignatureTemplates from './pages/DocumentSignatureTemplates';
-import DocumentationTraining from './pages/DocumentationTraining';
 import EULA from './pages/EULA';
-import EnterpriseAdminDashboard from './pages/EnterpriseAdminDashboard';
 import FAQ from './pages/FAQ';
-import Features from './pages/Features';
-import HIPAACompliance from './pages/HIPAACompliance';
-import HIPAAComplianceDashboard from './pages/HIPAAComplianceDashboard';
-import HealthRecords from './pages/HealthRecords';
-import HowToGuide from './pages/HowToGuide';
-import ManageNewFeatures from './pages/ManageNewFeatures';
 import MedicalScribe from './pages/MedicalScribe';
-import MedicareComplianceDashboard from './pages/MedicareComplianceDashboard';
-import MedicareGuidelinesLibrary from './pages/MedicareGuidelinesLibrary';
-import MobileWorkflow from './pages/MobileWorkflow';
 import MyAILearning from './pages/MyAILearning';
 import MySubscription from './pages/MySubscription';
 import MyTraining from './pages/MyTraining';
@@ -149,32 +129,12 @@ export const PAGES = {
     "AgencyDashboard": AgencyDashboard,
     "AnalyticsDashboard": AnalyticsDashboard,
     "CarePlanManagement": CarePlanManagement,
-    "Compliance": Compliance,
-    "ComplianceAutomation": ComplianceAutomation,
     "ComplianceDashboard": ComplianceDashboard,
-    "ComplianceHub": ComplianceHub,
-    "CompliancePerformanceDashboard": CompliancePerformanceDashboard,
-    "ComplianceTraining": ComplianceTraining,
     "Dashboard": Dashboard,
-    "DataArchivalManagement": DataArchivalManagement,
     "DeleteAccount": DeleteAccount,
-    "DocumentAnalysisHistory": DocumentAnalysisHistory,
-    "DocumentAnalyzer": DocumentAnalyzer,
-    "DocumentSignatureTemplates": DocumentSignatureTemplates,
-    "DocumentationTraining": DocumentationTraining,
     "EULA": EULA,
-    "EnterpriseAdminDashboard": EnterpriseAdminDashboard,
     "FAQ": FAQ,
-    "Features": Features,
-    "HIPAACompliance": HIPAACompliance,
-    "HIPAAComplianceDashboard": HIPAAComplianceDashboard,
-    "HealthRecords": HealthRecords,
-    "HowToGuide": HowToGuide,
-    "ManageNewFeatures": ManageNewFeatures,
     "MedicalScribe": MedicalScribe,
-    "MedicareComplianceDashboard": MedicareComplianceDashboard,
-    "MedicareGuidelinesLibrary": MedicareGuidelinesLibrary,
-    "MobileWorkflow": MobileWorkflow,
     "MyAILearning": MyAILearning,
     "MySubscription": MySubscription,
     "MyTraining": MyTraining,
