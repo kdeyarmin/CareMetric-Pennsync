@@ -61,31 +61,11 @@ import MySubscription from './pages/MySubscription';
 import OASIS from './pages/OASIS';
 import PatientAlerts from './pages/PatientAlerts';
 import PatientDetails from './pages/PatientDetails';
-import PatientEducationGenerator from './pages/PatientEducationGenerator';
-import PatientEducationHub from './pages/PatientEducationHub';
-import PatientEducationLibrary from './pages/PatientEducationLibrary';
-import PatientMessaging from './pages/PatientMessaging';
-import PatientRecordDashboard from './pages/PatientRecordDashboard';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
-import PersonalizedLearningPath from './pages/PersonalizedLearningPath';
-import PredictiveAnalytics from './pages/PredictiveAnalytics';
-import Pricing from './pages/Pricing';
 import PrivacyPolicy from './pages/PrivacyPolicy';
-import ProviderSettings from './pages/ProviderSettings';
-import ProviderTrainingHub from './pages/ProviderTrainingHub';
-import RealTimeComplianceDashboard from './pages/RealTimeComplianceDashboard';
-import RegulatoryCompliance from './pages/RegulatoryCompliance';
-import RegulatoryUpdates from './pages/RegulatoryUpdates';
-import SecurityAudit from './pages/SecurityAudit';
-import SecurityAuditReport from './pages/SecurityAuditReport';
-import SecurityCompliance from './pages/SecurityCompliance';
-import SecurityPolicy from './pages/SecurityPolicy';
 import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
-import StaffTraining from './pages/StaffTraining';
-import StaffTrainingHub from './pages/StaffTrainingHub';
-import StaffTrainingModule from './pages/StaffTrainingModule';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import SystemHealthMonitoring from './pages/SystemHealthMonitoring';
@@ -119,31 +99,11 @@ export const PAGES = {
     "OASIS": OASIS,
     "PatientAlerts": PatientAlerts,
     "PatientDetails": PatientDetails,
-    "PatientEducationGenerator": PatientEducationGenerator,
-    "PatientEducationHub": PatientEducationHub,
-    "PatientEducationLibrary": PatientEducationLibrary,
-    "PatientMessaging": PatientMessaging,
-    "PatientRecordDashboard": PatientRecordDashboard,
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
-    "PersonalizedLearningPath": PersonalizedLearningPath,
-    "PredictiveAnalytics": PredictiveAnalytics,
-    "Pricing": Pricing,
     "PrivacyPolicy": PrivacyPolicy,
-    "ProviderSettings": ProviderSettings,
-    "ProviderTrainingHub": ProviderTrainingHub,
-    "RealTimeComplianceDashboard": RealTimeComplianceDashboard,
-    "RegulatoryCompliance": RegulatoryCompliance,
-    "RegulatoryUpdates": RegulatoryUpdates,
-    "SecurityAudit": SecurityAudit,
-    "SecurityAuditReport": SecurityAuditReport,
-    "SecurityCompliance": SecurityCompliance,
-    "SecurityPolicy": SecurityPolicy,
     "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
-    "StaffTraining": StaffTraining,
-    "StaffTrainingHub": StaffTrainingHub,
-    "StaffTrainingModule": StaffTrainingModule,
     "SubscriptionPlans": SubscriptionPlans,
     "Support": Support,
     "SystemHealthMonitoring": SystemHealthMonitoring,
