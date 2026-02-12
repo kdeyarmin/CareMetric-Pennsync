@@ -562,23 +562,43 @@ Provide specific, actionable suggestions for:
                 compact={true}
               />
             </div>
-            {/* Speaker Identification Summary */}
-            {speakerSegments.length > 0 && (
-              <Alert className="bg-blue-50 border-blue-200">
-                <Users className="w-4 h-4 text-blue-600" />
-                <AlertDescription>
-                  <p className="font-semibold text-sm mb-2">Speaker Identification:</p>
-                  <div className="flex gap-2">
-                    <Badge className="bg-blue-600">
-                      Provider: {speakerSegments.filter(s => s.speaker === 'provider').length} segments
-                    </Badge>
-                    <Badge className="bg-green-600">
-                      Patient: {speakerSegments.filter(s => s.speaker === 'patient').length} segments
-                    </Badge>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
+            {/* Speaker Diarization View */}
+            <SpeakerDiarizationView
+              speakerSegments={speakerSegments}
+              speakers={speakers}
+              onSegmentClick={(segment) => {
+                // Scroll to or highlight segment in transcription
+                const textarea = document.querySelector('textarea');
+                if (textarea) {
+                  const idx = editedTranscription.indexOf(segment.text);
+                  if (idx !== -1) {
+                    textarea.focus();
+                    textarea.setSelectionRange(idx, idx + segment.text.length);
+                  }
+                }
+              }}
+            />
+
+            {/* Medical Term Corrections */}
+            <MedicalTermCorrector
+              corrections={termCorrections}
+              safetyAlerts={safetyAlerts}
+              accuracyScore={transcriptionAccuracy}
+              confidenceSummary={termConfidenceSummary}
+              transcription={editedTranscription}
+              onApplyCorrection={(correction) => {
+                setEditedTranscription(prev =>
+                  prev.replaceAll(correction.original, correction.corrected)
+                );
+              }}
+              onApplyAll={(corrections) => {
+                let updated = editedTranscription;
+                for (const c of corrections) {
+                  updated = updated.replaceAll(c.original, c.corrected);
+                }
+                setEditedTranscription(updated);
+              }}
+            />
 
             {/* Categorized Sections Summary */}
             {categorizedSections.length > 0 && (
