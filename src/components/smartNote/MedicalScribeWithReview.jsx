@@ -25,6 +25,7 @@ import { getSpecialtyTemplate } from "../specialty/SpecialtyTemplateLibrary";
 import AIMedicalCodingAssistant from "../coding/AIMedicalCodingAssistant";
 import DocumentationQualityScore from "./DocumentationQualityScore";
 import AICareCoordinationPanel from "../coordination/AICareCoordinationPanel";
+import InlineAIFeedback from "../feedback/InlineAIFeedback";
 
 export default function MedicalScribeWithReview({
         diagnosis = "",
@@ -907,6 +908,13 @@ Provide specific, actionable suggestions for:
               )}
             </div>
           )}
+
+          <InlineAIFeedback
+            suggestionType="note_enhancement"
+            suggestionContent={generatedNote?.substring(0, 500)}
+            userEmail={currentUser?.email}
+            contextData={{ visit_type: visitType, diagnosis, source: "medical_scribe" }}
+          />
 
           <Alert className="bg-blue-50 border-blue-200">
             <AlertCircle className="w-4 h-4 text-blue-600" />

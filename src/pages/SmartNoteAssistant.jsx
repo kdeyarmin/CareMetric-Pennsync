@@ -75,6 +75,7 @@ import { ResolveComplianceIssue, ResolveDocumentationGap, ResolveQualitySuggesti
 import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
 import ComplianceBasedTrainingRecommender from "@/components/training/ComplianceBasedTrainingRecommender";
 import AIOutputRating from "@/components/feedback/AIOutputRating";
+import InlineAIFeedback from "@/components/feedback/InlineAIFeedback";
 import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
 import PatientContextSidebar from '../components/smartNote/PatientContextSidebar';
 import TimeSavingsSummary from '../components/smartNote/TimeSavingsSummary';
@@ -1028,6 +1029,14 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   )}
                 </CardContent>
               </Card>
+
+              {/* AI Feedback */}
+              <InlineAIFeedback
+                suggestionType="note_enhancement"
+                suggestionContent={enhancedNote?.substring(0, 500)}
+                userEmail={currentUser?.email}
+                contextData={{ visit_type: visitType, diagnosis: selectedDiagnosis, care_setting: careSetting }}
+              />
 
               {/* Quick Actions Row */}
               <div className="flex flex-col sm:flex-row gap-2 w-full">
