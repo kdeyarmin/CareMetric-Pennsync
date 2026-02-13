@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Settings, GripVertical, X, Save } from "lucide-react";
+
+const { useState, useEffect } = React;
 
 const ALL_WIDGETS = [
   { id: "stats", label: "Quick Stats", defaultEnabled: true },
