@@ -17,8 +17,10 @@ import {
   Zap,
   Clock,
   CheckCircle2,
-  ArrowRight
+  ArrowRight,
+  FileText
 } from "lucide-react";
+import GuideDownloadSection from "@/components/documentation/GuideDownloadSection";
 
 export const publicPage = true;
 
@@ -250,6 +252,22 @@ export default function FAQ() {
                 Found {filteredCategories.reduce((acc, cat) => acc + cat.questions.length, 0)} result(s)
               </p>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Downloadable Guides */}
+        <Card className="shadow-lg">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <FileText className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">User Guides & References</h2>
+                <p className="text-sm text-gray-600">Download our PDF guides for offline reference or to share with your team.</p>
+              </div>
+            </div>
+            <GuideDownloadSection />
           </CardContent>
         </Card>
 
