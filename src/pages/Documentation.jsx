@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import DocSection from "@/components/documentation/DocSection";
 import DocStep from "@/components/documentation/DocStep";
 import DocTip from "@/components/documentation/DocTip";
+import GuideDownloadSection from "@/components/documentation/GuideDownloadSection";
 
 const TABLE_OF_CONTENTS = [
   { id: "getting-started", label: "Getting Started" },
@@ -88,6 +89,18 @@ export default function Documentation() {
 
           {/* Main Content */}
           <div className="flex-1 space-y-6">
+
+            {/* Downloadable Guides */}
+            <div id="guides" className="space-y-3">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FileText className="h-5 w-5 text-blue-600" />
+                Downloadable Guides
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Download our PDF guides for offline reference. Great for printing or sharing with your team.
+              </p>
+              <GuideDownloadSection />
+            </div>
 
             {/* Getting Started */}
             <div id="getting-started">

@@ -54,6 +54,7 @@ import CarePlanManagement from './pages/CarePlanManagement';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
+import Documentation from './pages/Documentation';
 import EULA from './pages/EULA';
 import FAQ from './pages/FAQ';
 import MedicalScribe from './pages/MedicalScribe';
@@ -72,7 +73,6 @@ import Tasks from './pages/Tasks';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import Documentation from './pages/Documentation';
 import __Layout from './Layout.jsx';
 
 
@@ -84,6 +84,7 @@ export const PAGES = {
     "ComplianceDashboard": ComplianceDashboard,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
+    "Documentation": Documentation,
     "EULA": EULA,
     "FAQ": FAQ,
     "MedicalScribe": MedicalScribe,
@@ -102,7 +103,6 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "Documentation": Documentation,
 }
 
 export const pagesConfig = {
