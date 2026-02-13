@@ -1,10 +1,8 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Settings, GripVertical, X, Save } from "lucide-react";
-
-const { useState, useEffect } = React;
 
 const ALL_WIDGETS = [
   { id: "stats", label: "Quick Stats", defaultEnabled: true },
@@ -20,27 +18,37 @@ const ALL_WIDGETS = [
 
 const STORAGE_KEY = "caremetric_dashboard_widgets";
 
+function getDefaultWidgets() {
+  return ALL_WIDGETS.map((w, i) => ({ id: w.id, enabled: w.defaultEnabled, order: i }));
+}
+
 export function useDashboardWidgets() {
-  const [widgets, setWidgets] = useState(() => {
+  const [widgets, setWidgets] = React.useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) return JSON.parse(saved);
-    } catch {}
-    return ALL_WIDGETS.map(w => ({ id: w.id, enabled: w.defaultEnabled, order: ALL_WIDGETS.findIndex(a => a.id === w.id) }));
+    } catch (e) {
+      // ignore
+    }
+    return getDefaultWidgets();
   });
 
-  useEffect(() => {
+  React.useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(widgets));
   }, [widgets]);
 
-  const isVisible = (id) => widgets.find(w => w.id === id)?.enabled ?? true;
+  const isVisible = (id) => {
+    const w = widgets.find(w => w.id === id);
+    return w ? w.enabled : true;
+  };
+
   const getOrder = () => [...widgets].sort((a, b) => a.order - b.order).map(w => w.id);
 
   return { widgets, setWidgets, isVisible, getOrder };
 }
 
 export default function DashboardWidgetCustomizer({ widgets, setWidgets, onClose }) {
-  const [localWidgets, setLocalWidgets] = useState(widgets);
+  const [localWidgets, setLocalWidgets] = React.useState(widgets);
 
   const toggleWidget = (id) => {
     setLocalWidgets(prev =>
