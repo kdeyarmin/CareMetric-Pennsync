@@ -14,6 +14,7 @@ import DocTip from "@/components/documentation/DocTip";
 import GuideDownloadSection from "@/components/documentation/GuideDownloadSection";
 
 const TABLE_OF_CONTENTS = [
+  { id: "guides", label: "Downloadable Guides" },
   { id: "getting-started", label: "Getting Started" },
   { id: "dashboard", label: "Dashboard" },
   { id: "patients", label: "Patient Management" },
