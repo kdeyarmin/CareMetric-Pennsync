@@ -1,782 +1,444 @@
-import { jsPDF } from 'npm:jspdf@2.5.1';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-
-const FEATURES_GUIDE = [
-  {
-    title: "Smart Notes Assistant",
-    description: "Leverage AI-powered documentation assistance to enhance clinical notes in real-time, ensuring Medicare compliance while reducing administrative burden.",
-    howToUse: [
-      "1. Open a visit or patient record from your active caseload",
-      "2. Begin dictating or typing clinical findings and observations",
-      "3. Review AI-generated suggestions for enhancements and compliance improvements as you work",
-      "4. Accept recommendations or edit content to match your documentation style",
-      "5. Submit final note for supervisory review and approval"
-    ],
-    bestPractices: [
-      "Provide specific clinical details to optimize AI suggestions",
-      "Always review AI recommendations for clinical accuracy before submission",
-      "Use standardized medical terminology for improved documentation quality",
-      "Include baseline assessment information for comprehensive patient context",
-      "Maintain current patient history records for better AI contextualization"
-    ],
-    smartNoteChecks: [
-      "Medicare Compliance: Validates skilled nursing documentation requirements and justification for continued home health services",
-      "Documentation Completeness: Flags missing critical elements such as patient status, interventions, patient response, and plan of care",
-      "Clinical Accuracy: Cross-references clinical findings with patient history to identify inconsistencies or contradictions",
-      "ICD-10 Code Suggestions: Recommends appropriate diagnostic codes aligned with documented clinical findings and assessment",
-      "Skilled Nursing Documentation: Ensures skilled nursing judgment is clearly articulated and justified for medical necessity",
-      "OASIS Alignment: Verifies narrative documentation supports corresponding OASIS assessment responses",
-      "Grammar and Medical Terminology: Corrects documentation errors and suggests proper medical terminology usage",
-      "Risk Identification: Highlights potential clinical red flags, safety concerns, and adverse events requiring intervention",
-      "Patient Functional Status: Ensures documentation of patient functional assessment and activities of daily living status",
-      "Care Plan Correlation: Validates that documented care aligns with established care plan goals and interventions"
-    ],
-    importance: "Reduces note documentation time by 40-50%, improves Medicare compliance audit rates by 30%, and prevents costly claim denials while ensuring comprehensive clinical documentation"
-  },
-  {
-    title: "Visit Scribe",
-    description: "Utilize voice-to-text transcription technology to capture patient interactions and automatically convert them to structured clinical documentation.",
-    howToUse: [
-      "1. Click the microphone icon to initiate voice recording",
-      "2. Speak naturally and conversationally during patient interaction",
-      "3. The system transcribes speech to text with real-time processing",
-      "4. Review transcription accuracy and edit as necessary",
-      "5. Allow AI to convert transcription into formally structured clinical note"
-    ],
-    bestPractices: [
-      "Maintain clear, deliberate speech at natural pace",
-      "Minimize ambient noise for improved transcription accuracy",
-      "Integrate relevant clinical observations into narrative format",
-      "Apply standard medical terminology consistently throughout recording",
-      "Secure transcriptions immediately following patient interaction"
-    ],
-    importance: "Saves 1-2 hours per shift in documentation time, increases focus on patient care during visits, reduces documentation workload, and captures real-time observations without post-visit documentation delays"
-  },
-  {
-    title: "Care Plan Management",
-    description: "Develop and monitor individualized care plans with measurable outcomes, facilitating interdisciplinary coordination and ensuring alignment with patient goals.",
-    howToUse: [
-      "1. Access patient record and navigate to Care Plans section",
-      "2. Select 'Create Care Plan' option or review AI-generated suggestions",
-      "3. Define clinical problems, establish SMART goals, and identify evidence-based interventions",
-      "4. Schedule review dates and assign responsibilities to care team members",
-      "5. Monitor progress at each visit and revise plan based on patient response"
-    ],
-    bestPractices: [
-      "Establish SMART goals that are Specific, Measurable, Achievable, Relevant, and Time-bound",
-      "Conduct systematic care plan reviews at minimum monthly intervals",
-      "Actively engage patient and family in collaborative goal setting",
-      "Coordinate with all interdisciplinary team members involved in patient care",
-      "Document patient progress and clinical response at every care encounter"
-    ],
-    importance: "Ensures Medicare compliance with individualized care plan requirements, reduces care plan development time through AI suggestions, improves patient outcomes through coordinated interventions, and demonstrates medical necessity for continued skilled care"
-  },
-  {
-    title: "Document Generation & Template Library",
-    description: "Create professional patient education materials and clinical documentation rapidly using intelligent templates, ensuring accuracy and consistency across all communications.",
-    howToUse: [
-      "1. Navigate to Documents section or Template Library from main menu",
-      "2. Select appropriate document type (patient education, discharge summary, referral letter)",
-      "3. Choose pre-designed template or create custom template for specific clinical needs",
-      "4. Allow system to auto-populate fields with relevant patient data",
-      "5. Review, edit for clinical accuracy, and transmit via secure channels"
-    ],
-    bestPractices: [
-      "Tailor language and complexity to match patient education level and health literacy",
-      "Perform thorough clinical review of all AI-generated content before distribution",
-      "Provide clear explanations in plain language with clinical context",
-      "Include comprehensive discharge instructions with follow-up contact information",
-      "Utilize secure patient portal for document transmission to ensure HIPAA compliance",
-      "Save frequently-used documents as templates for future efficiency"
-    ],
-    importance: "Reduces document creation time from hours to minutes, ensures consistency across communications, improves patient understanding and compliance with discharge instructions, and maintains HIPAA-compliant communication standards"
-  },
-  {
-    title: "OASIS & Compliance",
-    description: "Ensure Medicare OASIS compliance through automated validation against CMS requirements, reducing audit risk and improving revenue cycle management.",
-    howToUse: [
-      "1. Navigate to OASIS section from main menu",
-      "2. Enter or upload OASIS data in designated fields",
-      "3. System automatically validates data against current CMS requirements and rules",
-      "4. Review any flagged items with clinical or administrative concerns",
-      "5. Make necessary corrections and submit assessment with supervisory approval"
-    ],
-    bestPractices: [
-      "Complete OASIS assessment contemporaneously within care delivery workflow",
-      "Cross-reference all OASIS responses with supporting clinical documentation",
-      "Leverage AI-provided suggestions to identify missing or conflicting data elements",
-      "Obtain supervisory or administrative review prior to final OASIS submission",
-      "Document clinical rationale for any manual overrides or exceptional decisions"
-    ],
-    importance: "Prevents costly compliance violations and audit findings, reduces OASIS submission errors by 80%, ensures accurate PDGM coding for optimal reimbursement, and maintains regulatory compliance with CMS requirements"
-  },
-  {
-    title: "Analytics Dashboard",
-    description: "Access real-time performance metrics and clinical outcome analytics to identify trends, benchmark against organizational standards, and drive continuous improvement.",
-    howToUse: [
-      "1. Access Analytics Dashboard from main menu navigation",
-      "2. Review key performance indicators (KPIs) and quality metrics",
-      "3. Apply filters to drill down into specific data sets or time periods",
-      "4. Evaluate individual performance against agency benchmarks and best practices",
-      "5. Generate and export comprehensive reports for quality meetings and reviews"
-    ],
-    bestPractices: [
-      "Conduct systematic metric review on a weekly basis to identify emerging trends",
-      "Use analytics data to prioritize areas for individual or organizational improvement",
-      "Present performance successes to team to foster collaborative engagement",
-      "Address performance gaps through proactive coaching or process improvement",
-      "Monitor trends longitudinally to demonstrate sustained improvement and accountability"
-    ],
-    importance: "Eliminates manual report creation time, enables data-driven decision making, identifies compliance issues proactively, and demonstrates measurable quality improvement outcomes for accreditation and funding"
-  },
-  {
-    title: "Training & Development",
-    description: "Complete personalized training modules with AI-identified recommendations based on skill gaps, ensuring compliance with agency requirements and professional development.",
-    howToUse: [
-      "1. Navigate to Training & Development section",
-      "2. Review assigned mandatory training and AI-recommended modules",
-      "3. Complete training modules at self-directed pace within assigned timeframes",
-      "4. Take comprehensive assessment quizzes to demonstrate learning and competency",
-      "5. Obtain certifications and monitor progress through learning dashboard"
-    ],
-    bestPractices: [
-      "Complete all mandatory training within assigned deadline parameters",
-      "Prioritize AI-recommended modules that address identified skill gaps",
-      "Conduct systematic review of compliance training at designated intervals",
-      "Discuss learning outcomes and application strategies with direct supervisor",
-      "Integrate new knowledge and techniques into daily clinical practice"
-    ],
-    importance: "Ensures regulatory compliance with mandatory training requirements, reduces staff turnover through professional development, improves clinical documentation quality through targeted education, and demonstrates competency for accreditation purposes"
-  },
-  {
-    title: "Task Management",
-    description: "Centralize task assignment and tracking with intelligent prioritization and automated reminders to ensure timely completion of critical action items.",
-    howToUse: [
-      "1. Navigate to Task Management section from dashboard",
-      "2. View all assigned tasks and pending action items",
-      "3. Sort and prioritize tasks by due date, urgency level, and clinical importance",
-      "4. Update task status and document completion notes upon task completion",
-      "5. Respond promptly to system-generated reminders for overdue or upcoming tasks"
-    ],
-    bestPractices: [
-      "Review task list daily as part of workflow management",
-      "Address critical and high-priority items with appropriate urgency",
-      "Document detailed completion notes for accountability and continuity",
-      "Coordinate with interdisciplinary team members on shared or dependent tasks",
-      "Delegate tasks appropriately within scope of practice and role boundaries"
-    ],
-    importance: "Prevents missed follow-ups and care coordination lapses, reduces administrative task burden, ensures critical clinical actions are completed on time, and improves team communication and accountability"
-  },
-  {
-    title: "Biometric Authentication",
-    description: "Use your device's fingerprint or face recognition for fast, secure access to CareMetric AI without needing to remember passwords.",
-    howToUse: [
-      "1. Navigate to Settings > Security section",
-      "2. Click 'Enable Biometric Login'",
-      "3. Follow your device's prompts to register your fingerprint or face",
-      "4. Next time you log in, use biometric authentication instead of password",
-      "5. System securely stores credentials on your device only"
-    ],
-    bestPractices: [
-      "Enable biometric authentication on all devices you regularly use",
-      "Keep your device's biometric data updated (re-register if needed)",
-      "Use biometric login for quick access while maintaining security",
-      "Remove biometric authentication before giving away or disposing of device",
-      "Report lost or stolen devices immediately to IT security"
-    ],
-    importance: "Provides faster login (2-3 seconds vs 30+ seconds), improves security through biometric verification, reduces password fatigue, and enables quick access during patient visits"
-  },
-  {
-    title: "Offline Mode with Encryption",
-    description: "Capture clinical notes and patient data even without internet connection, with military-grade AES-256 encryption protecting data until it syncs.",
-    howToUse: [
-      "1. System automatically detects when you go offline",
-      "2. Continue documenting visits and capturing notes normally",
-      "3. All data is encrypted with AES-256 before being stored locally",
-      "4. When internet reconnects, data automatically syncs to secure servers",
-      "5. View pending sync items in Offline Status indicator"
-    ],
-    bestPractices: [
-      "Review pending synced items when connection is restored",
-      "Don't force-close the app while data is syncing",
-      "Ensure device has adequate storage for offline notes",
-      "Sync data before extended offline periods when possible",
-      "Monitor encryption key status in security settings"
-    ],
-    importance: "Enables documentation in areas with poor connectivity, protects patient data with military-grade encryption, prevents data loss during network outages, and ensures continuity of care documentation"
-  },
-  {
-    title: "Real-time Security Monitoring",
-    description: "Continuous monitoring for security breaches, unusual access patterns, compliance violations, and anomalous behavior with automatic alerts and remediation.",
-    howToUse: [
-      "1. System automatically monitors all security events in real-time",
-      "2. Receive immediate alerts for critical security issues",
-      "3. Review Security Audit Log in Settings for detailed activity history",
-      "4. Investigate flagged anomalies and take corrective action",
-      "5. Administrators receive breach alerts and compliance violation reports"
-    ],
-    bestPractices: [
-      "Review security alerts promptly when received",
-      "Report any suspicious activity to IT security immediately",
-      "Conduct regular audit log reviews (weekly for admins)",
-      "Follow up on all flagged compliance violations",
-      "Keep security settings and encryption keys up to date"
-    ],
-    importance: "Prevents data breaches and unauthorized access, ensures HIPAA compliance with audit trail requirements, identifies security threats before damage occurs, and protects patient privacy and organizational reputation"
-  },
-  {
-    title: "Patient Risk Alerts",
-    description: "Leverage AI-powered predictive analytics to identify high-risk patients early, enabling proactive interventions to prevent adverse events and readmissions.",
-    howToUse: [
-      "1. View and prioritize Risk Alerts displayed on main dashboard",
-      "2. Review alert severity classification and system-generated recommendations",
-      "3. Click on specific alert to examine contributing risk factors and clinical indicators",
-      "4. Implement recommended clinical interventions in coordination with care team",
-      "5. Document all clinical actions taken and patient response in health record"
-    ],
-    bestPractices: [
-      "Respond with urgency and clinical focus to critical and high-severity alerts",
-      "Coordinate evidence-based interventions with interdisciplinary care team members",
-      "Document clinical reasoning and clinical decision-making for all alert responses",
-      "Implement close monitoring and frequent reassessment following interventions",
-      "Conduct timely follow-up within recommended intervals to assess intervention effectiveness"
-    ],
-    riskFactorsIncluded: [
-      "Vital Sign Changes: Abnormal blood pressure, elevated or low heart rate, respiratory distress, oxygen desaturation, fever",
-      "Hospitalization History: Recent hospital admission, multiple admissions in past year, extended length of stay",
-      "Fall Risk: History of falls, impaired mobility, balance problems, cognitive impairment, medication effects",
-      "Infection Risk: Signs of infection, immunosuppression, wound concerns, urinary symptoms, respiratory symptoms",
-      "Readmission Risk: Complex diagnoses, polypharmacy, poor medication adherence, social isolation, caregiver stress",
-      "Functional Decline: Decreased ambulation, increased dependency for activities of daily living, cognitive changes",
-      "Medication Issues: High-risk medications, drug interactions, non-adherence, side effects",
-      "Mental Health: Depression screening positive, anxiety, behavioral changes, suicidal ideation",
-      "Chronic Condition Management: Uncontrolled diabetes, heart failure decompensation, COPD exacerbation risk",
-      "Social Factors: Living alone, limited caregiver availability, financial constraints, transportation barriers"
-    ],
-    importance: "Reduces hospital readmission rates by 25-30%, prevents Medicare penalties for excess readmissions, improves patient outcomes through proactive intervention, and demonstrates quality of care for value-based reimbursement programs"
-  },
-  {
-    title: "AI Documentation Assistant",
-    description: "24/7 AI-powered chatbot that provides instant answers to documentation questions, compliance requirements, and regulatory guidance. Available throughout the app for on-demand support.",
-    howToUse: [
-      "Click the AI chat icon in the bottom-right corner of any page",
-      "Ask questions about documentation requirements (e.g., 'What's required for skilled nursing documentation?')",
-      "Get compliance guidance (e.g., 'How do I document homebound status?')",
-      "Learn about OASIS requirements and Medicare regulations",
-      "Receive ICD-10 coding guidance and documentation standards",
-      "Get help with CareMetric AI features and troubleshooting"
-    ],
-    bestPractices: [
-      "Ask specific questions for more targeted answers",
-      "Use it during documentation to verify compliance requirements in real-time",
-      "Reference it when unsure about regulatory requirements",
-      "Ask follow-up questions to clarify complex topics",
-      "Use it to train new staff on documentation standards"
-    ],
-    importance: "Provides instant access to documentation expertise and compliance guidance, reducing errors and improving documentation quality."
-  },
-  {
-    title: "ICD-10 Code Suggestions",
-    description: "AI-powered clinical decision support that analyzes clinical notes and automatically suggests relevant ICD-10 diagnostic codes with confidence levels, clinical rationale, and billing impact guidance.",
-    howToUse: [
-      "1. Available in Smart Notes and clinical documentation pages",
-      "2. Enter or dictate clinical notes describing patient condition",
-      "3. Click 'Suggest ICD-10 Codes' or let AI automatically analyze",
-      "4. Review suggested codes with confidence percentages",
-      "5. See clinical rationale explaining why each code is recommended",
-      "6. View billing impact and specificity requirements",
-      "7. Copy codes directly to your documentation or billing system"
-    ],
-    bestPractices: [
-      "Provide detailed clinical notes for more accurate code suggestions",
-      "Include specific symptoms, severity, and clinical findings",
-      "Review confidence levels - higher confidence indicates stronger match",
-      "Read the clinical rationale to ensure code appropriateness",
-      "Use suggestions as guidance, not replacement for clinical judgment",
-      "Verify codes match patient's actual diagnosis and documentation",
-      "Document all conditions that affect treatment or management"
-    ],
-    importance: "Improves coding accuracy, reduces claim denials, ensures proper reimbursement, and helps maintain compliance with ICD-10 documentation specificity requirements."
-  },
-  {
-    title: "Readmission Risk Prediction",
-    description: "AI-powered predictive analytics that analyzes patient clinical and demographic data to calculate readmission probability with a risk score (0-100), identifies key risk factors, and provides evidence-based intervention recommendations to prevent hospital readmissions.",
-    howToUse: [
-      "Available in patient records and clinical decision support sections",
-      "Click 'Assess Readmission Risk' or allow automatic risk calculation",
-      "Review the risk score (0-100) with color-coded severity indicators",
-      "Examine identified risk factors contributing to high risk",
-      "Review recommended interventions specific to patient's risk profile",
-      "Document interventions implemented and patient response",
-      "Reassess risk periodically or after significant clinical changes"
-    ],
-    bestPractices: [
-      "Run risk assessment at admission and before discharge",
-      "Review all identified risk factors for accuracy and completeness",
-      "Prioritize interventions based on modifiable risk factors",
-      "Coordinate care plan with interdisciplinary team members",
-      "Document patient and caregiver education provided",
-      "Ensure follow-up appointments are scheduled before discharge",
-      "Monitor high-risk patients more frequently"
-    ],
-    importance: "Reduces hospital readmission rates by 25-30%, prevents Medicare penalties for excess readmissions, improves patient outcomes through proactive intervention, and demonstrates quality of care for value-based reimbursement programs."
-  },
-
-  {
-    title: "Provider-Specific Customization",
-    description: "Tailored documentation templates, compliance rules, AI prompts, and workflow settings specific to your provider type (RN, LPN, PT, OT, ST, MSW, etc.).",
-    howToUse: [
-      "1. Navigate to Settings > Provider Profile",
-      "2. Select your provider type and enter credentials",
-      "3. Customize AI note preferences and documentation style",
-      "4. Review provider-specific compliance rules and guidelines",
-      "5. Access specialized templates and resources for your discipline"
-    ],
-    bestPractices: [
-      "Keep your provider credentials and licenses current",
-      "Review provider-specific compliance updates regularly",
-      "Customize AI prompts to match your documentation style",
-      "Use discipline-specific templates for efficiency",
-      "Share best practices with colleagues in your discipline"
-    ],
-    importance: "Ensures documentation meets discipline-specific requirements, improves relevance of AI suggestions, streamlines workflow with tailored templates, and maintains scope of practice compliance"
-  },
-
-  {
-    title: "Data Retention Management",
-    description: "Customize data retention policies and automatically archive or delete old records per your compliance requirements and organizational policies.",
-    howToUse: [
-      "1. Navigate to Settings > Data Retention",
-      "2. Set retention periods for different data types (visits, notes, patients)",
-      "3. Choose archive or delete action for expired data",
-      "4. Review scheduled retention actions before they execute",
-      "5. Export data before deletion if needed for compliance"
-    ],
-    bestPractices: [
-      "Align retention periods with regulatory requirements (typically 7 years)",
-      "Archive data before deletion when possible",
-      "Export critical data for backup before auto-deletion",
-      "Review retention policies quarterly",
-      "Document retention policy decisions for audit purposes"
-    ],
-    importance: "Ensures compliance with data retention regulations, reduces storage costs, protects patient privacy, and maintains audit trail for regulatory purposes"
-  },
-  {
-    title: "HIPAA Compliance & Security",
-    description: "Maintain Protected Health Information (PHI) security through enterprise-grade encryption, multi-factor authentication, audit trails, and strict access controls.",
-    howToUse: [
-      "Access system using secure login with required multi-factor authentication",
-      "Access only patient records necessary for direct clinical care provision",
-      "Logout immediately upon completion of work or when stepping away from device",
-      "Report any suspected security breaches or unauthorized access immediately to IT",
-      "Adhere strictly to all organizational data protection policies and HIPAA regulations"
-    ],
-    bestPractices: [
-      "Never disclose login credentials or access tokens to any individual",
-      "Utilize VPN for all remote access to protected systems",
-      "Implement password protection on all devices with access to patient data",
-      "Refrain from discussing Protected Health Information in public or unsecured areas",
-      "Report all suspected HIPAA violations or potential breaches to Information Security immediately"
-    ],
-    importance: "Protects patient privacy and prevents costly HIPAA violations and fines, maintains audit compliance and organizational reputation, ensures secure remote access for mobile workforce, and protects sensitive clinical data from unauthorized access"
-  },
-  {
-    title: "Patient Management",
-    description: "Efficiently add, manage, and view comprehensive patient records, ensuring all demographic, clinical, and administrative data is organized and easily accessible.",
-    howToUse: [
-      "1. Navigate to the 'Patients' section from the main menu",
-      "2. Click on 'Add New Patient' or similar button",
-      "3. Fill in required patient information such as demographics, contact details, and initial medical history",
-      "4. Save the new patient record to access their full profile including visits, care plans, and documents",
-      "5. Use the search and filter options to quickly locate existing patient records"
-    ],
-    bestPractices: [
-      "Ensure accurate and complete entry of patient demographics to avoid errors",
-      "Regularly update patient information, especially contact details and insurance",
-      "Utilize patient tags or categories for easier filtering and management of specific patient groups",
-      "Familiarize yourself with patient record layouts for quick data retrieval",
-      "Maintain strict confidentiality and adhere to HIPAA guidelines when accessing or updating patient data"
-    ],
-    importance: "Centralizes patient data for comprehensive care management, reduces administrative errors, enhances care coordination, and ensures compliance with patient record documentation standards"
-  },
-  {
-    title: "Clinical Decision Support",
-    description: "Receive AI-powered recommendations and alerts based on patient data, helping clinicians make informed, evidence-based decisions at the point of care.",
-    howToUse: [
-      "1. Access a patient's record or during a visit documentation session",
-      "2. The system automatically analyzes patient data (diagnoses, medications, vital signs)",
-      "3. Review AI-generated suggestions for care pathways, medication interactions, or potential risks",
-      "4. Consider the recommendations in conjunction with your clinical judgment",
-      "5. Document your decision-making process, including whether you accepted, modified, or rejected AI suggestions"
-    ],
-    bestPractices: [
-      "Always validate AI suggestions with your clinical expertise and patient-specific context",
-      "Use CDS as a safety net to catch potential errors or missed considerations",
-      "Provide feedback on the accuracy and helpfulness of AI suggestions to improve future recommendations",
-      "Stay updated on the latest clinical guidelines to critically evaluate suggestions",
-      "Integrate CDS recommendations into your care planning and documentation process for consistency"
-    ],
-    importance: "Enhances patient safety, reduces medical errors, promotes adherence to best practices, supports evidence-based care, and continuously learns from clinical outcomes to refine recommendations"
-  },
-  {
-    title: "Clinical Reasoning Assistant",
-    description: "An AI-driven tool that assists clinicians in developing robust clinical reasoning by analyzing patient symptoms, history, and assessment findings to suggest differential diagnoses, diagnostic tests, and treatment plans.",
-    howToUse: [
-      "1. Navigate to the 'Clinical Reasoning' section or activate it within a patient's chart",
-      "2. Input or review key patient data, including chief complaints, history of present illness, past medical history, and physical assessment findings",
-      "3. The AI generates a list of potential differential diagnoses with supporting evidence and likelihood",
-      "4. Review suggested diagnostic tests (labs, imaging) and evidence-based treatment options",
-      "5. Use the insights to refine your clinical assessment and care plan"
-    ],
-    bestPractices: [
-      "Ensure all relevant patient data is entered accurately for the most precise AI analysis",
-      "Critically evaluate the AI's suggestions, understanding that it is a support tool, not a replacement for human expertise",
-      "Utilize the tool for complex cases or to explore less common differential diagnoses",
-      "Document your thought process and how AI insights influenced your clinical decisions",
-      "Regularly review the effectiveness of suggested interventions on patient outcomes"
-    ],
-    importance: "Improves diagnostic accuracy, broadens clinical perspectives, reduces cognitive bias, supports teaching and learning for less experienced clinicians, and ultimately leads to more effective patient care"
-  },
-  {
-    title: "Document Analyzer",
-    description: "An AI-powered tool to analyze uploaded clinical documents (PDFs, images) for key information, compliance gaps, and data extraction, transforming unstructured data into actionable insights.",
-    howToUse: [
-      "1. Navigate to the 'Document Analyzer' section",
-      "2. Upload a clinical document (e.g., patient referral, hospital discharge summary, lab results)",
-      "3. The AI processes the document, extracting key entities like diagnoses, medications, and patient demographics",
-      "4. Review the extracted data and identify any potential compliance flags or missing information",
-      "5. Integrate the extracted structured data into the patient's electronic health record or use it for reporting"
-    ],
-    bestPractices: [
-      "Ensure uploaded documents are clear and legible for optimal AI processing",
-      "Always verify the accuracy of extracted data before incorporating it into a patient's record",
-      "Use the analyzer to quickly identify critical information from lengthy documents",
-      "Leverage the tool to ensure external documents meet internal compliance standards",
-      "Provide feedback on extraction accuracy to help the AI continuously improve"
-    ],
-    importance: "Automates data entry from external documents, reduces manual review time, improves data accuracy and completeness, aids in compliance checks, and provides rapid access to critical patient information"
-  },
-  {
-    title: "Billing Optimization",
-    description: "Leverage AI to review documentation for optimal billing codes, identify missed revenue opportunities, and ensure compliance with complex billing regulations, reducing claim denials.",
-    howToUse: [
-      "1. Access the 'Billing Optimization' dashboard or a specific patient's billing section",
-      "2. The AI automatically analyzes clinical notes and documentation",
-      "3. Review suggested CPT, ICD-10, and other billing codes for accuracy and completeness",
-      "4. Identify potential missed charges or under-coding based on documented services",
-      "5. Rectify documentation discrepancies or update billing codes before claim submission",
-      "6. Monitor denial rates and adjust billing practices based on AI insights"
-    ],
-    bestPractices: [
-      "Regularly review AI-suggested codes and rationale to deepen your understanding of billing rules",
-      "Ensure all services rendered are meticulously documented to support proposed billing codes",
-      "Prioritize addressing common reasons for claim denials highlighted by the AI",
-      "Utilize the insights to educate staff on proper documentation for billing purposes",
-      "Cross-reference AI recommendations with current payer guidelines for maximum reimbursement"
-    ],
-    importance: "Maximizes revenue capture, minimizes claim denials and rejections, ensures adherence to complex billing regulations (e.g., Medicare, Medicaid), reduces administrative burden for billing staff, and provides real-time feedback for documentation improvement"
-  }
-];
+import { jsPDF } from 'npm:jspdf@2.5.2';
 
 Deno.serve(async (req) => {
-  let user;
   try {
     const base44 = createClientFromRequest(req);
-    user = await base44.auth.me();
-
+    const user = await base44.auth.me();
     if (!user) {
-      console.error('[generateUserGuidePDF] Unauthorized access attempt');
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('[generateUserGuidePDF] Generating PDF for user:', user.email);
+    const { guide_type } = await req.json().catch(() => ({ guide_type: 'full' }));
 
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-
+    const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
-    const contentWidth = pageWidth - 2 * margin;
-    let yPosition = margin;
+    const margin = 20;
+    const contentWidth = pageWidth - margin * 2;
+    let y = margin;
 
-    // Title Page - Add background
-    doc.setFillColor(41, 98, 255);
-    doc.rect(0, 0, pageWidth, pageHeight, 'F');
-    
-    // White content area
-    doc.setFillColor(255, 255, 255);
-    doc.rect(margin - 5, margin, contentWidth + 10, pageHeight - 2 * margin, 'F');
+    const addNewPageIfNeeded = (needed = 30) => {
+      if (y + needed > pageHeight - 25) {
+        doc.addPage();
+        y = margin;
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text('CareMetric AI', margin, pageHeight - 10);
+        doc.text(`Page ${doc.getNumberOfPages()}`, pageWidth - margin - 20, pageHeight - 10);
+        doc.setTextColor(0, 0, 0);
+        return true;
+      }
+      return false;
+    };
 
-    // Add CareMetric AI logo
-    try {
-      const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/1bc6d01c8_caremetricailogo.png';
-      const logoResponse = await fetch(logoUrl);
-      const logoBlob = await logoResponse.blob();
-      const logoBase64 = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(logoBlob);
-      });
-      doc.addImage(logoBase64, 'PNG', margin, margin + 5, 40, 20);
-    } catch (logoError) {
-      console.warn('[generateUserGuidePDF] Could not load logo:', logoError);
-      // Fallback to text if logo fails to load
+    const addTitle = (text, size = 22) => {
+      addNewPageIfNeeded(40);
+      doc.setFontSize(size);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text(text, margin, y);
+      y += size * 0.5 + 4;
+    };
+
+    const addSubtitle = (text, size = 14) => {
+      addNewPageIfNeeded(25);
+      doc.setFontSize(size);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(51, 65, 85);
+      doc.text(text, margin, y);
+      y += size * 0.45 + 3;
+    };
+
+    const addParagraph = (text) => {
+      addNewPageIfNeeded(20);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      const lines = doc.splitTextToSize(text, contentWidth);
+      for (const line of lines) {
+        addNewPageIfNeeded(6);
+        doc.text(line, margin, y);
+        y += 5;
+      }
+      y += 3;
+    };
+
+    const addBullet = (text) => {
+      addNewPageIfNeeded(10);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      const lines = doc.splitTextToSize(text, contentWidth - 10);
+      doc.text('•', margin + 2, y);
+      for (let i = 0; i < lines.length; i++) {
+        addNewPageIfNeeded(6);
+        doc.text(lines[i], margin + 10, y);
+        y += 5;
+      }
+      y += 1;
+    };
+
+    const addStep = (number, title, description) => {
+      addNewPageIfNeeded(20);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text(`Step ${number}:`, margin + 2, y);
+      doc.setTextColor(51, 65, 85);
+      doc.text(title, margin + 22, y);
+      y += 6;
+      if (description) {
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        const lines = doc.splitTextToSize(description, contentWidth - 10);
+        for (const line of lines) {
+          addNewPageIfNeeded(6);
+          doc.text(line, margin + 10, y);
+          y += 5;
+        }
+      }
+      y += 3;
+    };
+
+    const addDivider = () => {
+      y += 3;
+      doc.setDrawColor(200, 210, 230);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+    };
+
+    const addTipBox = (text) => {
+      addNewPageIfNeeded(25);
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(147, 197, 253);
+      const lines = doc.splitTextToSize(text, contentWidth - 16);
+      const boxHeight = lines.length * 5 + 10;
+      doc.roundedRect(margin, y - 2, contentWidth, boxHeight, 3, 3, 'FD');
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(30, 64, 175);
+      doc.text('💡 Tip:', margin + 5, y + 5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      for (let i = 0; i < lines.length; i++) {
+        doc.text(lines[i], margin + 5, y + 11 + i * 5);
+      }
+      y += boxHeight + 5;
+    };
+
+    // ============ COVER PAGE ============
+    doc.setFillColor(30, 64, 175);
+    doc.rect(0, 0, pageWidth, 100, 'F');
+    doc.setFontSize(28);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text('CareMetric AI', margin, 40);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'normal');
+    doc.text(guide_type === 'quick' ? 'Quick Reference Guide' : 'Complete User Guide', margin, 55);
+    doc.setFontSize(11);
+    doc.text(`Version 2.0 | ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}`, margin, 70);
+    doc.text('AI-Powered Clinical Documentation Platform', margin, 82);
+
+    y = 115;
+    doc.setTextColor(0, 0, 0);
+
+    if (guide_type === 'quick') {
+      // ============ QUICK REFERENCE GUIDE ============
+      addTitle('Quick Reference Guide', 18);
+      addParagraph('This quick reference card covers the essential workflows you need to get started with CareMetric AI right away.');
+      addDivider();
+
+      addSubtitle('1. Getting Started (2 Minutes)');
+      addStep(1, 'Sign In & Complete Profile', 'Go to Settings and set your Provider Type (RN, LPN, PT, OT, etc.) and credentials. This helps the AI tailor notes to your discipline.');
+      addStep(2, 'Add Your First Patient', 'Click Patients > Add Patient. Only first and last name are required. Add diagnoses and medications for better AI output.');
+      addStep(3, 'Create Your First Note', 'Go to Smart Note Assistant, select your patient, choose a visit type and diagnosis, type rough notes, and click Enhance Note.');
+      addDivider();
+
+      addSubtitle('2. Smart Note Workflow');
+      addStep(1, 'Select Patient + Visit Type + Diagnosis', '');
+      addStep(2, 'Enter rough notes (bullet points, shorthand, or full sentences)', '');
+      addStep(3, 'Click "Enhance with AI"', 'AI generates a Medicare-compliant note in seconds.');
+      addStep(4, 'Review, edit, and save', 'Always review AI output before finalizing.');
+      addTipBox('The AI learns your writing style over time. The more you use it, the better it matches your preferences.');
+      addDivider();
+
+      addSubtitle('3. Medical Scribe (Voice-to-Note)');
+      addStep(1, 'Go to Medical Scribe page', '');
+      addStep(2, 'Select patient and visit details', '');
+      addStep(3, 'Click Record or Upload Audio', 'Speak naturally about your visit.');
+      addStep(4, 'Review transcription, then Generate Note', 'AI converts audio to structured clinical documentation.');
+      addDivider();
+
+      addSubtitle('4. Care Plans');
+      addBullet('Go to Care Plans page and select a patient');
+      addBullet('Click "Generate AI Care Plan" for automatic creation');
+      addBullet('Or select from the template library for common conditions');
+      addBullet('Track progress with measurable goals and timelines');
+      addDivider();
+
+      addSubtitle('5. Key Navigation');
+      addBullet('Dashboard — Overview of patients, tasks, alerts, and stats');
+      addBullet('Patients — Add, search, and manage patient records');
+      addBullet('Tasks — View AI-generated and manual follow-up tasks');
+      addBullet('Smart Note — Create AI-enhanced clinical notes');
+      addBullet('Medical Scribe — Voice-to-documentation');
+      addBullet('Care Plans — Create and track care plans');
+      addBullet('OASIS — Upload and analyze OASIS assessments');
+      addBullet('Compliance — Monitor documentation compliance scores');
+      addBullet('Analytics — Track time saved and performance');
+      addBullet('Alerts — View AI-generated patient risk alerts');
+      addBullet('Training — Personalized learning modules and quizzes');
+      addBullet('Settings — Profile, preferences, and agency setup');
+      addDivider();
+
+      addSubtitle('6. Keyboard & Voice Tips');
+      addBullet('Use voice dictation in the field for fastest note entry');
+      addBullet('Mention vital signs clearly for auto-extraction');
+      addBullet('Include patient responses and teaching provided');
+      addBullet('Check AI-generated follow-up tasks after each note');
+      addDivider();
+
+      addSubtitle('7. Getting Help');
+      addBullet('In-app Documentation page — Full feature guides');
+      addBullet('Training Hub — Interactive tutorials and quizzes');
+      addBullet('Email: support@caremetricai.com');
+      addBullet('FAQ page — Common questions answered');
+
+    } else {
+      // ============ FULL USER GUIDE ============
+      addTitle('Table of Contents', 16);
+      const tocItems = [
+        '1. Getting Started',
+        '2. Dashboard Overview',
+        '3. Patient Management',
+        '4. Smart Note Assistant',
+        '5. Medical Scribe',
+        '6. Care Plan Management',
+        '7. OASIS Assessment',
+        '8. Compliance Dashboard',
+        '9. Analytics',
+        '10. Patient Alerts',
+        '11. Task Management',
+        '12. Training Hub',
+        '13. Settings & Customization',
+        '14. Tips & Best Practices',
+        '15. FAQ & Support',
+      ];
+      for (const item of tocItems) {
+        addBullet(item);
+      }
+      addDivider();
+
+      // Chapter 1
+      addTitle('1. Getting Started', 16);
+      addParagraph('Welcome to CareMetric AI — the AI-powered clinical documentation platform designed to save home health clinicians 2-3 hours daily on documentation while improving compliance and care quality.');
+      addSubtitle('First-Time Setup', 12);
+      addStep(1, 'Complete Your Profile', 'Navigate to Settings. Set your provider type (RN, LPN, PT, OT, SLP, MSW, etc.), credentials, and care scope. This enables AI personalization.');
+      addStep(2, 'Add Your First Patient', 'Go to Patients > Add Patient. Enter demographics, diagnoses, medications, and allergies. Only first/last name is required.');
+      addStep(3, 'Try the Smart Note Assistant', 'Select a patient, choose visit type and diagnosis, enter rough notes, and click Enhance. See AI transform them into compliant documentation.');
+      addStep(4, 'Explore the Dashboard', 'Your Dashboard shows patients, tasks, alerts, compliance, and time savings all in one place.');
+      addTipBox('Start with Smart Note Assistant — most users save 20-30 minutes on their very first note!');
+      addDivider();
+
+      // Chapter 2
+      addTitle('2. Dashboard', 16);
+      addParagraph('Your command center. The Dashboard provides a real-time snapshot of everything that needs your attention.');
+      addBullet('Patient Summary — Total active, new admissions, high-risk cases');
+      addBullet('Task Overview — Pending, overdue, and completed tasks');
+      addBullet('Compliance Alerts — Open violations needing attention');
+      addBullet('Time Saved Widget — AI time savings (today, week, total)');
+      addBullet('Quick Actions — One-click access to common workflows');
+      addBullet('Announcements — System updates and agency notifications');
+      addDivider();
+
+      // Chapter 3
+      addTitle('3. Patient Management', 16);
+      addParagraph('Centralized hub for all patient records with comprehensive clinical profiles.');
+      addSubtitle('Adding Patients', 12);
+      addStep(1, 'Click "Add Patient"', 'Button in top-right of Patients page.');
+      addStep(2, 'Enter Details', 'Demographics, diagnoses, medications, allergies, contacts, insurance.');
+      addStep(3, 'Save', 'Taken to patient detail page for visits, care plans, and documentation.');
+      addSubtitle('Key Features', 12);
+      addBullet('Search & Filter — Find patients by name, diagnosis, or status');
+      addBullet('AI Risk Assessment — Auto-calculated risk scores');
+      addBullet('Visit History — Complete timeline of visits and documentation');
+      addBullet('Bulk Actions — Update multiple patients at once');
+      addBullet('Duplicate Detection — Auto-finds and merges duplicates');
+      addDivider();
+
+      // Chapter 4
+      addTitle('4. Smart Note Assistant', 16);
+      addParagraph('The core feature of CareMetric AI. Transforms rough notes into Medicare-compliant documentation, saving up to 70% of documentation time.');
+      addSubtitle('Creating a Smart Note', 12);
+      addStep(1, 'Select Patient', 'Choose from dropdown. Clinical context loads automatically.');
+      addStep(2, 'Choose Visit Type & Diagnosis', 'Tailors the AI note format and requirements.');
+      addStep(3, 'Enter Rough Notes', 'Type or dictate. Shorthand, bullets, or full sentences all work.');
+      addStep(4, 'Click "Enhance Note"', 'AI generates compliant narrative with proper structure and terminology.');
+      addStep(5, 'Review & Save', 'Compliance checker runs automatically. Edit as needed.');
+      addSubtitle('Built-in Tools', 12);
+      addBullet('Voice Dictation — Speak your notes');
+      addBullet('Real-Time Compliance — Instant feedback on compliance issues');
+      addBullet('ICD-10 Code Suggestions — AI-recommended diagnosis codes');
+      addBullet('Care Plan Suggestions — Auto-generated from documentation');
+      addBullet('Follow-Up Task Generation — Auto-creates tasks from notes');
+      addBullet('Patient Education — Generate patient-friendly materials');
+      addTipBox('Always review AI-generated notes. While the AI achieves 95%+ accuracy, your clinical judgment guides the final document.');
+      addDivider();
+
+      // Chapter 5
+      addTitle('5. Medical Scribe', 16);
+      addParagraph('Record visits verbally and let AI convert recordings into structured, compliant clinical notes.');
+      addStep(1, 'Navigate to Medical Scribe', 'Select patient, visit type, and diagnosis.');
+      addStep(2, 'Record or Upload Audio', 'Click Record or upload an audio file. Speak naturally about the visit.');
+      addStep(3, 'Review Transcription', 'AI transcribes with speaker diarization and medical term correction.');
+      addStep(4, 'Generate Note', 'Converts transcription into formatted clinical documentation.');
+      addSubtitle('Advanced Features', 12);
+      addBullet('Speaker Diarization — Identifies clinician, patient, and family members');
+      addBullet('Medical Term Correction — AI corrects transcription errors in real-time');
+      addBullet('Safety Alerts — Flags potentially dangerous medication/dosage errors');
+      addBullet('Custom Terminology — Add specialized terms for better accuracy');
+      addDivider();
+
+      // Chapter 6
+      addTitle('6. Care Plan Management', 16);
+      addParagraph('Build, manage, and monitor individualized care plans with AI assistance.');
+      addBullet('AI-Generated Plans — Auto-create from diagnoses and clinical data');
+      addBullet('Template Library — Pre-built templates for common conditions');
+      addBullet('Progress Tracking — Monitor goal achievement with measurable outcomes');
+      addBullet('Review Reminders — Automated reminders when plans need reassessment');
+      addBullet('Collaboration — Share care plans with your team');
+      addBullet('Automatic Triggers — Plans auto-generate based on diagnoses/medications');
+      addDivider();
+
+      // Chapter 7
+      addTitle('7. OASIS Assessment', 16);
+      addParagraph('AI-powered analysis of OASIS assessments for accuracy, compliance, and PDGM optimization.');
+      addStep(1, 'Upload OASIS Document', 'PDF or image format.');
+      addStep(2, 'AI Analysis', 'Scans for errors, inconsistencies, and optimization opportunities.');
+      addStep(3, 'Review Findings', 'Error flags, corrections, PDGM impact, revenue implications.');
+      addBullet('PDGM case-mix weight calculation');
+      addBullet('Multi-report comparison');
+      addBullet('Scenario modeling for what-if analysis');
+      addBullet('Automated QA checks');
+      addDivider();
+
+      // Chapter 8
+      addTitle('8. Compliance Dashboard', 16);
+      addParagraph('Comprehensive view of documentation compliance across all patients and visits.');
+      addBullet('Medicare Documentation Requirements — All required elements checked');
+      addBullet('Homebound Status Justification — Validates documentation');
+      addBullet('Skilled Need Documentation — Confirms proper justification');
+      addBullet('Care Plan Alignment — Visits match established plans');
+      addBullet('Agency-Specific Rules — Custom rules from your administrator');
+      addTipBox('Set your compliance target in Settings. CareMetric AI alerts you when notes fall below your target score.');
+      addDivider();
+
+      // Chapter 9
+      addTitle('9. Analytics', 16);
+      addParagraph('Data-driven insights into documentation quality, productivity, and compliance rates.');
+      addBullet('Time Savings Analysis — Daily, weekly, monthly AI time savings');
+      addBullet('Compliance Trends — Score improvements over time');
+      addBullet('Documentation Quality — Average quality scores and improvement areas');
+      addBullet('AI Feature Usage — Most-used features and their impact');
+      addBullet('Patient Risk Overview — Population-level risk metrics');
+      addDivider();
+
+      // Chapter 10
+      addTitle('10. Patient Alerts', 16);
+      addParagraph('AI continuously analyzes patient data to identify risks before they become emergencies.');
+      addBullet('Vital Deterioration — Trending vital sign changes');
+      addBullet('Medication Risk — Potential interactions or adherence issues');
+      addBullet('Fall Risk — Increased fall risk from assessment data');
+      addBullet('Readmission Risk — Hospital readmission risk identification');
+      addBullet('Care Gaps — Missing assessments, overdue visits, incomplete documentation');
+      addDivider();
+
+      // Chapter 11
+      addTitle('11. Task Management', 16);
+      addParagraph('Track follow-ups, referrals, orders, and action items. Tasks are created manually or auto-generated by AI.');
+      addBullet('AI-Generated Tasks — Auto-created from visit notes');
+      addBullet('Priority Levels — Critical, High, Medium, Low');
+      addBullet('Due Dates & Reminders — Set deadlines with notifications');
+      addBullet('Recurring Tasks — Daily, weekly, or monthly schedules');
+      addBullet('Task Assignment — Assign to yourself or team members');
+      addDivider();
+
+      // Chapter 12
+      addTitle('12. Training Hub', 16);
+      addParagraph('Personalized learning modules, compliance training, and skill assessments.');
+      addBullet('Interactive Training Modules — Documentation, compliance, clinical skills');
+      addBullet('AI Skill Assessment — Identify strengths and improvement areas');
+      addBullet('Personalized Recommendations — Based on your actual performance');
+      addBullet('Compliance Quizzes — Test Medicare requirement knowledge');
+      addBullet('Progress Tracking — Learning journey and certifications');
+      addDivider();
+
+      // Chapter 13
+      addTitle('13. Settings & Customization', 16);
+      addBullet('Provider Type & Credentials — Set professional role for tailored AI');
+      addBullet('AI Preferences — Control note length, tone, and complexity');
+      addBullet('Notification Preferences — Choose how/when you receive alerts');
+      addBullet('Compliance Targets — Set minimum compliance score');
+      addBullet('Practice Information — Configure practice details for documents');
+      addBullet('Agency Code — Join your agency for shared templates and rules');
+      addDivider();
+
+      // Chapter 14
+      addTitle('14. Tips & Best Practices', 16);
+      addBullet('Be detailed in rough notes — more detail = better AI output');
+      addBullet('Always review AI output before finalizing');
+      addBullet('Use voice dictation in the field immediately after visits');
+      addBullet('Check tasks daily — start each day reviewing your task list');
+      addBullet('Use patient education generator for condition-specific handouts');
+      addBullet('Set your provider type in Settings for dramatically improved AI quality');
+      addDivider();
+
+      // Chapter 15
+      addTitle('15. FAQ & Support', 16);
+      addSubtitle('Common Questions', 12);
+      addBullet('Is data HIPAA compliant? — Yes, fully HIPAA compliant with encryption');
+      addBullet('Works on mobile? — Yes, fully responsive on phones and tablets');
+      addBullet('AI accuracy? — 95%+ compliance accuracy, always review output');
+      addBullet('Offline support? — Yes, draft notes offline and sync when connected');
+      addBullet('Support? — Email support@caremetricai.com or use in-app help');
+      y += 5;
+      addSubtitle('Contact Us', 12);
+      addBullet('Email: support@caremetricai.com');
+      addBullet('In-app: Documentation page and Training Hub');
+      addBullet('Website: www.caremetricai.com');
+    }
+
+    // Final footer on all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
-      doc.text('CareMetric AI', margin + 2, margin + 18);
-    }
-
-    // Main title
-    yPosition = margin + 35;
-    doc.setFontSize(36);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(41, 98, 255);
-    doc.text('CareMetric AI', margin + 5, yPosition);
-    
-    // Subtitle
-    yPosition += 15;
-    doc.setFontSize(20);
-    doc.setFont(undefined, 'normal');
-    doc.setTextColor(80, 80, 80);
-    doc.text('Comprehensive User Guide', margin + 5, yPosition);
-
-    // Tagline
-    yPosition += 18;
-    doc.setFontSize(11);
-    doc.setTextColor(120, 120, 120);
-    const taglineLines = doc.splitTextToSize('Streamline Documentation | Enhance Compliance | Improve Patient Outcomes', contentWidth - 10);
-    doc.text(taglineLines, margin + 5, yPosition);
-
-    // Divider line
-    yPosition += taglineLines.length * 5 + 12;
-    doc.setDrawColor(41, 98, 255);
-    doc.setLineWidth(0.5);
-    doc.line(margin + 5, yPosition, margin + contentWidth - 5, yPosition);
-
-    // Document info
-    yPosition += 15;
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin + 5, yPosition);
-    yPosition += 8;
-    doc.text('Healthcare Documentation & Compliance Solutions', margin + 5, yPosition);
-
-    // Footer
-    yPosition = pageHeight - margin - 20;
-    doc.setFontSize(9);
-    doc.setTextColor(150, 150, 150);
-    const footerText = 'Designed to maximize efficiency, ensure compliance, and improve patient outcomes through intelligent healthcare documentation.';
-    const footerLines = doc.splitTextToSize(footerText, contentWidth - 10);
-    doc.text(footerLines, margin + 5, yPosition);
-
-    yPosition = pageHeight - margin - 5;
-    doc.setFontSize(8);
-    doc.text('www.caremetricai.com', margin + 5, yPosition);
-
-    // Add table of contents
-    doc.addPage();
-    yPosition = margin + 5;
-    
-    doc.setFontSize(16);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(41, 98, 255);
-    doc.text('Features Overview', margin, yPosition);
-    
-    yPosition += 12;
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'normal');
-    doc.setTextColor(0, 0, 0);
-    
-    for (let i = 0; i < FEATURES_GUIDE.length; i++) {
-      const feature = FEATURES_GUIDE[i];
-      if (yPosition > pageHeight - 20) {
-        doc.addPage();
-        yPosition = margin;
-      }
-      doc.text(`${i + 1}. ${feature.title}`, margin + 5, yPosition);
-      yPosition += 7;
-    }
-
-    // Add each feature section
-    for (const feature of FEATURES_GUIDE) {
-      // Add page break before each feature
-      doc.addPage();
-      yPosition = margin + 5;
-
-      // Feature title with professional styling
-      doc.setFillColor(41, 98, 255);
-      doc.rect(margin - 3, yPosition - 7, contentWidth + 6, 12, 'F');
-      
-      doc.setFontSize(16);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(255, 255, 255);
-      doc.text(feature.title, margin + 3, yPosition + 1);
-      doc.setTextColor(0, 0, 0);
-      yPosition += 18;
-
-      // Description
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      const descriptionLines = doc.splitTextToSize(feature.description, contentWidth);
-      doc.text(descriptionLines, margin, yPosition);
-      yPosition += descriptionLines.length * 5 + 5;
-
-      // How to Use section
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(41, 98, 255);
-      doc.text('How to Use:', margin, yPosition);
-      doc.setTextColor(0, 0, 0);
-      yPosition += 6;
-
-      doc.setFont(undefined, 'normal');
-      doc.setFontSize(9.5);
-      for (const step of feature.howToUse) {
-        if (yPosition > pageHeight - 25) {
-          doc.addPage();
-          yPosition = margin;
-        }
-        const stepLines = doc.splitTextToSize('- ' + step, contentWidth - 5);
-        doc.text(stepLines, margin + 5, yPosition);
-        yPosition += stepLines.length * 4 + 2;
-      }
-
-      yPosition += 4;
-
-      // Best Practices section
-      if (yPosition > pageHeight - 40) {
-        doc.addPage();
-        yPosition = margin;
-      }
-
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(41, 98, 255);
-      doc.text('Best Practices:', margin, yPosition);
-      doc.setTextColor(0, 0, 0);
-      yPosition += 6;
-
-      doc.setFont(undefined, 'normal');
-      doc.setFontSize(9.5);
-      for (const practice of feature.bestPractices) {
-        if (yPosition > pageHeight - 20) {
-          doc.addPage();
-          yPosition = margin;
-        }
-        const practiceLines = doc.splitTextToSize('- ' + practice, contentWidth - 5);
-        doc.text(practiceLines, margin + 5, yPosition);
-        yPosition += practiceLines.length * 4 + 2;
-      }
-
-      // Smart Note Checks section
-      if (feature.smartNoteChecks && feature.smartNoteChecks.length > 0) {
-        if (yPosition > pageHeight - 50) {
-          doc.addPage();
-          yPosition = margin;
-        }
-
-        doc.setFont(undefined, 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(41, 98, 255);
-        doc.text('Documentation Validation Checks:', margin, yPosition);
-        doc.setTextColor(0, 0, 0);
-        yPosition += 6;
-
-        doc.setFont(undefined, 'normal');
-        doc.setFontSize(8.5);
-        for (const check of feature.smartNoteChecks) {
-          if (yPosition > pageHeight - 15) {
-            doc.addPage();
-            yPosition = margin;
-          }
-          const checkLines = doc.splitTextToSize('- ' + check, contentWidth - 8);
-          doc.text(checkLines, margin + 5, yPosition);
-          yPosition += checkLines.length * 3.5 + 1;
-        }
-      }
-
-      // Risk Factors section
-      if (feature.riskFactorsIncluded && feature.riskFactorsIncluded.length > 0) {
-        if (yPosition > pageHeight - 50) {
-          doc.addPage();
-          yPosition = margin;
-        }
-
-        doc.setFont(undefined, 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(41, 98, 255);
-        doc.text('Assessed Risk Factors:', margin, yPosition);
-        doc.setTextColor(0, 0, 0);
-        yPosition += 6;
-
-        doc.setFont(undefined, 'normal');
-        doc.setFontSize(9);
-        for (const factor of feature.riskFactorsIncluded) {
-          if (yPosition > pageHeight - 15) {
-            doc.addPage();
-            yPosition = margin;
-          }
-          const factorLines = doc.splitTextToSize('- ' + factor, contentWidth - 8);
-          doc.text(factorLines, margin + 5, yPosition);
-          yPosition += factorLines.length * 3.5 + 1;
-        }
-      }
-
-      // Importance section
-      if (feature.importance) {
-        if (yPosition > pageHeight - 25) {
-          doc.addPage();
-          yPosition = margin;
-        }
-
-        doc.setFont(undefined, 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(41, 98, 255);
-        doc.text('Why This Matters:', margin, yPosition);
-        doc.setTextColor(0, 0, 0);
-        yPosition += 6;
-
-        doc.setFont(undefined, 'normal');
-        doc.setFontSize(9.5);
-        const importanceLines = doc.splitTextToSize(feature.importance, contentWidth - 5);
-        doc.text(importanceLines, margin + 5, yPosition);
-        yPosition += importanceLines.length * 4 + 5;
-      }
-
-      yPosition += 10;
+      doc.text('CareMetric AI — AI-Powered Clinical Documentation', margin, pageHeight - 8);
+      doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 25, pageHeight - 8);
     }
 
     const pdfBytes = doc.output('arraybuffer');
+
+    // Upload to file storage
+    const fileName = guide_type === 'quick' ? 'CareMetric-AI-Quick-Reference-Guide.pdf' : 'CareMetric-AI-User-Guide.pdf';
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const file = new File([blob], fileName, { type: 'application/pdf' });
     
-    console.log('[generateUserGuidePDF] PDF generated successfully');
-    
-    return new Response(pdfBytes, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="CareMetric-AI-User-Guide.pdf"'
-      }
+    const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file });
+
+    return Response.json({
+      success: true,
+      file_url: uploadResult.file_url,
+      file_name: fileName,
+      guide_type
     });
+
   } catch (error) {
-    console.error('[generateUserGuidePDF] Error:', {
-      message: error.message,
-      stack: error.stack,
-      userEmail: user?.email
-    });
-    return new Response(JSON.stringify({ 
-      error: 'Failed to generate user guide PDF',
-      details: error.message 
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    console.error('Error generating guide PDF:', error);
+    return Response.json({ error: error.message }, { status: 500 });
   }
 });
