@@ -20,9 +20,13 @@ import {
   Megaphone,
   BarChart3,
   Target,
-  Award
+  Award,
+  Settings
 } from "lucide-react";
 import TimeSavingsWidget from "@/components/dashboard/TimeSavingsWidget";
+import DashboardWidgetCustomizer, { useDashboardWidgets } from "@/components/dashboard/DashboardWidgetCustomizer";
+import OfflinePatientViewer from "@/components/mobile/OfflinePatientViewer";
+import ProactiveComplianceTraining from "@/components/training/ProactiveComplianceTraining";
 
 export default function Dashboard() {
   const { data: user } = useQuery({
@@ -96,6 +100,9 @@ export default function Dashboard() {
     .filter(p => p.risk_level === "high" || p.risk_score > 70)
     .slice(0, 5);
 
+  const { widgets, setWidgets, isVisible, getOrder } = useDashboardWidgets();
+  const [showCustomizer, setShowCustomizer] = useState(false);
+
   const quickActions = [
     { label: "Create Note", icon: FileText, page: "SmartNoteAssistant", color: "bg-blue-500" },
     { label: "View Patients", icon: Users, page: "Patients", color: "bg-green-500" },
@@ -118,15 +125,29 @@ export default function Dashboard() {
             Here's what's happening with your patients today
           </p>
         </div>
-        {user?.role === "admin" && (
-          <Link to={createPageUrl("AdminDashboard")}>
-            <Button variant="outline" size="sm" className="touch-target">
-              <Award className="h-4 w-4 mr-2" />
-              Admin Panel
-            </Button>
-          </Link>
-        )}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowCustomizer(!showCustomizer)} className="touch-target">
+            <Settings className="h-4 w-4 mr-2" />
+            Customize
+          </Button>
+          {user?.role === "admin" && (
+            <Link to={createPageUrl("AdminDashboard")}>
+              <Button variant="outline" size="sm" className="touch-target">
+                <Award className="h-4 w-4 mr-2" />
+                Admin Panel
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
+
+      {/* Dashboard Customizer */}
+      {showCustomizer && (
+        <DashboardWidgetCustomizer widgets={widgets} setWidgets={setWidgets} onClose={() => setShowCustomizer(false)} />
+      )}
+
+      {/* Offline Patient Access */}
+      <OfflinePatientViewer userEmail={user?.email} />
 
       {/* Announcements */}
       {announcements.length > 0 && (
@@ -154,7 +175,7 @@ export default function Dashboard() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      {isVisible("stats") && <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
@@ -192,13 +213,13 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </div>}
 
       {/* Time Savings Widget */}
-      <TimeSavingsWidget />
+      {isVisible("timeSavings") && <TimeSavingsWidget />}
 
       {/* Secondary Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {isVisible("secondaryStats") && <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Care Plans</CardTitle>
@@ -231,10 +252,13 @@ export default function Dashboard() {
             <p className="text-xs text-slate-600">Active notifications</p>
           </CardContent>
         </Card>
-      </div>
+      </div>}
+
+      {/* Proactive Compliance Training */}
+      {user?.email && <ProactiveComplianceTraining userEmail={user.email} />}
 
       {/* Quick Actions */}
-      <Card>
+      {isVisible("quickActions") && <Card>
         <CardHeader className="p-3 sm:p-4">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -258,7 +282,7 @@ export default function Dashboard() {
             ))}
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* High Risk Patients & Recent Activity */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
@@ -349,7 +373,7 @@ export default function Dashboard() {
       {/* Compliance Alerts & Patient Alerts */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         {/* Compliance Alerts */}
-        <Card>
+        {isVisible("compliance") && <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Compliance Alerts</span>
@@ -394,10 +418,10 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* Patient Alerts */}
-        <Card>
+        {isVisible("patientAlerts") && <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Patient Alerts</span>
@@ -435,7 +459,7 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
       </div>
     </div>
   );
