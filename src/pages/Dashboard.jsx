@@ -12,7 +12,6 @@ import {
   CheckCircle,
   AlertTriangle,
   FileText,
-  TrendingUp,
   Clock,
   Activity,
   AlertCircle,
@@ -30,7 +29,7 @@ import ProactiveComplianceTraining from "@/components/training/ProactiveComplian
 
 export default function Dashboard() {
   const [showCustomizer, setShowCustomizer] = useState(false);
-  const { widgets, setWidgets, isVisible, getOrder } = useDashboardWidgets();
+  const { widgets, setWidgets, isVisible } = useDashboardWidgets();
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
@@ -79,10 +78,8 @@ export default function Dashboard() {
     initialData: [],
   });
 
-  // Calculate stats
   const totalPatients = patients.length;
   const pendingTasks = tasks.filter(t => t.status !== "completed").length;
-  const openViolations = complianceViolations.length;
   const upcomingVisits = visits.filter(v => {
     const visitDate = new Date(v.scheduled_date || v.visit_date);
     const today = new Date();
@@ -98,7 +95,6 @@ export default function Dashboard() {
            completedDate.toDateString() === today.toDateString();
   }).length;
 
-  // High risk patients
   const highRiskPatients = patients
     .filter(p => p.risk_level === "high" || p.risk_score > 70)
     .slice(0, 5);
@@ -114,7 +110,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300" data-page="dashboard">
+    <div className="p-4 sm:p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -175,118 +171,117 @@ export default function Dashboard() {
       )}
 
       {/* Stats Grid */}
-      {isVisible("stats") && <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
-            <Users className="h-4 w-4 text-blue-700" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalPatients}</div>
-            <p className="text-xs text-slate-600">Active in your care</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming Visits</CardTitle>
-            <Calendar className="h-4 w-4 text-blue-700" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{upcomingVisits}</div>
-            <p className="text-xs text-slate-600">Next 7 days</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-            <Clock className="h-4 w-4 text-blue-700" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingTasks}</div>
-            <p className="text-xs text-slate-600">To be completed</p>
-            {completedTasksToday > 0 && (
-              <p className="text-xs text-green-700 mt-1">
-                +{completedTasksToday} completed today
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>}
+      {isVisible("stats") && (
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
+              <Users className="h-4 w-4 text-blue-700" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalPatients}</div>
+              <p className="text-xs text-slate-600">Active in your care</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Upcoming Visits</CardTitle>
+              <Calendar className="h-4 w-4 text-blue-700" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{upcomingVisits}</div>
+              <p className="text-xs text-slate-600">Next 7 days</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
+              <Clock className="h-4 w-4 text-blue-700" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{pendingTasks}</div>
+              <p className="text-xs text-slate-600">To be completed</p>
+              {completedTasksToday > 0 && (
+                <p className="text-xs text-green-700 mt-1">+{completedTasksToday} completed today</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Time Savings Widget */}
       {isVisible("timeSavings") && <TimeSavingsWidget />}
 
       {/* Secondary Stats */}
-      {isVisible("secondaryStats") && <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Care Plans</CardTitle>
-            <Target className="h-4 w-4 text-blue-700" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{activeCarePlans}</div>
-            <p className="text-xs text-slate-600">In progress</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">High Risk Patients</CardTitle>
-            <AlertCircle className="h-4 w-4 text-blue-700" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{highRiskPatients.length}</div>
-            <p className="text-xs text-slate-600">Require attention</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Patient Alerts</CardTitle>
-            <Bell className="h-4 w-4 text-blue-700" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{patientAlerts.length}</div>
-            <p className="text-xs text-slate-600">Active notifications</p>
-          </CardContent>
-        </Card>
-      </div>}
+      {isVisible("secondaryStats") && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Care Plans</CardTitle>
+              <Target className="h-4 w-4 text-blue-700" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{activeCarePlans}</div>
+              <p className="text-xs text-slate-600">In progress</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-slate-200 to-blue-200 border-slate-400">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">High Risk Patients</CardTitle>
+              <AlertCircle className="h-4 w-4 text-blue-700" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{highRiskPatients.length}</div>
+              <p className="text-xs text-slate-600">Require attention</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Patient Alerts</CardTitle>
+              <Bell className="h-4 w-4 text-blue-700" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{patientAlerts.length}</div>
+              <p className="text-xs text-slate-600">Active notifications</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Proactive Compliance Training */}
       {user?.email && <ProactiveComplianceTraining userEmail={user.email} />}
 
       {/* Quick Actions */}
-      {isVisible("quickActions") && <Card>
-        <CardHeader className="p-3 sm:p-4">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
-            Quick Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-3 sm:p-4">
-          <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-            {quickActions.map((action) => (
-              <Link key={action.page} to={createPageUrl(action.page)} className="block">
-                <Button
-                  variant="outline"
-                  className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-slate-800/60 dark:to-slate-900/40 hover:from-blue-100 hover:to-slate-100 dark:hover:from-slate-700/60 dark:hover:to-slate-800/40 hover:shadow-md transition-all rounded-lg card-hover touch-target"
-                >
-                  <div className={`p-1.5 sm:p-2 rounded-lg ${action.color}`}>
-                    <action.icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                  </div>
-                  <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-1">{action.label}</span>
-                </Button>
-              </Link>
-            ))}
-          </div>
-        </CardContent>
-      </Card>}
+      {isVisible("quickActions") && (
+        <Card>
+          <CardHeader className="p-3 sm:p-4">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
+              Quick Actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-4">
+            <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+              {quickActions.map((action) => (
+                <Link key={action.page} to={createPageUrl(action.page)} className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-slate-800/60 dark:to-slate-900/40 hover:from-blue-100 hover:to-slate-100 dark:hover:from-slate-700/60 dark:hover:to-slate-800/40 hover:shadow-md transition-all rounded-lg card-hover touch-target"
+                  >
+                    <div className={`p-1.5 sm:p-2 rounded-lg ${action.color}`}>
+                      <action.icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                    </div>
+                    <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-1">{action.label}</span>
+                  </Button>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* High Risk Patients & Recent Activity */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        {/* High Risk Patients */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -313,9 +308,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 hover:shadow-md transition-all card-hover">
                       <div>
                         <p className="text-sm font-medium">{patient.first_name} {patient.last_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {patient.primary_diagnosis || "No diagnosis"}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{patient.primary_diagnosis || "No diagnosis"}</p>
                       </div>
                       <Badge variant="destructive">High Risk</Badge>
                     </div>
@@ -326,7 +319,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Recent Tasks */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -338,29 +330,20 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {tasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No tasks yet
-              </p>
+              <p className="text-sm text-muted-foreground text-center py-4">No tasks yet</p>
             ) : (
               <div className="space-y-3">
                 {tasks.slice(0, 5).map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 hover:from-blue-100/60 hover:to-slate-100/60 dark:hover:from-slate-700/40 dark:hover:to-slate-800/30 transition-colors card-hover"
-                  >
+                  <div key={task.id} className="flex items-start gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 hover:from-blue-100/60 hover:to-slate-100/60 dark:hover:from-slate-700/40 dark:hover:to-slate-800/30 transition-colors card-hover">
                     <div className={`mt-1 ${task.status === "completed" ? "text-green-500" : "text-gray-400"}`}>
                       <CheckCircle className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{task.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {task.priority} priority • {task.status}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{task.priority} priority • {task.status}</p>
                     </div>
                     {task.due_date && (
-                      <Badge variant="outline" className="text-xs">
-                        {new Date(task.due_date).toLocaleDateString()}
-                      </Badge>
+                      <Badge variant="outline" className="text-xs">{new Date(task.due_date).toLocaleDateString()}</Badge>
                     )}
                   </div>
                 ))}
@@ -372,94 +355,77 @@ export default function Dashboard() {
 
       {/* Compliance Alerts & Patient Alerts */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        {/* Compliance Alerts */}
-        {isVisible("compliance") && <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Compliance Alerts</span>
-              <Link to={createPageUrl("ComplianceDashboard")}>
-                <Button variant="ghost" size="sm">View All</Button>
-              </Link>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {complianceViolations.length === 0 ? (
-              <div className="text-center py-8">
-                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
-                <p className="text-sm font-medium text-green-600">All Clear!</p>
-                <p className="text-xs text-muted-foreground">No compliance issues</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {complianceViolations.slice(0, 5).map((violation) => (
-                  <div
-                    key={violation.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-900/20 card-hover"
-                  >
-                    <AlertTriangle className="h-4 w-4 text-orange-500 mt-1" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{violation.rule_name}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {violation.violation_description}
-                      </p>
+        {isVisible("compliance") && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Compliance Alerts</span>
+                <Link to={createPageUrl("ComplianceDashboard")}>
+                  <Button variant="ghost" size="sm">View All</Button>
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {complianceViolations.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-green-600">All Clear!</p>
+                  <p className="text-xs text-muted-foreground">No compliance issues</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {complianceViolations.slice(0, 5).map((violation) => (
+                    <div key={violation.id} className="flex items-start gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-900/20 card-hover">
+                      <AlertTriangle className="h-4 w-4 text-orange-500 mt-1" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{violation.rule_name}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{violation.violation_description}</p>
+                      </div>
+                      <Badge variant="outline" className={`text-xs ${violation.severity === "critical" ? "border-red-500 text-red-700" : violation.severity === "high" ? "border-orange-500 text-orange-700" : "border-yellow-500 text-yellow-700"}`}>
+                        {violation.severity}
+                      </Badge>
                     </div>
-                    <Badge 
-                      variant="outline" 
-                      className={`text-xs ${
-                        violation.severity === "critical" ? "border-red-500 text-red-700" :
-                        violation.severity === "high" ? "border-orange-500 text-orange-700" :
-                        "border-yellow-500 text-yellow-700"
-                      }`}
-                    >
-                      {violation.severity}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>}
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Patient Alerts */}
-        {isVisible("patientAlerts") && <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Patient Alerts</span>
-              <Link to={createPageUrl("PatientAlerts")}>
-                <Button variant="ghost" size="sm">View All</Button>
-              </Link>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {patientAlerts.length === 0 ? (
-              <div className="text-center py-8">
-                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
-                <p className="text-sm font-medium text-green-600">No Alerts</p>
-                <p className="text-xs text-muted-foreground">All patients stable</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {patientAlerts.slice(0, 5).map((alert) => (
-                  <div
-                    key={alert.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 hover:from-blue-100/60 hover:to-slate-100/60 dark:hover:from-slate-700/40 dark:hover:to-slate-800/30 transition-colors card-hover"
-                  >
-                    <Bell className="h-4 w-4 text-blue-500 mt-1" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{alert.alert_type}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {alert.description}
-                      </p>
+        {isVisible("patientAlerts") && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Patient Alerts</span>
+                <Link to={createPageUrl("PatientAlerts")}>
+                  <Button variant="ghost" size="sm">View All</Button>
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {patientAlerts.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-green-600">No Alerts</p>
+                  <p className="text-xs text-muted-foreground">All patients stable</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {patientAlerts.slice(0, 5).map((alert) => (
+                    <div key={alert.id} className="flex items-start gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50/60 to-slate-50/60 dark:from-slate-800/40 dark:to-slate-900/30 transition-colors card-hover">
+                      <Bell className="h-4 w-4 text-blue-500 mt-1" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{alert.alert_type}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{alert.description}</p>
+                      </div>
+                      <Badge variant="outline" className="text-xs">{alert.priority}</Badge>
                     </div>
-                    <Badge variant="outline" className="text-xs">
-                      {alert.priority}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>}
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
