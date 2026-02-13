@@ -29,6 +29,9 @@ import OfflinePatientViewer from "@/components/mobile/OfflinePatientViewer";
 import ProactiveComplianceTraining from "@/components/training/ProactiveComplianceTraining";
 
 export default function Dashboard() {
+  const [showCustomizer, setShowCustomizer] = useState(false);
+  const { widgets, setWidgets, isVisible, getOrder } = useDashboardWidgets();
+
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
@@ -99,9 +102,6 @@ export default function Dashboard() {
   const highRiskPatients = patients
     .filter(p => p.risk_level === "high" || p.risk_score > 70)
     .slice(0, 5);
-
-  const { widgets, setWidgets, isVisible, getOrder } = useDashboardWidgets();
-  const [showCustomizer, setShowCustomizer] = useState(false);
 
   const quickActions = [
     { label: "Create Note", icon: FileText, page: "SmartNoteAssistant", color: "bg-blue-500" },
