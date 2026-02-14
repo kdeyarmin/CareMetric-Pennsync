@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "../../utils";
-import { Home, Users, FileText, Mic, CheckCircle, WifiOff, Cloud, CloudOff } from "lucide-react";
+import { Home, Users, FileText, Mic, CheckCircle, WifiOff, Cloud } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useOfflineNotes } from "./OfflineNoteCache";
-import { useOfflineDataManager } from "./OfflineDataManager";
 
 const NAV_ITEMS = [
   { icon: Home, label: "Home", page: "Dashboard" },
@@ -16,9 +14,16 @@ const NAV_ITEMS = [
 
 export default function MobileFieldToolbar() {
   const location = useLocation();
-  const { isOnline, unsyncedCount } = useOfflineNotes();
-  const { pendingSyncCount } = useOfflineDataManager();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -30,7 +35,6 @@ export default function MobileFieldToolbar() {
   if (!isMobile) return null;
 
   const currentPath = location.pathname.split("/").filter(Boolean)[0] || "dashboard";
-  const totalPending = unsyncedCount + pendingSyncCount;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 safe-bottom shadow-[0_-2px_10px_rgba(0,0,0,0.08)]">
@@ -38,12 +42,6 @@ export default function MobileFieldToolbar() {
       {!isOnline && (
         <div className="bg-orange-500 text-white text-[10px] font-medium text-center py-0.5 flex items-center justify-center gap-1">
           <WifiOff className="w-3 h-3" /> Offline — changes saved locally
-          {totalPending > 0 && <Badge className="bg-white text-orange-600 text-[9px] ml-1 h-4 px-1">{totalPending}</Badge>}
-        </div>
-      )}
-      {isOnline && totalPending > 0 && (
-        <div className="bg-blue-500 text-white text-[10px] font-medium text-center py-0.5 flex items-center justify-center gap-1">
-          <Cloud className="w-3 h-3" /> {totalPending} item{totalPending > 1 ? "s" : ""} syncing...
         </div>
       )}
 
