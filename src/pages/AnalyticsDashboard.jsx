@@ -57,6 +57,7 @@ import PerformanceMetricsCard from "../components/analytics/PerformanceMetricsCa
 import ComplianceTrendsChart from "../components/analytics/ComplianceTrendsChart";
 import AIUtilizationChart from "../components/analytics/AIUtilizationChart";
 import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 
 export default function AnalyticsDashboard() {
   const [dateRange, setDateRange] = useState("30");
@@ -435,6 +436,7 @@ export default function AnalyticsDashboard() {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
   return (
+    <PremiumFeatureGate featureName="Performance Analytics" featureDescription="Track documentation metrics, compliance trends, and AI utilization across your team." allowTrial={true}>
     <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
          <div className="flex-1 min-w-0">
@@ -599,5 +601,6 @@ export default function AnalyticsDashboard() {
 
 
     </div>
+    </PremiumFeatureGate>
   );
 }

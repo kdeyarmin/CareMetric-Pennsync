@@ -90,6 +90,7 @@ import FollowUpTaskGenerator from '../components/smartNote/FollowUpTaskGenerator
 import RealtimeComplianceChecker from '../components/smartNote/RealtimeComplianceChecker';
 import PatientEducationGenerator from '../components/education/PatientEducationGenerator';
 import EnhancedMedicalCodingAssistant from '../components/smartNote/EnhancedMedicalCodingAssistant';
+import PremiumFeatureGate from '../components/subscription/PremiumFeatureGate';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -642,6 +643,7 @@ export default function SmartNoteAssistant() {
   };
 
   return (
+    <PremiumFeatureGate featureName="Smart Note Assistant" featureDescription="AI-powered clinical documentation with real-time compliance monitoring and quality scoring." allowTrial={true}>
     <div className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-6 pb-20 sm:pb-6 overflow-x-hidden w-full max-w-full min-w-0">
       <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
         {/* Hide provider note type selector to streamline - visit type is below */}
@@ -1263,6 +1265,7 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
           </div>
         }
                     </div>
-                    </div>);
+                    </div>
+    </PremiumFeatureGate>);
 
 }

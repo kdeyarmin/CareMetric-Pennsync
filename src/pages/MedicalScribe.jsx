@@ -20,6 +20,7 @@ import LanguageSelector from "../components/scribe/LanguageSelector";
 import TerminologyGlossaryManager from "../components/scribe/TerminologyGlossaryManager";
 import MobileVoiceRecorder from "../components/mobile/MobileVoiceRecorder";
 import CollapsibleMobileSection from "../components/mobile/CollapsibleMobileSection";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 const commonDiagnoses = [
 "CHF (Congestive Heart Failure)",
 "COPD (Chronic Obstructive Pulmonary Disease)",
@@ -107,6 +108,7 @@ export default function MedicalScribe() {
   };
 
   return (
+    <PremiumFeatureGate featureName="Medical Scribe" featureDescription="Voice-to-note transcription with AI-powered clinical documentation." allowTrial={true}>
     <>
     <QuickPatientAddDialog
         open={showAddPatientDialog}
@@ -345,6 +347,7 @@ export default function MedicalScribe() {
         </div>
       </div>
     </div>
-    </>);
+    </>
+    </PremiumFeatureGate>);
 
 }

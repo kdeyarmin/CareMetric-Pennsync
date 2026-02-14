@@ -20,6 +20,7 @@ import TrainingResourceLibrary from "../components/training/TrainingResourceLibr
 import StaffProgressTracker from "../components/training/StaffProgressTracker";
 import SkillGapAnalysisPanel from "../components/training/SkillGapAnalysisPanel";
 import PersonalTrainingDashboard from "../components/training/PersonalTrainingDashboard";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 
 export default function TrainingHub() {
   const [selectedTraining, setSelectedTraining] = useState(null);
@@ -115,6 +116,7 @@ export default function TrainingHub() {
   const activeGaps = skillGaps.filter(g => g.status === 'identified' || g.status === 'in_progress').length;
 
   return (
+    <PremiumFeatureGate featureName="Training Hub" featureDescription="Personalized learning paths, skill development, and compliance training." allowTrial={true}>
     <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -271,5 +273,6 @@ export default function TrainingHub() {
         )}
       </Tabs>
     </div>
+    </PremiumFeatureGate>
   );
 }

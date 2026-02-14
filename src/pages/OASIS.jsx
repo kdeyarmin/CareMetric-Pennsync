@@ -13,6 +13,7 @@ import {
 "lucide-react";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import AutoPopulateDataFields from "../components/smartNote/AutoPopulateDataFields";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 
 export default function OASIS() {
   const [oasisFile, setOasisFile] = useState(null);
@@ -81,6 +82,7 @@ export default function OASIS() {
   };
 
   return (
+    <PremiumFeatureGate featureName="OASIS Documentation" featureDescription="AI-powered OASIS assessment analysis with compliance checking." allowTrial={true}>
     <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['currentUser'] })}>
       <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-slate-900 dark:text-slate-100">OASIS Documentation Assistant</h1>
@@ -188,6 +190,7 @@ export default function OASIS() {
           </Card>
         }
       </div>
-    </PullToRefresh>);
+    </PullToRefresh>
+    </PremiumFeatureGate>);
 
 }
