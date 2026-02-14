@@ -113,7 +113,7 @@ export default function AdminDashboard() {
 
   const { data: allSubscriptions = [] } = useQuery({
     queryKey: ['allSubscriptions'],
-    queryFn: () => base44.asServiceRole.entities.Subscription.list('-created_date'),
+    queryFn: () => base44.entities.Subscription.list('-created_date'),
     enabled: currentUser?.role === 'admin'
   });
 
