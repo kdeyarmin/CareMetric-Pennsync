@@ -20,6 +20,7 @@ import RecurringTaskManager from "../components/tasks/RecurringTaskManager";
 import EmptyState from "../components/ui/EmptyState";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import { motion } from "framer-motion";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 
 export default function Tasks() {
   const [showForm, setShowForm] = useState(false);
@@ -248,6 +249,7 @@ export default function Tasks() {
 
 
   return (
+    <PremiumFeatureGate featureName="Task Management" featureDescription="Manage clinical tasks with priority tracking, recurring schedules, and notifications." allowTrial={true}>
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries({ queryKey: ['allTasks'] });
     }}>
@@ -544,6 +546,7 @@ export default function Tasks() {
         </TabsContent>
       </Tabs>
     </div>
-    </PullToRefresh>);
+    </PullToRefresh>
+    </PremiumFeatureGate>);
 
 }

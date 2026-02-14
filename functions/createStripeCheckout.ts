@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
       ],
       mode: 'subscription',
       subscription_data: {
-        trial_period_days: hasActiveSub ? 0 : 14, // 14-day trial for new users only
+        trial_period_days: 0, // Trial is handled at the app level, not Stripe
         metadata: {
           user_email: user.email,
           base44_app_id: appId || 'unknown'

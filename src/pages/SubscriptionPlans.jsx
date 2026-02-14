@@ -47,10 +47,8 @@ export default function SubscriptionPlans() {
   const { data: subscription } = useQuery({
     queryKey: ['userSubscription', currentUser?.email],
     queryFn: async () => {
-      const subs = await base44.entities.Subscription.filter({ 
-        user_email: currentUser.email 
-      });
-      return subs[0];
+      const response = await base44.functions.invoke('getMySubscription', {});
+      return response?.data?.subscription || response?.subscription;
     },
     enabled: !!currentUser?.email
   });

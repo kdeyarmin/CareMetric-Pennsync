@@ -29,6 +29,7 @@ import PatientAlertAnalyzer from "../components/alerts/PatientAlertAnalyzer";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 
 export default function PatientAlerts() {
   const queryClient = useQueryClient();
@@ -91,6 +92,7 @@ export default function PatientAlerts() {
   };
 
   return (
+    <PremiumFeatureGate featureName="Patient Alerts" featureDescription="AI-powered proactive identification of critical events and patient deterioration risks." allowTrial={true}>
     <PullToRefresh onRefresh={async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['patients'] }),
@@ -273,5 +275,6 @@ export default function PatientAlerts() {
       </div>
     </div>
     </PullToRefresh>
+    </PremiumFeatureGate>
   );
 }

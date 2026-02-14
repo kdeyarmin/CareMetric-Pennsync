@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import OneClickComplianceFixer from "../components/compliance/OneClickComplianceFixer";
 import ProactiveComplianceRiskPredictor from "../components/compliance/ProactiveComplianceRiskPredictor";
 import AIComplianceCarePlanSuggester from "../components/compliance/AIComplianceCarePlanSuggester";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 
 export default function ComplianceDashboard() {
   const [timeframe, setTimeframe] = useState("30");
@@ -248,6 +249,7 @@ export default function ComplianceDashboard() {
   }
 
   return (
+    <PremiumFeatureGate featureName="Compliance Dashboard" featureDescription="Real-time compliance monitoring, violation tracking, and audit management." allowTrial={true}>
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries();
     }}>
@@ -902,5 +904,6 @@ export default function ComplianceDashboard() {
         </Dialog>
       </div>
     </PullToRefresh>
+    </PremiumFeatureGate>
   );
 }

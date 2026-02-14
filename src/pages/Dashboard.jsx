@@ -27,6 +27,7 @@ import DashboardWidgetCustomizer, { useDashboardWidgets } from "@/components/das
 import MobileOfflineBanner from "@/components/mobile/MobileOfflineBanner";
 import ProactiveComplianceTraining from "@/components/training/ProactiveComplianceTraining";
 import CollapsibleMobileSection from "@/components/mobile/CollapsibleMobileSection";
+import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
 export default function Dashboard() {
   const [showCustomizer, setShowCustomizer] = useState(false);
@@ -111,6 +112,7 @@ export default function Dashboard() {
   ];
 
   return (
+    <PremiumFeatureGate featureName="Dashboard" featureDescription="Your central hub for patient management, tasks, and clinical insights." allowTrial={true}>
     <div className="p-4 sm:p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -403,5 +405,6 @@ export default function Dashboard() {
         )}
       </div>
     </div>
+    </PremiumFeatureGate>
   );
 }
