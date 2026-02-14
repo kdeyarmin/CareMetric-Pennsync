@@ -4,6 +4,7 @@ import { createPageUrl } from "./utils";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import MobileFieldToolbar from "@/components/mobile/MobileFieldToolbar";
 import {
   Home,
   Users,
@@ -192,10 +193,13 @@ export default function Layout({ children, currentPageName }) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-h-[calc(100vh-57px)]">
+        <main className="flex-1 min-h-[calc(100vh-57px)] pb-16 md:pb-0">
           {children}
         </main>
       </div>
+
+      {/* Mobile bottom navigation */}
+      <MobileFieldToolbar />
 
       {/* Overlay for mobile */}
       {sidebarOpen && (
