@@ -450,18 +450,33 @@ export default function AdminDashboard() {
         queryClient.invalidateQueries({ queryKey: ['allPayments'] })
       ]);
     }}>
-    <div className="p-3 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white truncate flex items-center gap-2">
-            <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-            Admin Command Center
-          </h1>
-          <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400 truncate">Real-time monitoring and system management</p>
+    <div className="p-2 sm:p-3 md:p-6 lg:p-8 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 pb-20 sm:pb-6">
+      <div className="flex flex-col gap-2 sm:gap-3 mb-3 sm:mb-6">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-base sm:text-xl md:text-3xl font-bold text-gray-900 dark:text-white truncate flex items-center gap-1.5 sm:gap-2">
+              <Shield className="w-5 h-5 sm:w-7 sm:h-7 text-blue-600 flex-shrink-0" />
+              Admin Center
+            </h1>
+            <p className="text-[10px] sm:text-xs md:text-sm text-gray-600 dark:text-gray-400 truncate">Real-time monitoring</p>
+          </div>
+          <div className="flex gap-1 bg-slate-200 dark:bg-slate-800 p-0.5 sm:p-1 rounded-lg flex-shrink-0">
+            {[7, 30, 90].map(days => (
+              <Button
+                key={days}
+                size="sm"
+                variant={dateRange === days ? "default" : "ghost"}
+                onClick={() => setDateRange(days)}
+                className="h-7 sm:h-8 px-2 sm:px-3"
+              >
+                <span className="text-[10px] sm:text-xs">{days}d</span>
+              </Button>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-2 flex-wrap w-full sm:w-auto items-center">
+        <div className="flex gap-1.5 sm:gap-2 flex-wrap items-center">
           <Select value={filterProvider} onValueChange={setFilterProvider}>
-            <SelectTrigger className="w-32 h-9">
+            <SelectTrigger className="w-24 sm:w-32 h-8 sm:h-9 text-xs sm:text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -474,29 +489,15 @@ export default function AdminDashboard() {
               <SelectItem value="OT">OT</SelectItem>
             </SelectContent>
           </Select>
-          
           <Button
             onClick={exportData}
             variant="outline"
             size="sm"
-            className="min-h-[36px]"
+            className="h-8 sm:h-9 text-[10px] sm:text-xs px-2 sm:px-3"
           >
-            <Download className="w-4 h-4 mr-2" />
-            <span className="text-xs">Export</span>
+            <Download className="w-3.5 h-3.5 mr-1" />
+            Export
           </Button>
-          <div className="flex gap-1 bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
-            {[7, 30, 90].map(days => (
-              <Button
-                key={days}
-                size="sm"
-                variant={dateRange === days ? "default" : "ghost"}
-                onClick={() => setDateRange(days)}
-                className="min-h-[36px] px-3 shadow-sm"
-              >
-                <span className="text-xs">{days}d</span>
-              </Button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -564,48 +565,48 @@ export default function AdminDashboard() {
       </div>
 
       {/* Secondary Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-3 md:gap-4 mb-3 sm:mb-6">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Shield className="w-4 h-4 text-slate-700 dark:text-slate-400" />
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Compliance</p>
+          <CardContent className="p-2 sm:p-4">
+            <div className="flex items-center gap-1.5 mb-0.5 sm:mb-1">
+              <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-[10px] sm:text-sm font-medium text-slate-600 dark:text-slate-400">Compliance</p>
             </div>
-            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.avgComplianceScore}%</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400">↑ +{stats.avgComplianceImprovement}% avg improvement</p>
+            <p className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.avgComplianceScore}%</p>
+            <p className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400">+{stats.avgComplianceImprovement}% avg</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Target className="w-4 h-4 text-slate-700 dark:text-slate-400" />
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Quality</p>
+          <CardContent className="p-2 sm:p-4">
+            <div className="flex items-center gap-1.5 mb-0.5 sm:mb-1">
+              <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-[10px] sm:text-sm font-medium text-slate-600 dark:text-slate-400">Quality</p>
             </div>
-            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.avgQualityScore}%</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{stats.totalAudits} audits</p>
+            <p className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.avgQualityScore}%</p>
+            <p className="text-[9px] sm:text-xs text-slate-500 dark:text-slate-400">{stats.totalAudits} audits</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <GraduationCap className="w-4 h-4 text-slate-700 dark:text-slate-400" />
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Training</p>
+          <CardContent className="p-2 sm:p-4">
+            <div className="flex items-center gap-1.5 mb-0.5 sm:mb-1">
+              <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-[10px] sm:text-sm font-medium text-slate-600 dark:text-slate-400">Training</p>
             </div>
-            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.totalTrainingCompleted}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{stats.avgTrainingScore}% avg score</p>
+            <p className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.totalTrainingCompleted}</p>
+            <p className="text-[9px] sm:text-xs text-slate-500 dark:text-slate-400">{stats.avgTrainingScore}% avg</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-4 h-4 text-slate-700 dark:text-slate-400" />
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Incidents</p>
+          <CardContent className="p-2 sm:p-4">
+            <div className="flex items-center gap-1.5 mb-0.5 sm:mb-1">
+              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700 dark:text-slate-400" />
+              <p className="text-[10px] sm:text-sm font-medium text-slate-600 dark:text-slate-400">Incidents</p>
             </div>
-            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.totalIncidents}</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400">{stats.criticalIncidents} critical</p>
+            <p className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.totalIncidents}</p>
+            <p className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400">{stats.criticalIncidents} critical</p>
           </CardContent>
         </Card>
       </div>
@@ -645,26 +646,26 @@ export default function AdminDashboard() {
 
       {/* Critical Alerts Banner */}
       {(stats.criticalAlerts > 0 || stats.flaggedAudits > 0 || stats.pendingUsers > 0) && (
-        <Card className="mb-6 bg-slate-200 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-6 h-6 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-1" />
-              <div className="flex-1">
-                <p className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Action Required</p>
-                <div className="space-y-1 text-sm">
+        <Card className="mb-3 sm:mb-6 bg-slate-200 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600">
+          <CardContent className="p-2.5 sm:p-4">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700 dark:text-slate-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-slate-100 mb-1">Action Required</p>
+                <div className="space-y-0.5 text-[10px] sm:text-sm">
                   {stats.criticalAlerts > 0 && (
-                    <p className="text-slate-800 dark:text-slate-200">• {stats.criticalAlerts} critical patient alert{stats.criticalAlerts > 1 ? 's' : ''}</p>
+                    <p className="text-slate-800 dark:text-slate-200">• {stats.criticalAlerts} critical alert{stats.criticalAlerts > 1 ? 's' : ''}</p>
                   )}
                   {stats.flaggedAudits > 0 && (
-                    <p className="text-slate-800 dark:text-slate-200">• {stats.flaggedAudits} flagged compliance audit{stats.flaggedAudits > 1 ? 's' : ''}</p>
+                    <p className="text-slate-800 dark:text-slate-200">• {stats.flaggedAudits} flagged audit{stats.flaggedAudits > 1 ? 's' : ''}</p>
                   )}
                   {stats.pendingUsers > 0 && (
-                    <p className="text-slate-800 dark:text-slate-200">• {stats.pendingUsers} user{stats.pendingUsers > 1 ? 's' : ''} pending approval</p>
+                    <p className="text-slate-800 dark:text-slate-200">• {stats.pendingUsers} pending user{stats.pendingUsers > 1 ? 's' : ''}</p>
                   )}
                 </div>
               </div>
               <Link to={createPageUrl("UserManagement")}>
-                <Button size="sm" className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 text-white">
+                <Button size="sm" className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 text-white h-7 sm:h-8 text-[10px] sm:text-xs px-2 sm:px-3">
                   Review
                 </Button>
               </Link>
@@ -674,59 +675,55 @@ export default function AdminDashboard() {
       )}
 
       {/* Quick Action Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-4 gap-1.5 sm:gap-3 md:gap-4 mb-3 sm:mb-6">
         <Link to={createPageUrl("UserManagement")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-blue-200 bg-blue-50 dark:bg-blue-950 h-full touch-target">
-            <CardContent className="p-3 sm:p-4 text-center">
-              <Users className="w-6 sm:w-8 h-6 sm:h-8 text-blue-600 mx-auto mb-1 sm:mb-2" />
-              <p className="font-medium text-xs sm:text-sm">Manage Users</p>
-              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">{stats.pendingUsers} pending</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border border-blue-200 bg-blue-50 dark:bg-blue-950 h-full active:scale-95">
+            <CardContent className="p-2 sm:p-4 text-center">
+              <Users className="w-5 sm:w-8 h-5 sm:h-8 text-blue-600 mx-auto mb-0.5 sm:mb-2" />
+              <p className="font-medium text-[10px] sm:text-sm leading-tight">Users</p>
             </CardContent>
           </Card>
         </Link>
         <Link to={createPageUrl("AgencyTemplates")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-purple-200 bg-purple-50 dark:bg-purple-950 h-full touch-target">
-            <CardContent className="p-3 sm:p-4 text-center">
-              <FileText className="w-6 sm:w-8 h-6 sm:h-8 text-purple-600 mx-auto mb-1 sm:mb-2" />
-              <p className="font-medium text-xs sm:text-sm">Agency Templates</p>
-              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">Documentation</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border border-purple-200 bg-purple-50 dark:bg-purple-950 h-full active:scale-95">
+            <CardContent className="p-2 sm:p-4 text-center">
+              <FileText className="w-5 sm:w-8 h-5 sm:h-8 text-purple-600 mx-auto mb-0.5 sm:mb-2" />
+              <p className="font-medium text-[10px] sm:text-sm leading-tight">Templates</p>
             </CardContent>
           </Card>
         </Link>
         <Link to={createPageUrl("AuditLog")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-amber-200 bg-amber-50 dark:bg-amber-950 h-full touch-target">
-            <CardContent className="p-3 sm:p-4 text-center">
-              <Shield className="w-6 sm:w-8 h-6 sm:h-8 text-amber-600 mx-auto mb-1 sm:mb-2" />
-              <p className="font-medium text-xs sm:text-sm">Audit Trail</p>
-              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">HIPAA Logs</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border border-amber-200 bg-amber-50 dark:bg-amber-950 h-full active:scale-95">
+            <CardContent className="p-2 sm:p-4 text-center">
+              <Shield className="w-5 sm:w-8 h-5 sm:h-8 text-amber-600 mx-auto mb-0.5 sm:mb-2" />
+              <p className="font-medium text-[10px] sm:text-sm leading-tight">Audit</p>
             </CardContent>
           </Card>
         </Link>
         <Link to={createPageUrl("EnterpriseAdminDashboard")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-green-200 bg-green-50 dark:bg-green-950 h-full touch-target">
-            <CardContent className="p-3 sm:p-4 text-center">
-              <Brain className="w-6 sm:w-8 h-6 sm:h-8 text-green-600 mx-auto mb-1 sm:mb-2" />
-              <p className="font-medium text-xs sm:text-sm">Enterprise</p>
-              <p className="text-[10px] sm:text-xs text-slate-600 mt-1">Agency Settings</p>
+          <Card className="hover:shadow-lg transition-all cursor-pointer border border-green-200 bg-green-50 dark:bg-green-950 h-full active:scale-95">
+            <CardContent className="p-2 sm:p-4 text-center">
+              <Brain className="w-5 sm:w-8 h-5 sm:h-8 text-green-600 mx-auto mb-0.5 sm:mb-2" />
+              <p className="font-medium text-[10px] sm:text-sm leading-tight">Enterprise</p>
             </CardContent>
           </Card>
         </Link>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
-        <div className="w-full overflow-x-auto scrollbar-hide mb-4">
-          <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
-            <TabsTrigger value="overview" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📊 Overview</TabsTrigger>
-            <TabsTrigger value="analytics" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📈 Analytics</TabsTrigger>
-            <TabsTrigger value="agencies" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🏢 Agencies</TabsTrigger>
-            <TabsTrigger value="revenue" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">💰 Revenue</TabsTrigger>
-            <TabsTrigger value="users" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">👥 Users</TabsTrigger>
-            <TabsTrigger value="compliance" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
-            <TabsTrigger value="security" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🔒 Security</TabsTrigger>
-            <TabsTrigger value="training" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
-            <TabsTrigger value="system-health" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">⚡ System</TabsTrigger>
-            <TabsTrigger value="activity" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
-            <TabsTrigger value="export" className="text-[10px] sm:text-xs md:text-sm px-2 py-2 whitespace-nowrap">📥 Export</TabsTrigger>
+      <Tabs defaultValue="overview" className="space-y-3 sm:space-y-6">
+        <div className="w-full overflow-x-auto scrollbar-hide -mx-2 px-2 sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex w-max min-w-full gap-0.5 sm:gap-1 h-auto p-0.5 sm:p-1">
+            <TabsTrigger value="overview" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">📊 Overview</TabsTrigger>
+            <TabsTrigger value="analytics" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">📈 Analytics</TabsTrigger>
+            <TabsTrigger value="agencies" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">🏢 Agencies</TabsTrigger>
+            <TabsTrigger value="revenue" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">💰 Revenue</TabsTrigger>
+            <TabsTrigger value="users" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">👥 Users</TabsTrigger>
+            <TabsTrigger value="compliance" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">🛡️ Compliance</TabsTrigger>
+            <TabsTrigger value="security" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">🔒 Security</TabsTrigger>
+            <TabsTrigger value="training" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
+            <TabsTrigger value="system-health" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">⚡ System</TabsTrigger>
+            <TabsTrigger value="activity" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
+            <TabsTrigger value="export" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">📥 Export</TabsTrigger>
           </TabsList>
         </div>
 
@@ -762,44 +759,36 @@ export default function AdminDashboard() {
             payments={allPayments}
           />
           {/* Revenue Overview Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-3">
            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-             <CardContent className="p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-1 sm:mb-2">
-                 <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600 flex-shrink-0" />
-                </div>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
-                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Monthly Recurring</p>
+             <CardContent className="p-2 sm:p-4">
+                <DollarSign className="w-5 h-5 sm:w-8 sm:h-8 text-green-600 mb-1" />
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(0)}</p>
+                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Monthly Recurring</p>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-1 sm:mb-2">
-                  <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
-                </div>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
-                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Active Subs</p>
+              <CardContent className="p-2 sm:p-4">
+                <CreditCard className="w-5 h-5 sm:w-8 sm:h-8 text-blue-600 mb-1" />
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
+                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Active Subs</p>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-1 sm:mb-2">
-                  <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 flex-shrink-0" />
-                </div>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(2)}</p>
-                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Total Revenue</p>
+              <CardContent className="p-2 sm:p-4">
+                <TrendingUp className="w-5 h-5 sm:w-8 sm:h-8 text-purple-600 mb-1" />
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(0)}</p>
+                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Total Revenue</p>
               </CardContent>
             </Card>
 
             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-1 sm:mb-2">
-                  <Users className="w-6 h-6 sm:w-8 sm:h-8 text-orange-600 flex-shrink-0" />
-                </div>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.avgRevenuePerUser.toFixed(2)}</p>
-                <p className="text-[10px] sm:text-xs text-gray-600 truncate">Avg/User</p>
+              <CardContent className="p-2 sm:p-4">
+                <Users className="w-5 h-5 sm:w-8 sm:h-8 text-orange-600 mb-1" />
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.avgRevenuePerUser.toFixed(0)}</p>
+                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Avg/User</p>
               </CardContent>
             </Card>
           </div>
@@ -1418,15 +1407,15 @@ export default function AdminDashboard() {
           </Card>
 
           {/* Real-Time Monitoring Dashboard */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
             <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-blue-600" />
+              <CardHeader className="p-3 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                  <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                   Security Status
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2 sm:space-y-3 p-3 sm:p-6 pt-0">
                 <div className="flex items-center justify-between p-3 bg-white rounded-lg">
                   <span className="text-sm font-medium">Active Alerts</span>
                   <Badge className={stats.criticalAlerts > 0 ? 'bg-red-600' : 'bg-green-600'}>
@@ -1452,13 +1441,13 @@ export default function AdminDashboard() {
             </Card>
 
             <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <GraduationCap className="w-5 h-5 text-purple-600" />
+              <CardHeader className="p-3 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                  <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                   Training Overview
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2 sm:space-y-3 p-3 sm:p-6 pt-0">
                 <div className="flex items-center justify-between p-3 bg-white rounded-lg">
                   <span className="text-sm font-medium">Completed Modules</span>
                   <Badge className="bg-purple-600">{stats.totalTrainingCompleted}</Badge>
@@ -1481,59 +1470,59 @@ export default function AdminDashboard() {
           </div>
 
           {/* Quick Action Links */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
+          <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-3">
             <Link to={createPageUrl("UserManagement")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full active:scale-95">
-                <CardContent className="p-3 sm:p-4 text-center touch-target flex flex-col items-center justify-center">
-                  <Users className="w-6 h-6 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-1 sm:mb-2" />
-                  <p className="font-medium text-xs sm:text-sm">Users</p>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border border-slate-300 dark:border-slate-600 h-full active:scale-95">
+                <CardContent className="p-2 sm:p-4 text-center flex flex-col items-center justify-center">
+                  <Users className="w-5 h-5 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-0.5 sm:mb-2" />
+                  <p className="font-medium text-[10px] sm:text-sm">Users</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("AdminTrainingManagement")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
-                <CardContent className="p-4 text-center">
-                  <GraduationCap className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Training</p>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border border-slate-300 dark:border-slate-600 h-full active:scale-95">
+                <CardContent className="p-2 sm:p-4 text-center flex flex-col items-center justify-center">
+                  <GraduationCap className="w-5 h-5 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-0.5 sm:mb-2" />
+                  <p className="font-medium text-[10px] sm:text-sm">Training</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("AuditLog")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
-                <CardContent className="p-4 text-center">
-                  <Activity className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Audit Log</p>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border border-slate-300 dark:border-slate-600 h-full active:scale-95">
+                <CardContent className="p-2 sm:p-4 text-center flex flex-col items-center justify-center">
+                  <Activity className="w-5 h-5 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-0.5 sm:mb-2" />
+                  <p className="font-medium text-[10px] sm:text-sm">Audit</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("AgencyTemplates")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
-                <CardContent className="p-4 text-center">
-                  <FileText className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Templates</p>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border border-slate-300 dark:border-slate-600 h-full active:scale-95">
+                <CardContent className="p-2 sm:p-4 text-center flex flex-col items-center justify-center">
+                  <FileText className="w-5 h-5 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-0.5 sm:mb-2" />
+                  <p className="font-medium text-[10px] sm:text-sm">Templates</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to={createPageUrl("EnterpriseAdminDashboard")}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full">
-                <CardContent className="p-4 text-center">
-                  <Shield className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
-                  <p className="font-medium text-sm">Enterprise</p>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border border-slate-300 dark:border-slate-600 h-full active:scale-95">
+                <CardContent className="p-2 sm:p-4 text-center flex flex-col items-center justify-center">
+                  <Shield className="w-5 h-5 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-0.5 sm:mb-2" />
+                  <p className="font-medium text-[10px] sm:text-sm">Enterprise</p>
                 </CardContent>
               </Card>
             </Link>
             <Card
-              className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-slate-300 dark:border-slate-600 h-full"
+              className="hover:shadow-lg transition-shadow cursor-pointer border border-slate-300 dark:border-slate-600 h-full active:scale-95"
               onClick={() => autoFetchGuidelinesMutation.mutate()}
             >
-              <CardContent className="p-4 text-center">
+              <CardContent className="p-2 sm:p-4 text-center flex flex-col items-center justify-center">
                 {autoFetchGuidelinesMutation.isPending ? (
-                  <RefreshCw className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2 animate-spin" />
+                  <RefreshCw className="w-5 h-5 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-0.5 sm:mb-2 animate-spin" />
                 ) : (
-                  <BookOpen className="w-8 h-8 text-slate-700 dark:text-slate-400 mx-auto mb-2" />
+                  <BookOpen className="w-5 h-5 sm:w-8 sm:h-8 text-slate-700 dark:text-slate-400 mx-auto mb-0.5 sm:mb-2" />
                 )}
-                <p className="font-medium text-sm">
-                  {autoFetchGuidelinesMutation.isPending ? 'Updating...' : 'CMS Data'}
+                <p className="font-medium text-[10px] sm:text-sm">
+                  {autoFetchGuidelinesMutation.isPending ? 'Updating' : 'CMS'}
                 </p>
               </CardContent>
             </Card>
@@ -1811,24 +1800,24 @@ export default function AdminDashboard() {
         </TabsContent>
 
         {/* Activity Tab */}
-        <TabsContent value="activity" className="space-y-6">
+        <TabsContent value="activity" className="space-y-3 sm:space-y-6">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-600" />
-                  Recent System Activity
+            <CardHeader className="p-3 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                  <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  System Activity
                 </CardTitle>
-                <div className="relative w-64">
+                <div className="relative w-full sm:w-64">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <Input
-                    placeholder="Search activity..."
+                    placeholder="Search..."
                     value={activitySearch}
                     onChange={(e) => {
                       setActivitySearch(e.target.value);
                       setActivityPage(1);
                     }}
-                    className="pl-9 h-9"
+                    className="pl-9 h-8 sm:h-9 text-sm"
                   />
                 </div>
               </div>
