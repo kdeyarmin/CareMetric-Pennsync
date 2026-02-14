@@ -41,27 +41,20 @@ export default function TrialStatusBanner({ subscription }) {
             </div>
             
             <p className="text-sm text-gray-700 mb-2">
-              Your 14-day free trial ends on <strong>{format(trialEndDate, 'MMMM d, yyyy')}</strong>.
+              Your 14-day free trial {daysRemaining <= 0 ? 'has expired' : <>ends on <strong>{format(trialEndDate, 'MMMM d, yyyy')}</strong></>}.
               {isEndingSoon ? (
-                <span className="text-orange-700 font-medium"> You'll be charged soon unless you cancel.</span>
+                <span className="text-orange-700 font-medium"> Choose a plan to keep access to all features.</span>
               ) : (
-                <span> After that, you'll be automatically charged for your selected plan.</span>
+                <span> After that, you'll need to choose a plan to continue using CareMetric AI.</span>
               )}
             </p>
             
             <div className="flex gap-2 flex-wrap">
-              <Link to={createPageUrl("Billing")}>
+              <Link to={createPageUrl("SubscriptionPlans")}>
                 <Button size="sm" variant={isEndingSoon ? "default" : "outline"}>
-                  Manage Subscription
+                  Choose a Plan
                 </Button>
               </Link>
-              
-              {isEndingSoon && (
-                <p className="text-xs text-gray-600 flex items-center">
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  Cancel anytime before {format(trialEndDate, 'MMM d')} to avoid charges
-                </p>
-              )}
             </div>
           </div>
         </div>

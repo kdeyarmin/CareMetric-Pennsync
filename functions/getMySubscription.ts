@@ -21,7 +21,19 @@ Deno.serve(async (req) => {
 
     console.log('getMySubscription: Found subscriptions:', subscriptions);
 
-    const subscription = subscriptions[0] || null;
+    let subscription = subscriptions[0] || null;
+
+    // Auto-expire trial if past 14 days
+    if (subscription && subscription.status === 'trialing' && subscription.trial_end) {
+      const trialEnd = new Date(subscription.trial_end);
+      if (new Date() > trialEnd) {
+        console.log('[getMySubscription] Trial expired for:', user.email);
+        await base44.asServiceRole.entities.Subscription.update(subscription.id, {
+          status: 'canceled'
+        });
+        subscription = { ...subscription, status: 'canceled' };
+      }
+    }
 
     return Response.json({
       success: true,

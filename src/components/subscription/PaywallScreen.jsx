@@ -98,7 +98,7 @@ export default function PaywallScreen({
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
               <p className="text-white text-lg font-semibold">
-                Full Access • No Credit Card Required • Cancel Anytime
+                Full Access to All Features • No Credit Card Required
               </p>
             </CardContent>
           </Card>

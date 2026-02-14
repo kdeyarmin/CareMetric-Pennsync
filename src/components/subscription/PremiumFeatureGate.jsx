@@ -59,18 +59,16 @@ export default function PremiumFeatureGate({
   // Check if user has access
   const isAdmin = currentUser?.role === 'admin';
   const hasActiveSubscription = subscription && subscription.status === 'active';
-  const hasTrialAccess = allowTrial && subscription && subscription.status === 'trialing';
   const hasLifetimeFree = subscription && subscription.status === 'lifetime_free';
-  const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess || hasLifetimeFree;
   
-  console.log('PremiumFeatureGate: Access check for', featureName);
-  console.log('  - isAdmin:', isAdmin);
-  console.log('  - subscription:', subscription);
-  console.log('  - subscription.status:', subscription?.status);
-  console.log('  - hasActiveSubscription:', hasActiveSubscription);
-  console.log('  - hasTrialAccess:', hasTrialAccess);
-  console.log('  - hasLifetimeFree:', hasLifetimeFree);
-  console.log('  - hasAccess:', hasAccess);
+  // Check trial: must be trialing AND within 14-day window
+  let hasTrialAccess = false;
+  if (allowTrial && subscription && subscription.status === 'trialing' && subscription.trial_end) {
+    const trialEnd = new Date(subscription.trial_end);
+    hasTrialAccess = new Date() <= trialEnd;
+  }
+  
+  const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess || hasLifetimeFree;
 
   // Show paywall if no access
   if (!hasAccess) {
