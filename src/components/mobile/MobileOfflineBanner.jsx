@@ -1,21 +1,51 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WifiOff, RefreshCw, CheckCircle, Database, Loader2 } from "lucide-react";
-import { useOfflineDataManager } from "./OfflineDataManager";
+import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import CollapsibleMobileSection from "./CollapsibleMobileSection";
 
 export default function MobileOfflineBanner() {
-  const { isOnline, isSyncing, pendingSyncCount, lastSync, cachePatients, flushPendingWrites } = useOfflineDataManager();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [caching, setCaching] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
+  const [cachedCount, setCachedCount] = useState(0);
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    
+    // Check last sync time
+    const t = localStorage.getItem("cm_last_full_sync");
+    if (t) setLastSync(new Date(t));
+    
+    // Check cached patients
+    try {
+      const cached = JSON.parse(localStorage.getItem("cm_offline_patients") || "[]");
+      setCachedCount(cached.length);
+    } catch { /* ignore */ }
+    
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
 
   const handleSync = async () => {
     setCaching(true);
     try {
-      const count = await cachePatients();
-      await flushPendingWrites();
-      toast.success(`${count} patients cached for offline use`);
+      const patients = await base44.entities.Patient.list("-updated_date", 100);
+      const slim = patients.map(p => ({
+        id: p.id, first_name: p.first_name, last_name: p.last_name,
+        primary_diagnosis: p.primary_diagnosis, status: p.status,
+        medical_record_number: p.medical_record_number,
+      }));
+      localStorage.setItem("cm_offline_patients", JSON.stringify(slim));
+      const now = new Date();
+      localStorage.setItem("cm_last_full_sync", now.toISOString());
+      setLastSync(now);
+      setCachedCount(slim.length);
+      toast.success(`${slim.length} patients cached for offline use`);
     } catch {
       toast.error("Sync failed");
     } finally {
@@ -27,11 +57,11 @@ export default function MobileOfflineBanner() {
     <CollapsibleMobileSection
       title="Offline & Sync"
       icon={Database}
-      defaultOpen={!isOnline || pendingSyncCount > 0}
+      defaultOpen={!isOnline}
       badge={
         !isOnline ? <Badge className="bg-orange-500 text-white text-[9px] h-4 px-1.5">Offline</Badge> :
-        pendingSyncCount > 0 ? <Badge className="bg-blue-500 text-white text-[9px] h-4 px-1.5">{pendingSyncCount}</Badge> :
-        <Badge className="bg-green-500 text-white text-[9px] h-4 px-1.5">Synced</Badge>
+        cachedCount > 0 ? <Badge className="bg-green-500 text-white text-[9px] h-4 px-1.5">Synced</Badge> :
+        null
       }
     >
       <div className="space-y-3">
@@ -52,20 +82,20 @@ export default function MobileOfflineBanner() {
           )}
         </div>
 
-        {pendingSyncCount > 0 && (
-          <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 p-2 rounded-lg">
-            {pendingSyncCount} change{pendingSyncCount > 1 ? "s" : ""} waiting to sync
+        {cachedCount > 0 && (
+          <div className="text-xs text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950 p-2 rounded-lg">
+            {cachedCount} patient{cachedCount > 1 ? "s" : ""} available offline
           </div>
         )}
 
         <Button
           onClick={handleSync}
-          disabled={!isOnline || caching || isSyncing}
+          disabled={!isOnline || caching}
           size="sm"
           className="w-full h-9 text-xs touch-target"
           variant={isOnline ? "default" : "outline"}
         >
-          {caching || isSyncing ? (
+          {caching ? (
             <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Syncing...</>
           ) : (
             <><RefreshCw className="w-3 h-3 mr-1.5" /> Sync Patient Data</>
