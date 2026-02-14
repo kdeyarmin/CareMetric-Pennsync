@@ -24,8 +24,9 @@ import {
 } from "lucide-react";
 import TimeSavingsWidget from "@/components/dashboard/TimeSavingsWidget";
 import DashboardWidgetCustomizer, { useDashboardWidgets } from "@/components/dashboard/DashboardWidgetCustomizer";
-import OfflinePatientViewer from "@/components/mobile/OfflinePatientViewer";
+import MobileOfflineBanner from "@/components/mobile/MobileOfflineBanner";
 import ProactiveComplianceTraining from "@/components/training/ProactiveComplianceTraining";
+import CollapsibleMobileSection from "@/components/mobile/CollapsibleMobileSection";
 
 export default function Dashboard() {
   const [showCustomizer, setShowCustomizer] = useState(false);
@@ -140,7 +141,7 @@ export default function Dashboard() {
         <DashboardWidgetCustomizer widgets={widgets} setWidgets={setWidgets} onClose={() => setShowCustomizer(false)} />
       )}
 
-      <OfflinePatientViewer userEmail={user?.email} />
+      <MobileOfflineBanner />
 
       {announcements.length > 0 && (
         <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/20">
