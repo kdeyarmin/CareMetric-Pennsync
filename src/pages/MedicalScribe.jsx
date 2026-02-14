@@ -18,6 +18,8 @@ import QuickPatientAddDialog from "../components/patient/QuickPatientAddDialog";
 import NoteTemplateSelector from "../components/smartNote/NoteTemplateSelector";
 import LanguageSelector from "../components/scribe/LanguageSelector";
 import TerminologyGlossaryManager from "../components/scribe/TerminologyGlossaryManager";
+import MobileVoiceRecorder from "../components/mobile/MobileVoiceRecorder";
+import CollapsibleMobileSection from "../components/mobile/CollapsibleMobileSection";
 const commonDiagnoses = [
 "CHF (Congestive Heart Failure)",
 "COPD (Chronic Obstructive Pulmonary Disease)",
@@ -296,10 +298,12 @@ export default function MedicalScribe() {
               )}
 
               {currentUser && (
-              <TerminologyGlossaryManager
-                userEmail={currentUser.email}
-                selectedLanguage={selectedLanguage}
-              />
+              <CollapsibleMobileSection title="Terminology" icon={FileText}>
+                <TerminologyGlossaryManager
+                  userEmail={currentUser.email}
+                  selectedLanguage={selectedLanguage}
+                />
+              </CollapsibleMobileSection>
               )}
               </div>
 
