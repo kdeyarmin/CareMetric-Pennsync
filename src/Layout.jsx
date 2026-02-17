@@ -23,7 +23,8 @@ import {
   Shield,
   UserCog,
   Building2,
-  Send
+  Send,
+  Clock
 } from "lucide-react";
 
 export default function Layout({ children, currentPageName }) {
@@ -61,6 +62,7 @@ export default function Layout({ children, currentPageName }) {
          { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
          { name: "OASIS", icon: FileText, page: "OASIS" },
          { name: "Send a Fax", icon: Send, page: "SendFax" },
+         { name: "Fax Queue", icon: Clock, page: "FaxQueue" },
        ]
      },
     {
