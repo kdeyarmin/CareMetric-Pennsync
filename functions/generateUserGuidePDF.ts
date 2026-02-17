@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
       addNewPageIfNeeded(40);
       doc.setFontSize(size);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 64, 175);
+      doc.setTextColor(59, 130, 246);
       doc.text(text, margin, y);
       y += size * 0.5 + 4;
     };
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       addNewPageIfNeeded(25);
       doc.setFontSize(size);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(51, 65, 85);
+      doc.setTextColor(30, 64, 175);
       doc.text(text, margin, y);
       y += size * 0.45 + 3;
     };
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
       addNewPageIfNeeded(20);
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 64, 175);
+      doc.setTextColor(59, 130, 246);
       doc.text(`Step ${number}:`, margin + 2, y);
       doc.setTextColor(51, 65, 85);
       doc.text(title, margin + 22, y);
@@ -112,13 +112,13 @@ Deno.serve(async (req) => {
     const addTipBox = (text) => {
       addNewPageIfNeeded(25);
       doc.setFillColor(239, 246, 255);
-      doc.setDrawColor(147, 197, 253);
+      doc.setDrawColor(59, 130, 246);
       const lines = doc.splitTextToSize(text, contentWidth - 16);
       const boxHeight = lines.length * 5 + 10;
       doc.roundedRect(margin, y - 2, contentWidth, boxHeight, 3, 3, 'FD');
       doc.setFontSize(9);
       doc.setFont('helvetica', 'italic');
-      doc.setTextColor(30, 64, 175);
+      doc.setTextColor(59, 130, 246);
       doc.text('💡 Tip:', margin + 5, y + 5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
@@ -129,7 +129,8 @@ Deno.serve(async (req) => {
     };
 
     // ============ COVER PAGE ============
-    doc.setFillColor(30, 64, 175);
+    // Brand color: #3b82f6 = rgb(59, 130, 246), header gradient end #1e40af = rgb(30, 64, 175)
+    doc.setFillColor(59, 130, 246);
     doc.rect(0, 0, pageWidth, 100, 'F');
     doc.setFontSize(28);
     doc.setFont('helvetica', 'bold');
