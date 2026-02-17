@@ -57,6 +57,7 @@ import DeleteAccount from './pages/DeleteAccount';
 import Documentation from './pages/Documentation';
 import EULA from './pages/EULA';
 import FAQ from './pages/FAQ';
+import FaxQueue from './pages/FaxQueue';
 import MedicalScribe from './pages/MedicalScribe';
 import MySubscription from './pages/MySubscription';
 import OASIS from './pages/OASIS';
@@ -65,6 +66,7 @@ import PatientDetails from './pages/PatientDetails';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import SendFax from './pages/SendFax';
 import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import SubscriptionPlans from './pages/SubscriptionPlans';
@@ -73,8 +75,7 @@ import Tasks from './pages/Tasks';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import SendFax from './pages/SendFax';
-import FaxQueue from './pages/FaxQueue';
+import DocumentLibrary from './pages/DocumentLibrary';
 import __Layout from './Layout.jsx';
 
 
@@ -89,6 +90,7 @@ export const PAGES = {
     "Documentation": Documentation,
     "EULA": EULA,
     "FAQ": FAQ,
+    "FaxQueue": FaxQueue,
     "MedicalScribe": MedicalScribe,
     "MySubscription": MySubscription,
     "OASIS": OASIS,
@@ -97,6 +99,7 @@ export const PAGES = {
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
     "PrivacyPolicy": PrivacyPolicy,
+    "SendFax": SendFax,
     "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
     "SubscriptionPlans": SubscriptionPlans,
@@ -105,8 +108,7 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "SendFax": SendFax,
-    "FaxQueue": FaxQueue,
+    "DocumentLibrary": DocumentLibrary,
 }
 
 export const pagesConfig = {
