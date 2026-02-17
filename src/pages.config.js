@@ -77,6 +77,7 @@ import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
 import DocumentLibrary from './pages/DocumentLibrary';
 import PHIVault from './pages/PHIVault';
+import EnterpriseAnalytics from './pages/EnterpriseAnalytics';
 import __Layout from './Layout.jsx';
 
 
@@ -111,6 +112,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "DocumentLibrary": DocumentLibrary,
     "PHIVault": PHIVault,
+    "EnterpriseAnalytics": EnterpriseAnalytics,
 }
 
 export const pagesConfig = {
