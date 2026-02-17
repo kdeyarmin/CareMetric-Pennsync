@@ -13,14 +13,16 @@ import {
   Shield,
   TrendingUp,
   Brain,
-  ArrowRight
+  ArrowRight,
+  AlertCircle
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function PaywallScreen({ 
   featureName = "Premium Feature",
   featureDescription = "This feature requires an active subscription to CareMetric AI.",
-  compact = false 
+  compact = false,
+  trialExpired = false
 }) {
   const benefits = [
     { icon: Brain, text: "AI-powered documentation", color: "text-blue-600" },
@@ -44,12 +46,12 @@ export default function PaywallScreen({
           <h3 className="text-xl font-bold text-gray-900 mb-2">{featureName}</h3>
           <p className="text-gray-600 mb-4">{featureDescription}</p>
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Clock className="w-4 h-4 text-green-600" />
-            <span className="text-sm font-semibold text-green-800">14-Day Free Trial Available</span>
+            <AlertCircle className="w-4 h-4 text-orange-600" />
+            <span className="text-sm font-semibold text-orange-800">Your free trial has ended — subscribe to continue</span>
           </div>
-          <Link to={createPageUrl("Pricing")}>
+          <Link to={createPageUrl("SubscriptionPlans")}>
             <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
-              View Pricing & Start Trial
+              Choose a Plan
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </Link>
@@ -84,22 +86,21 @@ export default function PaywallScreen({
           </p>
         </div>
 
-        {/* Trial Banner */}
+        {/* Trial Expired / Subscribe Banner */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           className="mb-8"
         >
-          <Card className="border-0 bg-gradient-to-r from-green-400 to-emerald-500 shadow-2xl">
+          <Card className="border-0 bg-gradient-to-r from-orange-400 to-red-500 shadow-2xl">
             <CardContent className="p-6 text-center">
               <div className="flex items-center justify-center gap-2 mb-2">
-                <Sparkles className="w-6 h-6 text-white" />
-                <span className="text-2xl font-extrabold text-white">14-Day Free Trial</span>
-                <Sparkles className="w-6 h-6 text-white" />
+                <AlertCircle className="w-6 h-6 text-white" />
+                <span className="text-2xl font-extrabold text-white">Your Free Trial Has Ended</span>
               </div>
               <p className="text-white text-lg font-semibold">
-                Full Access to All Features • No Credit Card Required
+                Subscribe now to regain full access to all CareMetric AI features
               </p>
             </CardContent>
           </Card>
@@ -127,7 +128,7 @@ export default function PaywallScreen({
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {plans.map((plan, idx) => (
             <motion.div
               key={plan.name}
@@ -173,9 +174,9 @@ export default function PaywallScreen({
           transition={{ delay: 0.9 }}
           className="flex flex-col sm:flex-row gap-4 justify-center"
         >
-          <Link to={createPageUrl("Pricing")}>
+          <Link to={createPageUrl("SubscriptionPlans")}>
             <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-lg px-8 py-6">
-              View All Plans & Start Trial
+              Choose a Plan & Subscribe
               <ArrowRight className="w-5 h-5 ml-2" />
             </Button>
           </Link>
