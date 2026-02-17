@@ -148,24 +148,24 @@ export default function Layout({ children, currentPageName }) {
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           }`}
         >
-          <div className="p-4 border-b border-slate-200/40 dark:border-slate-700/40">
+          <div className="p-4 pb-3 border-b border-slate-200/40 dark:border-slate-700/40">
             <div className="flex items-center gap-2">
                     <img 
                       src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/879f7eecc_caremetric_ai_logo-removebg-preview.png" 
                       alt="CareMetric AI" 
                       className="h-8 w-8 rounded-lg shadow-sm"
                     />
-                    <span className="hidden sm:inline font-bold text-blue-900">{displayPageName}</span>
+                    <span className="hidden sm:inline font-bold text-sm text-blue-900">{displayPageName}</span>
                   </div>
           </div>
           {user?.email && <FavoritesBar userEmail={user.email} />}
-          <nav className="p-4 space-y-6">
+          <nav className="p-4 space-y-5">
             {navigationGroups.map((group) => (
               <div key={group.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
                   {group.title}
                 </h3>
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {group.items.map((item) => {
                     const isActive = displayPageName === item.name;
                     return (
@@ -173,7 +173,7 @@ export default function Layout({ children, currentPageName }) {
                         key={item.page} 
                         to={createPageUrl(item.page)} 
                         onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 border-l-4 ${
+                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 border-l-4 ${
                           isActive
                             ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                             : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
@@ -190,10 +190,10 @@ export default function Layout({ children, currentPageName }) {
             
             {enterpriseNavigationGroup && (
               <div key={enterpriseNavigationGroup.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
                   {enterpriseNavigationGroup.title}
                 </h3>
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {enterpriseNavigationGroup.items.map((item) => {
                     const isActive = displayPageName === item.name;
                     return (
@@ -201,7 +201,7 @@ export default function Layout({ children, currentPageName }) {
                         key={item.page} 
                         to={createPageUrl(item.page)} 
                         onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 border-l-4 ${
+                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 border-l-4 ${
                           isActive
                             ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                             : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
@@ -218,10 +218,10 @@ export default function Layout({ children, currentPageName }) {
 
             {adminNavigationGroup && (
               <div key={adminNavigationGroup.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
                   {adminNavigationGroup.title}
                 </h3>
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {adminNavigationGroup.items.map((item) => {
                      const isActive = displayPageName === item.name;
                      return (
@@ -229,7 +229,7 @@ export default function Layout({ children, currentPageName }) {
                          key={item.page} 
                          to={createPageUrl(item.page)} 
                          onClick={() => setSidebarOpen(false)}
-                         className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 border-l-4 ${
+                         className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 border-l-4 ${
                            isActive
                              ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                              : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
