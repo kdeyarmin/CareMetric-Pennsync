@@ -283,6 +283,8 @@ export default function SendFax() {
               userEmail={currentUser?.email}
               coverData={coverData}
               onCoverDataChange={setCoverData}
+              recipientName={recipientName}
+              recipientFax={recipientFax}
             />
           )}
 

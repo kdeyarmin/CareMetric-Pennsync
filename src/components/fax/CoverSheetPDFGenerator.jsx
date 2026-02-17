@@ -1,7 +1,22 @@
 import { jsPDF } from "jspdf";
-import { HIPAA_NOTICE, URGENCY_LABELS } from "./FaxCoverSheet";
+import { HIPAA_NOTICE, URGENCY_LABELS, resolvePlaceholders } from "./FaxCoverSheet";
 
 export async function generateCoverSheetPDF(coverData, recipientName, recipientFax) {
+  // Resolve any placeholders in subject and message
+  const placeholderContext = {
+    recipientName,
+    recipientFax,
+    senderName: coverData.sender_name,
+    senderCompany: coverData.sender_company,
+    senderPhone: coverData.sender_phone
+  };
+  const resolvedData = {
+    ...coverData,
+    subject: resolvePlaceholders(coverData.subject, placeholderContext),
+    message: resolvePlaceholders(coverData.message, placeholderContext),
+    sender_name: resolvePlaceholders(coverData.sender_name, placeholderContext),
+    sender_company: resolvePlaceholders(coverData.sender_company, placeholderContext),
+  };
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 50;
@@ -52,29 +67,29 @@ export async function generateCoverSheetPDF(coverData, recipientName, recipientF
   doc.setFont('helvetica', 'bold');
   doc.text('FROM:', margin, y);
   doc.setFont('helvetica', 'normal');
-  doc.text(coverData.sender_name || 'N/A', margin + 60, y);
+  doc.text(resolvedData.sender_name || 'N/A', margin + 60, y);
   y += 18;
-  if (coverData.sender_company) {
+  if (resolvedData.sender_company) {
     doc.setFont('helvetica', 'bold');
     doc.text('COMPANY:', margin, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(coverData.sender_company, margin + 80, y);
+    doc.text(resolvedData.sender_company, margin + 80, y);
     y += 18;
   }
-  if (coverData.sender_phone) {
+  if (resolvedData.sender_phone) {
     doc.setFont('helvetica', 'bold');
     doc.text('PHONE:', margin, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(coverData.sender_phone, margin + 60, y);
+    doc.text(resolvedData.sender_phone, margin + 60, y);
     y += 18;
   }
   y += 35;
 
   // Subject
-  if (coverData.subject) {
+  if (resolvedData.subject) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('RE: ' + coverData.subject, margin, y);
+    doc.text('RE: ' + resolvedData.subject, margin, y);
     y += 25;
   }
 
@@ -84,16 +99,16 @@ export async function generateCoverSheetPDF(coverData, recipientName, recipientF
   y += 20;
 
   // Message
-  if (coverData.message) {
+  if (resolvedData.message) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
-    const lines = doc.splitTextToSize(coverData.message, pageWidth - (2 * margin));
+    const lines = doc.splitTextToSize(resolvedData.message, pageWidth - (2 * margin));
     doc.text(lines, margin, y);
     y += lines.length * 16 + 20;
   }
 
   // HIPAA Notice
-  if (coverData.include_hipaa) {
+  if (resolvedData.include_hipaa) {
     if (y > 600) {
       doc.addPage();
       y = 50;
