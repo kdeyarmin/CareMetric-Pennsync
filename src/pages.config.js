@@ -74,6 +74,7 @@ import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
 import SendFax from './pages/SendFax';
+import FaxQueue from './pages/FaxQueue';
 import __Layout from './Layout.jsx';
 
 
@@ -105,6 +106,7 @@ export const PAGES = {
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
     "SendFax": SendFax,
+    "FaxQueue": FaxQueue,
 }
 
 export const pagesConfig = {
