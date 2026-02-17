@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { to_fax_number, media_urls, cover_page_html, fax_history_id, from_fax_number } = body;
+    const { to_fax_number, media_urls, cover_page_html, fax_history_id, from_fax_number, document_name, patient_id, priority } = body;
 
     if (!to_fax_number) {
       return Response.json({ error: 'Fax number is required' }, { status: 400 });
@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Fax service not configured' }, { status: 500 });
     }
 
-    // Format the fax number - ensure it starts with +1 for US
+    // Format the fax number
     let formattedNumber = to_fax_number.replace(/[^\d+]/g, '');
     if (!formattedNumber.startsWith('+')) {
       if (formattedNumber.length === 10) {
@@ -39,11 +39,33 @@ Deno.serve(async (req) => {
 
     console.log('[sendFax] Sending fax to:', formattedNumber, 'with', media_urls.length, 'documents');
 
-    // Update fax history to sending
+    // AI priority detection if not manually set
+    let detectedPriority = priority || 'normal';
+    let priorityReason = '';
+    if (!priority) {
+      try {
+        const priorityResult = await base44.asServiceRole.functions.invoke('analyzeFaxPriority', {
+          document_name: document_name || '',
+          cover_page_details: body.cover_page_details || {},
+          recipient_name: body.recipient_name || '',
+          sender_name: user.full_name || ''
+        });
+        if (priorityResult?.data?.priority) {
+          detectedPriority = priorityResult.data.priority;
+          priorityReason = priorityResult.data.reason || '';
+        }
+      } catch (e) {
+        console.warn('[sendFax] Priority detection failed (non-blocking):', e.message);
+      }
+    }
+
+    // Update fax history to sending with priority
     if (fax_history_id) {
       try {
         await base44.asServiceRole.entities.FaxHistory.update(fax_history_id, { 
-          status: 'sending' 
+          status: 'sending',
+          priority: detectedPriority,
+          priority_reason: priorityReason
         });
       } catch (e) {
         console.error('[sendFax] Failed to update history status:', e.message);
@@ -58,10 +80,9 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        connection_id: '', // Will use default
         to: formattedNumber,
-        from: from_fax_number || '+18445550100', // Use personal fax number if provided
-        media_url: media_urls[0], // Telnyx accepts one media_url per fax
+        from: from_fax_number || '+18445550100',
+        media_url: media_urls[0],
         quality: 'high',
         monochrome: false
       })
@@ -75,7 +96,6 @@ Deno.serve(async (req) => {
       const errorMsg = telnyxData?.errors?.[0]?.detail || telnyxData?.error?.message || 'Failed to send fax';
       console.error('[sendFax] Telnyx error:', errorMsg);
       
-      // Update history with failure
       if (fax_history_id) {
         try {
           await base44.asServiceRole.entities.FaxHistory.update(fax_history_id, { 
@@ -87,7 +107,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Send notification for failed fax
+      // Send failure notification
       try {
         await base44.asServiceRole.functions.invoke('sendFaxNotification', {
           user_email: user.email,
@@ -118,7 +138,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send notification for successful fax
+    // Send success notification
     try {
       await base44.asServiceRole.functions.invoke('sendFaxNotification', {
         user_email: user.email,
@@ -131,9 +151,45 @@ Deno.serve(async (req) => {
       console.error('[sendFax] Notification failed (non-blocking):', notifErr.message);
     }
 
+    // Queue OCR processing
+    if (fax_history_id) {
+      try {
+        await base44.asServiceRole.functions.invoke('processFaxOCR', {
+          fax_log_id: fax_history_id,
+          document_url: media_urls[0]
+        });
+      } catch (e) {
+        console.warn('[sendFax] OCR queue failed (non-blocking):', e.message);
+      }
+    }
+
+    // Log user activity
+    try {
+      await base44.asServiceRole.entities.UserActivity.create({
+        user_email: user.email,
+        user_name: user.full_name || '',
+        action: 'fax_sent',
+        details: {
+          recipient: to_fax_number,
+          recipient_name: body.recipient_name || '',
+          document_count: media_urls.length,
+          priority: detectedPriority,
+          fax_history_id: fax_history_id || '',
+          telnyx_fax_id: faxId,
+          estimated_cost_cents: media_urls.length * 7 // ~$0.07 per page estimate
+        },
+        page: 'SendFax',
+        entity_type: 'FaxHistory',
+        entity_id: fax_history_id || ''
+      });
+    } catch (e) {
+      console.warn('[sendFax] Activity log failed (non-blocking):', e.message);
+    }
+
     return Response.json({ 
       success: true, 
       fax_id: faxId,
+      priority: detectedPriority,
       message: 'Fax sent successfully'
     });
 
