@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import MobileFieldToolbar from "@/components/mobile/MobileFieldToolbar";
+import FaxNotificationBell from "@/components/fax/FaxNotificationBell";
 import {
   Home,
   Users,
@@ -113,6 +114,7 @@ export default function Layout({ children, currentPageName }) {
             />
           </div>
           <div className="flex items-center gap-2">
+            {user?.email && <FaxNotificationBell userEmail={user.email} />}
             <span className="text-xs sm:text-sm font-medium text-blue-900 hidden sm:block">
               {displayPageName}
             </span>

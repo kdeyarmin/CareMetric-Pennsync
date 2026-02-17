@@ -24,6 +24,7 @@ import SecurityAuditLog from "../components/security/SecurityAuditLog";
 import AgencyCodeInput from "../components/settings/AgencyCodeInput";
 import AgencyCodeManager from "../components/settings/AgencyCodeManager";
 import NotificationPreferences from "../components/settings/NotificationPreferences";
+import FaxNotificationSettings from "../components/settings/FaxNotificationSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Settings() {
@@ -432,6 +433,7 @@ export default function Settings() {
 
         <TabsContent value="notifications" className="space-y-3 sm:space-y-4 md:space-y-6">
            <NotificationPreferences currentUser={currentUser} />
+           <FaxNotificationSettings currentUser={currentUser} />
          </TabsContent>
 
          <TabsContent value="security" className="space-y-3 sm:space-y-4 md:space-y-6">
