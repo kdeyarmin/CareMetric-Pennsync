@@ -3,47 +3,116 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Camera, FileText, X, Loader2, Image, File } from "lucide-react";
+import { Upload, Camera, FileText, X, Loader2, Image, File, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
+import DocumentAnalysisResult from "./DocumentAnalysisResult";
 
-export default function FaxDocumentUploader({ documents, onDocumentsChange }) {
+export default function FaxDocumentUploader({ documents, onDocumentsChange, onDocumentAnalysis }) {
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [analyzingIndex, setAnalyzingIndex] = useState(null);
+  const [expandedAnalysis, setExpandedAnalysis] = useState({});
+
+  const analyzeDocument = async (docUrl, docIndex) => {
+    setAnalyzingIndex(docIndex);
+    try {
+      const res = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are a medical document analysis AI. Analyze the attached document and extract key entities and metadata. Be accurate — leave fields as empty strings if not found. Do NOT guess.
+
+Extract:
+- patient_name: Full name of the patient
+- patient_dob: Date of birth
+- mrn: Medical record number
+- provider_name: Ordering/referring/treating provider
+- document_type: Specific type (e.g. "Lab Results", "Referral Letter", "Discharge Summary", "Progress Note", "Prescription", "Imaging Report", "Consent Form", "Insurance Authorization", "Operative Report", "Medical Records Request")
+- category: Broad category for filing (e.g. "Lab Results", "Referral", "Discharge Summary", "Progress Note", "Medical Records", "Prescription", "Insurance", "Consent Form", "Imaging Report", "Operative Report")
+- date_of_service: Date of service or report date
+- diagnosis: Primary diagnosis if present
+- suggested_name: A concise descriptive filename (e.g. "Smith_John_Lab_Results_2026-02-17.pdf")
+- tags: Array of 2-5 short keyword tags for searchability (e.g. ["CBC", "labs", "diabetes", "Dr. Johnson"])
+- confidence: Your confidence level 0-100 in the extraction accuracy
+- summary: One-sentence summary of the document`,
+        file_urls: [docUrl],
+        response_json_schema: {
+          type: "object",
+          properties: {
+            patient_name: { type: "string" },
+            patient_dob: { type: "string" },
+            mrn: { type: "string" },
+            provider_name: { type: "string" },
+            document_type: { type: "string" },
+            category: { type: "string" },
+            date_of_service: { type: "string" },
+            diagnosis: { type: "string" },
+            suggested_name: { type: "string" },
+            tags: { type: "array", items: { type: "string" } },
+            confidence: { type: "number" },
+            summary: { type: "string" }
+          }
+        }
+      });
+
+      // Update the document with analysis
+      const updatedDocs = [...documents];
+      updatedDocs[docIndex] = { ...updatedDocs[docIndex], analysis: res };
+      onDocumentsChange(updatedDocs);
+      setExpandedAnalysis(prev => ({ ...prev, [docIndex]: true }));
+
+      // Notify parent if callback provided
+      if (onDocumentAnalysis) onDocumentAnalysis(docIndex, res);
+
+      toast.success("Document analyzed");
+    } catch (err) {
+      console.error("Document analysis error:", err);
+      toast.error("Failed to analyze document");
+    } finally {
+      setAnalyzingIndex(null);
+    }
+  };
 
   const uploadFile = async (file) => {
     setUploading(true);
     try {
+      let newDoc;
       // If it's an image, convert to PDF
       if (file.type.startsWith('image/')) {
         const pdfFile = await convertImageToPDF(file);
         const { file_url } = await base44.integrations.Core.UploadFile({ file: pdfFile });
-        onDocumentsChange([...documents, {
+        newDoc = {
           name: file.name.replace(/\.[^.]+$/, '.pdf'),
           url: file_url,
           type: 'pdf',
           originalType: 'image',
           size: pdfFile.size
-        }]);
+        };
         toast.success("Photo converted to PDF and uploaded");
       } else if (file.type === 'application/pdf') {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        onDocumentsChange([...documents, {
+        newDoc = {
           name: file.name,
           url: file_url,
           type: 'pdf',
           originalType: 'pdf',
           size: file.size
-        }]);
+        };
         toast.success("PDF uploaded");
       } else {
         toast.error("Please upload a PDF or image file");
+        setUploading(false);
+        return;
       }
+
+      const newDocs = [...documents, newDoc];
+      onDocumentsChange(newDocs);
+
+      // Auto-analyze after upload
+      setUploading(false);
+      analyzeDocument(newDoc.url, newDocs.length - 1);
     } catch (error) {
       console.error("Upload error:", error);
       toast.error("Failed to upload file");
-    } finally {
       setUploading(false);
     }
   };
@@ -80,6 +149,22 @@ export default function FaxDocumentUploader({ documents, onDocumentsChange }) {
 
   const removeDocument = (index) => {
     onDocumentsChange(documents.filter((_, i) => i !== index));
+    setExpandedAnalysis(prev => {
+      const next = {};
+      Object.keys(prev).forEach(k => {
+        const ki = parseInt(k);
+        if (ki < index) next[ki] = prev[k];
+        else if (ki > index) next[ki - 1] = prev[k];
+      });
+      return next;
+    });
+  };
+
+  const applyRename = (index, newName) => {
+    const updatedDocs = [...documents];
+    updatedDocs[index] = { ...updatedDocs[index], name: newName };
+    onDocumentsChange(updatedDocs);
+    toast.success("Document renamed");
   };
 
   const formatSize = (bytes) => {
@@ -114,26 +199,60 @@ export default function FaxDocumentUploader({ documents, onDocumentsChange }) {
         </div>
 
         {documents.length > 0 && (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {documents.map((doc, index) => (
-              <div key={index} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border">
-                {doc.originalType === 'image' ? (
-                  <Image className="w-4 h-4 text-green-600 flex-shrink-0" />
-                ) : (
-                  <File className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{doc.name}</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-500">{formatSize(doc.size)}</span>
-                    {doc.originalType === 'image' && (
-                      <Badge className="text-[8px] px-1 py-0 bg-green-100 text-green-700">From photo</Badge>
+              <div key={index} className="bg-slate-50 rounded-lg border overflow-hidden">
+                <div className="flex items-center gap-2 p-2">
+                  {doc.originalType === 'image' ? (
+                    <Image className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  ) : (
+                    <File className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{doc.name}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500">{formatSize(doc.size)}</span>
+                      {doc.originalType === 'image' && (
+                        <Badge className="text-[8px] px-1 py-0 bg-green-100 text-green-700">From photo</Badge>
+                      )}
+                      {doc.analysis?.category && (
+                        <Badge className="text-[8px] px-1 py-0 bg-purple-100 text-purple-700">{doc.analysis.category}</Badge>
+                      )}
+                      {analyzingIndex === index && (
+                        <Badge className="text-[8px] px-1 py-0 bg-purple-50 text-purple-600 animate-pulse">
+                          <Sparkles className="w-2 h-2 mr-0.5" /> Analyzing...
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {!doc.analysis && analyzingIndex !== index && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        title="Analyze document"
+                        onClick={() => analyzeDocument(doc.url, index)}
+                      >
+                        <Sparkles className="w-3 h-3 text-purple-500" />
+                      </Button>
                     )}
+                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeDocument(index)}>
+                      <X className="w-3 h-3 text-red-500" />
+                    </Button>
                   </div>
                 </div>
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeDocument(index)}>
-                  <X className="w-3 h-3 text-red-500" />
-                </Button>
+                {/* Analysis result inline */}
+                {doc.analysis && (
+                  <div className="px-2 pb-2">
+                    <DocumentAnalysisResult
+                      analysis={doc.analysis}
+                      expanded={expandedAnalysis[index]}
+                      onToggle={() => setExpandedAnalysis(prev => ({ ...prev, [index]: !prev[index] }))}
+                      onApplyName={(name) => applyRename(index, name)}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
