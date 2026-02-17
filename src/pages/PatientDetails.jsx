@@ -76,7 +76,7 @@ import OptimalCommunicationAdvisor from "../components/coordination/OptimalCommu
 import PatientEducationGenerator from "../components/documents/PatientEducationGenerator";
 import ProgressReportGenerator from "../components/documents/ProgressReportGenerator";
 import ClinicalNoteReviewer from "../components/review/ClinicalNoteReviewer";
-import { Sparkles, FileOutput, GraduationCap, TrendingUp, Brain } from "lucide-react";
+import { Sparkles, FileOutput, GraduationCap, TrendingUp, Brain, MessageSquare } from "lucide-react";
 import PredictiveAnalyticsPanel from "../components/oasis/PredictiveAnalyticsPanel";
 import PatientChartRecommendations from "../components/patient/PatientChartRecommendations";
 import AIPatientAnalyzer from "../components/patient/AIPatientAnalyzer";
@@ -102,6 +102,7 @@ import AIComplianceCarePlanSuggester from "../components/compliance/AICompliance
 import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
 import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import PatientDocumentsModule from "../components/patient/PatientDocumentsModule";
+import PatientMessagingPanel from "../components/messaging/PatientMessagingPanel";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -938,6 +939,10 @@ export default function PatientDetails() {
                     <FolderOpen className="w-3 h-3" />
                     <span>Files</span>
                   </TabsTrigger>
+                  <TabsTrigger value="messaging" className="flex items-center justify-center gap-1 text-xs py-2 whitespace-nowrap shrink-0">
+                    <MessageSquare className="w-3 h-3" />
+                    <span>Messages</span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -1293,6 +1298,15 @@ export default function PatientDetails() {
                     </div>
                   </ScrollArea>
                 )}
+              </TabsContent>
+
+              {/* Messaging Tab */}
+              <TabsContent value="messaging">
+                <PatientMessagingPanel
+                  patientId={patientId}
+                  currentUser={currentUser}
+                  patientName={`${patient.first_name} ${patient.last_name}`}
+                />
               </TabsContent>
 
               {/* Patient Documents (Files) Tab */}

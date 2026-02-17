@@ -66,6 +66,7 @@ export default function Layout({ children, currentPageName }) {
          { name: "Send a Fax", icon: Send, page: "SendFax" },
          { name: "Fax Queue", icon: Clock, page: "FaxQueue" },
          { name: "Doc Library", icon: FileText, page: "DocumentLibrary" },
+         { name: "Messages", icon: Send, page: "SecureMessaging" },
        ]
      },
     {
