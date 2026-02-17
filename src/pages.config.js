@@ -78,6 +78,7 @@ import UserManagement from './pages/UserManagement';
 import DocumentLibrary from './pages/DocumentLibrary';
 import PHIVault from './pages/PHIVault';
 import EnterpriseAnalytics from './pages/EnterpriseAnalytics';
+import SecureMessaging from './pages/SecureMessaging';
 import __Layout from './Layout.jsx';
 
 
@@ -113,6 +114,7 @@ export const PAGES = {
     "DocumentLibrary": DocumentLibrary,
     "PHIVault": PHIVault,
     "EnterpriseAnalytics": EnterpriseAnalytics,
+    "SecureMessaging": SecureMessaging,
 }
 
 export const pagesConfig = {
