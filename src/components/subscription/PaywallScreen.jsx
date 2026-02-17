@@ -30,9 +30,10 @@ export default function PaywallScreen({
   ];
 
   const plans = [
-    { name: "Monthly", price: "$39.99", interval: "/month", popular: false },
-    { name: "Semi-Annual", price: "$209.99", interval: "/6 months", popular: true, save: "Save 13%" },
-    { name: "Annual", price: "$349.99", interval: "/year", popular: false, save: "Save 27%" }
+    { name: "Monthly", price: "$29.99", interval: "/month", popular: false },
+    { name: "3 Months", price: "$81.99", interval: "/3 months", popular: false, save: "Save 9%" },
+    { name: "6 Months", price: "$149.99", interval: "/6 months", popular: true, save: "Save 17%" },
+    { name: "Annual", price: "$264.99", interval: "/year", popular: false, save: "Save 26%" }
   ];
 
   if (compact) {

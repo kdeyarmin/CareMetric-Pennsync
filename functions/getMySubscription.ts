@@ -12,26 +12,45 @@ Deno.serve(async (req) => {
 
     console.log('[getMySubscription] Fetching subscription for:', user.email);
 
-    console.log('getMySubscription: Fetching subscription for user:', user.email);
-
     // Use service role to bypass RLS and get user's subscription
     const subscriptions = await base44.asServiceRole.entities.Subscription.filter({
       user_email: user.email
     });
 
-    console.log('getMySubscription: Found subscriptions:', subscriptions);
-
     let subscription = subscriptions[0] || null;
 
-    // Auto-expire trial if past 14 days
-    if (subscription && subscription.status === 'trialing' && subscription.trial_end) {
+    // If no subscription exists at all, auto-create a 14-day trial as safety net
+    // This handles edge cases where onUserSignup trial creation failed
+    if (!subscription) {
+      console.log('[getMySubscription] No subscription found, auto-creating trial for:', user.email);
+      const trialEndDate = new Date();
+      trialEndDate.setDate(trialEndDate.getDate() + 14);
+
+      subscription = await base44.asServiceRole.entities.Subscription.create({
+        user_email: user.email,
+        status: 'trialing',
+        trial_start: new Date().toISOString(),
+        trial_end: trialEndDate.toISOString(),
+        plan_name: '14-Day Free Trial - Full Access',
+        monthly_amount: 0
+      });
+      console.log('[getMySubscription] Trial auto-created for:', user.email);
+
+      return Response.json({
+        success: true,
+        subscription: subscription
+      });
+    }
+
+    // Auto-expire trial if past trial_end date
+    if (subscription.status === 'trialing' && subscription.trial_end) {
       const trialEnd = new Date(subscription.trial_end);
       if (new Date() > trialEnd) {
         console.log('[getMySubscription] Trial expired for:', user.email);
         await base44.asServiceRole.entities.Subscription.update(subscription.id, {
-          status: 'canceled'
+          status: 'expired'
         });
-        subscription = { ...subscription, status: 'canceled' };
+        subscription = { ...subscription, status: 'expired' };
       }
     }
 

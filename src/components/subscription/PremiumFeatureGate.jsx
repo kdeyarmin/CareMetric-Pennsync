@@ -68,6 +68,7 @@ export default function PremiumFeatureGate({
     hasTrialAccess = new Date() <= trialEnd;
   }
   
+  // No access if: no subscription, expired, canceled, or any non-active/non-trialing status
   const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess || hasLifetimeFree;
 
   // Show paywall if no access
