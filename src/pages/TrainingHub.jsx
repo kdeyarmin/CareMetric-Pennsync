@@ -117,7 +117,7 @@ export default function TrainingHub() {
 
   return (
     <PremiumFeatureGate featureName="Training Hub" featureDescription="Personalized learning paths, skill development, and compliance training." allowTrial={true}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
           <GraduationCap className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />

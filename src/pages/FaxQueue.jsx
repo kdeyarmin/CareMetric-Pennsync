@@ -86,15 +86,15 @@ export default function FaxQueue() {
 
   return (
     <PremiumFeatureGate featureName="Fax Queue" featureDescription="Monitor and manage your fax queue." allowTrial={true}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto pb-20 sm:pb-6">
+    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       {/* Header */}
       <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <ListFilter className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             Fax Queue
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">Monitor, retry, and manage your outgoing faxes</p>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">Monitor, retry, and manage your outgoing faxes</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Badge className={`text-xs ${isOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>

@@ -253,15 +253,15 @@ export default function ComplianceDashboard() {
     <PullToRefresh onRefresh={async () => {
       await queryClient.invalidateQueries();
     }}>
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
          {/* Header */}
          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-0">
            <div>
-             <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+             <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                <Shield className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-blue-600" />
                Compliance
              </h1>
-             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
+             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
               {isAgencyAdmin ? 'Agency-wide compliance monitoring' : 'System-wide compliance monitoring'}
             </p>
           </div>

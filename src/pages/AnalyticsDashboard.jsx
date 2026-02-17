@@ -437,11 +437,11 @@ export default function AnalyticsDashboard() {
 
   return (
     <PremiumFeatureGate featureName="Performance Analytics" featureDescription="Track documentation metrics, compliance trends, and AI utilization across your team." allowTrial={true}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
          <div className="flex-1 min-w-0">
-           <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 truncate">Performance Analytics</h1>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">Track metrics, trends, and outcomes</p>
+           <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 truncate">Performance Analytics</h1>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">Track metrics, trends, and outcomes</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Button onClick={handleExportPDF} className="bg-blue-600 hover:bg-blue-700 touch-target w-full sm:w-auto" size="sm">

@@ -73,12 +73,12 @@ export default function FaxAnalytics() {
 
   return (
     <PremiumFeatureGate featureName="Fax Analytics" allowTrial={true}>
-      <div className="p-3 sm:p-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
         <div className="mb-5">
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <BarChart3 className="w-6 h-6 text-blue-600" /> Fax Analytics
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">Track fax volume, success rates, costs, and usage patterns</p>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">Track fax volume, success rates, costs, and usage patterns</p>
         </div>
 
         {/* KPI Cards */}
