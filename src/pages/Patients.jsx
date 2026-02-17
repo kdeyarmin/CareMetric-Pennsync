@@ -29,6 +29,7 @@ import ReferralUploadProcessor from "../components/referral/ReferralUploadProces
 import BulkPatientActions from "../components/patient/BulkPatientActions";
 import PatientMergeDialog from "../components/patient/PatientMergeDialog";
 import PaginatedPatientList from "../components/patient/PaginatedPatientList";
+import Pagination from "../components/ui/Pagination";
 import FavoriteButton from "../components/navigation/FavoriteButton";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import EmptyState from "../components/ui/EmptyState";
@@ -62,6 +63,8 @@ export default function Patients() {
   const [showReferralUpload, setShowReferralUpload] = useState(false);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -327,6 +330,13 @@ export default function Patients() {
     }
   };
 
+  // Pagination logic
+  const totalPages = Math.ceil(filteredPatients.length / itemsPerPage);
+  const paginatedPatients = filteredPatients.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   return (
     <PremiumFeatureGate
       featureName="Patient Management"
@@ -459,13 +469,13 @@ export default function Patients() {
             />
           </div>
         ) : (
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 space-y-4">
             <PaginatedPatientList
-              patients={filteredPatients}
+              patients={paginatedPatients}
               showCheckboxes={true}
               selectedPatients={selectedPatients.map(p => p.id)}
               onSelectionChange={(ids) => {
-                const selected = filteredPatients.filter(p => ids.includes(p.id));
+                const selected = paginatedPatients.filter(p => ids.includes(p.id));
                 setSelectedPatients(selected);
               }}
               onPatientSelect={(patientId) => {
@@ -479,6 +489,21 @@ export default function Patients() {
                 setPatientToDelete(patient);
                 setDeleteDialogOpen(true);
               }}
+            />
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={(page) => {
+                setCurrentPage(page);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              itemsPerPage={itemsPerPage}
+              onItemsPerPageChange={(count) => {
+                setItemsPerPage(count);
+                setCurrentPage(1);
+              }}
+              totalItems={filteredPatients.length}
+              showItemsPerPage={true}
             />
           </div>
         )}
