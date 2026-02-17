@@ -102,6 +102,7 @@ import RealtimeComplianceChecker from '../components/smartNote/RealtimeComplianc
 import PatientEducationGenerator from '../components/education/PatientEducationGenerator';
 import EnhancedMedicalCodingAssistant from '../components/smartNote/EnhancedMedicalCodingAssistant';
 import PremiumFeatureGate from '../components/subscription/PremiumFeatureGate';
+import UnifiedAIDocumentationAssistant from '../components/smartNote/UnifiedAIDocumentationAssistant';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -878,6 +879,35 @@ export default function SmartNoteAssistant() {
                       if (score < 70) {
                         console.log('Low compliance score detected:', score);
                       }
+                    }}
+                  />
+                )}
+
+                {/* Unified AI Documentation Assistant */}
+                {visitType && selectedDiagnosis && (
+                  <UnifiedAIDocumentationAssistant
+                    patientId={selectedPatient}
+                    patientData={patientData}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    clinicalNotes={roughNotes}
+                    extractedData={extractedData}
+                    onFieldsPopulated={(result) => {
+                      if (result.fields) {
+                        const populated = `\nAssessment: ${result.fields.assessment}\n\nPlan: ${result.fields.plan}`;
+                        setRoughNotes(roughNotes + populated);
+                        toast.success('Fields populated');
+                      }
+                    }}
+                    onCodesGenerated={(result) => {
+                      console.log('ICD-10 codes generated:', result.codes);
+                    }}
+                    onEducationGenerated={(result) => {
+                      setSuggestedEducation([result.material]);
+                      toast.success('Education material generated');
+                    }}
+                    onComplianceChecked={(result) => {
+                      console.log('Compliance check completed:', result);
                     }}
                   />
                 )}
