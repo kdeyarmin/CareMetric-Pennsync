@@ -87,6 +87,19 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Send notification for failed fax
+      try {
+        await base44.asServiceRole.functions.invoke('sendFaxNotification', {
+          user_email: user.email,
+          fax_history_id: fax_history_id || '',
+          status: 'failed',
+          recipient_name: body.recipient_name || '',
+          recipient_fax_number: to_fax_number
+        });
+      } catch (notifErr) {
+        console.error('[sendFax] Notification failed (non-blocking):', notifErr.message);
+      }
+
       return Response.json({ error: errorMsg }, { status: 400 });
     }
 
@@ -103,6 +116,19 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.error('[sendFax] Failed to update history:', e.message);
       }
+    }
+
+    // Send notification for successful fax
+    try {
+      await base44.asServiceRole.functions.invoke('sendFaxNotification', {
+        user_email: user.email,
+        fax_history_id: fax_history_id || '',
+        status: 'sent',
+        recipient_name: body.recipient_name || '',
+        recipient_fax_number: to_fax_number
+      });
+    } catch (notifErr) {
+      console.error('[sendFax] Notification failed (non-blocking):', notifErr.message);
     }
 
     return Response.json({ 
