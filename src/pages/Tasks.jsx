@@ -21,6 +21,7 @@ import EmptyState from "../components/ui/EmptyState";
 import PullToRefresh from "../components/mobile/PullToRefresh";
 import { motion } from "framer-motion";
 import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
+import Pagination from "../components/ui/Pagination";
 
 export default function Tasks() {
   const [showForm, setShowForm] = useState(false);
@@ -29,6 +30,8 @@ export default function Tasks() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const queryClient = useQueryClient();
 
   const [newTask, setNewTask] = useState({
@@ -145,13 +148,28 @@ export default function Tasks() {
     return matchesSearch && matchesPriority && matchesStatus;
   });
 
-  const categorizedTasks = useMemo(() => ({
-    overdue: filteredTasks.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
-    today: filteredTasks.filter((t) => t.due_date && isToday(parseISO(t.due_date)) && t.status === 'pending'),
-    upcoming: filteredTasks.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending'),
-    noDueDate: filteredTasks.filter((t) => !t.due_date && t.status === 'pending'),
-    completed: filteredTasks.filter((t) => t.status === 'completed')
-  }), [filteredTasks]);
+  const categorizedTasks = useMemo(() => {
+    const overdue = filteredTasks.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending');
+    const today = filteredTasks.filter((t) => t.due_date && isToday(parseISO(t.due_date)) && t.status === 'pending');
+    const upcoming = filteredTasks.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && t.status === 'pending');
+    const noDueDate = filteredTasks.filter((t) => !t.due_date && t.status === 'pending');
+    const completed = filteredTasks.filter((t) => t.status === 'completed');
+    
+    return { overdue, today, upcoming, noDueDate, completed };
+  }, [filteredTasks]);
+
+  // Pagination for each category
+  const getPaginatedTasks = (category) => {
+    const allTasks = categorizedTasks[category] || [];
+    const totalPages = Math.ceil(allTasks.length / itemsPerPage);
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    return {
+      tasks: allTasks.slice(start, end),
+      totalPages,
+      totalItems: allTasks.length
+    };
+  };
 
   const getPriorityColor = (priority) => {
     const colors = {
@@ -481,10 +499,24 @@ export default function Tasks() {
               title="No Overdue Tasks"
               description="Great work! All your tasks are on schedule or completed." /> :
 
-
-            categorizedTasks.overdue.map((task) =>
+          <>
+            {getPaginatedTasks('overdue').tasks.map((task) =>
             <TaskCard key={task.id} task={task} category="overdue" />
-            )
+            )}
+            {getPaginatedTasks('overdue').totalPages > 1 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={getPaginatedTasks('overdue').totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={(count) => {
+                  setItemsPerPage(count);
+                  setCurrentPage(1);
+                }}
+                totalItems={getPaginatedTasks('overdue').totalItems}
+              />
+            )}
+          </>
             }
         </TabsContent>
 
@@ -496,10 +528,24 @@ export default function Tasks() {
               title="No Tasks Due Today"
               description="You're all caught up for today! Enjoy a lighter workload." /> :
 
-
-            categorizedTasks.today.map((task) =>
+          <>
+            {getPaginatedTasks('today').tasks.map((task) =>
             <TaskCard key={task.id} task={task} category="today" />
-            )
+            )}
+            {getPaginatedTasks('today').totalPages > 1 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={getPaginatedTasks('today').totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={(count) => {
+                  setItemsPerPage(count);
+                  setCurrentPage(1);
+                }}
+                totalItems={getPaginatedTasks('today').totalItems}
+              />
+            )}
+          </>
             }
         </TabsContent>
 
@@ -511,9 +557,24 @@ export default function Tasks() {
               </CardContent>
             </Card> :
 
-            categorizedTasks.upcoming.map((task) =>
+          <>
+            {getPaginatedTasks('upcoming').tasks.map((task) =>
             <TaskCard key={task.id} task={task} category="upcoming" />
-            )
+            )}
+            {getPaginatedTasks('upcoming').totalPages > 1 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={getPaginatedTasks('upcoming').totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={(count) => {
+                  setItemsPerPage(count);
+                  setCurrentPage(1);
+                }}
+                totalItems={getPaginatedTasks('upcoming').totalItems}
+              />
+            )}
+          </>
             }
         </TabsContent>
 
