@@ -37,6 +37,29 @@ export default function FaxContentAnalysis({ faxId, existingAnalysis }) {
     low: "bg-green-100 text-green-700"
   };
 
+  const SENTIMENT_STYLES = {
+    urgent_demand: { bg: "bg-red-100 text-red-700", label: "Urgent Demand", icon: "🔴" },
+    concerned: { bg: "bg-amber-100 text-amber-700", label: "Concerned", icon: "⚠️" },
+    informational: { bg: "bg-blue-100 text-blue-700", label: "Informational", icon: "ℹ️" },
+    request: { bg: "bg-purple-100 text-purple-700", label: "Request", icon: "📋" },
+    follow_up: { bg: "bg-slate-100 text-slate-700", label: "Follow-Up", icon: "🔄" },
+    escalation: { bg: "bg-orange-100 text-orange-700", label: "Escalation", icon: "⬆️" },
+    positive: { bg: "bg-green-100 text-green-700", label: "Positive", icon: "✅" }
+  };
+
+  const AGENCY_CATEGORY_LABELS = {
+    patient_care: { label: "Patient Care", color: "bg-blue-100 text-blue-700" },
+    referrals_intake: { label: "Referrals & Intake", color: "bg-purple-100 text-purple-700" },
+    billing_insurance: { label: "Billing / Insurance", color: "bg-emerald-100 text-emerald-700" },
+    compliance_regulatory: { label: "Compliance", color: "bg-red-100 text-red-700" },
+    lab_diagnostics: { label: "Lab / Diagnostics", color: "bg-cyan-100 text-cyan-700" },
+    physician_orders: { label: "Physician Orders", color: "bg-indigo-100 text-indigo-700" },
+    discharge_transfer: { label: "Discharge / Transfer", color: "bg-orange-100 text-orange-700" },
+    supplies_equipment: { label: "Supplies / DME", color: "bg-teal-100 text-teal-700" },
+    scheduling_coordination: { label: "Scheduling", color: "bg-yellow-100 text-yellow-700" },
+    general_administrative: { label: "Administrative", color: "bg-slate-100 text-slate-700" }
+  };
+
   if (!analysis && !loading) {
     return (
       <div className="flex gap-1.5 flex-wrap mt-2">
