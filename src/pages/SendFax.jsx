@@ -140,6 +140,32 @@ export default function SendFax() {
         status: isOnline ? 'sending' : 'queued'
       });
 
+      // Save each analyzed document to Document Library
+      for (const doc of documents) {
+        const a = doc.analysis || {};
+        base44.entities.FaxDocument.create({
+          user_email: currentUser.email,
+          file_url: doc.url,
+          file_name: doc.name,
+          original_name: doc.originalName || doc.name,
+          file_size: doc.size || 0,
+          patient_name: a.patient_name || "",
+          patient_dob: a.patient_dob || "",
+          mrn: a.mrn || "",
+          provider_name: a.provider_name || "",
+          document_type: a.document_type || "",
+          category: doc.category || a.category || "",
+          date_of_service: a.date_of_service || "",
+          diagnosis: a.diagnosis || "",
+          tags: doc.tags || a.tags || [],
+          summary: a.summary || "",
+          confidence: a.confidence || 0,
+          fax_history_id: historyRecord.id,
+          recipient_name: recipientName,
+          recipient_fax_number: recipientFax
+        }).catch(err => console.error("Failed to save doc to library:", err));
+      }
+
       if (!isOnline) {
         toast.info("You're offline. Fax has been queued and will send when you reconnect.");
         resetForm();
