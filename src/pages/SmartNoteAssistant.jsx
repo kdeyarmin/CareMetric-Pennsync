@@ -103,6 +103,7 @@ import PatientEducationGenerator from '../components/education/PatientEducationG
 import EnhancedMedicalCodingAssistant from '../components/smartNote/EnhancedMedicalCodingAssistant';
 import PremiumFeatureGate from '../components/subscription/PremiumFeatureGate';
 import UnifiedAIDocumentationAssistant from '../components/smartNote/UnifiedAIDocumentationAssistant';
+import ClinicalDecisionSupportPanel from '../components/smartNote/ClinicalDecisionSupportPanel';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -909,6 +910,19 @@ export default function SmartNoteAssistant() {
                     onComplianceChecked={(result) => {
                       console.log('Compliance check completed:', result);
                     }}
+                  />
+                )}
+
+                {/* Clinical Decision Support Panel */}
+                {visitType && selectedDiagnosis && (
+                  <ClinicalDecisionSupportPanel
+                    symptoms={roughNotes}
+                    findings={roughNotes}
+                    diagnosis={selectedDiagnosis}
+                    patientAge={patientData?.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null}
+                    patientConditions={patientData?.secondary_diagnoses || []}
+                    currentMedications={patientData?.current_medications || []}
+                    patientId={selectedPatient}
                   />
                 )}
 
