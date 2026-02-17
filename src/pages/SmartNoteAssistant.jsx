@@ -1030,10 +1030,48 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
-                {/* Rough Notes Input with Voice Dictation */}
+                {/* Rough Notes Input with Voice Dictation & Auto-Save */}
                 <div className="w-full">
-                  <Label className="text-xs sm:text-sm font-medium">Clinical Notes *</Label>
-                  <p className="text-[10px] sm:text-xs text-slate-500 mb-2">Type or dictate your clinical notes</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <Label className="text-xs sm:text-sm font-medium">Clinical Notes *</Label>
+                      <p className="text-[10px] sm:text-xs text-slate-500">Type or dictate your clinical notes</p>
+                    </div>
+                  </div>
+
+                  {/* Auto-Save Indicator */}
+                  {selectedPatient !== "no_patient" && (
+                    <AutoSaveIndicator
+                      noteContent={roughNotes}
+                      onSave={async () => {
+                        if (selectedPatient !== "no_patient" && roughNotes.trim()) {
+                          saveOfflineNote({
+                            patientId: selectedPatient,
+                            visitType,
+                            diagnosis: selectedDiagnosis,
+                            enhancedNote: roughNotes,
+                            roughNotes,
+                            vitalSigns
+                          });
+                        }
+                      }}
+                      enabled={true}
+                    />
+                  )}
+
+                  {/* Draft Versions */}
+                  {selectedPatient !== "no_patient" && (
+                    <NoteDraftVersions
+                      patientId={selectedPatient}
+                      visitType={visitType}
+                      diagnosis={selectedDiagnosis}
+                      onVersionSelect={(version) => {
+                        setRoughNotes(version.content);
+                        toast.info("Version loaded");
+                      }}
+                    />
+                  )}
+
                   <VoiceDictationInput
                     value={roughNotes}
                     onChange={(e) => setRoughNotes(e.target.value)}
