@@ -408,8 +408,17 @@ Be HIPAA-aware: include clinical details only as needed for the cover sheet.`,
 
         {expanded && (
           <div className="mt-3 space-y-3">
+            {/* Pre-Send Review (always visible when there are items) */}
+            {visibleItems.length > 0 && (
+              <PreSendReview
+                items={visibleItems}
+                onDismiss={handleDismiss}
+                onApplyFix={handleApplyFix}
+              />
+            )}
+
             {/* Quick action buttons */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <Button
                 size="sm"
                 variant="outline"
@@ -449,6 +458,16 @@ Be HIPAA-aware: include clinical details only as needed for the cover sheet.`,
               >
                 {loading === 'extract' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserSearch className="w-4 h-4 text-amber-600" />}
                 Extract Info
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-auto py-2 flex-col gap-1 text-xs border-indigo-200 hover:bg-indigo-50 col-span-2 sm:col-span-1"
+                onClick={runAIReview}
+                disabled={reviewLoading || loading !== null}
+              >
+                {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Shield className="w-4 h-4 text-indigo-600" />}
+                AI Review
               </Button>
             </div>
 
