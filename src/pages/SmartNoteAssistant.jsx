@@ -48,6 +48,7 @@ import AutoSaveIndicator from "@/components/smartNote/AutoSaveIndicator";
 import NoteDraftVersions from "@/components/smartNote/NoteDraftVersions";
 import NoteConflictResolver from "@/components/smartNote/NoteConflictResolver";
 import EnhancedOfflineNoteSync from "@/components/mobile/EnhancedOfflineNoteSync";
+import AIPatientSummaryGenerator from "@/components/patient/AIPatientSummaryGenerator";
 
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
@@ -713,9 +714,20 @@ export default function SmartNoteAssistant() {
                    />
                  )}
 
+                 {/* AI Patient Summary */}
+                 {selectedPatient !== "no_patient" && patientData && (
+                   <AIPatientSummaryGenerator
+                     patientId={selectedPatient}
+                     patientName={`${patientData.first_name} ${patientData.last_name}`}
+                     onSummaryGenerated={(summary) => {
+                       console.log('Summary generated:', summary);
+                     }}
+                   />
+                 )}
+
                  {/* Patient Selection Dropdown */}
-                <div className="bg-slate-100 w-full">
-                  <Label className="text-xs sm:text-sm font-medium">Patient *</Label>
+                 <div className="bg-slate-100 w-full">
+                   <Label className="text-xs sm:text-sm font-medium">Patient *</Label>
                   <Select value={selectedPatient} onValueChange={setSelectedPatient}>
                     <SelectTrigger className="w-full h-11">
                       <SelectValue placeholder="Select patient..." />
