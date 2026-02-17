@@ -54,18 +54,22 @@ import CarePlanManagement from './pages/CarePlanManagement';
 import ComplianceDashboard from './pages/ComplianceDashboard';
 import Dashboard from './pages/Dashboard';
 import DeleteAccount from './pages/DeleteAccount';
+import DocumentLibrary from './pages/DocumentLibrary';
 import Documentation from './pages/Documentation';
 import EULA from './pages/EULA';
+import EnterpriseAnalytics from './pages/EnterpriseAnalytics';
 import FAQ from './pages/FAQ';
 import FaxQueue from './pages/FaxQueue';
 import MedicalScribe from './pages/MedicalScribe';
 import MySubscription from './pages/MySubscription';
 import OASIS from './pages/OASIS';
+import PHIVault from './pages/PHIVault';
 import PatientAlerts from './pages/PatientAlerts';
 import PatientDetails from './pages/PatientDetails';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import SecureMessaging from './pages/SecureMessaging';
 import SendFax from './pages/SendFax';
 import Settings from './pages/Settings';
 import SmartNoteAssistant from './pages/SmartNoteAssistant';
@@ -75,10 +79,6 @@ import Tasks from './pages/Tasks';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import DocumentLibrary from './pages/DocumentLibrary';
-import PHIVault from './pages/PHIVault';
-import EnterpriseAnalytics from './pages/EnterpriseAnalytics';
-import SecureMessaging from './pages/SecureMessaging';
 import __Layout from './Layout.jsx';
 
 
@@ -90,18 +90,22 @@ export const PAGES = {
     "ComplianceDashboard": ComplianceDashboard,
     "Dashboard": Dashboard,
     "DeleteAccount": DeleteAccount,
+    "DocumentLibrary": DocumentLibrary,
     "Documentation": Documentation,
     "EULA": EULA,
+    "EnterpriseAnalytics": EnterpriseAnalytics,
     "FAQ": FAQ,
     "FaxQueue": FaxQueue,
     "MedicalScribe": MedicalScribe,
     "MySubscription": MySubscription,
     "OASIS": OASIS,
+    "PHIVault": PHIVault,
     "PatientAlerts": PatientAlerts,
     "PatientDetails": PatientDetails,
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
     "PrivacyPolicy": PrivacyPolicy,
+    "SecureMessaging": SecureMessaging,
     "SendFax": SendFax,
     "Settings": Settings,
     "SmartNoteAssistant": SmartNoteAssistant,
@@ -111,10 +115,6 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "DocumentLibrary": DocumentLibrary,
-    "PHIVault": PHIVault,
-    "EnterpriseAnalytics": EnterpriseAnalytics,
-    "SecureMessaging": SecureMessaging,
 }
 
 export const pagesConfig = {

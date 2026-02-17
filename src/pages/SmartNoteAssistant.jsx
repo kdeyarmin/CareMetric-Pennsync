@@ -79,6 +79,9 @@ import InlineAIFeedback from "@/components/feedback/InlineAIFeedback";
 import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
 import PatientContextSidebar from '../components/smartNote/PatientContextSidebar';
 import TimeSavingsSummary from '../components/smartNote/TimeSavingsSummary';
+import AIFollowUpQuestions from '../components/smartNote/AIFollowUpQuestions';
+import ProactiveGapAnalyzer from '../components/smartNote/ProactiveGapAnalyzer';
+import VisitRelevantHistorySummary from '../components/smartNote/VisitRelevantHistorySummary';
 import AICareCoordinationPanel from '../components/coordination/AICareCoordinationPanel';
 import UnifiedComplianceAudit from '../components/smartNote/UnifiedComplianceAudit';
 import UnifiedSuggestionsPanel from '../components/smartNote/UnifiedSuggestionsPanel';
@@ -821,6 +824,20 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
+                {/* Proactive AI Gap Analyzer */}
+                {visitType && selectedDiagnosis && (
+                  <ProactiveGapAnalyzer
+                    patient={patientData}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    roughNotes={roughNotes}
+                    vitalSigns={vitalSigns}
+                    providerType={providerType}
+                    careSetting={careSetting}
+                    onResolveGap={(text) => setRoughNotes(roughNotes + '\n\n' + text)}
+                  />
+                )}
+
                 {/* Documentation Gap Detection */}
                 {visitType && selectedDiagnosis && roughNotes && (
                   <DocumentationGapDetector
@@ -928,6 +945,27 @@ export default function SmartNoteAssistant() {
                     onInsertContext={(text) => {
                       setRoughNotes(roughNotes + '\n\n' + text);
                     }}
+                  />
+                )}
+
+                {/* Visit-Relevant History Summary */}
+                {selectedPatient !== 'no_patient' && patientData && visitType && selectedDiagnosis && (
+                  <VisitRelevantHistorySummary
+                    patient={patientData}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    onInsertText={(text) => setRoughNotes(roughNotes + text)}
+                  />
+                )}
+
+                {/* AI Follow-Up Questions & Assessments */}
+                {selectedPatient !== 'no_patient' && patientData && visitType && selectedDiagnosis && (
+                  <AIFollowUpQuestions
+                    patient={patientData}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    roughNotes={roughNotes}
+                    onInsertQuestion={(text) => setRoughNotes(roughNotes + '\n\n' + text)}
                   />
                 )}
 
