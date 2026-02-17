@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
     .container { max-width: 600px; margin: 20px auto; background: white; padding: 0; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
-    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; }
+    .header { background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; padding: 30px; text-align: center; }
     .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
     .content { padding: 30px; }
     .info-box { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0; border-radius: 6px; }
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
 <head><meta charset="UTF-8"></head>
 <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
   <div style="max-width: 600px; margin: 20px auto; background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
-    <div style="background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); color: white; padding: 30px; text-align: center;">
+    <div style="background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; padding: 30px; text-align: center;">
       <h1 style="margin: 0; font-size: 24px;">🎉 Welcome to CareMetric AI!</h1>
       <p style="margin: 10px 0 0; opacity: 0.95; font-size: 15px;">Your 14-day free trial is now active</p>
     </div>
@@ -275,8 +275,8 @@ Deno.serve(async (req) => {
         <p>✅ <strong>Analytics</strong> — Track your time savings and performance</p>
       </div>
 
-      <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 6px; margin: 20px 0;">
-        <p style="margin: 0; color: #92400e; font-size: 13px;">💡 <strong>Pro Tip:</strong> Most nurses save 20-30 minutes on their very first AI-enhanced note. Start with the Smart Note Assistant to see the difference immediately!</p>
+      <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 6px; margin: 20px 0;">
+        <p style="margin: 0; color: #1e40af; font-size: 13px;">💡 <strong>Pro Tip:</strong> Most nurses save 20-30 minutes on their very first AI-enhanced note. Start with the Smart Note Assistant to see the difference immediately!</p>
       </div>
 
       <p style="color: #64748b; font-size: 13px;">Questions? Visit our <a href="${appUrl}/Documentation" style="color: #2563eb;">Documentation</a> page, check the <a href="${appUrl}/FAQ" style="color: #2563eb;">FAQ</a>, or email us at <a href="mailto:support@caremetricai.com" style="color: #2563eb;">support@caremetricai.com</a>.</p>

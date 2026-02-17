@@ -228,15 +228,15 @@ export default function SendFax() {
 
   return (
     <PremiumFeatureGate featureName="Send a Fax" featureDescription="Send faxes directly from the app with camera-to-PDF conversion and address book." allowTrial={true}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto pb-20 sm:pb-6">
+    <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Send className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             Send a Fax
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">Send documents via fax directly from CareMetric AI</p>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">Send documents via fax directly from CareMetric AI</p>
         </div>
         <div className="flex items-center gap-2">
           {queuedCount > 0 && (

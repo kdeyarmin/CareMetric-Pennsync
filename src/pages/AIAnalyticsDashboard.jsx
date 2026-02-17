@@ -71,16 +71,16 @@ For detailed insights, please visit the Analytics Dashboard in the application.`
       featureDescription="Advanced patient outcomes, compliance trends, and readmission risk prediction analytics."
       allowTrial={true}
     >
-      <div className="min-h-screen p-4 lg:p-6 pb-20 lg:pb-6 overflow-x-hidden w-full max-w-full">
+      <div className="p-3 sm:p-4 md:p-6 pb-20 lg:pb-6 overflow-x-hidden w-full max-w-full bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
         <div className="max-w-7xl mx-auto space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
-                <BarChart3 className="w-8 h-8 text-blue-600" />
+              <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <BarChart3 className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
                 AI Analytics Dashboard
               </h1>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
                 Real-time insights powered by AI analysis of clinical data
               </p>
             </div>
