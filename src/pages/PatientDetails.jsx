@@ -32,7 +32,8 @@ import {
   Pill,
   History,
   ClipboardList,
-  ExternalLink
+  ExternalLink,
+  FolderOpen
 } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
@@ -100,6 +101,7 @@ import ProactiveComplianceRiskPredictor from "../components/compliance/Proactive
 import AIComplianceCarePlanSuggester from "../components/compliance/AIComplianceCarePlanSuggester";
 import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
 import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
+import PatientDocumentsModule from "../components/patient/PatientDocumentsModule";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -932,6 +934,10 @@ export default function PatientDetails() {
                     <Sparkles className="w-3 h-3" />
                     <span>Docs</span>
                   </TabsTrigger>
+                  <TabsTrigger value="patient-documents" className="flex items-center justify-center gap-1 text-xs py-2 whitespace-nowrap shrink-0">
+                    <FolderOpen className="w-3 h-3" />
+                    <span>Files</span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -1287,6 +1293,11 @@ export default function PatientDetails() {
                     </div>
                   </ScrollArea>
                 )}
+              </TabsContent>
+
+              {/* Patient Documents (Files) Tab */}
+              <TabsContent value="patient-documents">
+                <PatientDocumentsModule patientId={patientId} userEmail={currentUser?.email} />
               </TabsContent>
 
               {/* Documents Tab */}
