@@ -1,21 +1,202 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Sparkles, Loader2, FileText, MessageSquare, UserSearch,
-  ChevronDown, ChevronUp, Check, Copy
+  ChevronDown, ChevronUp, Check, Copy, Shield
 } from "lucide-react";
 import { toast } from "sonner";
+import PreSendReview from "./PreSendReview";
 
 export default function AIFaxAssistant({ documents, coverData, onCoverDataChange, recipientName, recipientFax }) {
-  const [loading, setLoading] = useState(null); // 'summarize' | 'suggest' | 'extract' | 'all'
+  const [loading, setLoading] = useState(null);
   const [results, setResults] = useState(null);
   const [expanded, setExpanded] = useState(true);
+  const [reviewItems, setReviewItems] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [dismissedIds, setDismissedIds] = useState(new Set());
+  const reviewTimerRef = useRef(null);
 
   const hasDocuments = documents?.length > 0;
   const docUrls = documents?.map(d => d.url).filter(Boolean) || [];
+
+  // ---- Proactive local checks (run instantly on data change) ----
+  const runLocalChecks = useCallback(() => {
+    const items = [];
+    let id = 0;
+
+    // Recipient checks
+    if (recipientFax) {
+      const digits = recipientFax.replace(/\D/g, "");
+      if (digits.length < 10) {
+        items.push({ id: `local-${id++}`, severity: "error", area: "Recipient", title: "Fax number too short", message: `The number "${recipientFax}" has only ${digits.length} digits. US fax numbers need at least 10 digits.`, fix: null });
+      } else if (digits.length > 15) {
+        items.push({ id: `local-${id++}`, severity: "warning", area: "Recipient", title: "Fax number unusually long", message: `The number has ${digits.length} digits which seems longer than expected. Please verify it's correct.`, fix: null });
+      }
+      if (digits.length >= 10 && !digits.startsWith("1") && digits.length === 10) {
+        items.push({ id: `local-${id++}`, severity: "info", area: "Recipient", title: "No country code", message: `Number appears to be a US number without country code (+1). The system will add it automatically.`, fix: null });
+      }
+    }
+    if (!recipientName && recipientFax) {
+      items.push({ id: `local-${id++}`, severity: "warning", area: "Recipient", title: "No recipient name", message: "Adding a recipient name helps identify the fax and improves cover sheet clarity.", fix: null });
+    }
+
+    // Cover sheet checks
+    if (!coverData.sender_name) {
+      items.push({ id: `local-${id++}`, severity: "warning", area: "Cover Sheet", title: "Sender name missing", message: "Your name is not set on the cover sheet. Recipients may not know who sent the fax.", fix: { label: "I'll enter it", action: "focus_sender" } });
+    }
+    if (!coverData.subject && hasDocuments) {
+      items.push({ id: `local-${id++}`, severity: "warning", area: "Cover Sheet", title: "No subject line", message: "A subject line helps recipients quickly identify the purpose. The AI can generate one from your documents.", fix: null });
+    }
+    if (coverData.subject && coverData.subject.length < 5) {
+      items.push({ id: `local-${id++}`, severity: "info", area: "Cover Sheet", title: "Subject line very short", message: "Consider a more descriptive subject to help the recipient prioritize this fax.", fix: null });
+    }
+    if (!coverData.message && hasDocuments) {
+      items.push({ id: `local-${id++}`, severity: "info", area: "Cover Sheet", title: "No cover message", message: "A brief cover message provides context for the recipient. Use 'Summarize' or 'Suggest Text' to auto-generate one.", fix: null });
+    }
+
+    // HIPAA checks
+    if (!coverData.include_hipaa && hasDocuments) {
+      items.push({ id: `local-${id++}`, severity: "warning", area: "HIPAA", title: "HIPAA notice disabled", message: "HIPAA confidentiality notice is turned off. This is strongly recommended for all medical faxes to protect patient information.", fix: { label: "Enable HIPAA notice", action: "enable_hipaa" } });
+    }
+
+    // Document checks
+    if (documents?.length > 0) {
+      const unanalyzed = documents.filter(d => !d.analysis);
+      if (unanalyzed.length > 0) {
+        items.push({ id: `local-${id++}`, severity: "info", area: "Documents", title: `${unanalyzed.length} document(s) not analyzed`, message: "AI analysis helps auto-file documents and extract metadata for the cover sheet.", fix: null });
+      }
+    }
+
+    // If everything passes
+    if (items.length === 0 && recipientFax && hasDocuments) {
+      items.push({ id: `local-${id++}`, severity: "success", area: "Review", title: "Ready to send", message: "No issues detected. Recipient, cover sheet, and documents look good.", fix: null });
+    }
+
+    return items;
+  }, [recipientFax, recipientName, coverData, documents, hasDocuments]);
+
+  // ---- AI-powered deep review (runs on demand or debounced) ----
+  const runAIReview = async () => {
+    if (!hasDocuments || !recipientFax) return;
+    setReviewLoading(true);
+    try {
+      const docAnalyses = documents
+        .filter(d => d.analysis)
+        .map(d => `File: ${d.name}, Type: ${d.analysis.document_type || "unknown"}, Patient: ${d.analysis.patient_name || "unknown"}, Category: ${d.analysis.category || "unknown"}`)
+        .join("\n");
+
+      const res = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are a HIPAA-aware medical fax compliance assistant. Analyze the fax parameters below and provide a list of proactive suggestions, warnings, or confirmations. Be practical and specific.
+
+RECIPIENT:
+- Name: ${recipientName || "(not provided)"}
+- Fax: ${recipientFax || "(not provided)"}
+
+COVER SHEET:
+- Sender: ${coverData.sender_name || "(not set)"}
+- Company: ${coverData.sender_company || "(not set)"}
+- Phone: ${coverData.sender_phone || "(not set)"}
+- Subject: ${coverData.subject || "(empty)"}
+- Message: ${coverData.message ? coverData.message.substring(0, 300) : "(empty)"}
+- Urgency: ${coverData.urgency || "normal"}
+- HIPAA notice: ${coverData.include_hipaa ? "enabled" : "DISABLED"}
+
+ATTACHED DOCUMENTS (${documents.length}):
+${docAnalyses || "No AI analysis available on documents yet."}
+
+Provide review items. For each item include:
+- severity: "error" | "warning" | "info" | "success"
+- area: "Recipient" | "Cover Sheet" | "HIPAA" | "Documents" | "Compliance"
+- title: Short title (5 words max)
+- message: Concise explanation
+- suggestion: Optional fix text to apply (empty string if none)
+- suggestion_field: Which field to update: "subject" | "message" | "urgency" | "include_hipaa" | "" (empty if no auto-fix)
+
+Focus on:
+1. Recipient fax number format issues or improvements
+2. HIPAA compliance: are PHI safeguards adequate given the document content?
+3. Cover sheet completeness: missing sender info, vague subject, urgency mismatch
+4. Document-to-recipient mismatch: does the content match what you'd expect for the recipient type?
+5. Urgency appropriateness based on document content
+
+Return at most 6 items. Prioritize actionable items.`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            review_items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  severity: { type: "string" },
+                  area: { type: "string" },
+                  title: { type: "string" },
+                  message: { type: "string" },
+                  suggestion: { type: "string" },
+                  suggestion_field: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      const aiItems = (res.review_items || []).map((item, idx) => ({
+        ...item,
+        id: `ai-${idx}`,
+        fix: item.suggestion && item.suggestion_field ? {
+          label: `Apply: ${item.suggestion.substring(0, 40)}${item.suggestion.length > 40 ? "..." : ""}`,
+          action: "apply_field",
+          field: item.suggestion_field,
+          value: item.suggestion
+        } : null
+      }));
+
+      setReviewItems(prev => {
+        const localItems = prev.filter(i => i.id.startsWith("local-"));
+        return [...localItems, ...aiItems];
+      });
+    } catch (err) {
+      console.error("AI review failed:", err);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  // Update local checks in real time
+  useEffect(() => {
+    const localItems = runLocalChecks();
+    setReviewItems(prev => {
+      const aiItems = prev.filter(i => i.id.startsWith("ai-"));
+      return [...localItems, ...aiItems];
+    });
+  }, [runLocalChecks]);
+
+  const handleDismiss = (id) => {
+    setDismissedIds(prev => new Set([...prev, id]));
+  };
+
+  const handleApplyFix = (item) => {
+    if (!item.fix) return;
+    if (item.fix.action === "enable_hipaa") {
+      onCoverDataChange({ ...coverData, include_hipaa: true });
+      toast.success("HIPAA notice enabled");
+    } else if (item.fix.action === "apply_field" && item.fix.field) {
+      const field = item.fix.field;
+      if (field === "include_hipaa") {
+        onCoverDataChange({ ...coverData, include_hipaa: item.fix.value === "true" || item.fix.value === true });
+      } else {
+        onCoverDataChange({ ...coverData, [field]: item.fix.value });
+      }
+      toast.success("Suggestion applied");
+    }
+    handleDismiss(item.id);
+  };
+
+  const visibleItems = reviewItems.filter(i => !dismissedIds.has(i.id));
 
   const handleSummarize = async () => {
     if (!hasDocuments) { toast.error("Upload a document first"); return; }
