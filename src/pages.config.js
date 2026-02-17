@@ -76,6 +76,7 @@ import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
 import DocumentLibrary from './pages/DocumentLibrary';
+import PHIVault from './pages/PHIVault';
 import __Layout from './Layout.jsx';
 
 
@@ -109,6 +110,7 @@ export const PAGES = {
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
     "DocumentLibrary": DocumentLibrary,
+    "PHIVault": PHIVault,
 }
 
 export const pagesConfig = {
