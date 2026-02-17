@@ -44,6 +44,10 @@ import TemplateEducationSuggestions from "@/components/education/TemplateEducati
 import QuickPatientAccess from "@/components/smartNote/QuickPatientAccess";
 import VisitTypePresets from "@/components/smartNote/VisitTypePresets";
 import VitalSignsQuickButton from "@/components/smartNote/VitalSignsQuickButton";
+import AutoSaveIndicator from "@/components/smartNote/AutoSaveIndicator";
+import NoteDraftVersions from "@/components/smartNote/NoteDraftVersions";
+import NoteConflictResolver from "@/components/smartNote/NoteConflictResolver";
+import EnhancedOfflineNoteSync from "@/components/mobile/EnhancedOfflineNoteSync";
 
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
@@ -140,6 +144,7 @@ export default function SmartNoteAssistant() {
   const [noteRating, setNoteRating] = useState(null);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [timeSavedMinutes, setTimeSavedMinutes] = useState(0);
+  const [conflictData, setConflictData] = useState(null);
   const location = useLocation();
   const { isOnline, saveOfflineNote } = useOfflineNotes();
 
@@ -652,6 +657,27 @@ export default function SmartNoteAssistant() {
     <PremiumFeatureGate featureName="Smart Note Assistant" featureDescription="AI-powered clinical documentation with real-time compliance monitoring and quality scoring." allowTrial={true}>
     <div className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-6 pb-20 sm:pb-6 overflow-x-hidden w-full max-w-full min-w-0">
       <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
+        {/* Enhanced Offline Sync Status */}
+        {currentUser?.email && (
+          <EnhancedOfflineNoteSync 
+            userEmail={currentUser.email} 
+            isOnline={isOnline}
+          />
+        )}
+
+        {/* Conflict Resolution */}
+        {conflictData && (
+          <NoteConflictResolver
+            onlineVersion={conflictData.online}
+            offlineVersion={conflictData.offline}
+            patientName={patientData?.first_name}
+            onResolve={(content) => {
+              setRoughNotes(content);
+              setConflictData(null);
+              toast.success("Conflict resolved");
+            }}
+          />
+        )}
         {/* Hide provider note type selector to streamline - visit type is below */}
 
         {/* Streamlined - removed checklist for efficiency */}
