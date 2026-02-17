@@ -175,6 +175,40 @@ export default function FaxContentAnalysis({ faxId, existingAnalysis }) {
             </div>
           )}
 
+          {analysis.sentiment && (
+            <div>
+              <p className="text-[10px] font-semibold text-slate-500 mb-0.5 flex items-center gap-1">
+                <HeartPulse className="w-3 h-3" /> Sentiment Analysis
+              </p>
+              <div className={`text-[10px] rounded p-1.5 ${SENTIMENT_STYLES[analysis.sentiment.tone]?.bg || "bg-slate-50 text-slate-600"}`}>
+                <span className="font-medium">{SENTIMENT_STYLES[analysis.sentiment.tone]?.icon} {SENTIMENT_STYLES[analysis.sentiment.tone]?.label || analysis.sentiment.tone}</span>
+                {analysis.sentiment.confidence > 0 && (
+                  <span className="ml-1 opacity-70">({analysis.sentiment.confidence}% confidence)</span>
+                )}
+                {analysis.sentiment.explanation && (
+                  <p className="mt-0.5 opacity-80">{analysis.sentiment.explanation}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {analysis.agency_category && (
+            <div>
+              <p className="text-[10px] font-semibold text-slate-500 mb-0.5 flex items-center gap-1">
+                <FolderOpen className="w-3 h-3" /> Agency Category
+              </p>
+              <div className={`text-[10px] rounded p-1.5 ${AGENCY_CATEGORY_LABELS[analysis.agency_category.category]?.color || "bg-slate-50 text-slate-600"}`}>
+                <span className="font-medium">{AGENCY_CATEGORY_LABELS[analysis.agency_category.category]?.label || analysis.agency_category.category}</span>
+                {analysis.agency_category.confidence > 0 && (
+                  <span className="ml-1 opacity-70">({analysis.agency_category.confidence}% confidence)</span>
+                )}
+                {analysis.agency_category.reasoning && (
+                  <p className="mt-0.5 opacity-80">{analysis.agency_category.reasoning}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {analysis.alerts?.length > 0 && (
             <div>
               <p className="text-[10px] font-semibold text-red-600 mb-0.5">Alerts</p>
