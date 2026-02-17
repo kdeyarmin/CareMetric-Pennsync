@@ -19,8 +19,12 @@ import FaxHistoryList from "@/components/fax/FaxHistory";
 import AIFaxAssistant from "@/components/fax/AIFaxAssistant";
 import BatchFaxDialog from "@/components/fax/BatchFaxDialog";
 import ScheduleFaxDialog from "@/components/fax/ScheduleFaxDialog";
+import FaxDraftsManager from "@/components/fax/FaxDraftsManager";
+import FaxActivityFeed from "@/components/fax/FaxActivityFeed";
+import SmartPriorityRules from "@/components/fax/SmartPriorityRules";
 import { generateCoverSheetPDF } from "@/components/fax/CoverSheetPDFGenerator";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
+import { Save } from "lucide-react";
 
 export default function SendFax() {
   const queryClient = useQueryClient();
@@ -350,6 +354,28 @@ export default function SendFax() {
           {/* Send Buttons */}
           <div className="flex gap-2">
             <Button
+              variant="outline"
+              className="h-12 px-4"
+              onClick={async () => {
+                await base44.entities.FaxDraft.create({
+                  user_email: currentUser?.email,
+                  recipient_name: recipientName,
+                  recipient_fax_number: recipientFax,
+                  subject: coverData.subject,
+                  cover_data: coverData,
+                  document_urls: documents.map(d => d.url),
+                  document_names: documents.map(d => d.name),
+                  include_cover: includeCover,
+                  notes: ""
+                });
+                toast.success("Draft saved");
+              }}
+              disabled={!currentUser?.email}
+              title="Save as draft"
+            >
+              <Save className="w-5 h-5" />
+            </Button>
+            <Button
               onClick={handleSendFax}
               disabled={sending || (!recipientFax.trim()) || (documents.length === 0 && !includeCover)}
               className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white text-base"
@@ -419,8 +445,10 @@ export default function SendFax() {
         {/* Sidebar */}
         <div className="space-y-4">
           <Tabs defaultValue="history">
-            <TabsList className="grid w-full grid-cols-2 mb-2">
+            <TabsList className="grid w-full grid-cols-4 mb-2">
               <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
+              <TabsTrigger value="drafts" className="text-xs">Drafts</TabsTrigger>
+              <TabsTrigger value="activity" className="text-xs">Feed</TabsTrigger>
               <TabsTrigger value="help" className="text-xs">Help</TabsTrigger>
             </TabsList>
 
@@ -428,10 +456,36 @@ export default function SendFax() {
               <FaxHistoryList userEmail={currentUser?.email} />
             </TabsContent>
 
+            <TabsContent value="drafts">
+              <FaxDraftsManager
+                userEmail={currentUser?.email}
+                onLoadDraft={(draft) => {
+                  setRecipientName(draft.recipient_name || "");
+                  setRecipientFax(draft.recipient_fax_number || "");
+                  if (draft.cover_data) setCoverData(prev => ({ ...prev, ...draft.cover_data }));
+                  setIncludeCover(draft.include_cover !== false);
+                  if (draft.document_urls?.length > 0) {
+                    setDocuments(draft.document_urls.map((url, i) => ({
+                      url,
+                      name: draft.document_names?.[i] || `Document ${i + 1}`,
+                      size: 0
+                    })));
+                  }
+                  toast.success("Draft loaded");
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="activity">
+              <FaxActivityFeed userEmail={currentUser?.email} />
+            </TabsContent>
+
             <TabsContent value="help">
               <FaxInstructions isOnline={isOnline} />
             </TabsContent>
           </Tabs>
+
+          <SmartPriorityRules userEmail={currentUser?.email} />
         </div>
       </div>
     </div>
