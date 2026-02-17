@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/dialog";
 import {
   Clock, Loader2, Send, CheckCircle2, AlertCircle,
-  RotateCcw, XCircle, ChevronDown, ChevronUp, FileText, Phone, User
+  RotateCcw, XCircle, ChevronDown, ChevronUp, FileText, Phone, User, Brain
 } from "lucide-react";
+import FaxContentAnalysis from "@/components/fax/FaxContentAnalysis";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -241,6 +242,14 @@ export default function FaxQueueItem({ fax, userSendingFaxNumber }) {
                     <div>
                       <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Tracking ID</p>
                       <p className="text-xs text-slate-600 font-mono">{fax.telnyx_fax_id}</p>
+                    </div>
+                  )}
+
+                  {/* AI Content Analysis for completed faxes */}
+                  {(fax.status === 'sent' || fax.status === 'delivered') && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">AI Analysis</p>
+                      <FaxContentAnalysis faxId={fax.id} existingAnalysis={fax.ai_analysis} />
                     </div>
                   )}
                 </div>

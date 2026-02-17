@@ -49,6 +49,7 @@ export default function FaxQueue() {
   const queued = allFaxes.filter(f => f.status === 'queued');
   const sending = allFaxes.filter(f => f.status === 'sending');
   const failed = allFaxes.filter(f => f.status === 'failed');
+  const scheduled = allFaxes.filter(f => f.status === 'scheduled');
   const completed = allFaxes.filter(f => f.status === 'sent' || f.status === 'delivered');
 
   const handleRetryAll = async () => {
@@ -81,7 +82,7 @@ export default function FaxQueue() {
     queryClient.invalidateQueries({ queryKey: ['faxQueue'] });
   };
 
-  const pendingCount = queued.length + sending.length + failed.length;
+  const pendingCount = queued.length + sending.length + failed.length + scheduled.length;
 
   return (
     <PremiumFeatureGate featureName="Fax Queue" featureDescription="Monitor and manage your fax queue." allowTrial={true}>
@@ -122,9 +123,10 @@ export default function FaxQueue() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         <SummaryCard icon={Clock} label="Queued" count={queued.length} color="text-yellow-600" bg="bg-yellow-50" />
         <SummaryCard icon={Loader2} label="Sending" count={sending.length} color="text-blue-600" bg="bg-blue-50" spin />
+        <SummaryCard icon={Clock} label="Scheduled" count={scheduled.length} color="text-purple-600" bg="bg-purple-50" />
         <SummaryCard icon={AlertCircle} label="Failed" count={failed.length} color="text-red-600" bg="bg-red-50" />
         <SummaryCard icon={CheckCircle2} label="Completed" count={completed.length} color="text-green-600" bg="bg-green-50" />
       </div>
@@ -145,7 +147,7 @@ export default function FaxQueue() {
 
         <TabsContent value="pending">
           <FaxList
-            faxes={[...sending, ...queued, ...failed]}
+            faxes={[...sending, ...queued, ...scheduled, ...failed]}
             isLoading={isLoading}
             emptyMessage="No pending faxes"
             emptyDescription="All faxes have been processed."
