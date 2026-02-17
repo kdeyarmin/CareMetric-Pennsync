@@ -101,6 +101,16 @@ export default function FaxContentAnalysis({ faxId, existingAnalysis }) {
               {analysis.category}
             </Badge>
           )}
+          {analysis.sentiment?.tone && (
+            <Badge className={`text-[8px] px-1 py-0 ${SENTIMENT_STYLES[analysis.sentiment.tone]?.bg || "bg-slate-100 text-slate-600"}`}>
+              {SENTIMENT_STYLES[analysis.sentiment.tone]?.icon} {SENTIMENT_STYLES[analysis.sentiment.tone]?.label || analysis.sentiment.tone}
+            </Badge>
+          )}
+          {analysis.agency_category?.category && (
+            <Badge className={`text-[8px] px-1 py-0 ${AGENCY_CATEGORY_LABELS[analysis.agency_category.category]?.color || "bg-slate-100 text-slate-600"}`}>
+              {AGENCY_CATEGORY_LABELS[analysis.agency_category.category]?.label || analysis.agency_category.category}
+            </Badge>
+          )}
         </div>
         <Button variant="ghost" size="sm" className="h-5 px-1" onClick={() => setExpanded(!expanded)}>
           {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
