@@ -12,6 +12,7 @@ import {
   Send, User, Stethoscope, Shield, Paperclip, Pin,
   AlertTriangle, Clock, Loader2
 } from "lucide-react";
+import { sendMessageNotification } from "@/functions/sendMessageNotification";
 
 const PRIORITY_CONFIG = {
   low: { color: "bg-slate-100 text-slate-600", label: "Low" },
@@ -62,7 +63,23 @@ export default function MessageThread({ patientId, channel, currentUser, patient
   }, [messages.length]);
 
   const sendMutation = useMutation({
-    mutationFn: (data) => base44.entities.PatientMessage.create(data),
+    mutationFn: async (data) => {
+      const created = await base44.entities.PatientMessage.create(data);
+      // Send email notifications to other participants (non-blocking)
+      const otherEmails = [...new Set(messages.map(m => m.sender_email))].filter(e => e !== currentUser.email);
+      if (otherEmails.length > 0) {
+        sendMessageNotification({
+          patient_id: patientId,
+          sender_name: currentUser.full_name || currentUser.email,
+          sender_email: currentUser.email,
+          body: data.body,
+          channel,
+          patient_name: patientName,
+          recipient_emails: otherEmails,
+        }).catch(() => {}); // non-blocking
+      }
+      return created;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patientMessages", patientId, channel] });
       setNewMessage("");
