@@ -54,16 +54,25 @@ Extract:
         }
       });
 
-      // Update the document with analysis
+      // Auto-apply: rename, tags, category from analysis
       const updatedDocs = [...documents];
-      updatedDocs[docIndex] = { ...updatedDocs[docIndex], analysis: res };
+      const doc = updatedDocs[docIndex];
+      const autoName = res.suggested_name || doc.name;
+      updatedDocs[docIndex] = {
+        ...doc,
+        name: autoName,
+        analysis: res,
+        category: res.category || "",
+        tags: res.tags || [],
+        autoApplied: true
+      };
       onDocumentsChange(updatedDocs);
       setExpandedAnalysis(prev => ({ ...prev, [docIndex]: true }));
 
       // Notify parent if callback provided
       if (onDocumentAnalysis) onDocumentAnalysis(docIndex, res);
 
-      toast.success("Document analyzed");
+      toast.success(`Auto-filed as "${res.category || 'Document'}" — ${autoName}`);
     } catch (err) {
       console.error("Document analysis error:", err);
       toast.error("Failed to analyze document");
@@ -167,6 +176,17 @@ Extract:
     toast.success("Document renamed");
   };
 
+  const updateDocAnalysis = (index, updatedAnalysis) => {
+    const updatedDocs = [...documents];
+    updatedDocs[index] = {
+      ...updatedDocs[index],
+      analysis: updatedAnalysis,
+      category: updatedAnalysis.category || "",
+      tags: updatedAnalysis.tags || [],
+    };
+    onDocumentsChange(updatedDocs);
+  };
+
   const formatSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -210,13 +230,19 @@ Extract:
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{doc.name}</p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] text-slate-500">{formatSize(doc.size)}</span>
                       {doc.originalType === 'image' && (
                         <Badge className="text-[8px] px-1 py-0 bg-green-100 text-green-700">From photo</Badge>
                       )}
-                      {doc.analysis?.category && (
-                        <Badge className="text-[8px] px-1 py-0 bg-purple-100 text-purple-700">{doc.analysis.category}</Badge>
+                      {doc.category && (
+                        <Badge className="text-[8px] px-1 py-0 bg-purple-100 text-purple-700">{doc.category}</Badge>
+                      )}
+                      {doc.tags?.length > 0 && doc.tags.slice(0, 2).map((t, ti) => (
+                        <Badge key={ti} className="text-[8px] px-1 py-0 bg-slate-100 text-slate-500">{t}</Badge>
+                      ))}
+                      {doc.tags?.length > 2 && (
+                        <span className="text-[8px] text-slate-400">+{doc.tags.length - 2}</span>
                       )}
                       {analyzingIndex === index && (
                         <Badge className="text-[8px] px-1 py-0 bg-purple-50 text-purple-600 animate-pulse">
@@ -250,6 +276,8 @@ Extract:
                       expanded={expandedAnalysis[index]}
                       onToggle={() => setExpandedAnalysis(prev => ({ ...prev, [index]: !prev[index] }))}
                       onApplyName={(name) => applyRename(index, name)}
+                      onUpdateAnalysis={(updated) => updateDocAnalysis(index, updated)}
+                      autoApplied={doc.autoApplied}
                     />
                   </div>
                 )}
