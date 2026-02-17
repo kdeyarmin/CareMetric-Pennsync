@@ -99,6 +99,7 @@ import ComplianceViolationWidget from "../components/compliance/ComplianceViolat
 import ProactiveComplianceRiskPredictor from "../components/compliance/ProactiveComplianceRiskPredictor";
 import AIComplianceCarePlanSuggester from "../components/compliance/AIComplianceCarePlanSuggester";
 import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
+import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -276,7 +277,8 @@ export default function PatientDetails() {
   }
 
   return (
-    // MOBILE FIX: enforce max width + prevent horizontal overflow
+    <PremiumFeatureGate featureName="Patient Details" featureDescription="Full patient clinical analysis, AI risk prediction, care plan management, and documentation tools." allowTrial={true}>
+    {/* MOBILE FIX: enforce max width + prevent horizontal overflow */}
     <div className="w-full max-w-full overflow-x-hidden">
       {/* MOBILE FIX: add max-w-full + overflow-x-hidden + min-w-0 so children can shrink */}
       <div className="p-2 sm:p-3 md:p-4 lg:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 w-full max-w-full overflow-x-hidden min-w-0">
@@ -1411,5 +1413,6 @@ export default function PatientDetails() {
         </Card>
       </div>
     </div>
+    </PremiumFeatureGate>
   );
 }

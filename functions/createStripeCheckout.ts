@@ -30,12 +30,17 @@ Deno.serve(async (req) => {
       sub.status === 'active' || sub.status === 'trialing' || sub.status === 'lifetime_free'
     );
 
-    if (hasActiveSub && existingSubscriptions[0].status !== 'trialing') {
-      console.log('[createStripeCheckout] User already has active subscription');
+    // Block if user already has a paid active or lifetime_free subscription
+    const hasPaidActive = existingSubscriptions.some(sub => 
+      sub.status === 'active' || sub.status === 'lifetime_free'
+    );
+    if (hasPaidActive) {
+      console.log('[createStripeCheckout] User already has active paid subscription');
       return Response.json({ 
         error: 'You already have an active subscription. Please manage it from the billing portal.' 
       }, { status: 400 });
     }
+    // Trialing, expired, canceled users are all allowed to checkout
 
     // Get or create Stripe customer
     let customerId = existingSubscriptions[0]?.stripe_customer_id;
