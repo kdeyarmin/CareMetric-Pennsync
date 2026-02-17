@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Library, LayoutGrid, List } from "lucide-react";
+import { format } from "date-fns";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 import DocumentLibraryFilters from "@/components/fax/DocumentLibraryFilters";
 import DocumentLibraryCard from "@/components/fax/DocumentLibraryCard";
@@ -160,8 +161,6 @@ export default function DocumentLibrary() {
 }
 
 function DocumentLibraryListItem({ doc }) {
-  const { format } = require("date-fns");
-
   const CATEGORY_COLORS = {
     "Lab Results": "bg-blue-100 text-blue-700",
     "Referral": "bg-purple-100 text-purple-700",
