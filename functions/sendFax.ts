@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { to_fax_number, media_urls, cover_page_html, fax_history_id } = body;
+    const { to_fax_number, media_urls, cover_page_html, fax_history_id, from_fax_number } = body;
 
     if (!to_fax_number) {
       return Response.json({ error: 'Fax number is required' }, { status: 400 });
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         connection_id: '', // Will use default
         to: formattedNumber,
-        from: '+18445550100', // Telnyx will use your configured number
+        from: from_fax_number || '+18445550100', // Use personal fax number if provided
         media_url: media_urls[0], // Telnyx accepts one media_url per fax
         quality: 'high',
         monochrome: false

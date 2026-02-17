@@ -39,7 +39,8 @@ export default function Settings() {
     service_type: 'home_health',
     preferred_language: 'en-US',
     phone_number: '',
-    two_factor_enabled: false
+    two_factor_enabled: false,
+    sending_fax_number: ''
   });
 
   const navigate = useNavigate();
@@ -64,7 +65,8 @@ export default function Settings() {
         service_type: currentUser.service_type || 'home_health',
         preferred_language: currentUser.preferred_language || 'en-US',
         phone_number: currentUser.phone_number || '',
-        two_factor_enabled: currentUser.two_factor_enabled || false
+        two_factor_enabled: currentUser.two_factor_enabled || false,
+        sending_fax_number: currentUser.sending_fax_number || ''
       });
     }
   }, [currentUser]);
@@ -78,7 +80,8 @@ export default function Settings() {
         service_type: formData.service_type,
         preferred_language: formData.preferred_language,
         phone_number: formData.phone_number,
-        two_factor_enabled: formData.two_factor_enabled
+        two_factor_enabled: formData.two_factor_enabled,
+        sending_fax_number: formData.sending_fax_number
       });
 
       // Sync provider type to other settings if it changed
@@ -306,6 +309,17 @@ export default function Settings() {
 
                   <p className="text-xs text-gray-500 mt-1">Include country code (e.g., +1 for US)</p>
                 </div>
+                <div>
+                  <Label htmlFor="sending_fax_number">Outgoing Fax Number</Label>
+                  <Input
+                    id="sending_fax_number"
+                    type="tel"
+                    value={formData.sending_fax_number}
+                    onChange={(e) => setFormData({ ...formData, sending_fax_number: e.target.value })}
+                    placeholder="+15551234567"
+                    className="mt-1" />
+                  <p className="text-xs text-gray-500 mt-1">This number will appear as the sender on your faxes</p>
+                </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Two-Factor Authentication</Label>
@@ -368,6 +382,10 @@ export default function Settings() {
                 <div>
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Phone Number</p>
                   <p className="text-slate-900 dark:text-slate-100">{currentUser?.phone_number || 'Not set'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Outgoing Fax Number</p>
+                  <p className="text-slate-900 dark:text-slate-100">{currentUser?.sending_fax_number || 'Not set'}</p>
                 </div>
               </>
             }

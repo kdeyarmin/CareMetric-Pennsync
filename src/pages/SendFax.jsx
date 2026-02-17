@@ -25,6 +25,7 @@ export default function SendFax() {
   const [sending, setSending] = useState(false);
   const [recipientName, setRecipientName] = useState("");
   const [recipientFax, setRecipientFax] = useState("");
+  const [usePersonalFaxNumber, setUsePersonalFaxNumber] = useState(false);
   const [documents, setDocuments] = useState([]);
   const [includeCover, setIncludeCover] = useState(true);
   const [coverData, setCoverData] = useState({
@@ -42,13 +43,16 @@ export default function SendFax() {
     queryFn: () => base44.auth.me()
   });
 
-  // Auto-fill sender from user profile
+  // Auto-fill sender from user profile and set default sending fax number
   useEffect(() => {
     if (currentUser) {
       setCoverData(prev => ({
         ...prev,
         sender_name: prev.sender_name || currentUser.full_name || "",
       }));
+      if (currentUser.sending_fax_number) {
+        setUsePersonalFaxNumber(true);
+      }
     }
   }, [currentUser]);
 
@@ -147,7 +151,8 @@ export default function SendFax() {
       const { data } = await base44.functions.invoke('sendFax', {
         to_fax_number: recipientFax,
         media_urls: mediaUrls,
-        fax_history_id: historyRecord.id
+        fax_history_id: historyRecord.id,
+        from_fax_number: usePersonalFaxNumber ? currentUser.sending_fax_number : undefined
       });
 
       if (data?.success) {
@@ -213,6 +218,13 @@ export default function SendFax() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Main Form */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Address Book at Top */}
+          <FaxAddressBook
+            userEmail={currentUser?.email}
+            agencyId={agencyId}
+            onSelectContact={handleSelectContact}
+          />
+
           {/* Recipient */}
           <Card>
             <CardHeader className="pb-2 p-3">
@@ -243,6 +255,19 @@ export default function SendFax() {
                   />
                 </div>
               </div>
+              {currentUser?.sending_fax_number && (
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={usePersonalFaxNumber}
+                    onChange={e => setUsePersonalFaxNumber(e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label className="text-xs text-slate-600">
+                    Send from my fax number: <span className="font-semibold">{currentUser.sending_fax_number}</span>
+                  </Label>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -299,20 +324,11 @@ export default function SendFax() {
 
         {/* Sidebar */}
         <div className="space-y-4">
-          <Tabs defaultValue="contacts">
-            <TabsList className="grid w-full grid-cols-3 mb-2">
-              <TabsTrigger value="contacts" className="text-xs">Contacts</TabsTrigger>
+          <Tabs defaultValue="history">
+            <TabsList className="grid w-full grid-cols-2 mb-2">
               <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
               <TabsTrigger value="help" className="text-xs">Help</TabsTrigger>
             </TabsList>
-
-            <TabsContent value="contacts">
-              <FaxAddressBook
-                userEmail={currentUser?.email}
-                agencyId={agencyId}
-                onSelectContact={handleSelectContact}
-              />
-            </TabsContent>
 
             <TabsContent value="history">
               <FaxHistoryList userEmail={currentUser?.email} />
