@@ -21,6 +21,7 @@ import TerminologyGlossaryManager from "../components/scribe/TerminologyGlossary
 import MobileVoiceRecorder from "../components/mobile/MobileVoiceRecorder";
 import CollapsibleMobileSection from "../components/mobile/CollapsibleMobileSection";
 import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
+import QuickSmartNoteTransfer from "../components/scribe/QuickSmartNoteTransfer";
 const commonDiagnoses = [
 "CHF (Congestive Heart Failure)",
 "COPD (Chronic Obstructive Pulmonary Disease)",
@@ -329,7 +330,16 @@ export default function MedicalScribe() {
                   recentVisits={recentVisits}
                   onNoteGenerated={handleNoteGenerated} />
 
-              </div> :
+                {generatedNote && (
+                  <QuickSmartNoteTransfer
+                    generatedNote={generatedNote}
+                    selectedPatientId={selectedPatientId}
+                    visitType={visitType}
+                    diagnosis={finalDiagnosis}
+                  />
+                )}
+
+                </div> :
 
               <Card className="border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900 min-h-[24rem] flex items-center justify-center w-full overflow-hidden">
                 <CardContent className="text-center space-y-3 p-4">
