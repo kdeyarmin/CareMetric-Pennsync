@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     };
 
     if (type === 'full' || type === 'summary') {
-      prompt = `Analyze this fax document content comprehensively.
+      prompt = `Analyze this fax document content comprehensively for a HOME HEALTH AGENCY.
 
 FAX CONTENT:
 ${contentToAnalyze.substring(0, 8000)}
@@ -82,7 +82,30 @@ Provide:
 2. Urgency level (critical/high/medium/low)
 3. Document category (medical_records, prescription, appointment, referral, lab_results, imaging, insurance, billing, administrative, other)
 4. Key action items for the recipient
-5. Any alerts or critical findings`;
+5. Any alerts or critical findings
+
+6. SENTIMENT ANALYSIS: Identify the overall tone/sentiment of this fax. Choose from:
+   - urgent_demand: Aggressive, time-sensitive demand for action
+   - concerned: Worried or anxious tone about patient status
+   - informational: Neutral, routine information sharing
+   - request: Polite request for information or action
+   - follow_up: Follow-up on previous communication
+   - escalation: Escalating an issue or complaint
+   - positive: Good news, progress reports, approvals
+   Also provide a short explanation for the sentiment and a confidence score (0-100).
+
+7. HOME HEALTH AGENCY CATEGORY: Auto-categorize this fax into one of these predefined home health agency workflow categories:
+   - patient_care: Direct patient care orders, clinical updates, treatment changes, vitals, wound care
+   - referrals_intake: New patient referrals, intake documents, physician face-to-face forms
+   - billing_insurance: Insurance authorizations, prior auths, claims, payment notices, EOBs
+   - compliance_regulatory: Compliance notices, audit requests, Medicare/Medicaid updates, CMS communications
+   - lab_diagnostics: Lab results, imaging reports, pathology, diagnostic orders
+   - physician_orders: Physician orders, medication changes, plan of care updates, recertifications
+   - discharge_transfer: Discharge summaries, transfer documentation, care transitions
+   - supplies_equipment: DME orders, supply requests, equipment authorizations
+   - scheduling_coordination: Visit scheduling, care coordination, team communications
+   - general_administrative: General admin correspondence, miscellaneous
+   Also provide the confidence level and reasoning for the categorization.`;
 
       responseSchema.properties = {
         summary: {
@@ -95,7 +118,23 @@ Provide:
         },
         urgency: { type: "string", enum: ["critical", "high", "medium", "low"] },
         category: { type: "string" },
-        alerts: { type: "array", items: { type: "object", properties: { message: { type: "string" }, severity: { type: "string" } } } }
+        alerts: { type: "array", items: { type: "object", properties: { message: { type: "string" }, severity: { type: "string" } } } },
+        sentiment: {
+          type: "object",
+          properties: {
+            tone: { type: "string", enum: ["urgent_demand", "concerned", "informational", "request", "follow_up", "escalation", "positive"] },
+            explanation: { type: "string" },
+            confidence: { type: "number" }
+          }
+        },
+        agency_category: {
+          type: "object",
+          properties: {
+            category: { type: "string", enum: ["patient_care", "referrals_intake", "billing_insurance", "compliance_regulatory", "lab_diagnostics", "physician_orders", "discharge_transfer", "supplies_equipment", "scheduling_coordination", "general_administrative"] },
+            confidence: { type: "number" },
+            reasoning: { type: "string" }
+          }
+        }
       };
     }
 
@@ -134,7 +173,9 @@ Provide:
           key_points: aiResult.summary?.key_points || [],
           action_items: aiResult.summary?.action_items || [],
           reply_draft: aiResult.reply_draft || '',
-          suggested_contacts: aiResult.suggested_contacts || []
+          suggested_contacts: aiResult.suggested_contacts || [],
+          sentiment: aiResult.sentiment || null,
+          agency_category: aiResult.agency_category || null
         }
       });
     } catch (e) {

@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Brain, ChevronDown, ChevronUp, Copy, MessageSquare, Users } from "lucide-react";
+import { Loader2, Brain, ChevronDown, ChevronUp, Copy, MessageSquare, Users, HeartPulse, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 
 export default function FaxContentAnalysis({ faxId, existingAnalysis }) {
