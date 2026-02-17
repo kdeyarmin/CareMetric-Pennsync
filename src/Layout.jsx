@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import MobileFieldToolbar from "@/components/mobile/MobileFieldToolbar";
 import FaxNotificationBell from "@/components/fax/FaxNotificationBell";
+import FavoritesBar from "@/components/navigation/FavoritesBar";
 import {
   Home,
   Users,
@@ -66,6 +67,7 @@ export default function Layout({ children, currentPageName }) {
          { name: "OASIS", icon: FileText, page: "OASIS" },
          { name: "Send a Fax", icon: Send, page: "SendFax" },
          { name: "Fax Queue", icon: Clock, page: "FaxQueue" },
+         { name: "Fax Analytics", icon: BarChart3, page: "FaxAnalytics" },
          { name: "Doc Library", icon: FileText, page: "DocumentLibrary" },
          { name: "Messages", icon: MessageSquare, page: "SecureMessaging" },
        ]
@@ -156,6 +158,7 @@ export default function Layout({ children, currentPageName }) {
                     <span className="hidden sm:inline font-bold text-blue-900">{displayPageName}</span>
                   </div>
           </div>
+          {user?.email && <FavoritesBar userEmail={user.email} />}
           <nav className="p-4 space-y-6">
             {navigationGroups.map((group) => (
               <div key={group.title}>
