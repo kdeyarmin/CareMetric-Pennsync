@@ -293,6 +293,19 @@ export default function SendFax() {
           <FaxDocumentUploader
             documents={documents}
             onDocumentsChange={setDocuments}
+            onDocumentAnalysis={(index, analysis) => {
+              // Auto-fill cover sheet subject from first analyzed document if empty
+              if (includeCover && !coverData.subject && analysis.document_type) {
+                const parts = [];
+                if (analysis.document_type) parts.push(analysis.document_type);
+                if (analysis.patient_name) parts.push(`Patient: ${analysis.patient_name}`);
+                if (analysis.date_of_service) parts.push(analysis.date_of_service);
+                setCoverData(prev => ({
+                  ...prev,
+                  subject: prev.subject || parts.join(' - ')
+                }));
+              }
+            }}
           />
 
           {/* AI Assistant */}
