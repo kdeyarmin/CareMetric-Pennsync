@@ -35,6 +35,33 @@ export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
+  // Map page names to their display labels
+  const pageNameMap = {
+    'Dashboard': 'Dashboard',
+    'Patients': 'Patients',
+    'Tasks': 'Tasks',
+    'SmartNoteAssistant': 'Smart Note',
+    'MedicalScribe': 'Medical Scribe',
+    'CarePlanManagement': 'Care Plans',
+    'OASIS': 'OASIS',
+    'SendFax': 'Send a Fax',
+    'FaxQueue': 'Fax Queue',
+    'FaxAnalytics': 'Fax Analytics',
+    'DocumentLibrary': 'Doc Library',
+    'SecureMessaging': 'Messages',
+    'PHIVault': 'PHI Vault',
+    'ComplianceDashboard': 'Compliance',
+    'AnalyticsDashboard': 'Analytics',
+    'PatientAlerts': 'Patient Alerts',
+    'TrainingHub': 'Training',
+    'Documentation': 'Documentation',
+    'Settings': 'Settings',
+    'EnterpriseAnalytics': 'Org Analytics',
+    'AdminDashboard': 'Admin Dashboard',
+    'UserManagement': 'User Management',
+    'AgencyDashboard': 'Agency Management'
+  };
+
   // Determine current page name from URL path
   const getPageNameFromPath = (pathname) => {
     const path = pathname.split('/').filter(Boolean)[0];
@@ -42,7 +69,8 @@ export default function Layout({ children, currentPageName }) {
     return path.charAt(0).toUpperCase() + path.slice(1);
   };
 
-  const displayPageName = getPageNameFromPath(location.pathname) || currentPageName || 'Dashboard';
+  const currentPageKey = getPageNameFromPath(location.pathname) || currentPageName || 'Dashboard';
+  const displayPageName = pageNameMap[currentPageKey] || currentPageKey;
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
@@ -167,7 +195,7 @@ export default function Layout({ children, currentPageName }) {
                 </h3>
                 <div className="space-y-1">
                   {group.items.map((item) => {
-                    const isActive = displayPageName === item.name;
+                    const isActive = displayPageName === item.name || currentPageKey === item.page;
                     return (
                       <Link 
                         key={item.page} 
@@ -195,7 +223,7 @@ export default function Layout({ children, currentPageName }) {
                 </h3>
                 <div className="space-y-1">
                   {enterpriseNavigationGroup.items.map((item) => {
-                    const isActive = displayPageName === item.name;
+                    const isActive = displayPageName === item.name || currentPageKey === item.page;
                     return (
                       <Link 
                         key={item.page} 
