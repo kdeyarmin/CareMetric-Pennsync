@@ -22,7 +22,8 @@ import {
   Bell,
   Shield,
   UserCog,
-  Building2
+  Building2,
+  Send
 } from "lucide-react";
 
 export default function Layout({ children, currentPageName }) {
@@ -53,12 +54,13 @@ export default function Layout({ children, currentPageName }) {
       ]
     },
     {
-       title: "Clinical",
+      title: "Clinical",
        items: [
          { name: "Smart Note", icon: FileText, page: "SmartNoteAssistant" },
          { name: "Medical Scribe", icon: Activity, page: "MedicalScribe" },
          { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
          { name: "OASIS", icon: FileText, page: "OASIS" },
+         { name: "Send a Fax", icon: Send, page: "SendFax" },
        ]
      },
     {
