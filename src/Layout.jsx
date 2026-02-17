@@ -111,6 +111,7 @@ export default function Layout({ children, currentPageName }) {
       items: [
         { name: "Compliance", icon: Shield, page: "ComplianceDashboard" },
         { name: "Analytics", icon: BarChart3, page: "AnalyticsDashboard" },
+        { name: "AI Analytics", icon: BarChart3, page: "AIAnalyticsDashboard" },
         { name: "Patient Alerts", icon: Bell, page: "PatientAlerts" },
       ]
     },
