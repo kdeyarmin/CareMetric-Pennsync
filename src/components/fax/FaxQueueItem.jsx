@@ -24,6 +24,14 @@ const STATUS_CONFIG = {
   sent: { icon: Send, label: "Sent", color: "bg-green-100 text-green-800", dot: "bg-green-500" },
   delivered: { icon: CheckCircle2, label: "Delivered", color: "bg-emerald-100 text-emerald-800", dot: "bg-emerald-500" },
   failed: { icon: AlertCircle, label: "Failed", color: "bg-red-100 text-red-800", dot: "bg-red-500" },
+  scheduled: { icon: Clock, label: "Scheduled", color: "bg-purple-100 text-purple-800", dot: "bg-purple-500" },
+};
+
+const PRIORITY_CONFIG = {
+  urgent: { label: "Urgent", color: "bg-red-100 text-red-700" },
+  high: { label: "High", color: "bg-orange-100 text-orange-700" },
+  normal: { label: "Normal", color: "bg-slate-100 text-slate-600" },
+  low: { label: "Low", color: "bg-slate-50 text-slate-400" },
 };
 
 export default function FaxQueueItem({ fax, userSendingFaxNumber }) {
@@ -33,12 +41,8 @@ export default function FaxQueueItem({ fax, userSendingFaxNumber }) {
 
   const retryMutation = useMutation({
     mutationFn: async () => {
-      await base44.entities.FaxHistory.update(fax.id, { status: 'sending', error_message: '' });
-      const res = await base44.functions.invoke('sendFax', {
-        to_fax_number: fax.recipient_fax_number,
-        media_urls: fax.document_urls,
-        fax_history_id: fax.id,
-        from_fax_number: userSendingFaxNumber || undefined
+      const res = await base44.functions.invoke('retryFailedFax', {
+        fax_log_id: fax.id
       });
       return res.data;
     },
@@ -46,7 +50,7 @@ export default function FaxQueueItem({ fax, userSendingFaxNumber }) {
       queryClient.invalidateQueries({ queryKey: ['faxQueue'] });
       queryClient.invalidateQueries({ queryKey: ['faxHistory'] });
       if (data?.success) {
-        toast.success("Fax resent successfully");
+        toast.success(`Fax retry ${data.retry_count} sent successfully`);
       } else {
         toast.error(data?.error || "Retry failed");
       }
@@ -69,8 +73,11 @@ export default function FaxQueueItem({ fax, userSendingFaxNumber }) {
 
   const config = STATUS_CONFIG[fax.status] || STATUS_CONFIG.queued;
   const Icon = config.icon;
-  const canRetry = fax.status === 'failed' || fax.status === 'queued';
-  const canCancel = fax.status === 'queued' || fax.status === 'failed';
+  const maxRetries = fax.max_retries || 3;
+  const retryCount = fax.retry_count || 0;
+  const canRetry = (fax.status === 'failed' || fax.status === 'queued') && retryCount < maxRetries;
+  const canCancel = fax.status === 'queued' || fax.status === 'failed' || fax.status === 'scheduled';
+  const priorityConf = PRIORITY_CONFIG[fax.priority] || PRIORITY_CONFIG.normal;
 
   const statusTimeline = [
     { label: "Created", time: fax.created_date, active: true },
@@ -96,11 +103,21 @@ export default function FaxQueueItem({ fax, userSendingFaxNumber }) {
                     <span className="text-xs text-slate-500">{fax.recipient_fax_number}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {fax.priority && fax.priority !== 'normal' && (
+                    <Badge className={`text-[10px] ${priorityConf.color}`}>
+                      {priorityConf.label}
+                    </Badge>
+                  )}
                   <Badge className={`text-[10px] ${config.color}`}>
                     <Icon className={`w-3 h-3 mr-1 ${fax.status === 'sending' ? 'animate-spin' : ''}`} />
                     {config.label}
                   </Badge>
+                  {retryCount > 0 && (
+                    <Badge className="text-[10px] bg-slate-100 text-slate-600">
+                      Retry {retryCount}/{maxRetries}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
@@ -117,9 +134,23 @@ export default function FaxQueueItem({ fax, userSendingFaxNumber }) {
                 )}
               </div>
 
+              {fax.scheduled_send_at && fax.status === 'scheduled' && (
+                <div className="bg-purple-50 border border-purple-100 rounded-md p-2 mt-2 flex items-center gap-1.5">
+                  <Clock className="w-3 h-3 text-purple-500" />
+                  <p className="text-xs text-purple-700">Scheduled for {format(new Date(fax.scheduled_send_at), 'MMM d, yyyy h:mm a')}</p>
+                </div>
+              )}
+
+              {fax.batch_id && (
+                <p className="text-[10px] text-slate-400 mt-1">Batch: {fax.batch_id}</p>
+              )}
+
               {fax.error_message && (
                 <div className="bg-red-50 border border-red-100 rounded-md p-2 mt-2">
                   <p className="text-xs text-red-700">{fax.error_message}</p>
+                  {retryCount >= maxRetries && (
+                    <p className="text-[10px] text-red-500 mt-1 font-medium">All retries exhausted</p>
+                  )}
                 </div>
               )}
 
