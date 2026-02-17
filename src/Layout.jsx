@@ -25,7 +25,8 @@ import {
   UserCog,
   Building2,
   Send,
-  Clock
+  Clock,
+  Lock
 } from "lucide-react";
 
 export default function Layout({ children, currentPageName }) {
@@ -67,6 +68,12 @@ export default function Layout({ children, currentPageName }) {
          { name: "Doc Library", icon: FileText, page: "DocumentLibrary" },
        ]
      },
+    {
+      title: "Security",
+      items: [
+        { name: "PHI Vault", icon: Lock, page: "PHIVault" },
+      ]
+    },
     {
       title: "Compliance & Analytics",
       items: [
