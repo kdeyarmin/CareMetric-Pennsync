@@ -103,6 +103,7 @@ import AIRiskPredictionPanel from "../components/risk/AIRiskPredictionPanel";
 import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import PatientDocumentsModule from "../components/patient/PatientDocumentsModule";
 import PatientMessagingPanel from "../components/messaging/PatientMessagingPanel";
+import PersonalizedEducationModule from "../components/education/PersonalizedEducationModule";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -943,6 +944,10 @@ export default function PatientDetails() {
                     <MessageSquare className="w-3 h-3" />
                     <span>Messages</span>
                   </TabsTrigger>
+                  <TabsTrigger value="education" className="flex items-center justify-center gap-1 text-xs py-2 whitespace-nowrap shrink-0">
+                    <GraduationCap className="w-3 h-3" />
+                    <span>Education</span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -1298,6 +1303,16 @@ export default function PatientDetails() {
                     </div>
                   </ScrollArea>
                 )}
+              </TabsContent>
+
+              {/* Education Tab */}
+              <TabsContent value="education">
+                <PersonalizedEducationModule
+                  patientId={patientId}
+                  patient={patient}
+                  carePlans={carePlans}
+                  currentUser={currentUser}
+                />
               </TabsContent>
 
               {/* Messaging Tab */}
