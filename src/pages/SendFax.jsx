@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Send, Phone, Loader2, CheckCircle2, WifiOff, Wifi, FileText } from "lucide-react";
+import { Send, Phone, Loader2, CheckCircle2, WifiOff, Wifi, FileText, Users, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -17,6 +17,8 @@ import FaxCoverSheet from "@/components/fax/FaxCoverSheet";
 import FaxDocumentUploader from "@/components/fax/FaxDocumentUploader";
 import FaxHistoryList from "@/components/fax/FaxHistory";
 import AIFaxAssistant from "@/components/fax/AIFaxAssistant";
+import BatchFaxDialog from "@/components/fax/BatchFaxDialog";
+import ScheduleFaxDialog from "@/components/fax/ScheduleFaxDialog";
 import { generateCoverSheetPDF } from "@/components/fax/CoverSheetPDFGenerator";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
@@ -29,6 +31,8 @@ export default function SendFax() {
   const [usePersonalFaxNumber, setUsePersonalFaxNumber] = useState(false);
   const [documents, setDocuments] = useState([]);
   const [includeCover, setIncludeCover] = useState(true);
+  const [showBatchDialog, setShowBatchDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [coverData, setCoverData] = useState({
     sender_name: "",
     sender_company: "",
@@ -343,25 +347,64 @@ export default function SendFax() {
             recipientFax={recipientFax}
           />
 
-          {/* Send Button */}
-          <Button
-            onClick={handleSendFax}
-            disabled={sending || (!recipientFax.trim()) || (documents.length === 0 && !includeCover)}
-            className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white text-base"
-            size="lg"
-          >
-            {sending ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                {isOnline ? 'Sending Fax...' : 'Queuing Fax...'}
-              </>
-            ) : (
-              <>
-                <Send className="w-5 h-5 mr-2" />
-                {isOnline ? 'Send Fax' : 'Queue Fax (Offline)'}
-              </>
-            )}
-          </Button>
+          {/* Send Buttons */}
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSendFax}
+              disabled={sending || (!recipientFax.trim()) || (documents.length === 0 && !includeCover)}
+              className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white text-base"
+              size="lg"
+            >
+              {sending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  {isOnline ? 'Sending Fax...' : 'Queuing Fax...'}
+                </>
+              ) : (
+                <>
+                  <Send className="w-5 h-5 mr-2" />
+                  {isOnline ? 'Send Fax' : 'Queue Fax (Offline)'}
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-12 px-4"
+              onClick={() => setShowScheduleDialog(true)}
+              disabled={!recipientFax.trim() || documents.length === 0}
+              title="Schedule for later"
+            >
+              <Clock className="w-5 h-5" />
+            </Button>
+            <Button
+              variant="outline"
+              className="h-12 px-4"
+              onClick={() => setShowBatchDialog(true)}
+              disabled={documents.length === 0}
+              title="Send to multiple recipients"
+            >
+              <Users className="w-5 h-5" />
+            </Button>
+          </div>
+
+          {/* Batch & Schedule Dialogs */}
+          <BatchFaxDialog
+            open={showBatchDialog}
+            onOpenChange={setShowBatchDialog}
+            documents={documents}
+            coverData={coverData}
+            fromFaxNumber={usePersonalFaxNumber ? currentUser?.sending_fax_number : undefined}
+          />
+          <ScheduleFaxDialog
+            open={showScheduleDialog}
+            onOpenChange={setShowScheduleDialog}
+            recipientName={recipientName}
+            recipientFax={recipientFax}
+            documents={documents}
+            coverData={coverData}
+            userEmail={currentUser?.email}
+            fromFaxNumber={usePersonalFaxNumber ? currentUser?.sending_fax_number : undefined}
+          />
 
           {!isOnline && (
             <Alert className="bg-amber-50 border-amber-200">
