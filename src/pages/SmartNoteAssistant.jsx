@@ -41,6 +41,9 @@ import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestions
 import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
 import EnhancedTemplateSelector from "@/components/templates/EnhancedTemplateSelector";
 import TemplateEducationSuggestions from "@/components/education/TemplateEducationSuggestions";
+import QuickPatientAccess from "@/components/smartNote/QuickPatientAccess";
+import VisitTypePresets from "@/components/smartNote/VisitTypePresets";
+import VitalSignsQuickButton from "@/components/smartNote/VitalSignsQuickButton";
 
 import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
 import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
@@ -667,7 +670,24 @@ export default function SmartNoteAssistant() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 space-y-3">
-                {/* Patient Selection Dropdown */}
+                 {/* Quick Patient Access */}
+                 {allPatients.length > 0 && (
+                   <QuickPatientAccess
+                     onSelectPatient={setSelectedPatient}
+                     onSelectVisitType={setVisitType}
+                     currentUser={currentUser}
+                   />
+                 )}
+
+                 {/* Visit Type Presets */}
+                 {(providerType && careSetting) && (
+                   <VisitTypePresets
+                     onSelectVisitType={setVisitType}
+                     providerType={providerType}
+                   />
+                 )}
+
+                 {/* Patient Selection Dropdown */}
                 <div className="bg-slate-100 w-full">
                   <Label className="text-xs sm:text-sm font-medium">Patient *</Label>
                   <Select value={selectedPatient} onValueChange={setSelectedPatient}>
@@ -871,6 +891,21 @@ export default function SmartNoteAssistant() {
                 {/* Vital Signs */}
                 <div className="w-full">
                  <Label className="text-xs sm:text-sm font-medium">Vital Signs</Label>
+                 {selectedPatient !== 'no_patient' && (
+                   <VitalSignsQuickButton
+                     patientId={selectedPatient}
+                     onApply={(vitals) => {
+                       setVitalSigns({
+                         temperature: vitals.temperature || vitalSigns.temperature,
+                         heart_rate: vitals.heart_rate || vitalSigns.heart_rate,
+                         respiratory_rate: vitals.respiratory_rate || vitalSigns.respiratory_rate,
+                         bp_systolic: vitals.blood_pressure?.split('/')[ 0] || vitalSigns.bp_systolic,
+                         bp_diastolic: vitals.blood_pressure?.split('/')[1] || vitalSigns.bp_diastolic,
+                         oxygen_saturation: vitals.oxygen_saturation || vitalSigns.oxygen_saturation
+                       });
+                     }}
+                   />
+                 )}
                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-1 sm:mt-2">
                    <div>
                     <label className="text-[9px] sm:text-[10px] md:text-xs text-slate-600 dark:text-slate-400 block mb-1">Temp (°F)</label>

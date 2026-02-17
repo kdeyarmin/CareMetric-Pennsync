@@ -59,6 +59,7 @@ import Documentation from './pages/Documentation';
 import EULA from './pages/EULA';
 import EnterpriseAnalytics from './pages/EnterpriseAnalytics';
 import FAQ from './pages/FAQ';
+import FaxAnalytics from './pages/FaxAnalytics';
 import FaxQueue from './pages/FaxQueue';
 import MedicalScribe from './pages/MedicalScribe';
 import MySubscription from './pages/MySubscription';
@@ -79,7 +80,6 @@ import Tasks from './pages/Tasks';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import FaxAnalytics from './pages/FaxAnalytics';
 import __Layout from './Layout.jsx';
 
 
@@ -96,6 +96,7 @@ export const PAGES = {
     "EULA": EULA,
     "EnterpriseAnalytics": EnterpriseAnalytics,
     "FAQ": FAQ,
+    "FaxAnalytics": FaxAnalytics,
     "FaxQueue": FaxQueue,
     "MedicalScribe": MedicalScribe,
     "MySubscription": MySubscription,
@@ -116,7 +117,6 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "FaxAnalytics": FaxAnalytics,
 }
 
 export const pagesConfig = {
