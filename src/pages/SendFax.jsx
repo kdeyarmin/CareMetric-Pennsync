@@ -16,6 +16,7 @@ import FaxAddressBook from "@/components/fax/FaxAddressBook";
 import FaxCoverSheet from "@/components/fax/FaxCoverSheet";
 import FaxDocumentUploader from "@/components/fax/FaxDocumentUploader";
 import FaxHistoryList from "@/components/fax/FaxHistory";
+import AIFaxAssistant from "@/components/fax/AIFaxAssistant";
 import { generateCoverSheetPDF } from "@/components/fax/CoverSheetPDFGenerator";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
@@ -292,6 +293,15 @@ export default function SendFax() {
           <FaxDocumentUploader
             documents={documents}
             onDocumentsChange={setDocuments}
+          />
+
+          {/* AI Assistant */}
+          <AIFaxAssistant
+            documents={documents}
+            coverData={coverData}
+            onCoverDataChange={setCoverData}
+            recipientName={recipientName}
+            recipientFax={recipientFax}
           />
 
           {/* Send Button */}
