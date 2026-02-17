@@ -25,6 +25,8 @@ import AgencyCodeInput from "../components/settings/AgencyCodeInput";
 import AgencyCodeManager from "../components/settings/AgencyCodeManager";
 import NotificationPreferences from "../components/settings/NotificationPreferences";
 import FaxNotificationSettings from "../components/settings/FaxNotificationSettings";
+import ThemeSettings from "../components/settings/ThemeSettings";
+import AIBehaviorSettings from "../components/settings/AIBehaviorSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Settings() {
@@ -130,8 +132,9 @@ export default function Settings() {
 
       <Tabs defaultValue="profile" className="w-full">
          <div className="w-full overflow-x-auto mb-3 sm:mb-4 md:mb-6">
-           <TabsList className="grid w-max min-w-full grid-cols-2 sm:grid-cols-4 gap-1 p-1">
+           <TabsList className="grid w-max min-w-full grid-cols-3 sm:grid-cols-5 gap-1 p-1">
              <TabsTrigger value="profile" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Profile</TabsTrigger>
+             <TabsTrigger value="appearance" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Appearance</TabsTrigger>
              <TabsTrigger value="notifications" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Alerts</TabsTrigger>
              <TabsTrigger value="security" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Security</TabsTrigger>
              <TabsTrigger value="advanced" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3">Advanced</TabsTrigger>
@@ -429,6 +432,11 @@ export default function Settings() {
 
         {/* Referral Program */}
         <ReferralCodeDisplay user={currentUser} />
+        </TabsContent>
+
+        <TabsContent value="appearance" className="space-y-3 sm:space-y-4 md:space-y-6">
+          <ThemeSettings currentUser={currentUser} />
+          <AIBehaviorSettings currentUser={currentUser} />
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-3 sm:space-y-4 md:space-y-6">
