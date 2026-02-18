@@ -758,8 +758,8 @@ export default function SmartNoteAssistant() {
               <CardContent className="bg-white p-4 sm:p-6 space-y-4">
                  {/* Quick Patient Access - Hide if using standard section */}
 
-                 {/* Core Documentation Fields */}
-                 <div className="grid gap-5">
+                 {/* Core Documentation Fields - Compact Grid */}
+                 <div className="grid gap-4">
                  {/* Patient Selection Dropdown */}
                  <div className="w-full">
                    <Label className="text-sm font-semibold text-slate-700 mb-2 block">Patient *</Label>
