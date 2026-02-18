@@ -421,46 +421,26 @@ For each element scored below 80, provide a specific, actionable improvement sug
 }
 
 async function drugInteractionCheck(base44, patientId, noteContent, diagnosis) {
-  if (!patientId) return { success: true, data: { alerts: [], summary: 'No patient selected — cannot check drug interactions.' } };
+  if (!patientId) return { success: true, data: { interaction_alerts: [], summary: 'No patient selected.' } };
 
   const patients = await base44.asServiceRole.entities.Patient.list();
   const patient = patients.find(p => p.id === patientId);
   if (!patient) return { error: 'Patient not found' };
 
-  const medications = (patient.current_medications || []).map(m => `${m.name} ${m.dosage} ${m.frequency} (prescriber: ${m.prescriber || 'unknown'})`).join('\n');
+  const medications = (patient.current_medications || []).map(m => `${m.name} ${m.dosage} ${m.frequency}`).join('; ');
   const diagnoses = [patient.primary_diagnosis, ...(patient.secondary_diagnoses || [])].filter(Boolean).join(', ');
   const allergies = patient.allergies || 'NKDA';
-  const conditions = (patient.chronic_conditions || []).map(c => `${c.condition} (${c.severity || 'unknown'})`).join(', ');
   const age = patient.date_of_birth ? Math.floor((Date.now() - new Date(patient.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
-  const renal = patient.functional_status || {};
 
   const res = await base44.integrations.Core.InvokeLLM({
-    prompt: `You are a clinical pharmacology and drug safety expert. Perform a comprehensive drug interaction and contraindication analysis for this patient.
+    prompt: `Clinical pharmacology expert. Analyze drug interactions and contraindications.
 
-PATIENT: ${patient.first_name} ${patient.last_name}, Age: ${age || 'unknown'}
-ALLERGIES: ${allergies}
+PATIENT: Age ${age || 'unknown'}, Allergies: ${allergies}
 DIAGNOSES: ${diagnoses}
-CHRONIC CONDITIONS: ${conditions}
-FUNCTIONAL STATUS: Cognitive=${renal.cognitive_status || 'unknown'}, Fall Risk=${renal.fall_risk || 'unknown'}
-SOCIAL: Living=${patient.social_history?.living_situation || 'unknown'}, Health Literacy=${patient.social_determinants?.health_literacy || 'unknown'}
+MEDICATIONS: ${medications || 'None'}
+VISIT DIAGNOSIS: ${diagnosis || 'N/A'}
 
-CURRENT MEDICATIONS:
-${medications || 'None documented'}
-
-${noteContent ? `CURRENT VISIT NOTES:\n${noteContent}\n` : ''}
-VISIT DIAGNOSIS: ${diagnosis || 'Not specified'}
-
-Analyze ALL of the following:
-1. **Drug-Drug Interactions**: Every pair of medications that may interact. Rate severity.
-2. **Drug-Disease Contraindications**: Medications that conflict with the patient's diagnoses or conditions.
-3. **Drug-Allergy Conflicts**: Any medication that may cross-react with documented allergies.
-4. **Age/Renal/Hepatic Concerns**: Medications requiring dose adjustment for age, kidney, or liver function.
-5. **Duplicate Therapy**: Multiple drugs in the same class.
-6. **High-Risk Medications**: Anticoagulants, opioids, insulin, etc. needing extra monitoring.
-7. **Missing Medications**: Medications the patient SHOULD be on based on diagnoses but isn't.
-8. **Adherence Risk Factors**: Polypharmacy burden, complexity, social factors affecting compliance.
-
-For each alert, provide the clinical significance, mechanism, and recommended action.`,
+Check: drug-drug interactions, drug-disease contraindications, drug-allergy conflicts, dose concerns, duplicate therapy, high-risk meds, missing medications, polypharmacy risk. Be concise.`,
     response_json_schema: {
       type: "object",
       properties: {
@@ -521,42 +501,22 @@ async function diagnosticReferralSuggestions(base44, patientId, noteContent, vis
     const patients = await base44.asServiceRole.entities.Patient.list();
     const patient = patients.find(p => p.id === patientId);
     if (patient) {
-      const visits = await base44.asServiceRole.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10);
+      const visits = await base44.asServiceRole.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5);
       const carePlans = await base44.asServiceRole.entities.CarePlan.filter({ patient_id: patientId });
-      const alerts = await base44.asServiceRole.entities.PatientAlert.filter({ patient_id: patientId });
-      patientContext = buildPatientContext(patient, visits, carePlans, alerts.filter(a => a.status === 'active'));
+      patientContext = buildPatientContext(patient, visits, carePlans, []);
     }
   }
 
   const res = await base44.integrations.Core.InvokeLLM({
-    prompt: `You are a clinical decision support specialist in ${careSetting || 'home_health'}. Based on the patient's complete clinical picture, recommend diagnostic tests and specialist referrals.
+    prompt: `Clinical decision support specialist. Recommend diagnostic tests and specialist referrals.
 
-VISIT TYPE: ${visitType || 'skilled_nursing'}
-DIAGNOSIS: ${diagnosis || 'Not specified'}
-PROVIDER: ${providerType || 'RN'}
+VISIT: ${visitType || 'skilled_nursing'}, DIAGNOSIS: ${diagnosis || 'N/A'}, PROVIDER: ${providerType || 'RN'}, SETTING: ${careSetting || 'home_health'}
 
-${patientContext || 'No patient context available.'}
+${patientContext || 'No patient context.'}
 
-${noteContent ? `CURRENT VISIT NOTES:\n${noteContent}\n` : ''}
+${noteContent ? `NOTES: ${noteContent.substring(0, 500)}\n` : ''}
 
-Analyze the patient's full clinical picture and provide evidence-based recommendations:
-
-FOR DIAGNOSTIC TESTS:
-1. Labs that are overdue or clinically indicated based on diagnoses and medications
-2. Imaging studies warranted by symptoms or disease progression
-3. Screening tests recommended by clinical guidelines for this patient's conditions
-4. Monitoring tests required for current medications (e.g., INR for warfarin, A1c for diabetes)
-5. Point-of-care tests the nurse can perform during the visit
-
-FOR SPECIALIST REFERRALS:
-1. Specialists needed based on unmanaged or worsening conditions
-2. Therapy referrals (PT/OT/ST) based on functional assessment
-3. Mental health/social work referrals based on psychosocial screening
-4. Nutrition/dietitian referrals based on diagnoses
-5. Wound care specialist if applicable
-6. Palliative care or hospice evaluation if trajectory warrants
-
-For each recommendation, cite the evidence basis or clinical guideline. Flag items the nurse should immediately communicate to the physician.`,
+Suggest: overdue labs, indicated imaging, screening tools, medication monitoring tests, point-of-care tests, specialist referrals, therapy referrals (PT/OT/ST), preventive care gaps. Cite evidence basis. Be concise.`,
     response_json_schema: {
       type: "object",
       properties: {
