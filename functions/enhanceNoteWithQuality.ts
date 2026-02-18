@@ -83,12 +83,110 @@ Deno.serve(async (req) => {
        console.warn('Could not import provider-specific context:', importError.message);
      }
 
-    const enhancementPrompt = `You are an elite healthcare documentation specialist. Your task is to craft the highest quality Medicare-compliant clinical narrative that demonstrates clinical excellence and regulatory mastery.
+    // Determine care scope (home health vs hospice) for specialized compliance
+    const careScope = user?.service_type || 'home_health';
+    const isHospice = careScope === 'hospice';
+    const isHomeHealth = careScope === 'home_health';
 
+    // Build scope-specific regulatory requirements
+    const scopeRequirements = isHospice ? `
+╔═══════════════════════════════════════════════════════════════
+║ HOSPICE-SPECIFIC REGULATORY REQUIREMENTS (Medicare CoPs)
+╚═══════════════════════════════════════════════════════════════
+
+MANDATORY HOSPICE DOCUMENTATION ELEMENTS:
+1. ✓ Terminal Prognosis Documentation (≤6 months life expectancy)
+   - Objective clinical findings supporting terminal diagnosis
+   - Disease progression indicators
+   - Functional decline evidence
+
+2. ✓ Comfort-Focused Care Documentation
+   - Pain/symptom assessment using standardized scales
+   - Comfort measures provided and patient response
+   - Quality of life considerations
+
+3. ✓ Spiritual/Psychosocial Needs Assessment
+   - Emotional/spiritual distress screening
+   - Family/caregiver coping assessment
+   - Bereavement risk identification
+
+4. ✓ Interdisciplinary Care Coordination
+   - Team communication documented
+   - IDG plan alignment
+   - Chaplain/social work involvement when appropriate
+
+5. ✓ Patient/Family Goals of Care
+   - Patient wishes and preferences documented
+   - Advance directive status
+   - Code status confirmation
+
+HOSPICE COMPLIANCE RED FLAGS TO AVOID:
+- Curative treatment language (use palliative/comfort language)
+- Aggressive life-prolonging interventions without justification
+- Missing pain/symptom scores
+- Vague prognosis documentation
+- Missing spiritual/psychosocial assessment
+` : `
+╔═══════════════════════════════════════════════════════════════
+║ HOME HEALTH-SPECIFIC REGULATORY REQUIREMENTS (Medicare CoPs)
+╚═══════════════════════════════════════════════════════════════
+
+MANDATORY HOME HEALTH DOCUMENTATION ELEMENTS:
+1. ✓ Homebound Status (§484.55)
+   - Specific mobility limitations (walker, wheelchair, maximum exertion)
+   - Why leaving home is taxing effort requiring assistance
+   - Medical contraindications to leaving home
+   - Frequency and duration of absences (medical appointments only)
+
+2. ✓ Skilled Nursing Need (§484.4)
+   - Complex assessment requiring RN/LPN clinical judgment
+   - Teaching requiring skilled professional
+   - Management/evaluation of patient care plan
+   - Unstable condition requiring observation
+
+3. ✓ Patient Response & Teaching Effectiveness (§484.60)
+   - Verbal comprehension demonstrated ("Patient verbalized understanding...")
+   - Return demonstration completed successfully
+   - Barriers to learning addressed
+   - Teach-back method results
+
+4. ✓ Safety Assessment (§484.50)
+   - Fall risk score and environmental hazards identified
+   - Caregiver competency evaluated
+   - Emergency procedures reviewed
+   - DME safety assessed
+
+5. ✓ Functional Status Documentation (OASIS M1800-M1890)
+   - ADL performance levels (grooming, bathing, toileting, etc.)
+   - IADL abilities (meal prep, housekeeping, medication management)
+   - Assistance level required for each activity
+
+6. ✓ Coordination of Care (§484.50)
+   - Physician orders followed/verified
+   - Next physician contact planned
+   - Community resources coordinated
+   - Medication reconciliation completed
+
+HOME HEALTH COMPLIANCE RED FLAGS TO AVOID:
+- Vague homebound documentation ("patient doesn't go out much")
+- Unskilled custodial care only ("monitored patient")
+- Missing teach-back confirmation
+- No documented patient response or progress
+- Incomplete safety assessment
+- Missing functional baseline or changes
+`;
+
+    const enhancementPrompt = `You are an elite ${careScope.toUpperCase()} documentation specialist with deep expertise in Medicare regulatory compliance and clinical excellence. Your task is to craft the highest quality Medicare-compliant clinical narrative.
+
+═══════════════════════════════════════════════════════════════
+CLINICAL CONTEXT
+═══════════════════════════════════════════════════════════════
+CARE SCOPE: ${careScope.toUpperCase()} ${isHospice ? '(Palliative/Comfort Care Focus)' : '(Restorative/Skilled Care Focus)'}
 VISIT TYPE: ${visit_type}
 PRIMARY DIAGNOSIS: ${diagnosis}
 PROVIDER TYPE: ${provider_type}
-CARE LOCATION: ${user?.service_type || 'home_health'}
+
+${scopeRequirements}
 
 ${providerContext}
 
@@ -109,23 +207,61 @@ ${ai_preferences.include_education_tips ? '- Include patient education tips in t
 ROUGH CLINICAL NOTES:
 ${rough_notes}
 
-EXCELLENCE CRITERIA FOR ENHANCED NARRATIVE:
-- Create a cohesive, flowing narrative that demonstrates comprehensive patient assessment
-- Establish clear clinical reasoning and evidence-based decision-making
-- Use precise medical terminology while maintaining clarity
-- Show patient trajectory and clinical decision points by referencing previous visit findings
-- Document skilled nursing or clinical judgement clearly
-- Ensure all assessments directly support the primary and secondary diagnoses
-- Link interventions to identified clinical needs and active care plan goals
-- Create chronological and logical flow between assessment, findings, and plan
-- Reference relevant changes from previous visits when applicable
-- Address progress toward active care plan goals when present
-- Identify potential compliance red flags or documentation gaps proactively
+═══════════════════════════════════════════════════════════════
+CLINICAL EXCELLENCE CRITERIA FOR ${careScope.toUpperCase()} NARRATIVE
+═══════════════════════════════════════════════════════════════
+
+STRUCTURE & FLOW:
+✓ Create cohesive, flowing narrative demonstrating comprehensive assessment
+✓ Establish clear clinical reasoning with evidence-based decision-making
+✓ Chronological and logical flow: Assessment → Findings → Interventions → Plan
+✓ Use precise medical terminology while maintaining Medicare audit clarity
+
+CLINICAL CONTENT REQUIREMENTS:
+✓ Document skilled ${provider_type} clinical judgment and assessment expertise
+✓ Show patient trajectory by referencing previous visit findings when available
+✓ Link all interventions to identified clinical needs and care plan goals
+✓ Ensure assessments directly support primary and secondary diagnoses
+✓ Include objective measurable findings (not just subjective statements)
+
+${isHospice ? `
+HOSPICE-SPECIFIC DOCUMENTATION REQUIREMENTS:
+✓ Frame all care in comfort/palliative context (avoid curative language)
+✓ Document terminal disease progression with objective findings
+✓ Include pain/symptom scores and response to interventions
+✓ Address spiritual/emotional/psychosocial dimensions
+✓ Document patient/family understanding of hospice philosophy
+✓ Confirm goals of care alignment and advance directive status
+` : `
+HOME HEALTH-SPECIFIC DOCUMENTATION REQUIREMENTS:
+✓ Explicitly document homebound status with specific mobility limitations
+✓ Clearly articulate skilled nursing need (complex assessment, teaching, observation)
+✓ Include teach-back confirmation and patient demonstration of learning
+✓ Document functional status changes (ADL/IADL performance levels)
+✓ Address safety risks and environmental assessment
+✓ Show progress toward restorative/rehabilitative goals
+`}
+
+COMPLIANCE SAFEGUARDS:
+✓ Eliminate all vague language ("seems", "appears to be", "may have")
+✓ Replace with specific, documentable clinical observations
+✓ Remove meta-commentary, procedural statements, or recommendations
+✓ Apply ALL quality improvements directly - pristine on delivery
+✓ Ensure every statement is audit-defensible with clinical evidence
+
+═══════════════════════════════════════════════════════════════
+YOUR TASK - COMPREHENSIVE ${careScope.toUpperCase()} CLINICAL DOCUMENTATION
+═══════════════════════════════════════════════════════════════
 
 Please provide a comprehensive response that includes:
 
-1. EXTRACTED DATA: Parse and extract structured data from the notes
-2. ENHANCED NARRATIVE NOTE: Craft an exceptional Medicare-compliant clinical narrative by:
+1. EXTRACTED DATA: Parse and extract structured clinical data from the notes
+   - All diagnoses mentioned
+   - All medications referenced
+   - All symptoms and findings
+   - Vital signs and objective measurements
+
+2. ENHANCED NARRATIVE NOTE: Craft an exceptional Medicare-compliant ${careScope.toUpperCase()} narrative by:
    a) Establishing opening context (patient presentation, reason for visit)
    b) Presenting focused assessment findings organized by system or problem
    c) Demonstrating clinical reasoning connecting findings to diagnoses
@@ -141,15 +277,46 @@ Please provide a comprehensive response that includes:
    - Create a narrative that reads as high-quality professional documentation
    - Ensure Medicare readiness with specific, documentable clinical details
    
-3. COMPLIANCE CHECK: Proactively identify compliance gaps and potential red flags
-   - Flag actual regulatory/Medicare violations found in the note
-   - Identify missing required elements for this visit type
-   - Flag vague or non-specific language that could trigger audit concerns
-   - Identify missing documentation of skilled services
-   - Flag any homebound status gaps (if applicable)
-   - Check for medical necessity justification
-   - Provide SPECIFIC remediation text for each issue
-   - Map to relevant Medicare Conditions of Participation or billing guidance
+3. REGULATORY COMPLIANCE CHECK: Comprehensive ${careScope.toUpperCase()} compliance audit
+   
+   ${isHospice ? `
+   HOSPICE MEDICARE CoPs VERIFICATION:
+   ✓ Terminal prognosis documented with clinical evidence (§418.22)
+   ✓ Comfort care focus clearly established (§418.54)
+   ✓ Pain/symptom assessment with scores (§418.56)
+   ✓ Spiritual/psychosocial needs addressed (§418.64)
+   ✓ IDG coordination documented (§418.56)
+   ✓ Patient/family goals confirmed (§418.22)
+   ✓ Bereavement assessment conducted (§418.78)
+   ` : `
+   HOME HEALTH MEDICARE CoPs VERIFICATION:
+   ✓ Homebound status explicitly documented (§409.42)
+   ✓ Skilled nursing need clearly justified (§409.32)
+   ✓ Patient teaching with comprehension verified (§484.60)
+   ✓ Safety assessment completed (§484.50)
+   ✓ Functional status baseline established (§484.55)
+   ✓ Physician communication/orders documented (§484.60)
+   `}
+   
+   CLINICAL KNOWLEDGE VALIDATION:
+   ✓ Diagnosis-appropriate assessments included
+   ✓ Evidence-based interventions documented
+   ✓ Drug interactions or contraindications flagged
+   ✓ Clinical reasoning supports medical necessity
+   ✓ Vital signs interpreted in clinical context
+   
+   STRUCTURAL INTEGRITY:
+   ✓ All required sections present for ${visit_type} visit
+   ✓ Logical flow maintained throughout narrative
+   ✓ Professional medical terminology used correctly
+   ✓ No contradictory statements
+   ✓ Objective + Subjective data balanced appropriately
+   
+   For each violation/gap found:
+   - Provide SPECIFIC remediation text
+   - Reference exact Medicare CoP or billing requirement
+   - Rate severity (critical/high/medium/low)
+   - Give example of compliant documentation
    
 4. QUALITY ANALYSIS: Rate the enhanced narrative across three dimensions
    - Overall quality score: Reflects professional presentation and clinical completeness
@@ -190,38 +357,105 @@ Return comprehensive results in the specified JSON format.`;
           },
           enhanced_note: { type: "string" },
           compliance_check: {
-            type: "object",
-            properties: {
-              compliance_score: { type: "number" },
-              status: { type: "string" },
-              issues: { 
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    element: { type: "string" },
-                    problem: { type: "string" },
-                    suggestion: { type: "string", description: "Specific, actionable guidance on what to add or change to fix this issue" },
-                    specific_fix: { type: "string", description: "Specific wording or example of what should be documented" },
-                    severity: { type: "string" }
-                  }
-                }
-              },
-              compliant_elements: { type: "array", items: { type: "string" } },
-              medicare_violations: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    violation: { type: "string" },
-                    severity: { type: "string" },
-                    cop_reference: { type: "string" },
-                    remediation: { type: "string" }
-                  }
-                }
-              },
-              regulatory_warnings: { type: "array", items: { type: "string" } }
-            }
+           type: "object",
+           properties: {
+             compliance_score: { 
+               type: "number",
+               description: "Overall Medicare compliance score 0-100"
+             },
+             status: { 
+               type: "string",
+               enum: ["compliant", "needs_review", "non_compliant"]
+             },
+             regulatory_framework_applied: {
+               type: "string",
+               description: "Which regulatory framework was used (home_health_cops or hospice_cops)"
+             },
+             issues: { 
+               type: "array",
+               items: {
+                 type: "object",
+                 properties: {
+                   element: { type: "string" },
+                   problem: { type: "string" },
+                   suggestion: { type: "string", description: "Specific, actionable guidance" },
+                   specific_fix: { type: "string", description: "Exact wording to add" },
+                   severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
+                   regulatory_reference: { type: "string", description: "Specific Medicare CoP section" }
+                 }
+               }
+             },
+             compliant_elements: { 
+               type: "array", 
+               items: { type: "string" },
+               description: "Elements that meet regulatory standards"
+             },
+             medicare_violations: {
+               type: "array",
+               description: "Specific Medicare CoP violations found",
+               items: {
+                 type: "object",
+                 properties: {
+                   violation: { type: "string" },
+                   severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
+                   cop_reference: { type: "string", description: "42 CFR section reference" },
+                   remediation: { type: "string", description: "Specific fix with example text" },
+                   clinical_impact: { type: "string", description: "Why this matters clinically" },
+                   audit_risk: { type: "string", enum: ["high", "medium", "low"] }
+                 }
+               }
+             },
+             regulatory_warnings: { 
+               type: "array", 
+               items: { type: "string" },
+               description: "Potential audit triggers or concerns"
+             },
+             clinical_knowledge_validation: {
+               type: "object",
+               properties: {
+                 diagnosis_assessment_alignment: { 
+                   type: "boolean",
+                   description: "Do documented assessments match the diagnosis requirements?"
+                 },
+                 evidence_based_interventions: {
+                   type: "boolean",
+                   description: "Are interventions clinically appropriate?"
+                 },
+                 contraindications_flagged: {
+                   type: "array",
+                   items: { type: "string" },
+                   description: "Any drug interactions or clinical contraindications found"
+                 },
+                 clinical_reasoning_quality: {
+                   type: "string",
+                   enum: ["excellent", "good", "adequate", "poor"]
+                 },
+                 knowledge_gaps: {
+                   type: "array",
+                   items: { type: "string" },
+                   description: "Areas where clinical knowledge appears incomplete"
+                 }
+               }
+             },
+             structural_integrity: {
+               type: "object",
+               properties: {
+                 has_assessment: { type: "boolean" },
+                 has_interventions: { type: "boolean" },
+                 has_patient_response: { type: "boolean" },
+                 has_plan: { type: "boolean" },
+                 logical_flow: { type: "boolean" },
+                 contradictions_found: {
+                   type: "array",
+                   items: { type: "string" }
+                 },
+                 missing_sections: {
+                   type: "array",
+                   items: { type: "string" }
+                 }
+               }
+             }
+           }
           },
           quality_analysis: {
             type: "object",
