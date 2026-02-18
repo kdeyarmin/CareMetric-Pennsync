@@ -71,15 +71,8 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
   };
 
   const providerTypes = [
-  { value: "RN", label: "Registered Nurse" },
-  { value: "LPN", label: "Licensed Practical Nurse" },
-  { value: "NP", label: "Nurse Practitioner" },
-  { value: "Physician", label: "Physician (MD/DO)" },
-  { value: "PT", label: "Physical Therapist" },
-  { value: "OT", label: "Occupational Therapist" },
-  { value: "ST", label: "Speech Therapist" },
-  { value: "MSW", label: "Medical Social Worker" },
-  { value: "Chiropractor", label: "Chiropractor" }];
+  { value: "RN", label: "Registered Nurse (RN)" },
+  { value: "LPN", label: "Licensed Practical Nurse (LPN)" }];
 
 
   const selectedProviderSetting = providerSettings.find(

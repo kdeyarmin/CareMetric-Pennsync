@@ -215,11 +215,6 @@ export default function Settings() {
                      <SelectContent>
                        <SelectItem value="RN">RN (Registered Nurse)</SelectItem>
                        <SelectItem value="LPN">LPN (Licensed Practical Nurse)</SelectItem>
-                       <SelectItem value="NP">NP (Nurse Practitioner)</SelectItem>
-                       <SelectItem value="PHYSICIAN">Physician (MD/DO)</SelectItem>
-                       <SelectItem value="THERAPIST">Therapist (PT/OT/ST)</SelectItem>
-                       <SelectItem value="MSW">MSW (Medical Social Worker)</SelectItem>
-                       <SelectItem value="Chiropractor">Chiropractor</SelectItem>
                      </SelectContent>
                    </Select>
                  </div>
@@ -235,18 +230,10 @@ export default function Settings() {
                      <SelectContent>
                        <SelectItem value="home_health">🏠 Home Health</SelectItem>
                        <SelectItem value="hospice">🕊️ Hospice</SelectItem>
-                       <SelectItem value="hospital">🏥 Hospital</SelectItem>
-                       <SelectItem value="clinic">🏢 Clinic / Outpatient</SelectItem>
-                       <SelectItem value="rehab">🔄 Rehabilitation Facility</SelectItem>
-                       <SelectItem value="ltc">🏛️ Long-Term Care / Skilled Nursing</SelectItem>
-                       <SelectItem value="assisted_living">🏘️ Assisted Living</SelectItem>
-                       <SelectItem value="behavioral_health">🧠 Behavioral Health / Mental Health</SelectItem>
-                       <SelectItem value="school_based">🎓 School-Based Services</SelectItem>
-                       <SelectItem value="other">📍 Other</SelectItem>
                      </SelectContent>
                    </Select>
                    <p className="text-xs text-gray-500 mt-1">
-                     This determines which compliance standards and documentation guidelines apply
+                     This determines which compliance standards and documentation guidelines apply to your notes
                    </p>
                  </div>
                 <div>
@@ -356,18 +343,9 @@ export default function Settings() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Service Type</p>
-                    <p className="text-slate-900 dark:text-slate-100">
-                     {currentUser?.service_type === 'hospice' ? '🕊️ Hospice' :
-                  currentUser?.service_type === 'hospital' ? '🏥 Hospital' :
-                  currentUser?.service_type === 'clinic' ? '🏢 Clinic / Outpatient' :
-                  currentUser?.service_type === 'rehab' ? '🔄 Rehabilitation Facility' :
-                  currentUser?.service_type === 'ltc' ? '🏛️ Long-Term Care / Skilled Nursing' :
-                  currentUser?.service_type === 'assisted_living' ? '🏘️ Assisted Living' :
-                  currentUser?.service_type === 'behavioral_health' ? '🧠 Behavioral Health / Mental Health' :
-                  currentUser?.service_type === 'school_based' ? '🎓 School-Based Services' :
-                  currentUser?.service_type === 'other' ? '📍 Other' :
-                  '🏠 Home Health'}
-                   </p>
+                     <p className="text-slate-900 dark:text-slate-100">
+                      {currentUser?.service_type === 'hospice' ? '🕊️ Hospice' : '🏠 Home Health'}
+                    </p>
                  </div>
                 <div>
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Preferred Language</p>
@@ -509,15 +487,7 @@ export default function Settings() {
           {/* Offline Sync Manager */}
           <OfflineSyncManager />
 
-          {/* Professional Specializations - Only for Physicians */}
-          {currentUser && currentUser.credential_type === 'PHYSICIAN' && (
-            <ProviderSpecializationManager currentUser={currentUser} />
-          )}
-
-          {/* Practice Information */}
-          {currentUser && !['RN', 'LPN', 'THERAPIST'].includes(currentUser.credential_type) && (
-            <ProviderPracticeInfoManager userEmail={currentUser.email} credentialType={currentUser.credential_type} />
-          )}
+          {/* Specializations and practice info removed - app focused on RN/LPN */}
 
           {/* Danger Zone */}
           <Card className="border-slate-300 dark:border-slate-600 w-full max-w-full overflow-hidden">
