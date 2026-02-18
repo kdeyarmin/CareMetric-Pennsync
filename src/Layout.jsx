@@ -56,7 +56,7 @@ export default function Layout({ children, currentPageName }) {
     'TrainingHub': 'Training',
     'Documentation': 'Documentation',
     'Settings': 'Settings',
-    'EnterpriseAnalytics': 'Org Analytics',
+    'EnterpriseAnalytics': 'Agency Analytics',
     'AdminDashboard': 'Admin Dashboard',
     'UserManagement': 'User Management',
     'AgencyDashboard': 'Agency Management'
@@ -95,7 +95,6 @@ export default function Layout({ children, currentPageName }) {
          { name: "OASIS", icon: FileText, page: "OASIS" },
          { name: "Send a Fax", icon: Send, page: "SendFax" },
          { name: "Fax Queue", icon: Clock, page: "FaxQueue" },
-         { name: "Fax Analytics", icon: BarChart3, page: "FaxAnalytics" },
          { name: "Doc Library", icon: FileText, page: "DocumentLibrary" },
          { name: "Messages", icon: MessageSquare, page: "SecureMessaging" },
        ]
@@ -125,10 +124,13 @@ export default function Layout({ children, currentPageName }) {
     }
   ];
 
+  // Remove Fax Analytics from nav for cleaner sidebar
+  // Keep it accessible via direct URL
+
   const enterpriseNavigationGroup = user?.agency_id ? {
-    title: "Enterprise",
+    title: "Agency",
     items: [
-      { name: "Org Analytics", icon: BarChart3, page: "EnterpriseAnalytics" },
+      { name: "Agency Analytics", icon: BarChart3, page: "EnterpriseAnalytics" },
     ]
   } : null;
 

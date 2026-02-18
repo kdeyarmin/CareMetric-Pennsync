@@ -197,7 +197,7 @@ export default function SubscriptionPlans() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-4 sm:p-6 md:p-8 pb-20 sm:pb-8">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center mb-4 text-gray-900">Subscription Plans</h1>
-        <p className="text-center text-sm sm:text-base text-gray-700 mb-6 sm:mb-8">Manage your subscription or choose a new plan</p>
+        <p className="text-center text-sm sm:text-base text-gray-700 mb-6 sm:mb-8">AI-powered documentation for home health & hospice nurses</p>
 
       {isInIframe && (
         <Alert className="mb-6 sm:mb-8 border-amber-200 bg-amber-50">
@@ -273,11 +273,11 @@ export default function SubscriptionPlans() {
               </div>
               <ul className="space-y-2 text-gray-600 my-6 flex-grow">
                 {(settings?.features || [
-                  'Full access to patient management',
-                  'AI-powered documentation',
-                  'Real-time analytics',
-                  'Compliance monitoring',
-                  'Email support'
+                  'AI-powered home health & hospice notes',
+                  'Voice-to-documentation scribe',
+                  'OASIS & Medicare compliance tools',
+                  'Care plan generation',
+                  'Patient management & alerts'
                 ]).map(feature => (
                    <li key={feature} className="flex items-center gap-2">
                     <CheckCircle2 className="w-5 h-5 text-green-500" />

@@ -123,10 +123,9 @@ export default function EnterpriseAnalytics() {
             <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
               <Lock className="w-8 h-8 text-slate-400" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900">Enterprise Analytics</h2>
+            <h2 className="text-xl font-bold text-slate-900">Agency Analytics</h2>
             <p className="text-sm text-slate-600">
-              This feature is available for users with an Enterprise Agency ID.
-              Set your Agency ID in <strong>Settings → Advanced → Agency Code</strong> to access organizational analytics.
+              This feature is for home health & hospice agencies. Your agency admin can provide an Agency Code — enter it in <strong>Settings → Advanced → Agency Code</strong> to access benchmarking, nurse performance, and agency-wide reporting.
             </p>
             <Badge className="bg-blue-100 text-blue-700">
               <Building2 className="w-3 h-3 mr-1" />
@@ -154,10 +153,10 @@ export default function EnterpriseAnalytics() {
         <div>
           <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900 flex items-center gap-2">
             <BarChart3 className="w-6 h-6 text-blue-600" />
-            Enterprise Analytics
+            Agency Analytics
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
-            Organization-wide insights across all patients, staff, and operations
+            Agency-wide nurse benchmarking, compliance, and performance reporting
           </p>
         </div>
         <Badge className="bg-blue-100 text-blue-700 text-xs">
