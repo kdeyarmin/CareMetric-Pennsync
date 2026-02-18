@@ -105,6 +105,7 @@ import PatientDocumentsModule from "../components/patient/PatientDocumentsModule
 import PatientMessagingPanel from "../components/messaging/PatientMessagingPanel";
 import PersonalizedEducationModule from "../components/education/PersonalizedEducationModule";
 import AIClinicalWorkflowPanel from "../components/clinical/AIClinicalWorkflowPanel";
+import ProactiveTaskAutomation from "../components/clinical/ProactiveTaskAutomation";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -393,6 +394,14 @@ export default function PatientDetails() {
         {/* AI Clinical Workflow Automation */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
           <AIClinicalWorkflowPanel 
+            patientId={patientId}
+            patientName={`${patient.first_name} ${patient.last_name}`}
+          />
+        </div>
+
+        {/* Proactive Task Automation */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <ProactiveTaskAutomation
             patientId={patientId}
             patientName={`${patient.first_name} ${patient.last_name}`}
           />
