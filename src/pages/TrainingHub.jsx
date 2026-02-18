@@ -16,6 +16,7 @@ import TrainingProgressDashboard from "../components/training/TrainingProgressDa
 import PersonalizedRecommendationsWidget from "../components/training/PersonalizedRecommendationsWidget";
 import InteractiveTrainingViewer from "../components/training/InteractiveTrainingViewer";
 import AITrainingRecommendations from "../components/training/AITrainingRecommendations";
+import AIPerformanceAnalyzer from "../components/training/AIPerformanceAnalyzer";
 import TrainingResourceLibrary from "../components/training/TrainingResourceLibrary";
 import StaffProgressTracker from "../components/training/StaffProgressTracker";
 import SkillGapAnalysisPanel from "../components/training/SkillGapAnalysisPanel";
@@ -167,6 +168,7 @@ export default function TrainingHub() {
           <TabsList className="inline-flex w-max min-w-full gap-1 p-1">
             <TabsTrigger value="my-training" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">My Training</TabsTrigger>
             <TabsTrigger value="assigned" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Assigned ({assigned.length + inProgress.length})</TabsTrigger>
+            <TabsTrigger value="ai-analysis" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">AI Analysis</TabsTrigger>
             <TabsTrigger value="ai-recommendations" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">AI Recs</TabsTrigger>
             <TabsTrigger value="library" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Library</TabsTrigger>
             <TabsTrigger value="skills" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Skills</TabsTrigger>
@@ -222,6 +224,15 @@ export default function TrainingHub() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="ai-analysis" className="mt-6">
+          <AIPerformanceAnalyzer
+            userEmail={currentUser?.email}
+            skillGaps={skillGaps}
+            completions={completions}
+            trainingModules={trainingModules}
+          />
         </TabsContent>
 
         <TabsContent value="ai-recommendations" className="mt-6">
