@@ -144,7 +144,7 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
+      <header className="sticky top-0 z-50 bg-gradient-to-r from-white via-blue-50/30 to-white dark:from-slate-800 dark:via-blue-900/20 dark:to-slate-800 border-b border-slate-200/60 dark:border-slate-700/60 shadow-sm">
         <div className="flex items-start justify-between px-4 py-2">
           <div className="flex items-start gap-4 flex-1">
             <Button
@@ -173,7 +173,7 @@ export default function Layout({ children, currentPageName }) {
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 overflow-y-auto shadow-lg lg:shadow-sm ${
+          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-gradient-to-b from-slate-50 via-white to-blue-50/20 dark:from-slate-800 dark:via-slate-800 dark:to-blue-950/20 border-r border-slate-200/60 dark:border-slate-700/60 transition-all duration-300 overflow-y-auto shadow-lg lg:shadow-sm ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           }`}
         >
