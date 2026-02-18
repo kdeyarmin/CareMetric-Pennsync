@@ -41,20 +41,22 @@ export default function Layout({ children, currentPageName }) {
     'Patients': 'Patients',
     'Tasks': 'Tasks',
     'SmartNoteAssistant': 'Smart Note',
-    'MedicalScribe': 'Medical Scribe',
+    'MedicalScribe': 'Voice Scribe',
     'CarePlanManagement': 'Care Plans',
     'OASIS': 'OASIS',
-    'SendFax': 'Send a Fax',
+    'SendFax': 'Send Fax',
     'FaxQueue': 'Fax Queue',
     'FaxAnalytics': 'Fax Analytics',
+    'AIAnalyticsDashboard': 'AI Analytics',
     'DocumentLibrary': 'Doc Library',
     'SecureMessaging': 'Messages',
     'PHIVault': 'PHI Vault',
+    'FaxQueue': 'Fax Queue',
     'ComplianceDashboard': 'Compliance',
     'AnalyticsDashboard': 'Analytics',
     'PatientAlerts': 'Patient Alerts',
     'TrainingHub': 'Training',
-    'Documentation': 'Documentation',
+    'Documentation': 'Help & Docs',
     'Settings': 'Settings',
     'EnterpriseAnalytics': 'Agency Analytics',
     'AdminDashboard': 'Admin Dashboard',
@@ -87,45 +89,40 @@ export default function Layout({ children, currentPageName }) {
       ]
     },
     {
-      title: "Clinical",
+      title: "Documentation",
        items: [
          { name: "Smart Note", icon: FileText, page: "SmartNoteAssistant" },
-         { name: "Medical Scribe", icon: Activity, page: "MedicalScribe" },
-         { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+         { name: "Voice Scribe", icon: Activity, page: "MedicalScribe" },
          { name: "OASIS", icon: FileText, page: "OASIS" },
-         { name: "Send a Fax", icon: Send, page: "SendFax" },
-         { name: "Fax Queue", icon: Clock, page: "FaxQueue" },
-         { name: "Doc Library", icon: FileText, page: "DocumentLibrary" },
-         { name: "Messages", icon: MessageSquare, page: "SecureMessaging" },
+         { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
        ]
      },
     {
-      title: "Security",
+      title: "Fax & Documents",
       items: [
-        { name: "PHI Vault", icon: Lock, page: "PHIVault" },
+        { name: "Send Fax", icon: Send, page: "SendFax" },
+        { name: "Fax Queue", icon: Clock, page: "FaxQueue" },
+        { name: "Doc Library", icon: FileText, page: "DocumentLibrary" },
       ]
     },
     {
-      title: "Compliance & Analytics",
+      title: "Insights",
       items: [
-        { name: "Compliance", icon: Shield, page: "ComplianceDashboard" },
         { name: "Analytics", icon: BarChart3, page: "AnalyticsDashboard" },
-        { name: "AI Analytics", icon: BarChart3, page: "AIAnalyticsDashboard" },
+        { name: "Compliance", icon: Shield, page: "ComplianceDashboard" },
         { name: "Patient Alerts", icon: Bell, page: "PatientAlerts" },
       ]
     },
     {
-      title: "Training & Support",
+      title: "Support",
       items: [
+        { name: "Messages", icon: MessageSquare, page: "SecureMessaging" },
         { name: "Training", icon: BookOpen, page: "TrainingHub" },
-        { name: "Documentation", icon: FileText, page: "Documentation" },
+        { name: "Help & Docs", icon: FileText, page: "Documentation" },
         { name: "Settings", icon: Settings, page: "Settings" },
       ]
     }
   ];
-
-  // Remove Fax Analytics from nav for cleaner sidebar
-  // Keep it accessible via direct URL
 
   const enterpriseNavigationGroup = user?.agency_id ? {
     title: "Agency",

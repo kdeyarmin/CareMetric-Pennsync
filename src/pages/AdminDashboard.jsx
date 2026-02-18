@@ -483,10 +483,7 @@ export default function AdminDashboard() {
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="RN">RN</SelectItem>
               <SelectItem value="LPN">LPN</SelectItem>
-              <SelectItem value="NP">NP</SelectItem>
-              <SelectItem value="MD">MD</SelectItem>
-              <SelectItem value="PT">PT</SelectItem>
-              <SelectItem value="OT">OT</SelectItem>
+              
             </SelectContent>
           </Select>
           <Button
