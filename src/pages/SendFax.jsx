@@ -224,18 +224,20 @@ export default function SendFax() {
         from_fax_number: usePersonalFaxNumber ? currentUser.sending_fax_number : undefined
       });
 
-      if (data?.success) {
-        toast.success("Fax sent successfully!");
-        resetForm();
-      } else {
-        toast.error(data?.error || "Failed to send fax");
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['faxHistory'] });
+      setSending(false);
+      setLastSentFaxId(data.fax_id || historyRecord.id);
+      setRecipientName("");
+      setRecipientFax("");
+      setDocuments([]);
+      setCoverData({ ...coverData, subject: "", message: "" });
+      await queryClient.invalidateQueries({ queryKey: ['faxHistory'] });
+      toast.success('Fax queued successfully!', {
+        description: "Track delivery status in the sidebar",
+        duration: 5000
+      });
     } catch (error) {
       console.error("Fax send error:", error);
       toast.error("Failed to send fax: " + (error.message || "Unknown error"));
-    } finally {
       setSending(false);
     }
   };
