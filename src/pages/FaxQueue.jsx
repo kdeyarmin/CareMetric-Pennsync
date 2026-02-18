@@ -3,21 +3,28 @@ import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ListFilter, Clock, AlertCircle, Send, CheckCircle2,
-  Loader2, RefreshCw, Wifi, WifiOff
+  Loader2, RefreshCw, Wifi, WifiOff, Folder, Search, Tag
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import FaxQueueItem from "@/components/fax/FaxQueueItem";
+import FaxFolderManager from "@/components/fax/FaxFolderManager";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
 export default function FaxQueue() {
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [retryingAll, setRetryingAll] = useState(false);
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterPriority, setFilterPriority] = useState("all");
 
   React.useEffect(() => {
     const goOnline = () => setIsOnline(true);
@@ -46,11 +53,22 @@ export default function FaxQueue() {
     refetchInterval: 8000
   });
 
-  const queued = allFaxes.filter(f => f.status === 'queued');
-  const sending = allFaxes.filter(f => f.status === 'sending');
-  const failed = allFaxes.filter(f => f.status === 'failed');
-  const scheduled = allFaxes.filter(f => f.status === 'scheduled');
-  const completed = allFaxes.filter(f => f.status === 'sent' || f.status === 'delivered');
+  // Filter faxes by folder, search, and priority
+  const filteredFaxes = allFaxes.filter(fax => {
+    const matchesFolder = !selectedFolder || fax.folder_id === selectedFolder;
+    const matchesSearch = !searchTerm || 
+      fax.recipient_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fax.recipient_fax_number?.includes(searchTerm) ||
+      fax.subject?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesPriority = filterPriority === 'all' || fax.priority === filterPriority;
+    return matchesFolder && matchesSearch && matchesPriority;
+  });
+
+  const queued = filteredFaxes.filter(f => f.status === 'queued');
+  const sending = filteredFaxes.filter(f => f.status === 'sending');
+  const failed = filteredFaxes.filter(f => f.status === 'failed');
+  const scheduled = filteredFaxes.filter(f => f.status === 'scheduled');
+  const completed = filteredFaxes.filter(f => f.status === 'sent' || f.status === 'delivered');
 
   const handleRetryAll = async () => {
     const retryable = [...queued, ...failed];
@@ -86,7 +104,18 @@ export default function FaxQueue() {
 
   return (
     <PremiumFeatureGate featureName="Fax Queue" featureDescription="Monitor and manage your fax queue." allowTrial={true}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Sidebar - Folders */}
+        <div className="lg:col-span-1">
+          <FaxFolderManager 
+            userEmail={currentUser?.email}
+            onFolderSelect={(folder) => setSelectedFolder(folder?.id || null)}
+          />
+        </div>
+
+        {/* Main Queue Area */}
+        <div className="lg:col-span-3 space-y-4">
       {/* Header */}
       <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -121,6 +150,35 @@ export default function FaxQueue() {
           </Link>
         </div>
       </div>
+
+      {/* Filters */}
+      <Card className="mb-4">
+        <CardContent className="p-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <Input
+                placeholder="Search faxes..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="pl-9 h-9 text-sm"
+              />
+            </div>
+            <Select value={filterPriority} onValueChange={setFilterPriority}>
+              <SelectTrigger className="w-full sm:w-32 h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priority</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
@@ -175,6 +233,8 @@ export default function FaxQueue() {
           />
         </TabsContent>
       </Tabs>
+        </div>
+      </div>
     </div>
     </PremiumFeatureGate>
   );

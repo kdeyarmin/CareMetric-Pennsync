@@ -51,7 +51,7 @@ const EMPTY_TEMPLATE = {
   is_default: false,
 };
 
-export default function FaxTemplateManager({ userEmail, open, onOpenChange }) {
+export default function FaxTemplateManager({ userEmail, open, onOpenChange, onSelectTemplate }) {
   const queryClient = useQueryClient();
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [formData, setFormData] = useState(EMPTY_TEMPLATE);
@@ -195,6 +195,19 @@ export default function FaxTemplateManager({ userEmail, open, onOpenChange }) {
                       {t.subject_line && <p className="text-xs text-slate-500 truncate mt-0.5">{t.subject_line}</p>}
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
+                      {onSelectTemplate && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-7 px-2 text-xs" 
+                          onClick={() => {
+                            onSelectTemplate(t);
+                            onOpenChange(false);
+                          }}
+                        >
+                          Use
+                        </Button>
+                      )}
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDefaultMutation.mutate(t.id)} title="Set as default">
                         <Star className={`w-3.5 h-3.5 ${t.is_default ? 'fill-blue-500 text-blue-500' : 'text-slate-400'}`} />
                       </Button>

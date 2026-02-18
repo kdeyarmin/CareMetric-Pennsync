@@ -22,9 +22,12 @@ import ScheduleFaxDialog from "@/components/fax/ScheduleFaxDialog";
 import FaxDraftsManager from "@/components/fax/FaxDraftsManager";
 import FaxActivityFeed from "@/components/fax/FaxActivityFeed";
 import SmartPriorityRules from "@/components/fax/SmartPriorityRules";
+import ContactGroupManager from "@/components/fax/ContactGroupManager";
+import RecurringFaxManager from "@/components/fax/RecurringFaxManager";
+import FaxTemplateManager from "@/components/fax/FaxTemplateManager";
 import { generateCoverSheetPDF } from "@/components/fax/CoverSheetPDFGenerator";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
-import { Save } from "lucide-react";
+import { Save, FileText } from "lucide-react";
 
 export default function SendFax() {
   const queryClient = useQueryClient();
@@ -37,6 +40,7 @@ export default function SendFax() {
   const [includeCover, setIncludeCover] = useState(true);
   const [showBatchDialog, setShowBatchDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [coverData, setCoverData] = useState({
     sender_name: "",
     sender_company: "",
@@ -108,6 +112,25 @@ export default function SendFax() {
     if (contact.company) {
       setRecipientName(`${contact.name} - ${contact.company}`);
     }
+  };
+
+  const handleSendToGroup = (contacts) => {
+    // Pre-populate batch dialog with group contacts
+    setShowBatchDialog(true);
+    // Note: BatchFaxDialog will handle group contacts internally
+  };
+
+  const handleLoadTemplate = (template) => {
+    setCoverData({
+      sender_name: template.sender_name || coverData.sender_name,
+      sender_company: template.sender_company || coverData.sender_company,
+      sender_phone: template.sender_phone || coverData.sender_phone,
+      subject: template.subject_line || coverData.subject,
+      message: template.message_body || coverData.message,
+      urgency: template.urgency || "normal",
+      include_hipaa: template.include_hipaa_notice !== false
+    });
+    toast.success(`Template "${template.name}" loaded`);
   };
 
   const handleSendFax = async () => {
@@ -253,11 +276,29 @@ export default function SendFax() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Main Form */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Quick Actions */}
+          <div className="flex gap-2 mb-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs gap-1"
+              onClick={() => setShowTemplateManager(true)}
+            >
+              <FileText className="w-3 h-3" /> Templates
+            </Button>
+          </div>
+
           {/* Address Book at Top */}
           <FaxAddressBook
             userEmail={currentUser?.email}
             agencyId={agencyId}
             onSelectContact={handleSelectContact}
+          />
+
+          {/* Contact Groups */}
+          <ContactGroupManager 
+            userEmail={currentUser?.email}
+            onSendToGroup={handleSendToGroup}
           />
 
           {/* Recipient */}
@@ -419,6 +460,7 @@ export default function SendFax() {
             onOpenChange={setShowBatchDialog}
             documents={documents}
             coverData={coverData}
+            userEmail={currentUser?.email}
             fromFaxNumber={usePersonalFaxNumber ? currentUser?.sending_fax_number : undefined}
           />
           <ScheduleFaxDialog
@@ -431,6 +473,16 @@ export default function SendFax() {
             userEmail={currentUser?.email}
             fromFaxNumber={usePersonalFaxNumber ? currentUser?.sending_fax_number : undefined}
           />
+          
+          {/* Template Manager Dialog */}
+          {showTemplateManager && (
+            <FaxTemplateManager
+              userEmail={currentUser?.email}
+              open={showTemplateManager}
+              onOpenChange={setShowTemplateManager}
+              onSelectTemplate={handleLoadTemplate}
+            />
+          )}
 
           {!isOnline && (
             <Alert className="bg-amber-50 border-amber-200">
@@ -444,6 +496,8 @@ export default function SendFax() {
 
         {/* Sidebar */}
         <div className="space-y-4">
+          <RecurringFaxManager userEmail={currentUser?.email} />
+          
           <Tabs defaultValue="history">
             <TabsList className="grid w-full grid-cols-4 mb-2">
               <TabsTrigger value="history" className="text-xs">History</TabsTrigger>

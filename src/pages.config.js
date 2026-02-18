@@ -63,6 +63,7 @@ import FAQ from './pages/FAQ';
 import FaxAnalytics from './pages/FaxAnalytics';
 import FaxCenter from './pages/FaxCenter';
 import FaxQueue from './pages/FaxQueue';
+import Marketing from './pages/Marketing';
 import MedicalScribe from './pages/MedicalScribe';
 import MySubscription from './pages/MySubscription';
 import OASIS from './pages/OASIS';
@@ -83,7 +84,6 @@ import TeamCollaboration from './pages/TeamCollaboration';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import Marketing from './pages/Marketing';
 import __Layout from './Layout.jsx';
 
 
@@ -104,6 +104,7 @@ export const PAGES = {
     "FaxAnalytics": FaxAnalytics,
     "FaxCenter": FaxCenter,
     "FaxQueue": FaxQueue,
+    "Marketing": Marketing,
     "MedicalScribe": MedicalScribe,
     "MySubscription": MySubscription,
     "OASIS": OASIS,
@@ -124,7 +125,6 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "Marketing": Marketing,
 }
 
 export const pagesConfig = {
