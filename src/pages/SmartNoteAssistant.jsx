@@ -1420,28 +1420,27 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 Create New Note
               </Button>
 
-              {/* Collapsible Sections */}
+              {/* Detailed Audit - Collapsed by Default */}
               {(medicareViolations.length > 0 || complianceResults?.quality_analysis?.suggestions?.length > 0) && (
-                <details className="group w-full">
-                  <summary className="cursor-pointer list-none">
-                    <Card className="hover:shadow-md transition-all border-blue-200">
-                      <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 sm:p-5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <ShieldAlert className="w-5 h-5 text-blue-600" />
-                            <span className="text-sm font-semibold text-slate-900">Compliance & Quality Details</span>
-                          </div>
-                          <span className="text-xs text-slate-500 group-open:hidden">Click to expand ▼</span>
-                          <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse ▲</span>
+              <details className="group w-full">
+                <summary className="cursor-pointer list-none">
+                  <Card className="hover:shadow-md transition-all border-slate-200">
+                    <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 p-4 sm:p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className="w-4 h-4 text-slate-600" />
+                          <span className="text-xs font-semibold text-slate-700">Detailed Audit Report</span>
                         </div>
-                      </CardHeader>
-                    </Card>
-                  </summary>
-                  <div className="mt-3 space-y-3 w-full">
-                    <UnifiedComplianceAudit complianceResults={complianceResults} medicareViolations={medicareViolations} regulatoryWarnings={regulatoryWarnings} qualityAnalysis={complianceResults?.quality_analysis} />
-                    <UnifiedSuggestionsPanel qualityAnalysis={complianceResults?.quality_analysis} suggestedTasks={suggestedTasks} noteContent={isEditMode ? editedNote : enhancedNote} visitType={visitType} diagnosis={selectedDiagnosis} userEmail={currentUser?.email} selectedPatient={selectedPatient} onNoteUpdate={(updatedNote) => { setEditedNote(updatedNote); setEnhancedNote(updatedNote); setIsEditMode(false); }} onTaskAdd={() => setSuggestedTasks([])} />
-                  </div>
-                </details>
+                        <span className="text-xs text-slate-500 group-open:hidden">▼</span>
+                        <span className="text-xs text-slate-500 hidden group-open:inline">▲</span>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                </summary>
+                <div className="mt-2 space-y-3 w-full">
+                  <UnifiedComplianceAudit complianceResults={complianceResults} medicareViolations={medicareViolations} regulatoryWarnings={regulatoryWarnings} qualityAnalysis={complianceResults?.quality_analysis} />
+                </div>
+              </details>
               )}
 
               {/* Clinical Tools */}
