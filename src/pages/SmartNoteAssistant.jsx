@@ -1096,35 +1096,40 @@ export default function SmartNoteAssistant() {
 
 
 
-                {/* Patient Context Quick Insert */}
+                {/* Patient Context & History - Collapsed by Default */}
                 {selectedPatient !== 'no_patient' && patientData && (
-                  <PatientContextSidebar
-                    patientId={selectedPatient}
-                    onInsertContext={(text) => {
-                      setRoughNotes(roughNotes + '\n\n' + text);
-                    }}
-                  />
-                )}
-
-                {/* Visit-Relevant History Summary */}
-                {selectedPatient !== 'no_patient' && patientData && visitType && selectedDiagnosis && (
-                  <VisitRelevantHistorySummary
-                    patient={patientData}
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    onInsertText={(text) => setRoughNotes(roughNotes + text)}
-                  />
-                )}
-
-                {/* AI Follow-Up Questions & Assessments */}
-                {selectedPatient !== 'no_patient' && patientData && visitType && selectedDiagnosis && (
-                  <AIFollowUpQuestions
-                    patient={patientData}
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    roughNotes={roughNotes}
-                    onInsertQuestion={(text) => setRoughNotes(roughNotes + '\n\n' + text)}
-                  />
+                  <details className="group">
+                    <summary className="cursor-pointer list-none">
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">
+                        <span className="text-xs font-semibold text-slate-700">📋 Patient Context & History (click to expand)</span>
+                      </div>
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <PatientContextSidebar
+                        patientId={selectedPatient}
+                        onInsertContext={(text) => {
+                          setRoughNotes(roughNotes + '\n\n' + text);
+                        }}
+                      />
+                      {visitType && selectedDiagnosis && (
+                        <>
+                          <VisitRelevantHistorySummary
+                            patient={patientData}
+                            visitType={visitType}
+                            diagnosis={selectedDiagnosis}
+                            onInsertText={(text) => setRoughNotes(roughNotes + text)}
+                          />
+                          <AIFollowUpQuestions
+                            patient={patientData}
+                            visitType={visitType}
+                            diagnosis={selectedDiagnosis}
+                            roughNotes={roughNotes}
+                            onInsertQuestion={(text) => setRoughNotes(roughNotes + '\n\n' + text)}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </details>
                 )}
 
                 {/* Clinical Notes Section */}
