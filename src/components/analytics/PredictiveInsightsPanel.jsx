@@ -163,7 +163,7 @@ Generate the following predictive analytics:
 
   if (!insights && !loading) {
     return (
-      <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50">
+      <Card>
         <CardContent className="p-6 text-center">
           <Brain className="w-10 h-10 text-indigo-400 mx-auto mb-3" />
           <h3 className="font-semibold text-slate-800 mb-1">AI Predictive Analytics</h3>
@@ -204,21 +204,21 @@ Generate the following predictive analytics:
 
       {/* Agency Health Summary */}
       {insights?.agency_metrics && (
-        <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50">
+        <Card>
           <CardContent className="p-4">
             <p className="text-xs font-semibold text-indigo-800 mb-2">Agency Health: {insights.agency_metrics.overall_agency_health}</p>
             <p className="text-xs text-slate-700 mb-3">{insights.agency_metrics.summary}</p>
             <div className="grid grid-cols-3 gap-2">
-              <div className="text-center p-2 bg-white/60 rounded-lg">
-                <p className="text-lg font-bold text-indigo-700">{insights.agency_metrics.avg_risk_score?.toFixed(0) || "—"}</p>
+              <div className="text-center p-2 bg-gradient-to-br from-blue-100/50 to-slate-100/60 rounded-lg border border-blue-200/30">
+                <p className="text-lg font-bold text-blue-700">{insights.agency_metrics.avg_risk_score?.toFixed(0) || "—"}</p>
                 <p className="text-[9px] text-slate-500">Avg Risk Score</p>
               </div>
-              <div className="text-center p-2 bg-white/60 rounded-lg">
-                <p className="text-lg font-bold text-red-600">{insights.agency_metrics.high_risk_percentage?.toFixed(0) || "—"}%</p>
+              <div className="text-center p-2 bg-gradient-to-br from-blue-100/50 to-slate-100/60 rounded-lg border border-blue-200/30">
+                <p className="text-lg font-bold text-blue-700">{insights.agency_metrics.high_risk_percentage?.toFixed(0) || "—"}%</p>
                 <p className="text-[9px] text-slate-500">High Risk</p>
               </div>
-              <div className="text-center p-2 bg-white/60 rounded-lg">
-                <p className="text-lg font-bold text-green-600">{insights.agency_metrics.care_plan_success_prediction?.toFixed(0) || "—"}%</p>
+              <div className="text-center p-2 bg-gradient-to-br from-blue-100/50 to-slate-100/60 rounded-lg border border-blue-200/30">
+                <p className="text-lg font-bold text-blue-700">{insights.agency_metrics.care_plan_success_prediction?.toFixed(0) || "—"}%</p>
                 <p className="text-[9px] text-slate-500">Goal Achievement</p>
               </div>
             </div>
@@ -301,10 +301,10 @@ Generate the following predictive analytics:
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 space-y-3">
-            <div className="flex items-center gap-3 p-2.5 bg-purple-50 rounded-lg border border-purple-200">
+            <div className="flex items-center gap-3 p-2.5 bg-gradient-to-br from-blue-100/50 to-slate-100/60 rounded-lg border border-blue-200/30">
               <div>
-                <p className="text-xs font-medium text-purple-800">Staff-to-Patient: {insights.resource_allocation.staff_to_patient_ratio}</p>
-                <p className="text-[10px] text-purple-600">{insights.resource_allocation.ratio_assessment}</p>
+                <p className="text-xs font-medium text-slate-800">Staff-to-Patient: {insights.resource_allocation.staff_to_patient_ratio}</p>
+                <p className="text-[10px] text-slate-600">{insights.resource_allocation.ratio_assessment}</p>
               </div>
             </div>
 

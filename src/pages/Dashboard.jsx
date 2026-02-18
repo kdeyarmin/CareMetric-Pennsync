@@ -146,7 +146,7 @@ export default function Dashboard() {
       <MobileOfflineBanner />
 
       {announcements.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/20">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Megaphone className="h-4 w-4" />

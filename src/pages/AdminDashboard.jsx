@@ -674,7 +674,7 @@ export default function AdminDashboard() {
       {/* Quick Action Cards */}
       <div className="grid grid-cols-4 gap-1.5 sm:gap-3 md:gap-4 mb-3 sm:mb-6">
         <Link to={createPageUrl("UserManagement")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border border-blue-200 bg-blue-50 dark:bg-blue-950 h-full active:scale-95">
+          <Card className="hover:shadow-lg transition-all cursor-pointer h-full active:scale-95">
             <CardContent className="p-2 sm:p-4 text-center">
               <Users className="w-5 sm:w-8 h-5 sm:h-8 text-blue-600 mx-auto mb-0.5 sm:mb-2" />
               <p className="font-medium text-[10px] sm:text-sm leading-tight">Users</p>
@@ -682,7 +682,7 @@ export default function AdminDashboard() {
           </Card>
         </Link>
         <Link to={createPageUrl("AgencyTemplates")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border border-purple-200 bg-purple-50 dark:bg-purple-950 h-full active:scale-95">
+          <Card className="hover:shadow-lg transition-all cursor-pointer h-full active:scale-95">
             <CardContent className="p-2 sm:p-4 text-center">
               <FileText className="w-5 sm:w-8 h-5 sm:h-8 text-purple-600 mx-auto mb-0.5 sm:mb-2" />
               <p className="font-medium text-[10px] sm:text-sm leading-tight">Templates</p>
@@ -690,7 +690,7 @@ export default function AdminDashboard() {
           </Card>
         </Link>
         <Link to={createPageUrl("AuditLog")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border border-amber-200 bg-amber-50 dark:bg-amber-950 h-full active:scale-95">
+          <Card className="hover:shadow-lg transition-all cursor-pointer h-full active:scale-95">
             <CardContent className="p-2 sm:p-4 text-center">
               <Shield className="w-5 sm:w-8 h-5 sm:h-8 text-amber-600 mx-auto mb-0.5 sm:mb-2" />
               <p className="font-medium text-[10px] sm:text-sm leading-tight">Audit</p>
@@ -698,7 +698,7 @@ export default function AdminDashboard() {
           </Card>
         </Link>
         <Link to={createPageUrl("EnterpriseAdminDashboard")}>
-          <Card className="hover:shadow-lg transition-all cursor-pointer border border-green-200 bg-green-50 dark:bg-green-950 h-full active:scale-95">
+          <Card className="hover:shadow-lg transition-all cursor-pointer h-full active:scale-95">
             <CardContent className="p-2 sm:p-4 text-center">
               <Brain className="w-5 sm:w-8 h-5 sm:h-8 text-green-600 mx-auto mb-0.5 sm:mb-2" />
               <p className="font-medium text-[10px] sm:text-sm leading-tight">Enterprise</p>
@@ -737,7 +737,7 @@ export default function AdminDashboard() {
 
         {/* Agencies Tab */}
         <TabsContent value="agencies" className="space-y-6">
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <Card>
             <CardContent className="p-6">
               <h3 className="font-semibold text-lg mb-2">💼 Enterprise Agency Billing</h3>
               <p className="text-sm text-slate-700">
@@ -757,35 +757,35 @@ export default function AdminDashboard() {
           />
           {/* Revenue Overview Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-3">
-           <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+           <Card>
              <CardContent className="p-2 sm:p-4">
-                <DollarSign className="w-5 h-5 sm:w-8 sm:h-8 text-green-600 mb-1" />
-                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(0)}</p>
-                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Monthly Recurring</p>
+                <DollarSign className="w-5 h-5 sm:w-8 sm:h-8 text-blue-600 mb-1" />
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">${subscriptionStats.totalMRR.toFixed(0)}</p>
+                <p className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400 truncate">Monthly Recurring</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <Card>
               <CardContent className="p-2 sm:p-4">
                 <CreditCard className="w-5 h-5 sm:w-8 sm:h-8 text-blue-600 mb-1" />
-                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
-                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Active Subs</p>
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">{subscriptionStats.activeSubscriptions}</p>
+                <p className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400 truncate">Active Subs</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+            <Card>
               <CardContent className="p-2 sm:p-4">
-                <TrendingUp className="w-5 h-5 sm:w-8 sm:h-8 text-purple-600 mb-1" />
-                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.totalRevenue.toFixed(0)}</p>
-                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Total Revenue</p>
+                <TrendingUp className="w-5 h-5 sm:w-8 sm:h-8 text-blue-600 mb-1" />
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">${subscriptionStats.totalRevenue.toFixed(0)}</p>
+                <p className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400 truncate">Total Revenue</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+            <Card>
               <CardContent className="p-2 sm:p-4">
-                <Users className="w-5 h-5 sm:w-8 sm:h-8 text-orange-600 mb-1" />
-                <p className="text-sm sm:text-xl md:text-2xl font-bold text-gray-900">${subscriptionStats.avgRevenuePerUser.toFixed(0)}</p>
-                <p className="text-[9px] sm:text-xs text-gray-600 truncate">Avg/User</p>
+                <Users className="w-5 h-5 sm:w-8 sm:h-8 text-blue-600 mb-1" />
+                <p className="text-sm sm:text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">${subscriptionStats.avgRevenuePerUser.toFixed(0)}</p>
+                <p className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400 truncate">Avg/User</p>
               </CardContent>
             </Card>
           </div>
@@ -1088,33 +1088,33 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <Clock className="w-8 h-8 text-blue-600" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{stats.upcomingAppointments}</p>
-                <p className="text-xs text-gray-600">Upcoming</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.upcomingAppointments}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Upcoming</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+                  <CheckCircle2 className="w-8 h-8 text-blue-600" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{stats.completedAppointments}</p>
-                <p className="text-xs text-gray-600">Completed ({dateRange}d)</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.completedAppointments}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Completed ({dateRange}d)</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200">
+            <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <XCircle className="w-8 h-8 text-gray-600" />
+                  <XCircle className="w-8 h-8 text-slate-600" />
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{stats.canceledAppointments}</p>
-                <p className="text-xs text-gray-600">Canceled ({dateRange}d)</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.canceledAppointments}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Canceled ({dateRange}d)</p>
               </CardContent>
             </Card>
           </div>
@@ -1251,38 +1251,38 @@ export default function AdminDashboard() {
 
           {/* Subscription Metrics Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
+                  <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">${subscriptionStats.totalMRR.toFixed(2)}</p>
-                <p className="text-[10px] sm:text-xs text-gray-600">Monthly Recurring Revenue</p>
+                <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">${subscriptionStats.totalMRR.toFixed(2)}</p>
+                <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Monthly Recurring Revenue</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <CreditCard className="w-8 h-8 text-blue-600" />
                   <Badge className="bg-blue-600">{subscriptionStats.activeSubscriptions}</Badge>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{subscriptionStats.activeSubscriptions}</p>
-                <p className="text-xs text-gray-600">Active Subscriptions</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{subscriptionStats.activeSubscriptions}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Active Subscriptions</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+            <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <TrendingUp className="w-8 h-8 text-purple-600" />
+                  <TrendingUp className="w-8 h-8 text-blue-600" />
                 </div>
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">${subscriptionStats.totalRevenue.toFixed(2)}</p>
                 <p className="text-xs text-slate-600 dark:text-slate-400">Total Revenue</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+            <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <TrendingDown className="w-8 h-8 text-slate-700 dark:text-slate-400" />
@@ -1405,7 +1405,7 @@ export default function AdminDashboard() {
 
           {/* Real-Time Monitoring Dashboard */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
-            <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
+            <Card className="border-2 border-blue-200/40">
               <CardHeader className="p-3 sm:p-6">
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
@@ -1437,7 +1437,7 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100">
+            <Card className="border-2 border-blue-200/40">
               <CardHeader className="p-3 sm:p-6">
                 <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />

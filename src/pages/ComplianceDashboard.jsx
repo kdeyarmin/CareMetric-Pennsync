@@ -279,35 +279,35 @@ export default function ComplianceDashboard() {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <Card>
           <CardContent className="p-2 sm:p-3 md:p-4">
             <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-blue-600 mb-1 sm:mb-2" />
-            <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900">{metrics.avgScore}%</p>
-            <p className="text-[10px] sm:text-xs text-gray-600">Avg Score</p>
+            <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100">{metrics.avgScore}%</p>
+            <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Avg Score</p>
           </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+          <Card>
            <CardContent className="p-2 sm:p-3 md:p-4">
-             <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-red-600 mb-1 sm:mb-2" />
-             <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900">{metrics.openViolations}</p>
-             <p className="text-[10px] sm:text-xs text-gray-600">Issues</p>
+             <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-blue-600 mb-1 sm:mb-2" />
+             <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100">{metrics.openViolations}</p>
+             <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">Issues</p>
            </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+          <Card>
            <CardContent className="p-3 sm:p-4">
-             <XCircle className="w-6 sm:w-8 h-6 sm:h-8 text-orange-600 mb-2" />
-             <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.criticalOpen}</p>
-             <p className="text-xs text-gray-600">Critical Issues</p>
+             <XCircle className="w-6 sm:w-8 h-6 sm:h-8 text-blue-600 mb-2" />
+             <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{metrics.criticalOpen}</p>
+             <p className="text-xs text-slate-600 dark:text-slate-400">Critical Issues</p>
            </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <Card>
            <CardContent className="p-3 sm:p-4">
-             <CheckCircle2 className="w-6 sm:w-8 h-6 sm:h-8 text-green-600 mb-2" />
-             <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.passedAudits}</p>
-             <p className="text-xs text-gray-600">Passed Audits</p>
+             <CheckCircle2 className="w-6 sm:w-8 h-6 sm:h-8 text-blue-600 mb-2" />
+             <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{metrics.passedAudits}</p>
+             <p className="text-xs text-slate-600 dark:text-slate-400">Passed Audits</p>
            </CardContent>
           </Card>
         </div>
@@ -601,7 +601,7 @@ export default function ComplianceDashboard() {
           {/* User Performance Tab */}
           <TabsContent value="users" className="space-y-4">
             {/* AI Feedback Summary */}
-            <Card className="border-purple-200 bg-purple-50">
+            <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-purple-600" />
@@ -611,22 +611,22 @@ export default function ComplianceDashboard() {
             <CardContent>
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <p className="text-2xl font-bold text-purple-900">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {allViolations.filter(v => v.ai_feedback === 'helpful').length}
                   </p>
-                  <p className="text-xs text-purple-700">Helpful Suggestions</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Helpful Suggestions</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-purple-900">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {allViolations.filter(v => v.auto_fix_available).length}
                   </p>
-                  <p className="text-xs text-purple-700">Auto-Fixable Issues</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Auto-Fixable Issues</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-purple-900">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {allViolations.filter(v => v.status === 'resolved' && v.resolution_notes?.includes('Auto-fixed')).length}
                   </p>
-                  <p className="text-xs text-purple-700">Auto-Resolved</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Auto-Resolved</p>
                 </div>
               </div>
             </CardContent>
