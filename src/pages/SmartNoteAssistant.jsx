@@ -959,7 +959,7 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
-                {/* Unified AI Documentation Assistant */}
+                {/* AI Clinical Assistance - Consolidated */}
                 {visitType && selectedDiagnosis && (
                   <UnifiedAIDocumentationAssistant
                     patientId={selectedPatient}
@@ -984,41 +984,6 @@ export default function SmartNoteAssistant() {
                     }}
                     onComplianceChecked={(result) => {
                       console.log('Compliance check completed:', result);
-                    }}
-                  />
-                )}
-
-                {/* Clinical Decision Support Panel */}
-                {visitType && selectedDiagnosis && (
-                  <ClinicalDecisionSupportPanel
-                    symptoms={roughNotes}
-                    findings={roughNotes}
-                    diagnosis={selectedDiagnosis}
-                    patientAge={patientData?.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null}
-                    patientConditions={patientData?.secondary_diagnoses || []}
-                    currentMedications={patientData?.current_medications || []}
-                    patientId={selectedPatient}
-                  />
-                )}
-
-                {/* AI Clinical Assistant Panel */}
-                {visitType && selectedDiagnosis && (
-                  <AIClinicalAssistantPanel
-                    patientId={selectedPatient !== "no_patient" ? selectedPatient : null}
-                    patientName={patientData ? `${patientData.first_name} ${patientData.last_name}` : null}
-                    noteContent={roughNotes}
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    providerType={providerType}
-                    careSetting={careSetting}
-                    vitalSigns={vitalSigns}
-                    onInsertDraft={(draft) => {
-                      setRoughNotes(draft);
-                      toast.success("Draft note inserted");
-                    }}
-                    onApplyFix={(text) => {
-                      setRoughNotes(roughNotes + '\n\n' + text);
-                      toast.success("Fix applied");
                     }}
                   />
                 )}
