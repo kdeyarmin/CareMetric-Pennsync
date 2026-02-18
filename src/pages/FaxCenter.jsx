@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Send, Clock, FileText } from "lucide-react";
-import SendFax from "./SendFax";
-import FaxQueue from "./FaxQueue";
-import DocumentLibrary from "./DocumentLibrary";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
+
+// Lazy-load actual page content
+const SendFaxPage = React.lazy(() => import("./SendFax"));
+const FaxQueuePage = React.lazy(() => import("./FaxQueue"));
+const DocumentLibraryPage = React.lazy(() => import("./DocumentLibrary"));
 
 export default function FaxCenter() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -38,28 +40,22 @@ export default function FaxCenter() {
           </TabsList>
 
           <TabsContent value="send">
-            <SendFaxEmbed />
+            <React.Suspense fallback={<div className="py-12 text-center text-slate-400">Loading...</div>}>
+              <SendFaxPage />
+            </React.Suspense>
           </TabsContent>
           <TabsContent value="queue">
-            <FaxQueueEmbed />
+            <React.Suspense fallback={<div className="py-12 text-center text-slate-400">Loading...</div>}>
+              <FaxQueuePage />
+            </React.Suspense>
           </TabsContent>
           <TabsContent value="library">
-            <DocumentLibraryEmbed />
+            <React.Suspense fallback={<div className="py-12 text-center text-slate-400">Loading...</div>}>
+              <DocumentLibraryPage />
+            </React.Suspense>
           </TabsContent>
         </Tabs>
       </div>
     </PremiumFeatureGate>
   );
-}
-
-// Thin wrappers that render the existing pages without their own outer chrome
-// We import them directly and render - they already handle their own data/logic
-function SendFaxEmbed() {
-  return <SendFax />;
-}
-function FaxQueueEmbed() {
-  return <FaxQueue />;
-}
-function DocumentLibraryEmbed() {
-  return <DocumentLibrary />;
 }
