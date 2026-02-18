@@ -61,6 +61,7 @@ import EULA from './pages/EULA';
 import EnterpriseAnalytics from './pages/EnterpriseAnalytics';
 import FAQ from './pages/FAQ';
 import FaxAnalytics from './pages/FaxAnalytics';
+import FaxCenter from './pages/FaxCenter';
 import FaxQueue from './pages/FaxQueue';
 import MedicalScribe from './pages/MedicalScribe';
 import MySubscription from './pages/MySubscription';
@@ -78,11 +79,10 @@ import SmartNoteAssistant from './pages/SmartNoteAssistant';
 import SubscriptionPlans from './pages/SubscriptionPlans';
 import Support from './pages/Support';
 import Tasks from './pages/Tasks';
+import TeamCollaboration from './pages/TeamCollaboration';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import FaxCenter from './pages/FaxCenter';
-import TeamCollaboration from './pages/TeamCollaboration';
 import __Layout from './Layout.jsx';
 
 
@@ -101,6 +101,7 @@ export const PAGES = {
     "EnterpriseAnalytics": EnterpriseAnalytics,
     "FAQ": FAQ,
     "FaxAnalytics": FaxAnalytics,
+    "FaxCenter": FaxCenter,
     "FaxQueue": FaxQueue,
     "MedicalScribe": MedicalScribe,
     "MySubscription": MySubscription,
@@ -118,11 +119,10 @@ export const PAGES = {
     "SubscriptionPlans": SubscriptionPlans,
     "Support": Support,
     "Tasks": Tasks,
+    "TeamCollaboration": TeamCollaboration,
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "FaxCenter": FaxCenter,
-    "TeamCollaboration": TeamCollaboration,
 }
 
 export const pagesConfig = {

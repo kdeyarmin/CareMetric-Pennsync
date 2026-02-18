@@ -106,6 +106,7 @@ import PremiumFeatureGate from '../components/subscription/PremiumFeatureGate';
 import UnifiedAIDocumentationAssistant from '../components/smartNote/UnifiedAIDocumentationAssistant';
 import ClinicalDecisionSupportPanel from '../components/smartNote/ClinicalDecisionSupportPanel';
 import PostEnhancementInsights from '../components/smartNote/PostEnhancementInsights';
+import AIClinicalAssistantPanel from '../components/clinical/AIClinicalAssistantPanel';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1020,6 +1021,28 @@ export default function SmartNoteAssistant() {
                     patientConditions={patientData?.secondary_diagnoses || []}
                     currentMedications={patientData?.current_medications || []}
                     patientId={selectedPatient}
+                  />
+                )}
+
+                {/* AI Clinical Assistant Panel */}
+                {visitType && selectedDiagnosis && (
+                  <AIClinicalAssistantPanel
+                    patientId={selectedPatient !== "no_patient" ? selectedPatient : null}
+                    patientName={patientData ? `${patientData.first_name} ${patientData.last_name}` : null}
+                    noteContent={roughNotes}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    providerType={providerType}
+                    careSetting={careSetting}
+                    vitalSigns={vitalSigns}
+                    onInsertDraft={(draft) => {
+                      setRoughNotes(draft);
+                      toast.success("Draft note inserted");
+                    }}
+                    onApplyFix={(text) => {
+                      setRoughNotes(roughNotes + '\n\n' + text);
+                      toast.success("Fix applied");
+                    }}
                   />
                 )}
 
