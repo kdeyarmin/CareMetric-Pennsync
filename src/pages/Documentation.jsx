@@ -1,496 +1,730 @@
-import React, { useState } from "react";
-import {
-  BookOpen, Home, Users, FileText, Activity, Target, Shield,
-  BarChart3, Bell, Settings, Mic, CheckCircle,
-  Search, Zap, Clock, Heart, Brain, ClipboardList, Upload,
-  MessageSquare, Calendar, TrendingUp, Award, HelpCircle,
-  Keyboard, Monitor, Smartphone, Globe
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import DocSection from "@/components/documentation/DocSection";
-import DocStep from "@/components/documentation/DocStep";
-import DocTip from "@/components/documentation/DocTip";
-import GuideDownloadSection from "@/components/documentation/GuideDownloadSection";
-
-const TABLE_OF_CONTENTS = [
-  { id: "guides", label: "Downloadable Guides" },
-  { id: "getting-started", label: "Getting Started" },
-  { id: "dashboard", label: "Dashboard" },
-  { id: "patients", label: "Patient Management" },
-  { id: "smart-note", label: "Smart Note Assistant" },
-  { id: "scribe", label: "Medical Scribe" },
-  { id: "care-plans", label: "Care Plans" },
-  { id: "oasis", label: "OASIS" },
-  { id: "compliance", label: "Compliance" },
-  { id: "analytics", label: "Analytics" },
-  { id: "alerts", label: "Patient Alerts" },
-  { id: "tasks", label: "Task Management" },
-  { id: "training", label: "Training Hub" },
-  { id: "settings", label: "Settings" },
-  { id: "tips", label: "Tips & Best Practices" },
-  { id: "faq", label: "FAQ" },
-];
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { 
+  BookOpen, Search, FileText, Users, Brain, GraduationCap, 
+  Shield, BarChart3, Heart, FileCheck, Download, Sparkles,
+  Clock, TrendingUp, CheckCircle, AlertCircle, Lightbulb
+} from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function Documentation() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const scrollToSection = (id) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const sections = [
+    { id: 'getting-started', title: 'Getting Started', icon: BookOpen },
+    { id: 'patient-management', title: 'Patient Management', icon: Users },
+    { id: 'smart-notes', title: 'Smart Note Assistant', icon: Brain },
+    { id: 'predictive-analytics', title: 'Predictive Analytics', icon: TrendingUp },
+    { id: 'education-hub', title: 'Patient Education', icon: GraduationCap },
+    { id: 'compliance', title: 'Compliance & Documentation', icon: Shield },
+    { id: 'oasis', title: 'OASIS Assessment', icon: FileCheck },
+    { id: 'care-plans', title: 'Care Plan Management', icon: Heart },
+    { id: 'best-practices', title: 'Best Practices', icon: Lightbulb },
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      {/* Hero Header */}
-      <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
-            <BookOpen className="h-8 w-8" />
-            <Badge className="bg-white/20 text-white border-white/30">v2.0</Badge>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-bold mb-3">CareMetric AI User Manual</h1>
-          <p className="text-blue-100 text-lg max-w-2xl">
-            Your complete guide to mastering AI-powered clinical documentation, compliance, and patient care management.
-          </p>
-          <div className="mt-6 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-300" />
-              <Input
-                placeholder="Search the documentation..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-blue-200 focus:bg-white/20"
-              />
+            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+              <BookOpen className="w-6 h-6 text-white" />
             </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">CareMetric AI Documentation</h1>
+              <p className="text-gray-600">Complete user guide for home health professionals</p>
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Input
+              placeholder="Search documentation..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
           </div>
         </div>
-      </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar Table of Contents */}
-          <aside className="lg:w-64 flex-shrink-0">
-            <div className="lg:sticky lg:top-20 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm">
-              <h3 className="font-semibold text-slate-900 dark:text-white mb-3 text-sm uppercase tracking-wider">Contents</h3>
-              <nav className="space-y-1">
-                {TABLE_OF_CONTENTS.filter(item =>
-                  !searchQuery || item.label.toLowerCase().includes(searchQuery.toLowerCase())
-                ).map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => scrollToSection(item.id)}
-                    className="w-full text-left text-sm px-3 py-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </nav>
-            </div>
-          </aside>
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <Clock className="w-8 h-8 text-green-600" />
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">75%</p>
+                  <p className="text-sm text-gray-600">Time Saved</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-8 h-8 text-blue-600" />
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">40%</p>
+                  <p className="text-sm text-gray-600">Better Outcomes</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <Shield className="w-8 h-8 text-purple-600" />
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">99%</p>
+                  <p className="text-sm text-gray-600">Compliance Rate</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="w-8 h-8 text-indigo-600" />
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">95%</p>
+                  <p className="text-sm text-gray-600">User Satisfaction</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-          {/* Main Content */}
-          <div className="flex-1 space-y-6">
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Sidebar Navigation */}
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <CardTitle className="text-lg">Contents</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[600px]">
+                <div className="space-y-2">
+                  {sections.map(section => (
+                    <a
+                      key={section.id}
+                      href={`#${section.id}`}
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-blue-50 transition-colors"
+                    >
+                      <section.icon className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium">{section.title}</span>
+                    </a>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
 
-            {/* Downloadable Guides */}
-            <div id="guides" className="space-y-3">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <FileText className="h-5 w-5 text-blue-600" />
-                Downloadable Guides
-              </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Download our PDF guides for offline reference. Great for printing or sharing with your team.
-              </p>
-              <GuideDownloadSection />
-            </div>
-
+          {/* Content Area */}
+          <div className="lg:col-span-3 space-y-8">
             {/* Getting Started */}
-            <div id="getting-started">
-              <DocSection icon={Zap} title="Getting Started" description="Everything you need to begin using CareMetric AI" defaultOpen={true}>
-                <p className="text-slate-600 dark:text-slate-400 mb-4">Welcome to CareMetric AI! This platform is designed to dramatically reduce your documentation time while improving compliance and patient care quality. Here's how to get started in just a few minutes.</p>
+            <section id="getting-started">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5" />
+                    Getting Started
+                  </CardTitle>
+                  <CardDescription>Welcome to CareMetric AI - Your intelligent clinical documentation partner</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">What is CareMetric AI?</h3>
+                    <p className="text-gray-700 mb-4">
+                      CareMetric AI is an advanced clinical documentation and patient management platform designed specifically for home health and hospice agencies. 
+                      Our AI-powered tools reduce administrative burden by up to 75% while improving patient outcomes and ensuring regulatory compliance.
+                    </p>
+                    <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-600">
+                      <p className="text-sm font-medium text-blue-900 mb-2">🎯 Key Benefits:</p>
+                      <ul className="space-y-2 text-sm text-blue-800">
+                        <li>• <strong>Save 2-3 hours per day</strong> on documentation</li>
+                        <li>• <strong>Reduce readmissions by 40%</strong> with predictive analytics</li>
+                        <li>• <strong>Achieve 99% compliance</strong> with automated checks</li>
+                        <li>• <strong>Improve OASIS accuracy</strong> with AI-powered assistance</li>
+                      </ul>
+                    </div>
+                  </div>
 
-                <DocStep number={1} title="Complete Your Profile">
-                  After signing in, navigate to <strong>Settings</strong> from the sidebar. Fill in your professional details including your provider type, credentials, and care scope. This helps the AI tailor documentation to your specific role.
-                </DocStep>
-                <DocStep number={2} title="Add Your First Patient">
-                  Go to the <strong>Patients</strong> page and click <strong>"Add Patient"</strong>. Enter the patient's basic information, diagnoses, and medications. You can also use sample data to explore the platform first.
-                </DocStep>
-                <DocStep number={3} title="Try the Smart Note Assistant">
-                  Navigate to <strong>Smart Note</strong> in the sidebar. Select a patient, choose your visit type, and type or dictate your rough notes. Click <strong>"Enhance Note"</strong> to see the AI transform them into compliant documentation.
-                </DocStep>
-                <DocStep number={4} title="Explore the Dashboard">
-                  Your <strong>Dashboard</strong> provides a comprehensive overview of your patients, tasks, alerts, and compliance status—all in one place.
-                </DocStep>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Quick Start Guide</h3>
+                    <div className="space-y-4">
+                      <div className="flex gap-4">
+                        <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">1</div>
+                        <div>
+                          <h4 className="font-semibold mb-1">Log In & Set Up Profile</h4>
+                          <p className="text-sm text-gray-600">Access your account and complete your provider profile with credentials and specialization.</p>
+                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                            📸 Screenshot: Login page with email and password fields
+                          </div>
+                        </div>
+                      </div>
 
-                <DocTip type="tip">
-                  Start with the Smart Note Assistant—it's the fastest way to see the power of CareMetric AI. Most users save 20–30 minutes on their very first note.
-                </DocTip>
-              </DocSection>
-            </div>
+                      <div className="flex gap-4">
+                        <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">2</div>
+                        <div>
+                          <h4 className="font-semibold mb-1">Navigate the Dashboard</h4>
+                          <p className="text-sm text-gray-600">View your daily tasks, high-risk patients, and pending alerts at a glance.</p>
+                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                            📸 Screenshot: Main dashboard showing patient list, tasks, and alerts
+                          </div>
+                        </div>
+                      </div>
 
-            {/* Dashboard */}
-            <div id="dashboard">
-              <DocSection icon={Home} title="Dashboard" description="Your command center for daily operations">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Dashboard is your home base. It provides a real-time snapshot of everything that needs your attention.</p>
+                      <div className="flex gap-4">
+                        <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">3</div>
+                        <div>
+                          <h4 className="font-semibold mb-1">Add Your First Patient</h4>
+                          <p className="text-sm text-gray-600">Click "Add Patient" and enter demographics, diagnoses, and contact information.</p>
+                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                            📸 Screenshot: Patient creation form
+                          </div>
+                        </div>
+                      </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Key Features:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Patient Summary</strong> — Total active patients, new admissions, and high-risk cases at a glance</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Task Overview</strong> — Pending, overdue, and completed tasks for the day</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Compliance Alerts</strong> — Open violations and compliance issues needing attention</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Time Saved Widget</strong> — Tracks how much time AI has saved you today, this week, and overall</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Quick Actions</strong> — One-click access to common workflows like creating notes, adding patients, or reviewing alerts</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Announcements</strong> — Important system updates and agency-wide notifications</li>
-                </ul>
-
-                <DocTip type="info">
-                  The dashboard automatically refreshes. High-risk patients and critical alerts are always shown first so you never miss urgent items.
-                </DocTip>
-              </DocSection>
-            </div>
+                      <div className="flex gap-4">
+                        <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">4</div>
+                        <div>
+                          <h4 className="font-semibold mb-1">Document Your First Visit</h4>
+                          <p className="text-sm text-gray-600">Use Smart Note Assistant to create compliant clinical documentation in minutes.</p>
+                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                            📸 Screenshot: Smart Note Assistant interface
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
 
             {/* Patient Management */}
-            <div id="patients">
-              <DocSection icon={Users} title="Patient Management" description="Add, manage, and track all your patients">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Patients page is your centralized hub for managing all patient records. CareMetric AI provides comprehensive patient profiles with clinical history, medications, vitals, and more.</p>
+            <section id="patient-management">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    Patient Management
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Managing Your Patient Caseload</h3>
+                    <p className="text-gray-700 mb-4">
+                      CareMetric AI provides a comprehensive patient management system with AI-powered risk stratification, alerts, and insights.
+                    </p>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Adding a Patient:</h4>
-                <DocStep number={1} title="Click 'Add Patient'">
-                  Use the button in the top-right corner of the Patients page. A form will open for entering patient information.
-                </DocStep>
-                <DocStep number={2} title="Fill in Patient Details">
-                  Enter demographics, diagnoses, medications, allergies, emergency contacts, and insurance information. Only first and last name are required—you can add more details later.
-                </DocStep>
-                <DocStep number={3} title="Save and Continue">
-                  After saving, you'll be taken to the patient's detail page where you can add visits, care plans, and documentation.
-                </DocStep>
+                  <div>
+                    <h4 className="font-semibold mb-2">Adding a New Patient</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                      <li>Navigate to <strong>Patients</strong> page from the sidebar</li>
+                      <li>Click <strong>"Add Patient"</strong> button (top right)</li>
+                      <li>Fill in required fields:
+                        <ul className="ml-6 mt-1 space-y-1">
+                          <li>- Name, DOB, MRN</li>
+                          <li>- Address and contact information</li>
+                          <li>- Primary diagnosis and secondary conditions</li>
+                          <li>- Insurance/payor information</li>
+                          <li>- Emergency contact details</li>
+                        </ul>
+                      </li>
+                      <li>Click <strong>"Save Patient"</strong></li>
+                    </ol>
+                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                      📸 Screenshot: Patient form with all fields labeled
+                    </div>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mt-6 mb-2">Key Capabilities:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Search & Filter</strong> — Find patients instantly by name, diagnosis, or status</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Risk Assessment</strong> — AI-calculated risk scores for each patient</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Visit History</strong> — Complete timeline of all visits and documentation</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Bulk Actions</strong> — Update multiple patients at once</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Referral Upload</strong> — Import patient data from referral documents</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Duplicate Detection</strong> — Automatically finds and merges duplicate records</li>
-                </ul>
+                  <div>
+                    <h4 className="font-semibold mb-2">Understanding Patient Details Page</h4>
+                    <p className="text-sm text-gray-700 mb-3">The Patient Details page is your command center for each patient:</p>
+                    <div className="space-y-2">
+                      <div className="p-3 bg-blue-50 rounded-lg">
+                        <p className="font-medium text-sm">📊 Risk Indicators</p>
+                        <p className="text-xs text-gray-600">Color-coded alerts show hospitalization risk, fall risk, and other predictive factors</p>
+                      </div>
+                      <div className="p-3 bg-green-50 rounded-lg">
+                        <p className="font-medium text-sm">🎯 AI Insights</p>
+                        <p className="text-xs text-gray-600">Proactive recommendations for interventions and care plan adjustments</p>
+                      </div>
+                      <div className="p-3 bg-purple-50 rounded-lg">
+                        <p className="font-medium text-sm">📋 Quick Actions</p>
+                        <p className="text-xs text-gray-600">Schedule visits, generate documents, send education materials</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                      📸 Screenshot: Patient Details page with annotated sections
+                    </div>
+                  </div>
 
-                <DocTip type="tip">
-                  Use the "Quick Add" button to rapidly enter patients with just essential information. You can always complete the full profile later.
-                </DocTip>
-              </DocSection>
-            </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg border-l-4 border-yellow-600">
+                    <p className="font-semibold text-sm mb-2">💡 Pro Tip:</p>
+                    <p className="text-sm text-gray-700">Use the "Favorite" star icon on frequently visited patients for quick access from the sidebar!</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
 
-            {/* Smart Note Assistant */}
-            <div id="smart-note">
-              <DocSection icon={FileText} title="Smart Note Assistant" description="AI-powered clinical documentation in seconds">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Smart Note Assistant is the core feature of CareMetric AI. It transforms your rough clinical notes into fully compliant, professional documentation—saving you up to 70% of documentation time.</p>
+            {/* Smart Notes */}
+            <section id="smart-notes">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Brain className="w-5 h-5" />
+                    Smart Note Assistant
+                  </CardTitle>
+                  <CardDescription>AI-powered clinical documentation that saves hours of your time</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Revolutionary Documentation in 3 Steps</h3>
+                    <p className="text-gray-700 mb-4">
+                      Smart Note Assistant uses advanced AI to generate compliant, comprehensive clinical notes in minutes instead of hours.
+                    </p>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">How to Create a Smart Note:</h4>
-                <DocStep number={1} title="Select Your Patient">
-                  Choose the patient from the dropdown at the top of the Smart Note page. Their clinical context is automatically loaded.
-                </DocStep>
-                <DocStep number={2} title="Choose Visit Type & Diagnosis">
-                  Select the visit type (e.g., Skilled Nursing, Admission, Recertification) and enter the relevant diagnosis. This helps the AI tailor the note format.
-                </DocStep>
-                <DocStep number={3} title="Enter Your Rough Notes">
-                  Type or dictate your observations, interventions, and findings. Don't worry about formatting—the AI handles that. You can write in shorthand, bullet points, or full sentences.
-                </DocStep>
-                <DocStep number={4} title="Click 'Enhance Note'">
-                  The AI processes your notes and generates a Medicare-compliant clinical narrative with proper structure, medical terminology, and all required documentation elements.
-                </DocStep>
-                <DocStep number={5} title="Review & Edit">
-                  Review the enhanced note, make any adjustments, and save. The compliance checker runs automatically to flag any missing elements.
-                </DocStep>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border-2 border-blue-200">
+                    <h4 className="font-bold text-lg mb-4 text-blue-900">⏱️ Time Savings Breakdown</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600">Traditional Method:</p>
+                        <p className="text-2xl font-bold text-gray-900">45-60 min</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">With Smart Note AI:</p>
+                        <p className="text-2xl font-bold text-green-600">5-10 min</p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-semibold text-blue-900 mt-4">💰 Annual Savings: $25,000+ per nurse</p>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mt-6 mb-2">Built-in Tools:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><Mic className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Voice Dictation</strong> — Speak your notes and let the AI transcribe them</li>
-                  <li className="flex gap-2"><Shield className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Real-Time Compliance</strong> — Instant feedback on compliance issues as you type</li>
-                  <li className="flex gap-2"><Brain className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>ICD-10 Code Suggestions</strong> — AI-recommended diagnosis codes based on note content</li>
-                  <li className="flex gap-2"><Target className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Care Plan Suggestions</strong> — Automated care plan drafts based on your documentation</li>
-                  <li className="flex gap-2"><ClipboardList className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Follow-Up Task Generation</strong> — Automatically creates tasks from your clinical notes</li>
-                  <li className="flex gap-2"><Heart className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Patient Education</strong> — Generate patient-friendly materials based on the visit</li>
-                </ul>
+                  <div>
+                    <h4 className="font-semibold mb-3">Step-by-Step Guide</h4>
+                    <div className="space-y-4">
+                      <div className="border-l-4 border-blue-600 pl-4">
+                        <h5 className="font-semibold mb-2">Step 1: Select Patient & Visit Type</h5>
+                        <ul className="text-sm text-gray-700 space-y-1">
+                          <li>• Choose patient from dropdown</li>
+                          <li>• Select visit type (Admission, Routine, Recertification, etc.)</li>
+                          <li>• AI automatically loads patient context and history</li>
+                        </ul>
+                        <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                          📸 Screenshot: Smart Note patient selection screen
+                        </div>
+                      </div>
 
-                <DocTip type="tip">
-                  The AI learns your writing style over time. The more you use it, the better it gets at matching your preferred documentation format and terminology.
-                </DocTip>
+                      <div className="border-l-4 border-green-600 pl-4">
+                        <h5 className="font-semibold mb-2">Step 2: Document Visit Details</h5>
+                        <p className="text-sm text-gray-700 mb-2">Choose your preferred method:</p>
+                        <div className="space-y-2">
+                          <div className="bg-white p-3 rounded border">
+                            <p className="font-medium text-sm">🎤 Voice Dictation (Fastest)</p>
+                            <p className="text-xs text-gray-600">Speak naturally - AI transcribes and structures your note</p>
+                          </div>
+                          <div className="bg-white p-3 rounded border">
+                            <p className="font-medium text-sm">⌨️ Quick Bullet Points</p>
+                            <p className="text-xs text-gray-600">Type brief notes - AI expands into full documentation</p>
+                          </div>
+                          <div className="bg-white p-3 rounded border">
+                            <p className="font-medium text-sm">📝 Guided Form</p>
+                            <p className="text-xs text-gray-600">Fill structured fields - AI ensures nothing is missed</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                          📸 Screenshot: Voice dictation interface with waveform
+                        </div>
+                      </div>
 
-                <DocTip type="warning">
-                  Always review AI-generated notes before finalizing. While the AI achieves 95%+ accuracy, clinical judgment should always guide the final documentation.
-                </DocTip>
-              </DocSection>
-            </div>
+                      <div className="border-l-4 border-purple-600 pl-4">
+                        <h5 className="font-semibold mb-2">Step 3: Review & Enhance</h5>
+                        <p className="text-sm text-gray-700 mb-2">AI generates complete note with:</p>
+                        <ul className="text-sm text-gray-700 space-y-1">
+                          <li>✅ SOAP format (Subjective, Objective, Assessment, Plan)</li>
+                          <li>✅ Medicare-compliant terminology</li>
+                          <li>✅ Skilled need justification</li>
+                          <li>✅ ICD-10 code suggestions</li>
+                          <li>✅ Compliance checks passed</li>
+                        </ul>
+                        <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                          📸 Screenshot: Generated note with compliance indicators
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Medical Scribe */}
-            <div id="scribe">
-              <DocSection icon={Mic} title="Medical Scribe" description="Voice-to-documentation with AI transcription">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Medical Scribe feature allows you to record your visit verbally and have CareMetric AI convert the recording into a structured, compliant clinical note.</p>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h4 className="font-semibold mb-2">🎯 Best Practices</h4>
+                    <ul className="text-sm text-gray-700 space-y-2">
+                      <li>• <strong>Use voice dictation</strong> while driving between visits to maximize efficiency</li>
+                      <li>• <strong>Review AI suggestions</strong> - you can accept, edit, or regenerate any section</li>
+                      <li>• <strong>Leverage templates</strong> - create custom templates for frequent visit types</li>
+                      <li>• <strong>Let AI learn</strong> - your edits train the system to match your style</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
 
-                <DocStep number={1} title="Start a New Recording">
-                  Navigate to <strong>Medical Scribe</strong>, select your patient, and click the <strong>Record</strong> button. Speak naturally about your visit observations.
-                </DocStep>
-                <DocStep number={2} title="Review Transcription">
-                  Once you stop recording, the AI transcribes your audio. Review the transcription for accuracy and make corrections if needed.
-                </DocStep>
-                <DocStep number={3} title="Generate the Note">
-                  Click <strong>"Generate Note"</strong> to convert the transcription into a formatted clinical document. The AI structures your verbal notes into proper clinical narrative.
-                </DocStep>
+            {/* Predictive Analytics */}
+            <section id="predictive-analytics">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Predictive Analytics
+                  </CardTitle>
+                  <CardDescription>AI-powered risk prediction and intervention recommendations</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Proactive Patient Care</h3>
+                    <p className="text-gray-700 mb-4">
+                      Our predictive analytics engine analyzes patient data to identify risks before they become problems, enabling preventive interventions.
+                    </p>
+                  </div>
 
-                <DocTip type="tip">
-                  Speak at a natural pace and mention key clinical terms clearly. The AI is trained on medical terminology and will accurately transcribe most clinical language.
-                </DocTip>
-              </DocSection>
-            </div>
+                  <div className="bg-gradient-to-r from-red-50 to-orange-50 p-6 rounded-xl border-2 border-red-200">
+                    <h4 className="font-bold text-lg mb-3 text-red-900">📊 Proven Outcomes</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-2xl font-bold text-red-600">-40%</p>
+                        <p className="text-sm text-gray-600">Hospital Readmissions</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-2xl font-bold text-orange-600">-35%</p>
+                        <p className="text-sm text-gray-600">Emergency Visits</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-2xl font-bold text-blue-600">+45%</p>
+                        <p className="text-sm text-gray-600">Goal Achievement</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-2xl font-bold text-green-600">92%</p>
+                        <p className="text-sm text-gray-600">Prediction Accuracy</p>
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Care Plans */}
-            <div id="care-plans">
-              <DocSection icon={Target} title="Care Plan Management" description="Create and track evidence-based care plans">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">CareMetric AI helps you build, manage, and monitor individualized care plans with AI assistance. Plans can be generated automatically based on patient diagnoses and medications.</p>
+                  <div>
+                    <h4 className="font-semibold mb-3">Risk Categories Monitored</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="p-4 bg-red-50 rounded-lg border-l-4 border-red-600">
+                        <p className="font-semibold text-sm">🏥 Hospital Readmission Risk</p>
+                        <p className="text-xs text-gray-600 mt-1">Analyzes 50+ factors to predict 30-day readmission probability</p>
+                      </div>
+                      <div className="p-4 bg-orange-50 rounded-lg border-l-4 border-orange-600">
+                        <p className="font-semibold text-sm">🚨 Fall Risk Assessment</p>
+                        <p className="text-xs text-gray-600 mt-1">Evaluates mobility, medications, and environmental factors</p>
+                      </div>
+                      <div className="p-4 bg-yellow-50 rounded-lg border-l-4 border-yellow-600">
+                        <p className="font-semibold text-sm">💊 Medication Issues</p>
+                        <p className="text-xs text-gray-600 mt-1">Identifies interactions, non-adherence, and adverse events</p>
+                      </div>
+                      <div className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-600">
+                        <p className="font-semibold text-sm">📉 Functional Decline</p>
+                        <p className="text-xs text-gray-600 mt-1">Monitors ADL changes and mobility trends</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                      📸 Screenshot: Risk dashboard with color-coded indicators
+                    </div>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Key Features:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>AI-Generated Plans</strong> — Automatically create care plans from diagnoses and clinical data</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Template Library</strong> — Pre-built templates for common conditions</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Progress Tracking</strong> — Monitor goal achievement with measurable outcomes</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Review Reminders</strong> — Automated reminders when plans need reassessment</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Collaboration</strong> — Share and collaborate on care plans with your team</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Automatic Triggers</strong> — Care plans auto-generate based on specific diagnoses or medications</li>
-                </ul>
+                  <div>
+                    <h4 className="font-semibold mb-3">Automated Intervention Suggestions</h4>
+                    <p className="text-sm text-gray-700 mb-3">When high-risk predictions are detected (≥70%), the system automatically generates:</p>
+                    <ul className="space-y-2">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-sm">Pre-filled Intervention Plans</p>
+                          <p className="text-xs text-gray-600">Evidence-based interventions specific to identified risks</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-sm">Actionable Steps</p>
+                          <p className="text-xs text-gray-600">Clear tasks you can assign with one click</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-sm">Care Plan Updates</p>
+                          <p className="text-xs text-gray-600">Suggested goals and interventions ready to add</p>
+                        </div>
+                      </li>
+                    </ul>
+                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                      📸 Screenshot: Suggested interventions panel with quick-confirm buttons
+                    </div>
+                  </div>
 
-                <DocTip type="info">
-                  Administrators can configure automatic care plan triggers in <strong>Settings → Automatic Care Plans</strong>. When a patient is admitted with a matching diagnosis, the care plan is created automatically.
-                </DocTip>
-              </DocSection>
-            </div>
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-semibold mb-2">💡 How to Use Effectively</h4>
+                    <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
+                      <li>Review daily risk alerts on your dashboard</li>
+                      <li>Click into high-risk patient profiles</li>
+                      <li>Review AI-generated intervention suggestions</li>
+                      <li>Confirm, edit, or dismiss each suggestion</li>
+                      <li>Track intervention effectiveness over time</li>
+                    </ol>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
 
-            {/* OASIS */}
-            <div id="oasis">
-              <DocSection icon={FileText} title="OASIS Assessment" description="Streamlined OASIS analysis and PDGM optimization">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The OASIS module provides AI-powered analysis of your OASIS assessments, ensuring accuracy, compliance, and optimal PDGM case-mix scoring.</p>
+            {/* Patient Education Hub */}
+            <section id="education-hub">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <GraduationCap className="w-5 h-5" />
+                    Patient Education Hub
+                  </CardTitle>
+                  <CardDescription>Personalized education materials in multiple languages</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Empowering Patients Through Education</h3>
+                    <p className="text-gray-700 mb-4">
+                      Generate culturally appropriate, easy-to-understand education materials tailored to each patient's conditions, reading level, and preferred language.
+                    </p>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">How to Use:</h4>
-                <DocStep number={1} title="Upload Your OASIS Document">
-                  Upload a completed OASIS assessment (PDF or image format) using the upload area on the OASIS page.
-                </DocStep>
-                <DocStep number={2} title="AI Analysis">
-                  CareMetric AI scans the document for errors, inconsistencies, and optimization opportunities. It checks every response against CMS guidelines.
-                </DocStep>
-                <DocStep number={3} title="Review Findings">
-                  View detailed findings including error flags, suggested corrections, PDGM impact analysis, and revenue implications.
-                </DocStep>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-blue-50 rounded-lg">
+                      <p className="text-3xl font-bold text-blue-600">6</p>
+                      <p className="text-sm text-gray-600">Languages</p>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 rounded-lg">
+                      <p className="text-3xl font-bold text-green-600">3</p>
+                      <p className="text-sm text-gray-600">Reading Levels</p>
+                    </div>
+                    <div className="text-center p-4 bg-purple-50 rounded-lg">
+                      <p className="text-3xl font-bold text-purple-600">85%</p>
+                      <p className="text-sm text-gray-600">Engagement Rate</p>
+                    </div>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mt-6 mb-2">Key Capabilities:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> PDGM case-mix weight calculation and optimization</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> Multi-report comparison for tracking changes over time</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> Scenario modeling for what-if analysis</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> Automated quality assurance checks</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> Export detailed audit reports</li>
-                </ul>
-              </DocSection>
-            </div>
+                  <div>
+                    <h4 className="font-semibold mb-3">Generating Personalized Materials</h4>
+                    <ol className="space-y-3 text-sm text-gray-700">
+                      <li className="flex items-start gap-3">
+                        <span className="font-bold text-blue-600">1.</span>
+                        <div>
+                          <p className="font-semibold">Navigate to Patient → Education Tab</p>
+                          <p className="text-xs text-gray-600">Find the education hub in the patient details page</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <span className="font-bold text-blue-600">2.</span>
+                        <div>
+                          <p className="font-semibold">Click "Generate New Material"</p>
+                          <p className="text-xs text-gray-600">AI analyzes patient's diagnoses and care plan</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <span className="font-bold text-blue-600">3.</span>
+                        <div>
+                          <p className="font-semibold">Enter Topic & Select Language</p>
+                          <p className="text-xs text-gray-600">Choose from English, Spanish, Chinese, Arabic, French, German</p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <span className="font-bold text-blue-600">4.</span>
+                        <div>
+                          <p className="font-semibold">Review & Assign to Patient</p>
+                          <p className="text-xs text-gray-600">Material is automatically personalized with patient's conditions</p>
+                        </div>
+                      </li>
+                    </ol>
+                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
+                      📸 Screenshot: Education generation form with language selector
+                    </div>
+                  </div>
 
-            {/* Compliance */}
-            <div id="compliance">
-              <DocSection icon={Shield} title="Compliance Dashboard" description="Monitor and maintain regulatory compliance">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Compliance Dashboard gives you a comprehensive view of your documentation compliance status across all patients and visits.</p>
+                  <div>
+                    <h4 className="font-semibold mb-3">What's Included in Each Material</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="w-4 h-4 text-yellow-600 mt-1 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Personalized Content</p>
+                          <p className="text-xs text-gray-600">References patient's specific medications, conditions, and care plan</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="w-4 h-4 text-yellow-600 mt-1 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Key Takeaways</p>
+                          <p className="text-xs text-gray-600">Bullet-point summary of most important information</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="w-4 h-4 text-yellow-600 mt-1 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Warning Signs</p>
+                          <p className="text-xs text-gray-600">When to call doctor or seek emergency care</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="w-4 h-4 text-yellow-600 mt-1 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Action Items</p>
+                          <p className="text-xs text-gray-600">Specific steps patient should take today, this week, this month</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="w-4 h-4 text-yellow-600 mt-1 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Teach-Back Questions</p>
+                          <p className="text-xs text-gray-600">Questions to verify patient understanding</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">What It Monitors:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><Shield className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Medicare Documentation Requirements</strong> — Ensures all required elements are present</li>
-                  <li className="flex gap-2"><Shield className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Homebound Status Justification</strong> — Validates homebound status documentation</li>
-                  <li className="flex gap-2"><Shield className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Skilled Need Documentation</strong> — Confirms skilled nursing need is properly justified</li>
-                  <li className="flex gap-2"><Shield className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Care Plan Alignment</strong> — Checks that visits align with established care plans</li>
-                  <li className="flex gap-2"><Shield className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Agency-Specific Rules</strong> — Custom compliance rules set by your agency administrator</li>
-                </ul>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h4 className="font-semibold mb-2">📊 Track Engagement</h4>
+                    <p className="text-sm text-gray-700 mb-3">Monitor which patients have:</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Badge className="bg-blue-100 text-blue-800">Viewed</Badge>
+                      <Badge className="bg-green-100 text-green-800">Completed</Badge>
+                      <Badge className="bg-purple-100 text-purple-800">Rated</Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
 
-                <DocTip type="tip">
-                  Set your compliance target in Settings. CareMetric AI will proactively alert you when notes fall below your target score and suggest specific improvements.
-                </DocTip>
-              </DocSection>
-            </div>
+            {/* Best Practices */}
+            <section id="best-practices">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Lightbulb className="w-5 h-5" />
+                    Best Practices & Tips
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Maximize Your Efficiency</h3>
+                    
+                    <div className="space-y-4">
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border-l-4 border-blue-600">
+                        <h4 className="font-bold mb-2">🚗 Document While Driving</h4>
+                        <p className="text-sm text-gray-700">Use voice dictation between visits. By the time you arrive home, your notes are 90% complete.</p>
+                      </div>
 
-            {/* Analytics */}
-            <div id="analytics">
-              <DocSection icon={BarChart3} title="Analytics Dashboard" description="Track performance and identify trends">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Analytics Dashboard provides data-driven insights into your documentation quality, productivity, compliance rates, and patient outcomes.</p>
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-l-4 border-green-600">
+                        <h4 className="font-bold mb-2">⏰ Check Alerts in the Morning</h4>
+                        <p className="text-sm text-gray-700">Review your risk alerts and predictive insights before starting visits to prioritize high-risk patients.</p>
+                      </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Available Reports:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><TrendingUp className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Time Savings Analysis</strong> — How much time AI has saved you daily, weekly, and monthly</li>
-                  <li className="flex gap-2"><TrendingUp className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Compliance Trends</strong> — Track your compliance score improvements over time</li>
-                  <li className="flex gap-2"><TrendingUp className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Documentation Quality</strong> — Average quality scores and areas for improvement</li>
-                  <li className="flex gap-2"><TrendingUp className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>AI Feature Usage</strong> — Which AI features you use most and their impact</li>
-                  <li className="flex gap-2"><TrendingUp className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Patient Risk Overview</strong> — Population-level risk metrics and trending alerts</li>
-                </ul>
+                      <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-lg border-l-4 border-purple-600">
+                        <h4 className="font-bold mb-2">📋 Use Templates</h4>
+                        <p className="text-sm text-gray-700">Create custom templates for routine visits. Load, dictate changes, done in 3 minutes.</p>
+                      </div>
 
-                <DocTip type="info">
-                  Analytics data updates in real time. Use the date filters to compare performance across different time periods and identify patterns.
-                </DocTip>
-              </DocSection>
-            </div>
+                      <div className="bg-gradient-to-r from-orange-50 to-red-50 p-4 rounded-lg border-l-4 border-orange-600">
+                        <h4 className="font-bold mb-2">🎯 Let AI Learn</h4>
+                        <p className="text-sm text-gray-700">Don't over-edit AI suggestions. The system learns your preferences and gets better over time.</p>
+                      </div>
 
-            {/* Patient Alerts */}
-            <div id="alerts">
-              <DocSection icon={Bell} title="Patient Alerts" description="Proactive AI-powered risk detection">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">CareMetric AI continuously analyzes patient data to identify risks before they become emergencies. The Patient Alerts system provides early warnings for deterioration, medication risks, fall risks, and more.</p>
+                      <div className="bg-gradient-to-r from-yellow-50 to-amber-50 p-4 rounded-lg border-l-4 border-yellow-600">
+                        <h4 className="font-bold mb-2">📱 Use Mobile App</h4>
+                        <p className="text-sm text-gray-700">CareMetric AI works perfectly on phones and tablets - document from anywhere.</p>
+                      </div>
+                    </div>
+                  </div>
 
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Alert Types:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><Bell className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" /> <strong>Vital Deterioration</strong> — Trending changes in vital signs that indicate concern</li>
-                  <li className="flex gap-2"><Bell className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" /> <strong>Medication Risk</strong> — Potential interactions or adherence issues</li>
-                  <li className="flex gap-2"><Bell className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" /> <strong>Fall Risk</strong> — Increased fall risk based on assessment data</li>
-                  <li className="flex gap-2"><Bell className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Readmission Risk</strong> — Patients at risk for hospital readmission</li>
-                  <li className="flex gap-2"><Bell className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" /> <strong>Care Gaps</strong> — Missing assessments, overdue visits, or incomplete documentation</li>
-                </ul>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Compliance Tips</h3>
+                    <ul className="space-y-2 text-sm text-gray-700">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span><strong>Always review</strong> AI compliance suggestions before finalizing notes</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span><strong>Use ICD-10 suggester</strong> to ensure accurate coding</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span><strong>Document skilled need</strong> - AI highlights missing justifications</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span><strong>Run OASIS checks</strong> before submission</span>
+                      </li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
 
-                <DocTip type="warning">
-                  Critical alerts require immediate attention. Always review and acknowledge critical and high-severity alerts promptly. You can add resolution notes when addressing each alert.
-                </DocTip>
-              </DocSection>
-            </div>
-
-            {/* Tasks */}
-            <div id="tasks">
-              <DocSection icon={CheckCircle} title="Task Management" description="Stay organized with smart task tracking">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Task Management system helps you track follow-ups, referrals, orders, and other action items. Tasks can be created manually or generated automatically by AI from your clinical documentation.</p>
-
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Features:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>AI-Generated Tasks</strong> — Automatically created from visit notes (e.g., "Call physician about medication change")</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Priority Levels</strong> — Critical, High, Medium, and Low priority categorization</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Due Dates & Reminders</strong> — Set deadlines and receive notifications</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Recurring Tasks</strong> — Set up daily, weekly, or monthly recurring tasks</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Task Assignment</strong> — Assign tasks to yourself or team members</li>
-                  <li className="flex gap-2"><CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" /> <strong>Completion Notes</strong> — Document how each task was resolved</li>
-                </ul>
-
-                <DocTip type="tip">
-                  After completing a visit note, check the "Follow-Up Tasks" section. The AI will suggest tasks based on your documentation—saving you from forgetting important follow-ups.
-                </DocTip>
-              </DocSection>
-            </div>
-
-            {/* Training */}
-            <div id="training">
-              <DocSection icon={Award} title="Training Hub" description="Personalized learning and skill development">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Training Hub provides personalized learning modules, compliance training, and skill assessments tailored to your specific needs and performance data.</p>
-
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Available Resources:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><BookOpen className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Training Modules</strong> — Interactive courses on documentation, compliance, and clinical skills</li>
-                  <li className="flex gap-2"><BookOpen className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>AI Skill Assessment</strong> — Identify your documentation strengths and areas to improve</li>
-                  <li className="flex gap-2"><BookOpen className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Personalized Recommendations</strong> — AI-suggested training based on your actual performance</li>
-                  <li className="flex gap-2"><BookOpen className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Compliance Quizzes</strong> — Test your knowledge on Medicare requirements</li>
-                  <li className="flex gap-2"><BookOpen className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Progress Tracking</strong> — Monitor your learning journey and earn certifications</li>
-                </ul>
-              </DocSection>
-            </div>
-
-            {/* Settings */}
-            <div id="settings">
-              <DocSection icon={Settings} title="Settings & Customization" description="Personalize your CareMetric AI experience">
-                <p className="text-slate-600 dark:text-slate-400 mb-4">The Settings page lets you customize your CareMetric AI experience to match your workflow preferences and clinical role.</p>
-
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Configurable Options:</h4>
-                <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  <li className="flex gap-2"><Settings className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Provider Type & Credentials</strong> — Set your professional role for tailored AI suggestions</li>
-                  <li className="flex gap-2"><Settings className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>AI Preferences</strong> — Control note length, tone, and complexity level</li>
-                  <li className="flex gap-2"><Settings className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Notification Preferences</strong> — Choose how and when you receive alerts</li>
-                  <li className="flex gap-2"><Settings className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Compliance Targets</strong> — Set your minimum acceptable compliance score</li>
-                  <li className="flex gap-2"><Settings className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Practice Information</strong> — Configure your practice details for document headers</li>
-                  <li className="flex gap-2"><Settings className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" /> <strong>Agency Code</strong> — Join your agency for shared templates and compliance rules</li>
-                </ul>
-
-                <DocTip type="info">
-                  Setting your provider type (RN, LPN, PT, OT, etc.) in Settings dramatically improves AI output quality because it tailors documentation language and requirements to your specific discipline.
-                </DocTip>
-              </DocSection>
-            </div>
-
-            {/* Tips & Best Practices */}
-            <div id="tips">
-              <DocSection icon={Zap} title="Tips & Best Practices" description="Get the most out of CareMetric AI">
+            {/* Quick Reference */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Quick Reference</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-4">
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-                    <h4 className="font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-2"><Keyboard className="h-4 w-4" /> Be Detailed in Rough Notes</h4>
-                    <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">The more detail you include in your rough notes, the better the AI output. Include observations, interventions, patient responses, and teaching provided.</p>
+                  <div>
+                    <h4 className="font-semibold mb-2">Keyboard Shortcuts</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between p-2 bg-gray-50 rounded">
+                        <span>New Patient</span>
+                        <Badge variant="outline">Ctrl + N</Badge>
+                      </div>
+                      <div className="flex justify-between p-2 bg-gray-50 rounded">
+                        <span>Search</span>
+                        <Badge variant="outline">Ctrl + K</Badge>
+                      </div>
+                      <div className="flex justify-between p-2 bg-gray-50 rounded">
+                        <span>Voice Dictation</span>
+                        <Badge variant="outline">Ctrl + D</Badge>
+                      </div>
+                      <div className="flex justify-between p-2 bg-gray-50 rounded">
+                        <span>Save Note</span>
+                        <Badge variant="outline">Ctrl + S</Badge>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
-                    <h4 className="font-semibold text-green-900 dark:text-green-200 flex items-center gap-2"><Monitor className="h-4 w-4" /> Review Before Finalizing</h4>
-                    <p className="text-sm text-green-800 dark:text-green-300 mt-1">Always review AI-enhanced notes for clinical accuracy. While the AI is highly accurate, your professional judgment is essential for the final document.</p>
-                  </div>
-
-                  <div className="bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
-                    <h4 className="font-semibold text-purple-900 dark:text-purple-200 flex items-center gap-2"><Smartphone className="h-4 w-4" /> Use Voice Dictation in the Field</h4>
-                    <p className="text-sm text-purple-800 dark:text-purple-300 mt-1">When doing home visits, use voice dictation immediately after the visit while details are fresh. This is the fastest way to capture comprehensive notes.</p>
-                  </div>
-
-                  <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 rounded-lg p-4 border border-amber-200 dark:border-amber-800">
-                    <h4 className="font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-2"><Clock className="h-4 w-4" /> Check Tasks Daily</h4>
-                    <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">Start each day by reviewing your task list. AI-generated tasks from your previous visits ensure nothing falls through the cracks.</p>
-                  </div>
-
-                  <div className="bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 rounded-lg p-4 border border-rose-200 dark:border-rose-800">
-                    <h4 className="font-semibold text-rose-900 dark:text-rose-200 flex items-center gap-2"><Globe className="h-4 w-4" /> Leverage Patient Education</h4>
-                    <p className="text-sm text-rose-800 dark:text-rose-300 mt-1">Use the built-in patient education generator to create condition-specific handouts. This improves patient engagement and satisfies teaching documentation requirements.</p>
+                  <div>
+                    <h4 className="font-semibold mb-2">Support Resources</h4>
+                    <div className="space-y-2">
+                      <Button variant="outline" className="w-full justify-start">
+                        <FileText className="w-4 h-4 mr-2" />
+                        Video Tutorials
+                      </Button>
+                      <Button variant="outline" className="w-full justify-start">
+                        <Download className="w-4 h-4 mr-2" />
+                        Download User Guide PDF
+                      </Button>
+                      <Button variant="outline" className="w-full justify-start">
+                        <Users className="w-4 h-4 mr-2" />
+                        Contact Support
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </DocSection>
-            </div>
-
-            {/* FAQ */}
-            <div id="faq">
-              <DocSection icon={HelpCircle} title="Frequently Asked Questions" description="Quick answers to common questions">
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Is my patient data secure?</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Absolutely. CareMetric AI is built with HIPAA compliance at its core. All data is encrypted in transit and at rest, and access is strictly controlled based on user roles and permissions.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Can I use CareMetric AI on my phone?</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Yes! CareMetric AI is fully responsive and optimized for mobile devices. You can document visits, record voice notes, and manage tasks from your phone or tablet.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-1">How accurate is the AI-generated documentation?</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Our AI achieves over 95% compliance accuracy. However, we always recommend reviewing the output before finalizing. The AI learns from your edits, improving accuracy over time.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Can multiple clinicians use the same account?</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Each clinician should have their own account for proper audit trails and personalized AI learning. Administrators can invite team members through the User Management page.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-1">What visit types are supported?</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">CareMetric AI supports all standard visit types including Skilled Nursing, Admission, Recertification, Discharge, Routine Visits, and PRN visits. Each type has tailored documentation templates.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-1">How do I get help if I'm stuck?</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">You can email our support team at <strong>support@caremetricai.com</strong> anytime. We also offer in-app training modules and personalized onboarding assistance.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Does the AI work offline?</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">CareMetric AI includes offline note capture capabilities. You can draft notes offline, and they will automatically sync and be enhanced once you're back online.</p>
-                  </div>
-                </div>
-              </DocSection>
-            </div>
-
-            {/* Support Footer */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-8 text-white text-center">
-              <MessageSquare className="h-10 w-10 mx-auto mb-4 opacity-90" />
-              <h2 className="text-2xl font-bold mb-2">Need More Help?</h2>
-              <p className="text-blue-100 mb-6 max-w-md mx-auto">
-                Our support team is always here to assist you. Reach out anytime and we'll help you make the most of CareMetric AI.
-              </p>
-              <a
-                href="mailto:support@caremetricai.com"
-                className="inline-block bg-white text-blue-700 font-semibold px-8 py-3 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                Contact Support
-              </a>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
