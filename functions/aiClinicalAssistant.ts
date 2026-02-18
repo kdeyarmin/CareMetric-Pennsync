@@ -1100,3 +1100,144 @@ ${JSON.stringify(vitalsTrend, null, 1)}
 RECENT VISIT NOTES:
 ${recentNotes.join('\n\n')}`;
 }
+
+function buildEnhancedPatientContext(patient, visits, carePlans, alerts, documents, riskAnalyses) {
+  const recentNotes = visits
+    .filter(v => v.nurse_notes && v.status === 'completed')
+    .slice(0, 8)
+    .map(v => `[${v.visit_date} - ${v.visit_type}]: ${v.nurse_notes.substring(0, 800)}`);
+
+  const vitalsTrend = visits
+    .filter(v => v.vital_signs)
+    .slice(0, 10)
+    .map(v => ({
+      date: v.visit_date,
+      bp: v.vital_signs.blood_pressure_systolic ? `${v.vital_signs.blood_pressure_systolic}/${v.vital_signs.blood_pressure_diastolic}` : null,
+      hr: v.vital_signs.heart_rate,
+      rr: v.vital_signs.respiratory_rate,
+      o2: v.vital_signs.oxygen_saturation,
+      temp: v.vital_signs.temperature,
+      pain: v.vital_signs.pain_level,
+      weight: v.vital_signs.weight
+    }));
+
+  const recentDocuments = (documents || []).slice(0, 5).map(d => 
+    `[${d.created_date?.split('T')[0]}] ${d.document_category || 'Unknown'}: ${d.file_name} ${d.ai_summary ? `- ${d.ai_summary.substring(0, 200)}` : ''}`
+  ).join('\n');
+
+  const latestRisk = (riskAnalyses || [])[0];
+  const riskSummary = latestRisk ? `
+LATEST RISK ANALYSIS (${latestRisk.created_date?.split('T')[0]}):
+- Overall Risk: ${latestRisk.risk_level} (Score: ${latestRisk.risk_score})
+- Key Factors: ${(latestRisk.risk_factors || []).map(f => f.factor).join(', ')}
+- Predictions: ${(latestRisk.predictions || []).map(p => `${p.outcome} (${p.probability}%)`).join('; ')}` : '';
+
+  const age = patient.date_of_birth ? Math.floor((Date.now() - new Date(patient.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+
+  return `
+**PATIENT DEMOGRAPHICS:**
+Name: ${patient.first_name} ${patient.last_name}
+DOB: ${patient.date_of_birth || 'unknown'} (Age: ${age || 'unknown'})
+Gender: ${patient.gender || 'unknown'}
+MRN: ${patient.medical_record_number || 'N/A'}
+
+**PRIMARY CLINICAL PICTURE:**
+Primary Diagnosis: ${patient.primary_diagnosis || 'Not specified'}
+Secondary Diagnoses: ${(patient.secondary_diagnoses || []).join(', ') || 'None'}
+Chronic Conditions: ${(patient.chronic_conditions || []).map(c => `${c.condition} (${c.severity || 'unspecified'}, diagnosed ${c.diagnosed_date || 'date unknown'})`).join('; ') || 'None'}
+
+**CURRENT MEDICATIONS (${(patient.current_medications || []).length} total):**
+${(patient.current_medications || []).map(m => `- ${m.name} ${m.dosage} ${m.frequency} ${m.route || ''} for ${m.indication || 'unspecified indication'} (started ${m.start_date || 'unknown'})`).join('\n') || 'None documented'}
+
+**ALLERGIES & ADVERSE REACTIONS:**
+${patient.allergies || 'NKDA (No Known Drug Allergies)'}
+
+**FUNCTIONAL STATUS:**
+- ADL Independence: ${patient.functional_status?.adl_independence || 'Not assessed'}
+- IADL Independence: ${patient.functional_status?.iadl_independence || 'Not assessed'}
+- Ambulation: ${patient.functional_status?.ambulation || 'Not assessed'}
+- Transfers: ${patient.functional_status?.transfer_ability || 'Not assessed'}
+- Fall Risk: ${patient.functional_status?.fall_risk || 'Not assessed'}
+- Cognitive Status: ${patient.functional_status?.cognitive_status || 'Not assessed'}
+- Vision: ${patient.functional_status?.vision || 'Not assessed'}
+- Hearing: ${patient.functional_status?.hearing || 'Not assessed'}
+
+**LIVING SITUATION & SOCIAL SUPPORT:**
+- Living Situation: ${patient.social_history?.living_situation || 'Unknown'}
+- Primary Caregiver: ${patient.social_history?.primary_caregiver || 'None identified'}
+- Caregiver Availability: ${patient.social_history?.caregiver_availability || 'Unknown'}
+- Transportation: ${patient.social_history?.transportation_access || 'Unknown'}
+
+**SOCIAL DETERMINANTS OF HEALTH:**
+- Housing Stability: ${patient.social_determinants?.housing_stability || 'Unknown'}
+- Food Security: ${patient.social_determinants?.food_security || 'Unknown'}
+- Health Literacy: ${patient.social_determinants?.health_literacy || 'Unknown'}
+- Financial Concerns: ${patient.social_determinants?.financial_concerns || 'Unknown'}
+
+**RISK ASSESSMENT:**
+Current Risk Score: ${patient.risk_assessment?.score || 'Not calculated'} (${patient.risk_assessment?.level || 'unknown'})
+${riskSummary}
+
+**ACTIVE CARE PLANS:**
+${carePlans.filter(cp => cp.status === 'active').map(cp => `
+- Problem: ${cp.problem}
+  Goal: ${cp.goal}
+  Progress: ${cp.progress_percentage || 0}% complete
+  Interventions: ${(cp.interventions || []).join(', ')}
+  Status: ${cp.care_plan_status || 'Active'}`).join('\n') || 'None active'}
+
+**ACTIVE CLINICAL ALERTS:**
+${(alerts || []).map(a => `[${a.severity || 'Unknown'}] ${a.alert_type}: ${a.title} - ${a.description || 'No details'}`).join('\n') || 'No active alerts'}
+
+**PAST MEDICAL HISTORY:**
+${(patient.past_medical_history || []).join(', ') || 'None documented'}
+Surgical History: ${(patient.surgical_history || []).join(', ') || 'None documented'}
+
+**ADVANCE DIRECTIVES:**
+- DNR Status: ${patient.advance_directives?.dnr_status ? 'YES - DNR in place' : 'No/Unknown'}
+- Living Will: ${patient.advance_directives?.has_living_will ? 'Yes' : 'No/Unknown'}
+- Healthcare Proxy: ${patient.advance_directives?.healthcare_proxy || 'None designated'}
+- POLST: ${patient.advance_directives?.polst_status || 'Unknown'}
+
+**VITAL SIGNS TREND (Last ${vitalsTrend.length} visits):**
+${vitalsTrend.map(v => `${v.date}: BP ${v.bp || 'N/A'}, HR ${v.hr || 'N/A'}, RR ${v.rr || 'N/A'}, O2 ${v.o2 || 'N/A'}%, Temp ${v.temp || 'N/A'}°F, Pain ${v.pain || 'N/A'}/10, Weight ${v.weight || 'N/A'} lbs`).join('\n')}
+
+**RECENT CLINICAL DOCUMENTS:**
+${recentDocuments || 'No recent documents'}
+
+**RECENT VISIT NOTES (Last ${recentNotes.length} visits):**
+${recentNotes.join('\n\n')}`;
+}
+
+function getComplianceGuidelines(visitType, careSetting, providerType) {
+  const baseGuidelines = `
+**MEDICARE DOCUMENTATION REQUIREMENTS:**
+1. Medical necessity must be clearly evident
+2. Skilled need must be explicitly documented
+3. Homebound status must be justified
+4. Plan of care goals must be referenced
+5. Patient response to interventions must be documented
+6. Communication with physician/team must be noted`;
+
+  const visitSpecific = {
+    'skilled_nursing': `
+- Document assessment findings that require RN expertise
+- Justify why this requires skilled observation/assessment
+- Document teaching and patient's ability to learn/perform`,
+    'physical_therapy': `
+- Document functional limitations with objective measures
+- Justify skilled PT need (not maintenance)
+- Document progress toward functional goals with data`,
+    'occupational_therapy': `
+- Document ADL/IADL deficits with specific examples
+- Justify skilled OT intervention
+- Document adaptive equipment needs and training`,
+    'speech_therapy': `
+- Document communication/swallowing deficits with baseline data
+- Justify skilled ST need with clinical findings
+- Document specific therapy techniques used`
+  };
+
+  return baseGuidelines + '\n' + (visitSpecific[visitType] || '');
+}
+}
