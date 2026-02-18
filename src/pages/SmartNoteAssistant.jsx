@@ -945,21 +945,7 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
-                {/* Real-Time HIPAA Compliance Checker - Physicians & NPs only */}
-                {(providerType === 'MD' || providerType === 'NP') && visitType && roughNotes && roughNotes.length > 100 && (
-                  <RealtimeComplianceChecker
-                    noteContent={roughNotes}
-                    providerType={providerType}
-                    visitType={visitType}
-                    onComplianceUpdate={(result) => {
-                      if (result.score < 85) {
-                        console.log('Compliance issues detected:', result.issues);
-                      }
-                    }}
-                  />
-                )}
-
-                {/* Real-Time Compliance Monitor */}
+                {/* Real-Time Compliance Monitoring - Combined */}
                 {visitType && selectedDiagnosis && roughNotes && roughNotes.length > 100 && (
                   <RealTimeComplianceMonitor
                     content={roughNotes}
