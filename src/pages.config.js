@@ -84,6 +84,7 @@ import TeamCollaboration from './pages/TeamCollaboration';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
+import IncomingFaxes from './pages/IncomingFaxes';
 import __Layout from './Layout.jsx';
 
 
@@ -125,6 +126,7 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
+    "IncomingFaxes": IncomingFaxes,
 }
 
 export const pagesConfig = {
