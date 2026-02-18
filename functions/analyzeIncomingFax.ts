@@ -53,21 +53,22 @@ SENDER: ${fax.sender_name || 'Unknown'}
 FROM NUMBER: ${fax.sender_fax_number}
 
 Analyze and extract:
-1. Document Category (lab_results, referral, consultation_note, prescription, insurance_authorization, discharge_summary, imaging_report, progress_note, consent_form, or other)
-2. Patient Information (name, DOB, MRN if available)
-3. Document Date
-4. Provider Name
-5. Diagnosis/Conditions mentioned
-6. Medications mentioned
-7. Urgency Level (critical, high, medium, low) based on:
+1. CONCISE SUMMARY (2-3 sentences max highlighting key findings, purpose, and critical info)
+2. Document Category (lab_results, referral, consultation_note, prescription, insurance_authorization, discharge_summary, imaging_report, progress_note, consent_form, or other)
+3. Patient Information (name, DOB, MRN if available)
+4. Document Date
+5. Provider Name
+6. Diagnosis/Conditions mentioned
+7. Medications mentioned
+8. Urgency Level (critical, high, medium, low) based on:
    - Critical lab values
    - Words like "urgent", "stat", "emergency"
    - Abnormal findings
    - Time-sensitive treatments
-8. Reasons for urgency
-9. Suggested Routing (nurse_review, physician_review, admin, billing, patient_record)
-10. Action items that need to be taken
-11. Confidence score (0-100) in the analysis
+9. Reasons for urgency
+10. Suggested Routing (nurse_review, physician_review, admin, billing, patient_record)
+11. Action items that need to be taken
+12. Confidence score (0-100) in the analysis
 
 Be thorough but concise.`;
 
@@ -76,6 +77,7 @@ Be thorough but concise.`;
       response_json_schema: {
         type: "object",
         properties: {
+          summary: { type: "string" },
           category: { type: "string" },
           patient_name: { type: "string" },
           patient_dob: { type: "string" },
@@ -123,6 +125,7 @@ Be thorough but concise.`;
       processing_status: 'completed',
       ocr_text: ocrText,
       ocr_confidence: ocrConfidence,
+      ai_summary: analysis.summary || '',
       ai_category: analysis.category || 'other',
       extracted_info: {
         patient_name: analysis.patient_name || '',

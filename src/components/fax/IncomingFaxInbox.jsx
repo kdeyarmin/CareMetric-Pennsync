@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Inbox, AlertTriangle, Clock, Eye, FileText, User, 
-  Calendar, Loader2, CheckCircle2, Send, Archive 
+  Calendar, Loader2, CheckCircle2, Send, Archive, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -244,6 +244,10 @@ function FaxCard({ fax, onView, onAnalyze, onUpdateStatus }) {
               </Badge>
             )}
 
+            {fax.ai_summary && (
+              <p className="text-xs text-slate-700 mt-2 line-clamp-2">{fax.ai_summary}</p>
+            )}
+
             {fax.extracted_info?.patient_name && (
               <div className="flex items-center gap-1 mt-2 text-xs text-slate-600">
                 <User className="w-3 h-3" />
@@ -294,6 +298,19 @@ function FaxDetailDialog({ fax, open, onClose, onUpdateStatus }) {
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* AI Summary */}
+          {fax.ai_summary && (
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 p-4 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Sparkles className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-blue-900 mb-1">AI Summary</p>
+                  <p className="text-sm text-slate-700">{fax.ai_summary}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Urgency Banner */}
           {(fax.urgency_level === 'critical' || fax.urgency_level === 'high') && (
             <div className={`${urgencyColors.bg} ${urgencyColors.border} border-2 p-3 rounded-lg`}>
