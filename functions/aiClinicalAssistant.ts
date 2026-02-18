@@ -473,8 +473,7 @@ Check: drug-drug interactions, drug-disease contraindications, drug-allergy conf
             properties: {
               medication: { type: "string" },
               what_to_monitor: { type: "string" },
-              frequency: { type: "string" },
-              target_range: { type: "string" }
+              frequency: { type: "string" }
             }
           }
         },
@@ -484,8 +483,7 @@ Check: drug-drug interactions, drug-disease contraindications, drug-allergy conf
             type: "object",
             properties: {
               issue: { type: "string" },
-              urgency: { type: "string", enum: ["immediate", "within_24hrs", "next_visit", "routine"] },
-              suggested_message: { type: "string" }
+              urgency: { type: "string", enum: ["immediate", "within_24hrs", "next_visit", "routine"] }
             }
           }
         }
@@ -531,8 +529,7 @@ Suggest: overdue labs, indicated imaging, screening tools, medication monitoring
               urgency: { type: "string", enum: ["stat", "within_24hrs", "within_week", "routine", "next_visit"] },
               clinical_indication: { type: "string" },
               evidence_basis: { type: "string" },
-              expected_findings: { type: "string" },
-              nurse_action: { type: "string", description: "What the nurse should do — order, collect, notify physician, etc." },
+              nurse_action: { type: "string" },
               requires_physician_order: { type: "boolean" }
             }
           }
@@ -547,7 +544,6 @@ Suggest: overdue labs, indicated imaging, screening tools, medication monitoring
               urgency: { type: "string", enum: ["emergent", "urgent", "routine", "when_available"] },
               clinical_rationale: { type: "string" },
               key_findings_to_share: { type: "string" },
-              expected_outcome: { type: "string" },
               evidence_basis: { type: "string" }
             }
           }
