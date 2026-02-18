@@ -1,61 +1,107 @@
 import React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Send, Clock, FileText } from "lucide-react";
+import { Send, Clock, FileText, Inbox } from "lucide-react";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
-// Lazy-load actual page content
 const SendFaxPage = React.lazy(() => import("./SendFax"));
 const FaxQueuePage = React.lazy(() => import("./FaxQueue"));
 const DocumentLibraryPage = React.lazy(() => import("./DocumentLibrary"));
+const IncomingFaxesPage = React.lazy(() => import("./IncomingFaxes"));
 
 export default function FaxCenter() {
   const urlParams = new URLSearchParams(window.location.search);
   const initialTab = urlParams.get("tab") || "send";
 
   return (
-    <PremiumFeatureGate featureName="Fax Center" featureDescription="Send faxes, manage your queue, and browse documents." allowTrial={true}>
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300 min-h-screen">
-        <div className="mb-4">
-          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Send className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-            Fax Center
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">Send, track, and manage all your faxes and documents</p>
+    <PremiumFeatureGate featureName="Fax Center" featureDescription="Complete fax management solution" allowTrial={true}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+        <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-20 sm:pb-6">
+          
+          <div className="mb-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center gap-3">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <Send className="w-6 h-6 text-white" />
+              </div>
+              Fax Center
+            </h1>
+            <p className="text-sm text-slate-600 mt-2">Professional fax management with AI-powered intelligence</p>
+          </div>
+
+          <Tabs defaultValue={initialTab} className="w-full">
+            <TabsList className="w-full bg-white border-2 border-blue-200 shadow-sm p-1 h-auto grid grid-cols-4 gap-1">
+              <TabsTrigger 
+                value="send" 
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-sm font-medium py-2.5 rounded-md transition-all"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Send Fax</span>
+                <span className="sm:hidden">Send</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="inbox" 
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-sm font-medium py-2.5 rounded-md transition-all"
+              >
+                <Inbox className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Inbox</span>
+                <span className="sm:hidden">In</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="queue" 
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-sm font-medium py-2.5 rounded-md transition-all"
+              >
+                <Clock className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Queue</span>
+                <span className="sm:hidden">Queue</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="library" 
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-sm font-medium py-2.5 rounded-md transition-all"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Library</span>
+                <span className="sm:hidden">Docs</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="mt-4">
+              <TabsContent value="send" className="m-0">
+                <React.Suspense fallback={<LoadingState />}>
+                  <SendFaxPage />
+                </React.Suspense>
+              </TabsContent>
+              
+              <TabsContent value="inbox" className="m-0">
+                <React.Suspense fallback={<LoadingState />}>
+                  <IncomingFaxesPage />
+                </React.Suspense>
+              </TabsContent>
+
+              <TabsContent value="queue" className="m-0">
+                <React.Suspense fallback={<LoadingState />}>
+                  <FaxQueuePage />
+                </React.Suspense>
+              </TabsContent>
+
+              <TabsContent value="library" className="m-0">
+                <React.Suspense fallback={<LoadingState />}>
+                  <DocumentLibraryPage />
+                </React.Suspense>
+              </TabsContent>
+            </div>
+          </Tabs>
         </div>
-
-        <Tabs defaultValue={initialTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-4">
-            <TabsTrigger value="send" className="text-xs sm:text-sm gap-1">
-              <Send className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Send</span> Fax
-            </TabsTrigger>
-            <TabsTrigger value="queue" className="text-xs sm:text-sm gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Fax</span> Queue
-            </TabsTrigger>
-            <TabsTrigger value="library" className="text-xs sm:text-sm gap-1">
-              <FileText className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Doc</span> Library
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="send">
-            <React.Suspense fallback={<div className="py-12 text-center text-slate-400">Loading...</div>}>
-              <SendFaxPage />
-            </React.Suspense>
-          </TabsContent>
-          <TabsContent value="queue">
-            <React.Suspense fallback={<div className="py-12 text-center text-slate-400">Loading...</div>}>
-              <FaxQueuePage />
-            </React.Suspense>
-          </TabsContent>
-          <TabsContent value="library">
-            <React.Suspense fallback={<div className="py-12 text-center text-slate-400">Loading...</div>}>
-              <DocumentLibraryPage />
-            </React.Suspense>
-          </TabsContent>
-        </Tabs>
       </div>
     </PremiumFeatureGate>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div className="text-center">
+        <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-sm text-slate-500">Loading...</p>
+      </div>
+    </div>
   );
 }
