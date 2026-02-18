@@ -188,13 +188,13 @@ export default function Layout({ children, currentPageName }) {
                   </div>
           </div>
           {user?.email && <FavoritesBar userEmail={user.email} />}
-          <nav className="p-4 space-y-5">
+          <nav className="p-4 space-y-4">
             {navigationGroups.map((group) => (
               <div key={group.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                   {group.title}
                 </h3>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {group.items.map((item) => {
                     const isActive = displayPageName === item.name || currentPageKey === item.page;
                     return (
@@ -202,7 +202,7 @@ export default function Layout({ children, currentPageName }) {
                         key={item.page} 
                         to={createPageUrl(item.page)} 
                         onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 border-l-4 ${
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 border-l-4 ${
                           isActive
                             ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                             : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
@@ -219,10 +219,10 @@ export default function Layout({ children, currentPageName }) {
             
             {enterpriseNavigationGroup && (
               <div key={enterpriseNavigationGroup.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                   {enterpriseNavigationGroup.title}
                 </h3>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {enterpriseNavigationGroup.items.map((item) => {
                     const isActive = displayPageName === item.name || currentPageKey === item.page;
                     return (
@@ -230,7 +230,7 @@ export default function Layout({ children, currentPageName }) {
                         key={item.page} 
                         to={createPageUrl(item.page)} 
                         onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 border-l-4 ${
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 border-l-4 ${
                           isActive
                             ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                             : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
@@ -247,10 +247,10 @@ export default function Layout({ children, currentPageName }) {
 
             {adminNavigationGroup && (
               <div key={adminNavigationGroup.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
+                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                   {adminNavigationGroup.title}
                 </h3>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {adminNavigationGroup.items.map((item) => {
                      const isActive = displayPageName === item.name || currentPageKey === item.page;
                      return (
@@ -258,7 +258,7 @@ export default function Layout({ children, currentPageName }) {
                          key={item.page} 
                          to={createPageUrl(item.page)} 
                          onClick={() => setSidebarOpen(false)}
-                         className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 border-l-4 ${
+                         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 border-l-4 ${
                            isActive
                              ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                              : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
