@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import InterventionLogger from './InterventionLogger';
 import InterventionHistory from './InterventionHistory';
+import SuggestedInterventionsPanel from './SuggestedInterventionsPanel';
 
 export default function PredictiveAnalyticsDashboard({ patientId }) {
   const [predictionHorizon, setPredictionHorizon] = useState(30);
@@ -152,6 +153,9 @@ export default function PredictiveAnalyticsDashboard({ patientId }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* AI-Suggested Interventions Panel */}
+      <SuggestedInterventionsPanel patientId={patientId} />
 
       {/* Intervention Logger Dialog */}
       {selectedPrediction && (

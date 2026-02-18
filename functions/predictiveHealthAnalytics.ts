@@ -366,7 +366,7 @@ Prioritize by:
     });
 
     // Store the prediction for tracking
-    await base44.asServiceRole.entities.RiskAnalysis.create({
+    const riskAnalysis = await base44.asServiceRole.entities.RiskAnalysis.create({
       patient_id,
       analysis_type: 'predictive_analytics',
       risk_level: res.overall_risk_summary?.risk_level || 'unknown',
@@ -381,13 +381,111 @@ Prioritize by:
       analyzed_by: user.email
     });
 
-    return Response.json({ success: true, data: res });
+    // Auto-generate intervention suggestions for high-risk predictions
+    const suggestions = [];
+    
+    // Readmission Risk
+    if (res.readmission_prediction?.risk_score >= 70) {
+      const topIntervention = res.readmission_prediction.interventions?.[0];
+      if (topIntervention) {
+        suggestions.push({
+          patient_id,
+          prediction_type: 'hospital_readmission',
+          risk_analysis_id: riskAnalysis.id,
+          risk_score: res.readmission_prediction.risk_score,
+          risk_level: res.readmission_prediction.risk_category === 'very_high' ? 'very_high' : 'high',
+          suggested_intervention_category: categorizePredictiveIntervention(topIntervention.intervention),
+          suggested_intervention_description: topIntervention.intervention,
+          suggested_expected_outcome: topIntervention.expected_risk_reduction,
+          suggested_actions: topIntervention.implementation_steps || [],
+          priority: topIntervention.priority || 'high',
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        });
+      }
+    }
+
+    // Fall Risk
+    if (res.fall_risk_prediction?.risk_score >= 70) {
+      const topIntervention = res.fall_risk_prediction.interventions?.[0];
+      if (topIntervention) {
+        suggestions.push({
+          patient_id,
+          prediction_type: 'fall_risk',
+          risk_analysis_id: riskAnalysis.id,
+          risk_score: res.fall_risk_prediction.risk_score,
+          risk_level: res.fall_risk_prediction.risk_category === 'very_high' ? 'very_high' : 'high',
+          suggested_intervention_category: topIntervention.type || 'environmental',
+          suggested_intervention_description: topIntervention.intervention,
+          suggested_expected_outcome: topIntervention.expected_impact,
+          suggested_actions: [topIntervention.intervention],
+          priority: topIntervention.priority || 'high',
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        });
+      }
+    }
+
+    // Disease Exacerbations
+    if (res.disease_exacerbation_predictions) {
+      for (const disease of res.disease_exacerbation_predictions) {
+        if (disease.exacerbation_probability >= 70 && disease.interventions?.length > 0) {
+          const topIntervention = disease.interventions[0];
+          suggestions.push({
+            patient_id,
+            prediction_type: 'disease_exacerbation',
+            risk_analysis_id: riskAnalysis.id,
+            risk_score: disease.exacerbation_probability,
+            risk_level: disease.risk_level === 'critical' ? 'critical' : 'high',
+            suggested_intervention_category: 'care_plan_update',
+            suggested_intervention_description: `${disease.condition}: ${topIntervention.intervention}`,
+            suggested_expected_outcome: topIntervention.expected_benefit,
+            suggested_actions: [topIntervention.intervention],
+            priority: disease.risk_level === 'critical' ? 'immediate' : 'high',
+            expires_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+          });
+        }
+      }
+    }
+
+    // Create suggested interventions
+    for (const suggestion of suggestions) {
+      try {
+        await base44.asServiceRole.entities.SuggestedIntervention.create(suggestion);
+      } catch (error) {
+        console.error('Error creating suggested intervention:', error);
+      }
+    }
+
+    return Response.json({ 
+      success: true, 
+      data: res,
+      suggestions_created: suggestions.length
+    });
 
   } catch (error) {
     console.error('Predictive analytics error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+
+function categorizePredictiveIntervention(description) {
+  const categories = {
+    medication: 'medication_adjustment',
+    therapy: 'therapy_referral',
+    'care plan': 'care_plan_update',
+    monitor: 'monitoring_increase',
+    equipment: 'equipment_provision',
+    education: 'education_provided',
+    physician: 'physician_consult',
+    home: 'environmental_modification',
+    caregiver: 'caregiver_support'
+  };
+
+  const lower = description.toLowerCase();
+  for (const [keyword, category] of Object.entries(categories)) {
+    if (lower.includes(keyword)) return category;
+  }
+  return 'care_plan_update';
+}
 
 function buildComprehensiveAnalyticsContext(patient, visits, carePlans, alerts, documents, incidents, tasks, riskAnalyses) {
   const age = patient.date_of_birth ? Math.floor((Date.now() - new Date(patient.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
