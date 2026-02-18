@@ -70,7 +70,7 @@ export default function TimeSavingsWidget() {
       <CardContent className="pt-6">
         <div className="grid grid-cols-2 gap-4">
           {/* Today */}
-          <div className="flex flex-col items-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+          <div className="flex flex-col items-center p-4 bg-gradient-to-br from-blue-100/60 to-slate-100/80 dark:from-blue-950/30 dark:to-slate-800/30 rounded-lg border border-blue-200/40">
             <Zap className="h-5 w-5 text-blue-600 mb-2" />
             <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">
               {formatTime(stats.today)}
@@ -79,27 +79,27 @@ export default function TimeSavingsWidget() {
           </div>
 
           {/* This Week */}
-          <div className="flex flex-col items-center p-4 bg-indigo-50 dark:bg-indigo-950/20 rounded-lg">
-            <Calendar className="h-5 w-5 text-indigo-600 mb-2" />
-            <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">
+          <div className="flex flex-col items-center p-4 bg-gradient-to-br from-blue-100/60 to-slate-100/80 dark:from-blue-950/30 dark:to-slate-800/30 rounded-lg border border-blue-200/40">
+            <Calendar className="h-5 w-5 text-blue-600 mb-2" />
+            <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">
               {formatTime(stats.week)}
             </div>
             <div className="text-xs text-slate-600 dark:text-slate-400">This Week</div>
           </div>
 
           {/* This Month */}
-          <div className="flex flex-col items-center p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
-            <TrendingUp className="h-5 w-5 text-purple-600 mb-2" />
-            <div className="text-2xl font-bold text-purple-700 dark:text-purple-400">
+          <div className="flex flex-col items-center p-4 bg-gradient-to-br from-blue-100/60 to-slate-100/80 dark:from-blue-950/30 dark:to-slate-800/30 rounded-lg border border-blue-200/40">
+            <TrendingUp className="h-5 w-5 text-blue-600 mb-2" />
+            <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">
               {formatTime(stats.month)}
             </div>
             <div className="text-xs text-slate-600 dark:text-slate-400">This Month</div>
           </div>
 
           {/* All Time */}
-          <div className="flex flex-col items-center p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg">
-            <Clock className="h-5 w-5 text-emerald-600 mb-2" />
-            <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+          <div className="flex flex-col items-center p-4 bg-gradient-to-br from-blue-100/60 to-slate-100/80 dark:from-blue-950/30 dark:to-slate-800/30 rounded-lg border border-blue-200/40">
+            <Clock className="h-5 w-5 text-blue-600 mb-2" />
+            <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">
               {formatTime(stats.allTime)}
             </div>
             <div className="text-xs text-slate-600 dark:text-slate-400">All Time</div>
@@ -107,7 +107,7 @@ export default function TimeSavingsWidget() {
         </div>
 
         {/* Average per day */}
-        <div className="mt-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+        <div className="mt-4 p-3 bg-gradient-to-r from-blue-100/50 to-slate-100/60 dark:from-blue-950/20 dark:to-slate-800/20 rounded-lg border border-blue-200/40 dark:border-blue-800">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Daily Average (7 days)
