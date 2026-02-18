@@ -756,25 +756,7 @@ export default function SmartNoteAssistant() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="bg-white p-4 sm:p-6 space-y-4">
-                 {/* Quick Patient Access */}
-                 {allPatients.length > 0 && (
-                   <QuickPatientAccess
-                     onSelectPatient={setSelectedPatient}
-                     onSelectVisitType={setVisitType}
-                     currentUser={currentUser}
-                   />
-                 )}
-
-                 {/* AI Patient Summary */}
-                 {selectedPatient !== "no_patient" && patientData && (
-                   <AIPatientSummaryGenerator
-                     patientId={selectedPatient}
-                     patientName={`${patientData.first_name} ${patientData.last_name}`}
-                     onSummaryGenerated={(summary) => {
-                       console.log('Summary generated:', summary);
-                     }}
-                   />
-                 )}
+                 {/* Quick Patient Access - Hide if using standard section */}
 
                  {/* Core Documentation Fields */}
                  <div className="grid gap-5">
