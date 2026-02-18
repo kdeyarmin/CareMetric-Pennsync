@@ -9,101 +9,72 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { to_numbers, media_urls, document_name, patient_id, cover_page_details, priority, from_fax_number } = body;
+    const { media_urls, to_fax_numbers, from_fax_number, document_name, patient_id, cover_page_details, priority } = body;
 
-    if (!to_numbers || !Array.isArray(to_numbers) || to_numbers.length === 0) {
-      return Response.json({ error: 'to_numbers array is required' }, { status: 400 });
+    if (!to_fax_numbers || !Array.isArray(to_fax_numbers) || to_fax_numbers.length === 0) {
+      return Response.json({ error: 'At least one recipient fax number is required' }, { status: 400 });
     }
+
     if (!media_urls || media_urls.length === 0) {
-      return Response.json({ error: 'At least one document URL is required' }, { status: 400 });
+      return Response.json({ error: 'At least one document is required' }, { status: 400 });
     }
 
-    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    let detectedPriority = priority || 'normal';
-    let priorityReason = '';
-
-    // AI priority detection on first recipient if not manually set
-    if (!priority) {
-      try {
-        const priorityResult = await base44.asServiceRole.functions.invoke('analyzeFaxPriority', {
-          document_name: document_name || '',
-          cover_page_details: cover_page_details || {},
-          media_urls
-        });
-        if (priorityResult?.data?.priority) {
-          detectedPriority = priorityResult.data.priority;
-          priorityReason = priorityResult.data.reason || '';
-        }
-      } catch (e) {
-        console.warn('[sendBatchFax] Priority detection failed (non-blocking):', e.message);
-      }
-    }
+    console.log('[sendBatchFax] Sending batch fax to', to_fax_numbers.length, 'recipients');
 
     const results = [];
     let successCount = 0;
     let failureCount = 0;
 
-    for (const recipient of to_numbers) {
-      const recipientNumber = recipient.number || recipient;
-      const recipientName = recipient.name || '';
-
+    for (const toNumber of to_fax_numbers) {
       try {
-        // Create FaxHistory record
-        const historyRecord = await base44.asServiceRole.entities.FaxHistory.create({
-          user_email: user.email,
-          recipient_name: recipientName,
-          recipient_fax_number: recipientNumber,
-          subject: cover_page_details?.subject || document_name || '',
-          document_urls: media_urls,
-          page_count: media_urls.length,
-          status: 'sending',
-          patient_id: patient_id || '',
-          priority: detectedPriority,
-          priority_reason: priorityReason,
-          batch_id: batchId
-        });
-
-        // Send via sendFax function
-        const sendResult = await base44.functions.invoke('sendFax', {
-          to_fax_number: recipientNumber,
+        const faxResult = await base44.functions.invoke('sendFax', {
+          to_fax_number: toNumber,
           media_urls,
-          fax_history_id: historyRecord.id,
-          recipient_name: recipientName,
-          from_fax_number: from_fax_number || undefined
+          from_fax_number: from_fax_number || '+18445550100',
+          document_name: document_name || 'Document',
+          patient_id,
+          cover_page_details,
+          priority
         });
 
-        results.push({
-          recipient: recipientNumber,
-          name: recipientName,
-          status: 'sent',
-          fax_history_id: historyRecord.id,
-          fax_id: sendResult?.data?.fax_id
-        });
-        successCount++;
-      } catch (err) {
-        console.error(`[sendBatchFax] Failed for ${recipientNumber}:`, err.message);
-        results.push({
-          recipient: recipientNumber,
-          name: recipientName,
-          status: 'failed',
-          error: err.message
-        });
+        if (faxResult?.data?.success) {
+          successCount++;
+          results.push({
+            recipient: toNumber,
+            success: true,
+            fax_id: faxResult.data.fax_id,
+            priority: faxResult.data.priority
+          });
+        } else {
+          failureCount++;
+          results.push({
+            recipient: toNumber,
+            success: false,
+            error: faxResult?.data?.error || 'Unknown error'
+          });
+        }
+      } catch (error) {
         failureCount++;
+        results.push({
+          recipient: toNumber,
+          success: false,
+          error: error.message
+        });
+        console.error('[sendBatchFax] Error sending to', toNumber, ':', error.message);
       }
     }
 
-    // Log activity
+    // Log batch activity
     try {
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email,
-        user_name: user.full_name,
+        user_name: user.full_name || '',
         action: 'batch_fax_sent',
         details: {
-          batch_id: batchId,
-          total: to_numbers.length,
-          success: successCount,
+          total_recipients: to_fax_numbers.length,
+          successful: successCount,
           failed: failureCount,
-          priority: detectedPriority
+          document: document_name || 'Document'
         },
         page: 'SendFax',
         entity_type: 'FaxHistory'
@@ -114,16 +85,13 @@ Deno.serve(async (req) => {
 
     return Response.json({
       success: true,
-      batch_id: batchId,
-      total: to_numbers.length,
-      success_count: successCount,
-      failure_count: failureCount,
-      priority: detectedPriority,
+      total_sent: successCount,
+      total_failed: failureCount,
       results
     });
 
   } catch (error) {
-    console.error('[sendBatchFax] Error:', error.message, error.stack);
+    console.error('[sendBatchFax] Error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

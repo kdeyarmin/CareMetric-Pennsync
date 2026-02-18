@@ -9,124 +9,62 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { fax_log_id } = body;
+    const { fax_history_id } = body;
 
-    if (!fax_log_id) {
-      return Response.json({ error: 'fax_log_id is required' }, { status: 400 });
+    if (!fax_history_id) {
+      return Response.json({ error: 'Fax history ID is required' }, { status: 400 });
     }
 
-    // Fetch the fax record
-    const faxRecords = await base44.entities.FaxHistory.filter({ id: fax_log_id });
-    const fax = faxRecords?.[0];
+    // Fetch the fax history record
+    const faxHistory = await base44.asServiceRole.entities.FaxHistory.list();
+    const fax = faxHistory.find(f => f.id === fax_history_id);
 
     if (!fax) {
-      return Response.json({ error: 'Fax record not found' }, { status: 404 });
-    }
-
-    // Check ownership
-    if (fax.user_email !== user.email && user.role !== 'admin') {
-      return Response.json({ error: 'Unauthorized to retry this fax' }, { status: 403 });
+      return Response.json({ error: 'Fax not found' }, { status: 404 });
     }
 
     // Check retry limit
+    const retryCount = (fax.retry_count || 0) + 1;
     const maxRetries = fax.max_retries || 3;
-    const currentRetries = fax.retry_count || 0;
 
-    if (currentRetries >= maxRetries) {
-      return Response.json({ 
-        error: `Maximum retry limit (${maxRetries}) reached for this fax`,
-        retry_count: currentRetries,
-        max_retries: maxRetries
+    if (retryCount > maxRetries) {
+      return Response.json({
+        error: `Retry limit exceeded (${maxRetries} attempts)`
       }, { status: 400 });
     }
 
-    if (!fax.document_urls || fax.document_urls.length === 0) {
-      return Response.json({ error: 'No documents found on this fax record' }, { status: 400 });
-    }
-
-    // Update fax status to sending and increment retry count
-    await base44.asServiceRole.entities.FaxHistory.update(fax_log_id, {
+    // Update fax history with new retry attempt
+    await base44.asServiceRole.entities.FaxHistory.update(fax_history_id, {
       status: 'sending',
-      error_message: '',
-      retry_count: currentRetries + 1,
-      last_retry_at: new Date().toISOString()
+      retry_count: retryCount,
+      last_retry_at: new Date().toISOString(),
+      error_message: null
     });
 
-    console.log(`[retryFailedFax] Retrying fax ${fax_log_id}, attempt ${currentRetries + 1}/${maxRetries}`);
-
-    // Resend via Telnyx
-    const apiKey = Deno.env.get("TELNYX_API_KEY");
-    if (!apiKey) {
-      return Response.json({ error: 'Fax service not configured' }, { status: 500 });
-    }
-
-    let formattedNumber = fax.recipient_fax_number.replace(/[^\d+]/g, '');
-    if (!formattedNumber.startsWith('+')) {
-      if (formattedNumber.length === 10) formattedNumber = '+1' + formattedNumber;
-      else if (formattedNumber.length === 11 && formattedNumber.startsWith('1')) formattedNumber = '+' + formattedNumber;
-      else formattedNumber = '+' + formattedNumber;
-    }
-
-    const telnyxResponse = await fetch('https://api.telnyx.com/v2/faxes', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        to: formattedNumber,
-        from: user.sending_fax_number || '+18445550100',
-        media_url: fax.document_urls[0],
-        quality: 'high',
-        monochrome: false
-      })
+    // Retry the fax transmission
+    const result = await base44.functions.invoke('sendFax', {
+      to_fax_number: fax.recipient_fax_number,
+      media_urls: fax.document_urls,
+      from_fax_number: fax.sender_fax || '+18445550100',
+      document_name: fax.subject || 'Retry Document',
+      patient_id: fax.patient_id,
+      fax_history_id: fax_history_id
     });
 
-    const telnyxData = await telnyxResponse.json();
-
-    if (!telnyxResponse.ok) {
-      const errorMsg = telnyxData?.errors?.[0]?.detail || 'Retry failed at Telnyx';
-      await base44.asServiceRole.entities.FaxHistory.update(fax_log_id, {
-        status: 'failed',
-        error_message: `Retry ${currentRetries + 1} failed: ${errorMsg}`
-      });
-
-      return Response.json({ 
-        error: errorMsg, 
-        retry_count: currentRetries + 1 
-      }, { status: 400 });
-    }
-
-    const newFaxId = telnyxData?.data?.id;
-
-    await base44.asServiceRole.entities.FaxHistory.update(fax_log_id, {
-      status: 'sent',
-      telnyx_fax_id: newFaxId,
-      sent_at: new Date().toISOString()
-    });
-
-    // Send notification
-    try {
-      await base44.asServiceRole.functions.invoke('sendFaxNotification', {
-        user_email: user.email,
-        fax_history_id: fax_log_id,
-        status: 'sent',
-        recipient_name: fax.recipient_name || '',
-        recipient_fax_number: fax.recipient_fax_number
-      });
-    } catch (e) {
-      console.warn('[retryFailedFax] Notification failed:', e.message);
-    }
+    console.log('[retryFailedFax] Retry attempt', retryCount, 'for fax:', fax_history_id);
 
     return Response.json({
-      success: true,
-      fax_id: newFaxId,
-      retry_count: currentRetries + 1,
-      message: `Fax retry ${currentRetries + 1} sent successfully`
+      success: result?.data?.success || false,
+      retry_count: retryCount,
+      max_retries: maxRetries,
+      fax_id: result?.data?.fax_id
     });
 
   } catch (error) {
-    console.error('[retryFailedFax] Error:', error.message, error.stack);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('[retryFailedFax] Error:', error.message);
+    return Response.json({
+      success: false,
+      error: error.message
+    }, { status: 500 });
   }
 });
