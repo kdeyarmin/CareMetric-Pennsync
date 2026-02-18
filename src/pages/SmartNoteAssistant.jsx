@@ -988,21 +988,7 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
-                {/* Proactive AI Gap Analyzer */}
-                {visitType && selectedDiagnosis && (
-                  <ProactiveGapAnalyzer
-                    patient={patientData}
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    roughNotes={roughNotes}
-                    vitalSigns={vitalSigns}
-                    providerType={providerType}
-                    careSetting={careSetting}
-                    onResolveGap={(text) => setRoughNotes(roughNotes + '\n\n' + text)}
-                  />
-                )}
-
-                {/* Documentation Gap Detection */}
+                {/* Documentation Gap Detection - On Demand */}
                 {visitType && selectedDiagnosis && roughNotes && (
                   <DocumentationGapDetector
                     visitType={visitType}
