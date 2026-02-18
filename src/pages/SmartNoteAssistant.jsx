@@ -747,16 +747,15 @@ export default function SmartNoteAssistant() {
 
         {!showResults ?
         <>
-            {/* Clinical Documentation Form */}
+            {/* Clinical Documentation Form - Streamlined */}
             <Card className="border-blue-200 shadow-md">
               <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 p-4 sm:p-6">
                 <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900">
                   <FileText className="w-5 h-5 text-blue-600" />
                   Clinical Documentation
                 </CardTitle>
-                <p className="text-sm text-slate-600 mt-1">Complete the required fields to generate your enhanced note</p>
               </CardHeader>
-              <CardContent className="bg-white p-4 sm:p-6 space-y-5">
+              <CardContent className="bg-white p-4 sm:p-6 space-y-4">
                  {/* Quick Patient Access */}
                  {allPatients.length > 0 && (
                    <QuickPatientAccess
