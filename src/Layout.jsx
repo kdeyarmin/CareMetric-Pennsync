@@ -188,10 +188,10 @@ export default function Layout({ children, currentPageName }) {
                   </div>
           </div>
           {user?.email && <FavoritesBar userEmail={user.email} />}
-          <nav className="p-4 space-y-4">
+          <nav className="p-3 space-y-3">
             {navigationGroups.map((group) => (
               <div key={group.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                <h3 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 px-2">
                   {group.title}
                 </h3>
                 <div className="space-y-0.5">
@@ -202,14 +202,14 @@ export default function Layout({ children, currentPageName }) {
                         key={item.page} 
                         to={createPageUrl(item.page)} 
                         onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 border-l-4 ${
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-300 border-l-3 ${
                           isActive
                             ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                             : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
                         }`}
                       >
-                        <item.icon className="h-4 w-4 flex-shrink-0" />
-                        <span className="text-sm">{item.name}</span>
+                        <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="text-xs">{item.name}</span>
                       </Link>
                     );
                   })}
@@ -219,7 +219,7 @@ export default function Layout({ children, currentPageName }) {
             
             {enterpriseNavigationGroup && (
               <div key={enterpriseNavigationGroup.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                <h3 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 px-2">
                   {enterpriseNavigationGroup.title}
                 </h3>
                 <div className="space-y-0.5">
@@ -230,14 +230,14 @@ export default function Layout({ children, currentPageName }) {
                         key={item.page} 
                         to={createPageUrl(item.page)} 
                         onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 border-l-4 ${
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-300 border-l-3 ${
                           isActive
                             ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                             : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
                         }`}
                       >
-                        <item.icon className="h-4 w-4 flex-shrink-0" />
-                        <span className="text-sm">{item.name}</span>
+                        <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="text-xs">{item.name}</span>
                       </Link>
                     );
                   })}
@@ -247,7 +247,7 @@ export default function Layout({ children, currentPageName }) {
 
             {adminNavigationGroup && (
               <div key={adminNavigationGroup.title}>
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                <h3 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 px-2">
                   {adminNavigationGroup.title}
                 </h3>
                 <div className="space-y-0.5">
@@ -258,14 +258,14 @@ export default function Layout({ children, currentPageName }) {
                          key={item.page} 
                          to={createPageUrl(item.page)} 
                          onClick={() => setSidebarOpen(false)}
-                         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 border-l-4 ${
+                         className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-300 border-l-3 ${
                            isActive
                              ? "border-l-blue-600 bg-blue-100/40 text-blue-700 font-semibold dark:border-l-blue-400 dark:bg-blue-900/30 dark:text-blue-100"
                              : "border-l-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200/30 hover:text-blue-600 dark:hover:bg-slate-700/40 dark:hover:text-blue-300"
                          }`}
                        >
-                         <item.icon className="h-4 w-4 flex-shrink-0" />
-                         <span className="text-sm">{item.name}</span>
+                         <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                         <span className="text-xs">{item.name}</span>
                        </Link>
                      );
                    })}
