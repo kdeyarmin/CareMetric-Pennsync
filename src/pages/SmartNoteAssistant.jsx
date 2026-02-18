@@ -1443,23 +1443,23 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
               </details>
               )}
 
-              {/* Clinical Tools */}
+              {/* Clinical Tools & Education - Collapsed by Default */}
               <details className="group w-full">
-                <summary className="cursor-pointer list-none">
-                  <Card className="hover:shadow-md transition-all border-blue-200">
-                    <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 sm:p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Brain className="w-5 h-5 text-blue-600" />
-                          <span className="text-sm font-semibold text-slate-900">Clinical Tools & Education</span>
-                        </div>
-                        <span className="text-xs text-slate-500 group-open:hidden">Click to expand ▼</span>
-                        <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse ▲</span>
+              <summary className="cursor-pointer list-none">
+                <Card className="hover:shadow-md transition-all border-slate-200">
+                  <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 p-4 sm:p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Brain className="w-4 h-4 text-slate-600" />
+                        <span className="text-xs font-semibold text-slate-700">Clinical Tools & Education</span>
                       </div>
-                    </CardHeader>
-                  </Card>
-                </summary>
-                <div className="mt-3 space-y-3 w-full">
+                      <span className="text-xs text-slate-500 group-open:hidden">▼</span>
+                      <span className="text-xs text-slate-500 hidden group-open:inline">▲</span>
+                    </div>
+                  </CardHeader>
+                </Card>
+              </summary>
+              <div className="mt-2 space-y-3 w-full">
                   {(providerType === 'MD' || providerType === 'NP') && (
                     <>
                       <ICD10CodeSuggester
