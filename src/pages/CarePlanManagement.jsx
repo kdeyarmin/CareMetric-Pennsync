@@ -37,7 +37,7 @@ import CarePlanTimeline from "../components/carePlan/CarePlanTimeline";
 import AIEducationRecommender from "../components/carePlan/AIEducationRecommender";
 import EducationTracker from "../components/carePlan/EducationTracker";
 import CarePlanEducationRecommender from "../components/education/CarePlanEducationRecommender";
-import AICarePlanGenerator from "../components/carePlan/AICarePlanGenerator";
+import SmartCarePlanGenerator from "../components/carePlan/SmartCarePlanGenerator";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
 import FavoriteButton from "../components/navigation/FavoriteButton";
 import CarePlanTemplateSelector from "../components/carePlan/CarePlanTemplateSelector";
@@ -445,28 +445,13 @@ export default function CarePlanManagement() {
       {/* AI Tools Section */}
       {selectedPatient && showAITools && (
         <div className="space-y-3 sm:space-y-4 mb-3 sm:mb-4 w-full overflow-hidden">
-          {/* AI Care Plan Generator */}
-          <Card className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="font-semibold text-purple-900 dark:text-purple-100 mb-1 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" />
-                    AI Care Plan Generator
-                  </h3>
-                  <p className="text-sm text-purple-700 dark:text-purple-300">
-                    Generate personalized care plans based on patient data, visit notes, and active alerts
-                  </p>
-                </div>
-                <AICarePlanGenerator 
-                  patientId={selectedPatient.id}
-                  onCarePlansCreated={() => {
-                    queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
-                  }}
-                />
-              </div>
-            </CardContent>
-          </Card>
+          {/* AI Smart Care Plan Generator */}
+          <SmartCarePlanGenerator
+            patientId={selectedPatient.id}
+            onCarePlansCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
+            }}
+          />
 
           {/* Template Selector */}
           <CarePlanTemplateSelector
