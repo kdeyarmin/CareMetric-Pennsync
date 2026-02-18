@@ -223,7 +223,15 @@ export default function AdvancedCarePlanAI({ patientId, patientName, onCarePlanC
 
             {/* Suggested Care Plans Tab */}
             <TabsContent value="suggestions" className="space-y-4">
-              {analysis.suggested_care_plans?.map((suggestion, idx) => (
+              {!analysis.suggested_care_plans || analysis.suggested_care_plans.length === 0 ? (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <CheckCircle className="w-4 h-4 text-blue-600" />
+                  <AlertDescription>
+                    No new care plan suggestions at this time.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                analysis.suggested_care_plans.map((suggestion, idx) => (
                 <Card key={idx} className="border-2 border-blue-200">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-3">
