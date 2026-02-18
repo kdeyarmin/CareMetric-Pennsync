@@ -58,6 +58,9 @@ import ComplianceTrendsChart from "../components/analytics/ComplianceTrendsChart
 import AIUtilizationChart from "../components/analytics/AIUtilizationChart";
 import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
 import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
+import PredictiveInsightsPanel from "../components/analytics/PredictiveInsightsPanel";
+import AgencyRiskDistributionChart from "../components/analytics/AgencyRiskDistributionChart";
+import CarePlanProgressChart from "../components/analytics/CarePlanProgressChart";
 
 export default function AnalyticsDashboard() {
   const [dateRange, setDateRange] = useState("30");
@@ -76,6 +79,25 @@ export default function AnalyticsDashboard() {
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
     queryFn: () => base44.entities.User.list(),
+    enabled: isAdmin,
+  });
+
+  // Fetch patients, care plans, visits for predictive analytics
+  const { data: allPatients = [] } = useQuery({
+    queryKey: ['allPatientsAnalytics'],
+    queryFn: () => base44.entities.Patient.list('-updated_date', 500),
+    enabled: isAdmin,
+  });
+
+  const { data: allCarePlans = [] } = useQuery({
+    queryKey: ['allCarePlansAnalytics'],
+    queryFn: () => base44.entities.CarePlan.list('-created_date', 500),
+    enabled: isAdmin,
+  });
+
+  const { data: allVisits = [] } = useQuery({
+    queryKey: ['allVisitsAnalytics'],
+    queryFn: () => base44.entities.Visit.list('-visit_date', 500),
     enabled: isAdmin,
   });
 
@@ -523,6 +545,20 @@ export default function AnalyticsDashboard() {
       </div>
 
 
+
+      {/* Predictive Analytics Section (Admin Only) */}
+      {isAdmin && allPatients.length > 0 && (
+        <div className="space-y-4 mb-4 sm:mb-6">
+          <AgencyRiskDistributionChart patients={allPatients} carePlans={allCarePlans} />
+          <CarePlanProgressChart carePlans={allCarePlans} patients={allPatients} />
+          <PredictiveInsightsPanel
+            patients={allPatients}
+            carePlans={allCarePlans}
+            visits={allVisits}
+            users={allUsers}
+          />
+        </div>
+      )}
 
       {/* Charts */}
       <Tabs defaultValue="time" className="mb-4 sm:mb-6 w-full">
