@@ -18,11 +18,16 @@ import {
   RefreshCw,
   Clock,
   Shield,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from 'lucide-react';
+import InterventionLogger from './InterventionLogger';
+import InterventionHistory from './InterventionHistory';
 
 export default function PredictiveAnalyticsDashboard({ patientId }) {
   const [predictionHorizon, setPredictionHorizon] = useState(30);
+  const [interventionDialogOpen, setInterventionDialogOpen] = useState(false);
+  const [selectedPrediction, setSelectedPrediction] = useState(null);
 
   const { data: predictions, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['predictiveAnalytics', patientId, predictionHorizon],
@@ -148,6 +153,18 @@ export default function PredictiveAnalyticsDashboard({ patientId }) {
         </CardContent>
       </Card>
 
+      {/* Intervention Logger Dialog */}
+      {selectedPrediction && (
+        <InterventionLogger
+          patientId={patientId}
+          predictionType={selectedPrediction.type}
+          originalRiskScore={selectedPrediction.score}
+          riskAnalysisId={selectedPrediction.riskAnalysisId}
+          open={interventionDialogOpen}
+          onOpenChange={setInterventionDialogOpen}
+        />
+      )}
+
       {/* Tabbed Predictions */}
       <Tabs defaultValue="readmission" className="w-full">
         <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
@@ -165,10 +182,26 @@ export default function PredictiveAnalyticsDashboard({ patientId }) {
         <TabsContent value="readmission">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Heart className="h-5 w-5 text-red-600" />
-                Hospital Readmission Risk
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Heart className="h-5 w-5 text-red-600" />
+                  Hospital Readmission Risk
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setSelectedPrediction({
+                      type: 'hospital_readmission',
+                      score: predictions.readmission_prediction?.risk_score,
+                      riskAnalysisId: predictions.readmission_prediction?.risk_analysis_id
+                    });
+                    setInterventionDialogOpen(true);
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Log Intervention
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -267,10 +300,26 @@ export default function PredictiveAnalyticsDashboard({ patientId }) {
         <TabsContent value="falls">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-orange-600" />
-                Fall Risk Prediction
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-orange-600" />
+                  Fall Risk Prediction
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setSelectedPrediction({
+                      type: 'fall_risk',
+                      score: predictions.fall_risk_prediction?.risk_score,
+                      riskAnalysisId: null
+                    });
+                    setInterventionDialogOpen(true);
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Log Intervention
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -343,6 +392,15 @@ export default function PredictiveAnalyticsDashboard({ patientId }) {
                     </Card>
                   ))}
                 </div>
+              </div>
+
+              {/* Intervention History */}
+              <div className="mt-6">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Intervention History
+                </h4>
+                <InterventionHistory patientId={patientId} predictionType="fall_risk" />
               </div>
             </CardContent>
           </Card>
