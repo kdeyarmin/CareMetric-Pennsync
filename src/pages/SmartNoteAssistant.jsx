@@ -441,23 +441,60 @@ export default function SmartNoteAssistant() {
     getVisitTypesForProvider(providerType, careSetting) :
     [];
 
-  // Provider-specific diagnoses - Expanded
-  const PROVIDER_DIAGNOSES = {
-    RN: ["Congestive Heart Failure (CHF)", "COPD", "Diabetes Mellitus Type 1", "Diabetes Mellitus Type 2", "Hypertension", "Pneumonia", "UTI", "Wound Care - Pressure Ulcer", "Wound Care - Diabetic Ulcer", "Wound Care - Venous Stasis", "Post-Surgical Care", "Chronic Kidney Disease", "Dementia/Alzheimer's", "Stroke/CVA Recovery", "Cancer Care", "Palliative Care", "Sepsis", "Cellulitis", "MRSA Infection", "C. diff Infection", "COVID-19", "Influenza", "Anemia", "DVT/PE", "Atrial Fibrillation", "Coronary Artery Disease", "Peripheral Vascular Disease", "Parkinson's Disease", "Multiple Sclerosis", "ALS", "ESRD on Dialysis", "Liver Cirrhosis", "Heart Failure - Systolic", "Heart Failure - Diastolic", "Acute Exacerbation of CHF", "Acute Exacerbation of COPD", "Chronic Pain Management", "Opioid Dependence", "Depression", "Anxiety", "Bipolar Disorder", "Schizophrenia", "Osteoarthritis", "Rheumatoid Arthritis", "Osteoporosis", "Fracture - Hip", "Fracture - Femur", "Spinal Stenosis", "Seizure Disorder"],
-    LPN: ["Hypertension", "Diabetes Mellitus Type 2", "Wound Care - Pressure Ulcer", "Wound Care - Diabetic Ulcer", "Post-Surgical Care", "UTI", "COPD", "CHF", "Pneumonia", "Cellulitis", "Anemia", "Osteoarthritis"],
-    NP: ["Diabetes Mellitus Type 1", "Diabetes Mellitus Type 2", "Hypertension", "COPD", "CHF", "Acute Bronchitis", "UTI", "Cellulitis", "Pneumonia", "Chronic Pain", "Depression", "Anxiety", "Asthma", "Sinusitis", "Pharyngitis", "Gastroesophageal Reflux Disease (GERD)", "Irritable Bowel Syndrome (IBS)", "Migraine", "Tension Headache", "Osteoarthritis", "Gout", "Hyperlipidemia", "Hypothyroidism", "Hyperthyroidism", "Atrial Fibrillation", "Coronary Artery Disease", "Peripheral Neuropathy", "Benign Prostatic Hyperplasia", "Menopause", "Osteoporosis"],
-    MD: ["Complex CHF", "Advanced COPD", "Multi-system Organ Failure", "Sepsis", "Septic Shock", "Acute MI", "STEMI", "NSTEMI", "Stroke - Ischemic", "Stroke - Hemorrhagic", "TIA", "Cancer - Lung", "Cancer - Breast", "Cancer - Colon", "Cancer - Prostate", "Metastatic Cancer", "End-Stage Renal Disease", "Acute Kidney Injury", "Complex Diabetes", "DKA", "HHS", "Liver Failure", "Acute Liver Failure", "GI Bleed", "Pulmonary Embolism", "DVT", "Heart Failure with Reduced EF", "Cardiogenic Shock", "Respiratory Failure", "ARDS", "Meningitis", "Encephalitis"],
-    DO: ["Chronic Pain", "Back Pain - Lumbar", "Back Pain - Thoracic", "Neck Pain", "Headaches", "Migraine", "Hypertension", "Diabetes", "Musculoskeletal Disorders", "Fibromyalgia", "Osteoarthritis", "Rheumatoid Arthritis", "Sciatica", "Herniated Disc", "Spinal Stenosis", "Scoliosis", "Sports Injuries", "Plantar Fasciitis", "Rotator Cuff Injury", "Tennis Elbow", "Carpal Tunnel Syndrome"],
-    PA: ["Hypertension", "Diabetes", "COPD", "CHF", "Acute Infections", "Minor Injuries", "Follow-up Care", "UTI", "Pneumonia", "Bronchitis", "Sinusitis", "Pharyngitis", "Cellulitis", "Laceration Repair", "Abscess", "Sprain/Strain", "Asthma Exacerbation"],
-    PT: ["Gait Instability", "Balance Impairment", "Lower Extremity Weakness", "Post-Surgical Mobility", "Fall Risk", "Joint Pain", "Muscle Weakness", "Post-Stroke Rehabilitation", "Post-Hip Replacement", "Post-Knee Replacement", "Spinal Cord Injury", "Traumatic Brain Injury", "Parkinson's Disease", "Multiple Sclerosis", "Neuropathy", "Foot Drop", "Frozen Shoulder", "Rotator Cuff Injury", "ACL Reconstruction", "Total Joint Replacement", "Compression Fracture", "Pelvic Floor Dysfunction"],
-    OT: ["ADL Deficits", "Upper Extremity Weakness", "Cognitive Impairment", "Home Safety Concerns", "Fine Motor Deficits", "Post-Stroke Rehabilitation", "Hand Weakness", "Shoulder Pain", "Coordination Deficits", "Visual Perceptual Deficits", "Memory Deficits", "Executive Function Impairment", "Self-Care Deficits", "Adaptive Equipment Training", "Energy Conservation", "Work Hardening", "Carpal Tunnel Syndrome", "Arthritis Management"],
-    ST: ["Dysphagia", "Aphasia", "Speech Clarity Issues", "Voice Disorders", "Cognitive-Communication Deficits", "Apraxia of Speech", "Dysarthria", "Stuttering", "Language Delay", "Post-Stroke Communication", "Parkinson's Voice", "Laryngeal Cancer", "Vocal Cord Paralysis", "Swallowing Disorder", "Aspiration Risk", "Cognitive Decline"],
-    MSW: ["Depression", "Anxiety", "Social Isolation", "Caregiver Stress", "Financial Barriers", "Discharge Planning Needs", "Grief/Bereavement", "PTSD", "Substance Abuse", "Elder Abuse", "Domestic Violence", "Housing Insecurity", "Food Insecurity", "Transportation Barriers", "Medication Non-Adherence", "Advanced Directives Counseling", "End-of-Life Planning", "Family Conflict"],
-    Chiropractor: ["Back Pain", "Neck Pain", "Headaches", "Migraine", "Tension Headache", "Joint Pain", "Sciatica", "Sports Injuries", "Whiplash", "Herniated Disc", "Spinal Stenosis", "Scoliosis", "Postural Issues", "Shoulder Pain", "Hip Pain", "Knee Pain", "Plantar Fasciitis", "Carpal Tunnel Syndrome"]
-  };
+  // Home Health & Hospice focused diagnoses
+  const HOME_HEALTH_HOSPICE_DIAGNOSES = [
+    "Congestive Heart Failure (CHF) - I50.9",
+    "COPD - J44.1",
+    "Diabetes Mellitus Type 2 - E11.9",
+    "Hypertension - I10",
+    "Wound Care - Pressure Ulcer - L89",
+    "Wound Care - Diabetic Ulcer - E11.621",
+    "Wound Care - Venous Stasis Ulcer - I87.2",
+    "Wound Care - Surgical Site - T81.4",
+    "Post-Surgical Care",
+    "Chronic Kidney Disease - N18.9",
+    "Dementia/Alzheimer's - F03.90",
+    "Stroke/CVA Recovery - I63.9",
+    "UTI - N39.0",
+    "Pneumonia - J18.9",
+    "Cellulitis - L03.90",
+    "DVT/PE - I82.40",
+    "Atrial Fibrillation - I48.91",
+    "Coronary Artery Disease - I25.10",
+    "Peripheral Vascular Disease - I73.9",
+    "Parkinson's Disease - G20",
+    "Multiple Sclerosis - G35",
+    "Cancer Care / Oncology - C80.1",
+    "Palliative Care - Z51.5",
+    "End-of-Life / Hospice Care - Z51.5",
+    "Chronic Pain Management - G89.29",
+    "Depression - F32.9",
+    "Anxiety - F41.9",
+    "Fall Risk / History of Falls - R29.6",
+    "Osteoarthritis - M19.90",
+    "Osteoporosis - M81.0",
+    "Fracture - Hip - S72.009A",
+    "ESRD on Dialysis - N18.6",
+    "Anemia - D64.9",
+    "Seizure Disorder - G40.909",
+    "Dysphagia - R13.10",
+    "Obesity - E66.9",
+    "Sepsis - A41.9",
+    "COVID-19 - U07.1",
+    "Heart Failure - Systolic - I50.20",
+    "Heart Failure - Diastolic - I50.30",
+    "Liver Cirrhosis - K74.60",
+    "ALS - G12.21",
+    "Bipolar Disorder - F31.9",
+    "Schizophrenia - F20.9",
+    "Opioid Dependence - F11.20",
+    "Caregiver Support / Training",
+  ];
 
-  const commonDiagnoses = PROVIDER_DIAGNOSES[providerType] || PROVIDER_DIAGNOSES.RN;
+  const [customDiagnosisSearch, setCustomDiagnosisSearch] = useState("");
+  const [showCustomSearch, setShowCustomSearch] = useState(false);
 
+  const commonDiagnoses = HOME_HEALTH_HOSPICE_DIAGNOSES;
 
   const filteredDiagnoses = diagnosisSearch.trim() ?
   commonDiagnoses.filter((d) =>
@@ -788,33 +825,82 @@ export default function SmartNoteAssistant() {
                   </Select>
                 </div>
 
-                {/* Diagnosis Selection with Search */}
+                {/* Diagnosis Selection */}
                 <div className="w-full">
                   <Label className="text-xs sm:text-sm font-medium">Primary Diagnosis *</Label>
-                  <div className="space-y-2">
-                    <Input
-                      placeholder="Search diagnoses..."
-                      value={diagnosisSearch}
-                      onChange={(e) => setDiagnosisSearch(e.target.value)}
-                      className="h-11"
-                    />
-                    <Select value={selectedDiagnosis} onValueChange={(value) => { setSelectedDiagnosis(value); setDiagnosisSearch(""); }}>
-                      <SelectTrigger className="h-11">
-                        <SelectValue placeholder="Select diagnosis..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {filteredDiagnoses.length > 0 ? (
-                          filteredDiagnoses.map((diagnosis) => (
+                  {!showCustomSearch ? (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Search common diagnoses..."
+                        value={diagnosisSearch}
+                        onChange={(e) => setDiagnosisSearch(e.target.value)}
+                        className="h-11"
+                      />
+                      <Select value={selectedDiagnosis} onValueChange={(value) => {
+                        if (value === "__other__") {
+                          setShowCustomSearch(true);
+                          setDiagnosisSearch("");
+                        } else {
+                          setSelectedDiagnosis(value);
+                          setDiagnosisSearch("");
+                        }
+                      }}>
+                        <SelectTrigger className="h-11">
+                          <SelectValue placeholder="Select diagnosis..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {filteredDiagnoses.map((diagnosis) => (
                             <SelectItem key={diagnosis} value={diagnosis}>
                               {diagnosis}
                             </SelectItem>
-                          ))
-                        ) : (
-                          <div className="p-2 text-sm text-slate-500">No matches found</div>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                          ))}
+                          <SelectItem value="__other__">
+                            <span className="text-blue-600 font-medium">Other — Search by name or ICD-10...</span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Type diagnosis name or ICD-10 code..."
+                          value={customDiagnosisSearch}
+                          onChange={(e) => setCustomDiagnosisSearch(e.target.value)}
+                          className="h-11 flex-1"
+                          autoFocus
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-11 px-3 text-xs"
+                          onClick={() => { setShowCustomSearch(false); setCustomDiagnosisSearch(""); }}
+                        >
+                          Back
+                        </Button>
+                      </div>
+                      {customDiagnosisSearch.trim().length >= 2 && (
+                        <Button
+                          variant="outline"
+                          className="w-full h-11 justify-start text-left text-sm"
+                          onClick={() => {
+                            setSelectedDiagnosis(customDiagnosisSearch.trim());
+                            setShowCustomSearch(false);
+                            setCustomDiagnosisSearch("");
+                          }}
+                        >
+                          Use: <span className="font-semibold ml-1">{customDiagnosisSearch.trim()}</span>
+                        </Button>
+                      )}
+                      <p className="text-[10px] text-slate-500">Type at least 2 characters, then click to select</p>
+                    </div>
+                  )}
+                  {selectedDiagnosis && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <Badge className="bg-blue-100 text-blue-800 text-xs">{selectedDiagnosis}</Badge>
+                      <button onClick={() => { setSelectedDiagnosis(""); setShowCustomSearch(false); }} className="text-xs text-slate-400 hover:text-red-500">clear</button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Template Selector with Education Materials */}

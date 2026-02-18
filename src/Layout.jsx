@@ -45,6 +45,7 @@ export default function Layout({ children, currentPageName }) {
     'CarePlanManagement': 'Care Plans',
     'OASIS': 'OASIS',
     'SendFax': 'Send Fax',
+    'FaxCenter': 'Fax Center',
     'FaxQueue': 'Fax Queue',
     'FaxAnalytics': 'Fax Analytics',
     'AIAnalyticsDashboard': 'AI Analytics',
@@ -100,9 +101,7 @@ export default function Layout({ children, currentPageName }) {
     {
       title: "Fax & Documents",
       items: [
-        { name: "Send Fax", icon: Send, page: "SendFax" },
-        { name: "Fax Queue", icon: Clock, page: "FaxQueue" },
-        { name: "Doc Library", icon: FileText, page: "DocumentLibrary" },
+        { name: "Fax Center", icon: Send, page: "FaxCenter" },
       ]
     },
     {
