@@ -27,7 +27,15 @@ Deno.serve(async (req) => {
       return Response.json(await qualityFeedback(base44, note_content, visit_type, diagnosis, provider_type, care_setting));
     }
 
-    return Response.json({ error: 'Invalid action. Use: summarize_history, generate_draft_note, suggest_assessments, quality_feedback' }, { status: 400 });
+    if (action === 'drug_interaction_check') {
+      return Response.json(await drugInteractionCheck(base44, patient_id, note_content, diagnosis));
+    }
+
+    if (action === 'diagnostic_referral_suggestions') {
+      return Response.json(await diagnosticReferralSuggestions(base44, patient_id, note_content, visit_type, diagnosis, provider_type, care_setting));
+    }
+
+    return Response.json({ error: 'Invalid action' }, { status: 400 });
 
   } catch (error) {
     console.error('AI Clinical Assistant error:', error);
@@ -405,6 +413,221 @@ For each element scored below 80, provide a specific, actionable improvement sug
             }
           },
           description: "Quick text additions that would improve the score"
+        }
+      }
+    }
+  });
+  return { success: true, data: res };
+}
+
+async function drugInteractionCheck(base44, patientId, noteContent, diagnosis) {
+  if (!patientId) return { success: true, data: { alerts: [], summary: 'No patient selected — cannot check drug interactions.' } };
+
+  const patients = await base44.asServiceRole.entities.Patient.list();
+  const patient = patients.find(p => p.id === patientId);
+  if (!patient) return { error: 'Patient not found' };
+
+  const medications = (patient.current_medications || []).map(m => `${m.name} ${m.dosage} ${m.frequency} (prescriber: ${m.prescriber || 'unknown'})`).join('\n');
+  const diagnoses = [patient.primary_diagnosis, ...(patient.secondary_diagnoses || [])].filter(Boolean).join(', ');
+  const allergies = patient.allergies || 'NKDA';
+  const conditions = (patient.chronic_conditions || []).map(c => `${c.condition} (${c.severity || 'unknown'})`).join(', ');
+  const age = patient.date_of_birth ? Math.floor((Date.now() - new Date(patient.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+  const renal = patient.functional_status || {};
+
+  const res = await base44.integrations.Core.InvokeLLM({
+    prompt: `You are a clinical pharmacology and drug safety expert. Perform a comprehensive drug interaction and contraindication analysis for this patient.
+
+PATIENT: ${patient.first_name} ${patient.last_name}, Age: ${age || 'unknown'}
+ALLERGIES: ${allergies}
+DIAGNOSES: ${diagnoses}
+CHRONIC CONDITIONS: ${conditions}
+FUNCTIONAL STATUS: Cognitive=${renal.cognitive_status || 'unknown'}, Fall Risk=${renal.fall_risk || 'unknown'}
+SOCIAL: Living=${patient.social_history?.living_situation || 'unknown'}, Health Literacy=${patient.social_determinants?.health_literacy || 'unknown'}
+
+CURRENT MEDICATIONS:
+${medications || 'None documented'}
+
+${noteContent ? `CURRENT VISIT NOTES:\n${noteContent}\n` : ''}
+VISIT DIAGNOSIS: ${diagnosis || 'Not specified'}
+
+Analyze ALL of the following:
+1. **Drug-Drug Interactions**: Every pair of medications that may interact. Rate severity.
+2. **Drug-Disease Contraindications**: Medications that conflict with the patient's diagnoses or conditions.
+3. **Drug-Allergy Conflicts**: Any medication that may cross-react with documented allergies.
+4. **Age/Renal/Hepatic Concerns**: Medications requiring dose adjustment for age, kidney, or liver function.
+5. **Duplicate Therapy**: Multiple drugs in the same class.
+6. **High-Risk Medications**: Anticoagulants, opioids, insulin, etc. needing extra monitoring.
+7. **Missing Medications**: Medications the patient SHOULD be on based on diagnoses but isn't.
+8. **Adherence Risk Factors**: Polypharmacy burden, complexity, social factors affecting compliance.
+
+For each alert, provide the clinical significance, mechanism, and recommended action.`,
+    response_json_schema: {
+      type: "object",
+      properties: {
+        risk_level: { type: "string", enum: ["safe", "low_risk", "moderate_risk", "high_risk", "critical"] },
+        summary: { type: "string", description: "Executive summary of medication safety status" },
+        total_medications: { type: "number" },
+        polypharmacy_risk: { type: "string", enum: ["none", "low", "moderate", "high"] },
+        interaction_alerts: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              alert_type: { type: "string", enum: ["drug_drug", "drug_disease", "drug_allergy", "dose_concern", "duplicate_therapy", "high_risk_med", "missing_medication"] },
+              severity: { type: "string", enum: ["critical", "high", "moderate", "low", "informational"] },
+              title: { type: "string" },
+              medications_involved: { type: "array", items: { type: "string" } },
+              mechanism: { type: "string" },
+              clinical_significance: { type: "string" },
+              recommended_action: { type: "string" },
+              monitoring_needed: { type: "string" },
+              requires_physician_notification: { type: "boolean" }
+            }
+          }
+        },
+        safe_medications: { type: "array", items: { type: "string" }, description: "Medications with no identified concerns" },
+        monitoring_schedule: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              medication: { type: "string" },
+              what_to_monitor: { type: "string" },
+              frequency: { type: "string" },
+              target_range: { type: "string" }
+            }
+          }
+        },
+        physician_notifications: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              issue: { type: "string" },
+              urgency: { type: "string", enum: ["immediate", "within_24hrs", "next_visit", "routine"] },
+              suggested_message: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  });
+  return { success: true, data: res };
+}
+
+async function diagnosticReferralSuggestions(base44, patientId, noteContent, visitType, diagnosis, providerType, careSetting) {
+  let patientContext = '';
+  if (patientId) {
+    const patients = await base44.asServiceRole.entities.Patient.list();
+    const patient = patients.find(p => p.id === patientId);
+    if (patient) {
+      const visits = await base44.asServiceRole.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10);
+      const carePlans = await base44.asServiceRole.entities.CarePlan.filter({ patient_id: patientId });
+      const alerts = await base44.asServiceRole.entities.PatientAlert.filter({ patient_id: patientId });
+      patientContext = buildPatientContext(patient, visits, carePlans, alerts.filter(a => a.status === 'active'));
+    }
+  }
+
+  const res = await base44.integrations.Core.InvokeLLM({
+    prompt: `You are a clinical decision support specialist in ${careSetting || 'home_health'}. Based on the patient's complete clinical picture, recommend diagnostic tests and specialist referrals.
+
+VISIT TYPE: ${visitType || 'skilled_nursing'}
+DIAGNOSIS: ${diagnosis || 'Not specified'}
+PROVIDER: ${providerType || 'RN'}
+
+${patientContext || 'No patient context available.'}
+
+${noteContent ? `CURRENT VISIT NOTES:\n${noteContent}\n` : ''}
+
+Analyze the patient's full clinical picture and provide evidence-based recommendations:
+
+FOR DIAGNOSTIC TESTS:
+1. Labs that are overdue or clinically indicated based on diagnoses and medications
+2. Imaging studies warranted by symptoms or disease progression
+3. Screening tests recommended by clinical guidelines for this patient's conditions
+4. Monitoring tests required for current medications (e.g., INR for warfarin, A1c for diabetes)
+5. Point-of-care tests the nurse can perform during the visit
+
+FOR SPECIALIST REFERRALS:
+1. Specialists needed based on unmanaged or worsening conditions
+2. Therapy referrals (PT/OT/ST) based on functional assessment
+3. Mental health/social work referrals based on psychosocial screening
+4. Nutrition/dietitian referrals based on diagnoses
+5. Wound care specialist if applicable
+6. Palliative care or hospice evaluation if trajectory warrants
+
+For each recommendation, cite the evidence basis or clinical guideline. Flag items the nurse should immediately communicate to the physician.`,
+    response_json_schema: {
+      type: "object",
+      properties: {
+        urgency_summary: { type: "string", description: "Overall clinical urgency assessment" },
+        diagnostic_tests: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              test_name: { type: "string" },
+              test_category: { type: "string", enum: ["lab", "imaging", "screening", "medication_monitoring", "point_of_care"] },
+              urgency: { type: "string", enum: ["stat", "within_24hrs", "within_week", "routine", "next_visit"] },
+              clinical_indication: { type: "string" },
+              evidence_basis: { type: "string" },
+              expected_findings: { type: "string" },
+              nurse_action: { type: "string", description: "What the nurse should do — order, collect, notify physician, etc." },
+              requires_physician_order: { type: "boolean" }
+            }
+          }
+        },
+        specialist_referrals: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              specialty: { type: "string" },
+              referral_type: { type: "string", enum: ["new_referral", "follow_up", "urgent_consult", "evaluation"] },
+              urgency: { type: "string", enum: ["emergent", "urgent", "routine", "when_available"] },
+              clinical_rationale: { type: "string" },
+              key_findings_to_share: { type: "string" },
+              expected_outcome: { type: "string" },
+              evidence_basis: { type: "string" }
+            }
+          }
+        },
+        therapy_recommendations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              therapy_type: { type: "string", enum: ["physical_therapy", "occupational_therapy", "speech_therapy", "respiratory_therapy"] },
+              indication: { type: "string" },
+              goals: { type: "string" },
+              frequency_suggestion: { type: "string" },
+              urgency: { type: "string", enum: ["urgent", "routine", "when_available"] }
+            }
+          }
+        },
+        physician_communications: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              topic: { type: "string" },
+              urgency: { type: "string", enum: ["immediate", "within_24hrs", "next_visit", "routine"] },
+              suggested_message: { type: "string" },
+              requires_order: { type: "boolean" }
+            }
+          }
+        },
+        preventive_care_gaps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              measure: { type: "string" },
+              last_done: { type: "string" },
+              due: { type: "string" },
+              action_needed: { type: "string" }
+            }
+          }
         }
       }
     }
