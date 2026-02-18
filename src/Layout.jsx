@@ -46,6 +46,7 @@ export default function Layout({ children, currentPageName }) {
     'OASIS': 'OASIS',
     'SendFax': 'Send Fax',
     'FaxCenter': 'Fax Center',
+    'TeamCollaboration': 'Team',
     'FaxQueue': 'Fax Queue',
     'FaxAnalytics': 'Fax Analytics',
     'AIAnalyticsDashboard': 'AI Analytics',
@@ -126,6 +127,7 @@ export default function Layout({ children, currentPageName }) {
   const enterpriseNavigationGroup = user?.agency_id ? {
     title: "Agency",
     items: [
+      { name: "Team", icon: Users, page: "TeamCollaboration" },
       { name: "Agency Analytics", icon: BarChart3, page: "EnterpriseAnalytics" },
     ]
   } : null;
