@@ -103,10 +103,10 @@ export default function Dashboard() {
 
   const quickActions = [
     { label: "Create Note", icon: FileText, page: "SmartNoteAssistant", color: "bg-blue-500" },
+    { label: "Voice Scribe", icon: Activity, page: "MedicalScribe", color: "bg-pink-500" },
     { label: "View Patients", icon: Users, page: "Patients", color: "bg-green-500" },
-    { label: "Check Compliance", icon: CheckCircle, page: "ComplianceDashboard", color: "bg-orange-500" },
     { label: "OASIS Review", icon: FileText, page: "OASIS", color: "bg-indigo-500" },
-    { label: "Medical Scribe", icon: Activity, page: "MedicalScribe", color: "bg-pink-500" },
+    { label: "Send Fax", icon: FileText, page: "SendFax", color: "bg-purple-500" },
     { label: "Care Plans", icon: Target, page: "CarePlanManagement", color: "bg-cyan-500" },
     { label: "Analytics", icon: BarChart3, page: "AnalyticsDashboard", color: "bg-emerald-500" },
   ];
