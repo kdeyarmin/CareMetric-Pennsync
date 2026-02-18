@@ -82,8 +82,13 @@ ${recentNotes.join('\n\n')}`;
       result = await suggestReferrals(base44, patientContext, patient, carePlans, activeAlerts);
     } else if (action === 'auto_generate_tasks') {
       result = await autoGenerateTasks(base44, patientContext, patient, visits, carePlans, activeAlerts, user);
+    } else if (action === 'create_followup_tasks') {
+      result = await createFollowUpTasks(base44, patientContext, patient, visits, activeAlerts, user);
+    } else if (action === 'create_referral_tasks') {
+      result = await createReferralTasks(base44, patientContext, patient, carePlans, activeAlerts, user);
+    } else if (action === 'create_alert_tasks') {
+      result = await createAlertTasks(base44, patientContext, patient, activeAlerts, user);
     } else if (action === 'full_analysis') {
-      // Run all four analyses
       const [oasis, followups, referrals, tasks] = await Promise.all([
         generateOASIS(base44, patientContext, patient, visits),
         identifyFollowUps(base44, patientContext, patient, visits, activeAlerts),
@@ -91,8 +96,21 @@ ${recentNotes.join('\n\n')}`;
         autoGenerateTasks(base44, patientContext, patient, visits, carePlans, activeAlerts, user),
       ]);
       result = { oasis, followups, referrals, tasks };
+    } else if (action === 'proactive_task_sweep') {
+      // Combines all three new task-generation workflows into one call
+      const [followupTasks, referralTasks, alertTasks] = await Promise.all([
+        createFollowUpTasks(base44, patientContext, patient, visits, activeAlerts, user),
+        createReferralTasks(base44, patientContext, patient, carePlans, activeAlerts, user),
+        createAlertTasks(base44, patientContext, patient, activeAlerts, user),
+      ]);
+      result = {
+        followup_tasks: followupTasks,
+        referral_tasks: referralTasks,
+        alert_tasks: alertTasks,
+        total_tasks_created: (followupTasks.tasks_created || 0) + (referralTasks.tasks_created || 0) + (alertTasks.tasks_created || 0),
+      };
     } else {
-      return Response.json({ error: 'Invalid action. Use: generate_oasis, identify_followups, suggest_referrals, auto_generate_tasks, full_analysis' }, { status: 400 });
+      return Response.json({ error: 'Invalid action' }, { status: 400 });
     }
 
     return Response.json({ success: true, data: result });
@@ -315,4 +333,197 @@ Each task should be specific, actionable, and assigned to the appropriate role. 
     ...res,
     tasks_created: createdTasks.length,
   };
+}
+
+// ── New: Auto-create follow-up tasks from AI-identified issues ──
+
+async function createFollowUpTasks(base44, patientContext, patient, visits, activeAlerts, user) {
+  const res = await base44.integrations.Core.InvokeLLM({
+    prompt: `You are a clinical follow-up task automation engine. Analyze this patient and create specific follow-up tasks for every issue requiring attention.
+
+${patientContext}
+
+For EACH issue found, generate a concrete task. Focus on:
+1. Vital sign deterioration → schedule urgent re-assessment visit
+2. Medication non-adherence → call patient/caregiver for education
+3. Missed or overdue visits → schedule make-up visit
+4. Worsening symptoms noted in recent notes → notify physician + schedule visit
+5. Unmet care plan goals → create care plan review task
+6. Lab/test results needed → order or follow up on pending labs
+
+Today's date: ${new Date().toISOString().split('T')[0]}. Be very specific with task titles and due dates.`,
+    response_json_schema: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              type: { type: "string", enum: ["call", "notify", "schedule", "order", "coordinate", "document", "safety", "followup", "other"] },
+              priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
+              due_in_days: { type: "number" },
+              target_role: { type: "string" },
+              trigger_category: { type: "string", enum: ["vital_deterioration", "medication_issue", "missed_visit", "symptom_change", "goal_not_met", "lab_needed", "compliance_gap"] },
+              ai_reason: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const created = [];
+  for (const task of (res.tasks || [])) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + (task.due_in_days || 2));
+    created.push(await base44.entities.Task.create({
+      patient_id: patient.id,
+      title: task.title,
+      description: task.description,
+      type: task.type,
+      priority: task.priority,
+      status: 'pending',
+      due_date: dueDate.toISOString().split('T')[0],
+      source: 'ai_generated',
+      ai_reason: `[Follow-Up] ${task.trigger_category}: ${task.ai_reason}`,
+      assigned_to: user.email,
+    }));
+  }
+  return { ...res, tasks_created: created.length };
+}
+
+// ── New: Auto-create referral tasks from AI-detected needs ──
+
+async function createReferralTasks(base44, patientContext, patient, carePlans, activeAlerts, user) {
+  const res = await base44.integrations.Core.InvokeLLM({
+    prompt: `You are a referral coordination engine. Analyze this patient and generate tasks to initiate every referral and care plan adjustment needed.
+
+${patientContext}
+
+For each referral or care plan change, create a specific actionable task:
+1. PT/OT/ST referral → task to prepare and send referral order
+2. Specialist referral → task to contact specialist office + send records
+3. Mental health/social work → task to schedule evaluation
+4. DME/supply order → task to submit order
+5. Community resource → task to connect patient with resource
+6. Care plan revision → task to update care plan in system
+7. Physician notification → task to call/fax physician with update
+
+Today's date: ${new Date().toISOString().split('T')[0]}.`,
+    response_json_schema: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              type: { type: "string", enum: ["call", "notify", "schedule", "order", "coordinate", "document", "safety", "followup", "other"] },
+              priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
+              due_in_days: { type: "number" },
+              target_role: { type: "string" },
+              referral_type: { type: "string" },
+              ai_reason: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const created = [];
+  for (const task of (res.tasks || [])) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + (task.due_in_days || 3));
+    created.push(await base44.entities.Task.create({
+      patient_id: patient.id,
+      title: task.title,
+      description: task.description,
+      type: task.type || 'coordinate',
+      priority: task.priority,
+      status: 'pending',
+      due_date: dueDate.toISOString().split('T')[0],
+      source: 'ai_generated',
+      ai_reason: `[Referral] ${task.referral_type}: ${task.ai_reason}`,
+      assigned_to: user.email,
+    }));
+  }
+  return { ...res, tasks_created: created.length };
+}
+
+// ── New: Auto-create tasks from critical alerts / deterioration predictions ──
+
+async function createAlertTasks(base44, patientContext, patient, activeAlerts, user) {
+  const alertSummary = activeAlerts.map(a =>
+    `[${a.severity}] ${a.alert_type}: ${a.title} — ${a.message?.substring(0, 200)}`
+  ).join('\n');
+
+  const res = await base44.integrations.Core.InvokeLLM({
+    prompt: `You are a clinical alert response automation engine. This patient has active alerts that require staff action. Create specific tasks for EVERY alert that needs intervention.
+
+${patientContext}
+
+ACTIVE ALERTS:
+${alertSummary || 'No active alerts — analyze the patient data for any proactive tasks that should be created based on deterioration risk.'}
+
+For EACH alert or risk, create a task:
+1. Critical vital alert → task: immediate nurse callback or PRN visit
+2. Fall risk alert → task: home safety evaluation + equipment check
+3. Readmission risk → task: physician notification + care plan escalation
+4. Infection risk → task: wound assessment + labs
+5. Medication risk → task: medication reconciliation call
+6. Caregiver burnout → task: social work referral
+7. Symptom escalation → task: urgent visit scheduling
+8. Care gap → task: documentation or assessment completion
+
+Today's date: ${new Date().toISOString().split('T')[0]}.`,
+    response_json_schema: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              type: { type: "string", enum: ["call", "notify", "schedule", "order", "coordinate", "document", "safety", "followup", "other"] },
+              priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
+              due_in_days: { type: "number" },
+              target_role: { type: "string" },
+              alert_type: { type: "string" },
+              ai_reason: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const created = [];
+  for (const task of (res.tasks || [])) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + (task.due_in_days || 1));
+    created.push(await base44.entities.Task.create({
+      patient_id: patient.id,
+      title: task.title,
+      description: task.description,
+      type: task.type || 'safety',
+      priority: task.priority,
+      status: 'pending',
+      due_date: dueDate.toISOString().split('T')[0],
+      source: 'ai_generated',
+      ai_reason: `[Alert Response] ${task.alert_type}: ${task.ai_reason}`,
+      assigned_to: user.email,
+    }));
+  }
+  return { ...res, tasks_created: created.length };
 }
