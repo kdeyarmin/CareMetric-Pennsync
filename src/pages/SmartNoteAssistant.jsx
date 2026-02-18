@@ -105,6 +105,7 @@ import EnhancedMedicalCodingAssistant from '../components/smartNote/EnhancedMedi
 import PremiumFeatureGate from '../components/subscription/PremiumFeatureGate';
 import UnifiedAIDocumentationAssistant from '../components/smartNote/UnifiedAIDocumentationAssistant';
 import ClinicalDecisionSupportPanel from '../components/smartNote/ClinicalDecisionSupportPanel';
+import PostEnhancementInsights from '../components/smartNote/PostEnhancementInsights';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
@@ -1320,6 +1321,22 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   )}
                 </CardContent>
               </Card>
+
+              {/* Post-Enhancement AI Insights: ICD-10, Tasks, Compliance */}
+              <PostEnhancementInsights
+                enhancedNote={isEditMode ? editedNote : enhancedNote}
+                diagnosis={selectedDiagnosis}
+                visitType={visitType}
+                providerType={providerType}
+                careSetting={careSetting}
+                patientId={selectedPatient}
+                patientData={patientData}
+                currentUserEmail={currentUser?.email}
+                onCodesSelected={(codes) => {
+                  console.log('ICD-10 codes selected:', codes);
+                  toast.success(`${codes.length} code(s) added`);
+                }}
+              />
 
               {/* AI Feedback */}
               <InlineAIFeedback
