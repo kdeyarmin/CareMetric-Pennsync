@@ -107,6 +107,7 @@ import PersonalizedEducationModule from "../components/education/PersonalizedEdu
 import AIClinicalWorkflowPanel from "../components/clinical/AIClinicalWorkflowPanel";
 import ProactiveTaskAutomation from "../components/clinical/ProactiveTaskAutomation";
 import AIClinicalAssistantPanel from "../components/clinical/AIClinicalAssistantPanel";
+import AdvancedCarePlanAI from "../components/carePlan/AdvancedCarePlanAI";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
@@ -752,6 +753,17 @@ export default function PatientDetails() {
               carePlans={carePlans}
               visits={visits}
               onCarePlanUpdated={() => queryClient.invalidateQueries({ queryKey: ["patientCarePlans", patientId] })}
+            />
+          </div>
+        )}
+
+        {/* Advanced Care Plan AI - Gap Analysis & Adherence Prediction */}
+        {patient && (
+          <div className="mb-3 sm:mb-4 max-w-full overflow-hidden min-w-0">
+            <AdvancedCarePlanAI
+              patientId={patientId}
+              patientName={`${patient.first_name} ${patient.last_name}`}
+              onCarePlanCreated={() => queryClient.invalidateQueries({ queryKey: ["patientCarePlans", patientId] })}
             />
           </div>
         )}
