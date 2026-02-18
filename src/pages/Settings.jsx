@@ -20,7 +20,7 @@ import OfflineSyncManager from "../components/mobile/OfflineSyncManager";
 import ProviderPracticeInfoManager from "../components/settings/ProviderPracticeInfoManager";
 import ProviderSpecializationManager from "../components/settings/ProviderSpecializationManager";
 import BiometricAuth from "../components/auth/BiometricAuth";
-import SecurityAuditLog from "../components/security/SecurityAuditLog";
+// SecurityAuditLog removed
 import AgencyCodeInput from "../components/settings/AgencyCodeInput";
 import AgencyCodeManager from "../components/settings/AgencyCodeManager";
 import NotificationPreferences from "../components/settings/NotificationPreferences";
@@ -465,18 +465,12 @@ export default function Settings() {
             />
           )}
 
-          {/* Security Audit Log */}
-          {currentUser?.email && (
-            <SecurityAuditLog userEmail={currentUser.email} />
-          )}
-
           {/* Data Retention Settings */}
           <DataRetentionSettings />
         </TabsContent>
 
         <TabsContent value="advanced" className="space-y-3 sm:space-y-4 md:space-y-6">
-          {/* Provider Profile */}
-          <ProviderTypeSelector currentUser={currentUser} allowAdminOverride={currentUser?.role === 'admin'} />
+          {/* Provider Profile removed from Advanced - already in Profile tab */}
 
           {/* Advanced AI Customization */}
           <AdvancedAICustomization currentUser={currentUser} />

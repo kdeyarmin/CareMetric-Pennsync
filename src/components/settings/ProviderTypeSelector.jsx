@@ -34,8 +34,6 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
 
   const [formData, setFormData] = React.useState({
     credential_type: 'RN',
-    license_number: '',
-    credentials: '',
     specialty: '',
     preferred_note_style: 'detailed'
   });
@@ -45,8 +43,6 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
     if (activeUser) {
       setFormData({
         credential_type: activeUser.credential_type || 'RN',
-        license_number: activeUser.license_number || '',
-        credentials: activeUser.credentials || '',
         specialty: activeUser.specialty || '',
         preferred_note_style: activeUser.preferred_note_style || 'detailed'
       });
@@ -97,7 +93,7 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
             Provider Profile
           </CardTitle>
           <p className="text-sm text-gray-600 mt-1">
-            Configure your provider type to customize AI note generation and compliance checks
+            Configure your nursing profile for home health & hospice documentation
           </p>
         </CardHeader>
       <CardContent className="bg-slate-100 pt-0 p-6">
@@ -129,47 +125,39 @@ export default function ProviderTypeSelector({ currentUser, allowAdminOverride =
             </Alert>
             }
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>License Number</Label>
-              <Input
-                  value={formData.license_number}
-                  onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
-                  placeholder="e.g., RN123456" />
-
-            </div>
-
-            <div>
-              <Label>Credentials</Label>
-              <Input
-                  value={formData.credentials}
-                  onChange={(e) => setFormData({ ...formData, credentials: e.target.value })}
-                  placeholder="e.g., RN, BSN, MSN" />
-
-            </div>
-          </div>
-
           <div>
             <Label>Clinical Specialty</Label>
-            <Input
-                value={formData.specialty}
-                onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                placeholder="e.g., Wound Care, Cardiac, Palliative" />
-
+            <select className="bg-slate-50 mt-1 p-2 rounded w-full border"
+              value={formData.specialty}
+              onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}>
+              <option value="">Select your specialty...</option>
+              <option value="Generalist">Generalist (Home Health / Hospice)</option>
+              <option value="Wound Care">Wound Care Nurse</option>
+              <option value="Psychiatric">Psychiatric / Mental Health Nurse</option>
+              <option value="Cardiac">Cardiac / Heart Failure Nurse</option>
+              <option value="Palliative">Palliative Care Nurse</option>
+              <option value="Diabetes">Diabetes Management Nurse</option>
+              <option value="Pediatric">Pediatric Home Health Nurse</option>
+              <option value="IV Therapy">IV Therapy / Infusion Nurse</option>
+              <option value="Oncology">Oncology Nurse</option>
+              <option value="Geriatric">Geriatric Nurse</option>
+              <option value="Rehabilitation">Rehabilitation Nurse</option>
+              <option value="Respiratory">Respiratory Care Nurse</option>
+            </select>
           </div>
 
           <div>
             <Label>Preferred Note Style</Label>
             <select className="bg-slate-50 mt-1 p-2 rounded w-full border"
-
               value={formData.preferred_note_style}
               onChange={(e) => setFormData({ ...formData, preferred_note_style: e.target.value })}>
-
               <option value="detailed">Detailed Narrative</option>
               <option value="concise">Concise</option>
               <option value="narrative">Full Narrative</option>
               <option value="bullet_points">Bullet Points</option>
               <option value="soap">SOAP Note (Subjective/Objective/Assessment/Plan)</option>
+              <option value="dap">DAP Note (Data/Assessment/Plan)</option>
+              <option value="focus">Focus Charting (Data/Action/Response)</option>
             </select>
           </div>
 
