@@ -1,89 +1,189 @@
-import React from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { FileText, Video, FileJson, Eye, Star, Download } from "lucide-react";
+import React, { useState } from 'react';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { BookOpen, Clock, Eye, Send, Globe, Star } from 'lucide-react';
+import { toast } from 'sonner';
 
-const iconMap = {
-  article: <FileText className="w-5 h-5" />,
-  video: <Video className="w-5 h-5" />,
-  pdf: <FileJson className="w-5 h-5" />,
-  infographic: <FileText className="w-5 h-5" />,
-  link: <FileText className="w-5 h-5" />
-};
+export default function EducationMaterialCard({ material, patientId, showAssignButton = false }) {
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [parsedContent, setParsedContent] = useState(null);
+  const queryClient = useQueryClient();
 
-const typeColors = {
-  article: "bg-blue-100 text-blue-800",
-  video: "bg-red-100 text-red-800",
-  pdf: "bg-amber-100 text-amber-800",
-  infographic: "bg-purple-100 text-purple-800",
-  link: "bg-green-100 text-green-800"
-};
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
 
-export default function EducationMaterialCard({ material, onOpen }) {
+  const trackEngagementMutation = useMutation({
+    mutationFn: async (actionType) => {
+      await base44.entities.PatientEducationEngagement.create({
+        patient_id: patientId,
+        material_id: material.id,
+        action_type: actionType,
+        language_used: material.language
+      });
+    }
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: async () => {
+      await base44.entities.PatientEducationAssignment.create({
+        patient_id: patientId,
+        material_id: material.id,
+        assigned_by: user.email,
+        assigned_by_name: user.full_name,
+        status: 'assigned',
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['educationAssignments'] });
+      toast.success('Material assigned to patient');
+    }
+  });
+
+  const handleView = () => {
+    try {
+      const content = typeof material.content === 'string' 
+        ? JSON.parse(material.content) 
+        : material.content;
+      setParsedContent(content);
+      setViewDialogOpen(true);
+      trackEngagementMutation.mutate('viewed');
+    } catch (error) {
+      console.error('Error parsing content:', error);
+      toast.error('Unable to display content');
+    }
+  };
+
+  const getLanguageFlag = (lang) => {
+    const flags = { en: '🇺🇸', es: '🇪🇸', zh: '🇨🇳', ar: '🇸🇦', fr: '🇫🇷', de: '🇩🇪' };
+    return flags[lang] || '🌐';
+  };
+
   return (
-    <Card className="hover:shadow-lg transition-all duration-200 overflow-hidden">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-start gap-2 flex-1">
-            <div className="text-slate-600 mt-1">{iconMap[material.material_type]}</div>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
             <div className="flex-1">
-              <h3 className="font-semibold text-slate-900">{material.title}</h3>
-              <p className="text-xs text-slate-500 mt-1">{material.description}</p>
+              <CardTitle className="text-lg">{material.title}</CardTitle>
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="outline" className="capitalize">
+                  {material.category?.replace(/_/g, ' ')}
+                </Badge>
+                <Badge variant="outline">
+                  <Globe className="h-3 w-3 mr-1" />
+                  {getLanguageFlag(material.language)} {material.language?.toUpperCase()}
+                </Badge>
+                {material.estimated_reading_time_minutes && (
+                  <Badge variant="outline">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {material.estimated_reading_time_minutes} min
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-3">
-        {/* Diagnoses */}
-        <div className="flex flex-wrap gap-1">
-          {material.diagnoses && material.diagnoses.map((diagnosis) => (
-            <Badge key={diagnosis} variant="outline" className="text-xs">
-              {diagnosis}
-            </Badge>
-          ))}
-        </div>
-
-        {/* Meta info */}
-        <div className="flex items-center gap-3 flex-wrap text-xs text-slate-600">
-          <Badge className={typeColors[material.material_type]}>
-            {material.material_type.charAt(0).toUpperCase() + material.material_type.slice(1)}
-          </Badge>
-
-          {material.difficulty_level && (
-            <Badge variant="outline" className="text-xs">
-              {material.difficulty_level}
-            </Badge>
+        </CardHeader>
+        <CardContent>
+          {material.key_points?.length > 0 && (
+            <ul className="list-disc list-inside text-sm text-gray-600 mb-3 space-y-1">
+              {material.key_points.slice(0, 3).map((point, idx) => (
+                <li key={idx}>{point}</li>
+              ))}
+            </ul>
           )}
-
-          {material.duration_minutes && (
-            <span>⏱️ {material.duration_minutes} min</span>
-          )}
-
-          <div className="flex items-center gap-1">
-            <Eye className="w-3 h-3" />
-            <span>{material.view_count || 0} views</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={handleView}>
+              <Eye className="h-4 w-4 mr-1" />
+              View Content
+            </Button>
+            {showAssignButton && (
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => assignMutation.mutate()}
+                disabled={assignMutation.isPending}
+              >
+                <Send className="h-4 w-4 mr-1" />
+                Assign to Patient
+              </Button>
+            )}
           </div>
+        </CardContent>
+      </Card>
 
-          {material.average_rating && (
-            <div className="flex items-center gap-1">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              <span>{material.average_rating.toFixed(1)}</span>
+      {/* View Content Dialog */}
+      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{parsedContent?.title}</DialogTitle>
+          </DialogHeader>
+          {parsedContent && (
+            <div className="space-y-6">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="text-sm">{parsedContent.overview}</p>
+              </div>
+
+              {parsedContent.content_sections?.map((section, idx) => (
+                <div key={idx} className="space-y-2">
+                  <h3 className="font-semibold text-lg">{section.section_title}</h3>
+                  <p className="text-sm whitespace-pre-wrap">{section.content}</p>
+                </div>
+              ))}
+
+              {parsedContent.key_takeaways?.length > 0 && (
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">🎯 Key Takeaways</h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm">
+                    {parsedContent.key_takeaways.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {parsedContent.warning_signs?.length > 0 && (
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">⚠️ Warning Signs - Seek Help If:</h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm">
+                    {parsedContent.warning_signs.map((sign, idx) => (
+                      <li key={idx}>{sign}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {parsedContent.action_items?.length > 0 && (
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">✅ Action Items</h4>
+                  {parsedContent.action_items.map((item, idx) => (
+                    <div key={idx} className="text-sm mb-2">
+                      <span className="font-medium">{item.timeframe}:</span> {item.action}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {parsedContent.teach_back_questions?.length > 0 && (
+                <div className="border-l-4 border-blue-500 pl-4">
+                  <h4 className="font-semibold mb-2">💭 Check Your Understanding</h4>
+                  <ul className="list-decimal list-inside space-y-1 text-sm">
+                    {parsedContent.teach_back_questions.map((q, idx) => (
+                      <li key={idx}>{q}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
-        </div>
-
-        {/* Action button */}
-        <Button
-          onClick={() => onOpen(material)}
-          className="w-full bg-blue-600 hover:bg-blue-700"
-          size="sm"
-        >
-          <Download className="w-3 h-3 mr-1" />
-          Access Material
-        </Button>
-      </CardContent>
-    </Card>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
