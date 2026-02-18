@@ -14,7 +14,6 @@ import { toast } from 'sonner';
 
 export default function AdvancedCarePlanAI({ patientId, patientName, onCarePlanCreated }) {
   const [analysis, setAnalysis] = useState(null);
-  const [analyzing, setAnalyzing] = useState(false);
   const queryClient = useQueryClient();
 
   const analyzeMutation = useMutation({
@@ -45,11 +44,6 @@ export default function AdvancedCarePlanAI({ patientId, patientName, onCarePlanC
       if (onCarePlanCreated) onCarePlanCreated();
     }
   });
-
-  const handleAnalyze = () => {
-    setAnalyzing(true);
-    analyzeMutation.mutate();
-  };
 
   const getSeverityColor = (severity) => {
     const colors = {
@@ -91,7 +85,7 @@ export default function AdvancedCarePlanAI({ patientId, patientName, onCarePlanC
             </CardDescription>
           </div>
           <Button 
-            onClick={handleAnalyze}
+            onClick={() => analyzeMutation.mutate()}
             disabled={analyzeMutation.isPending}
             className="bg-purple-600 hover:bg-purple-700"
           >
@@ -232,152 +226,152 @@ export default function AdvancedCarePlanAI({ patientId, patientName, onCarePlanC
                 </Alert>
               ) : (
                 analysis.suggested_care_plans.map((suggestion, idx) => (
-                <Card key={idx} className="border-2 border-blue-200">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge className={getSeverityColor(suggestion.priority)}>
-                            {suggestion.priority} Priority
-                          </Badge>
-                          {suggestion.adherence_prediction && (
-                            <Badge variant="outline" className="bg-white">
-                              <Activity className="w-3 h-3 mr-1" />
-                              {suggestion.adherence_prediction.probability_percentage}% Adherence
+                  <Card key={idx} className="border-2 border-blue-200">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge className={getSeverityColor(suggestion.priority)}>
+                              {suggestion.priority} Priority
                             </Badge>
-                          )}
+                            {suggestion.adherence_prediction && (
+                              <Badge variant="outline" className="bg-white">
+                                <Activity className="w-3 h-3 mr-1" />
+                                {suggestion.adherence_prediction.probability_percentage}% Adherence
+                              </Badge>
+                            )}
+                          </div>
+                          <h4 className="font-bold text-gray-900 text-lg">{suggestion.problem}</h4>
+                          <p className="text-sm text-blue-600 mt-1">🎯 Goal: {suggestion.goal}</p>
                         </div>
-                        <h4 className="font-bold text-gray-900 text-lg">{suggestion.problem}</h4>
-                        <p className="text-sm text-blue-600 mt-1">🎯 Goal: {suggestion.goal}</p>
-                      </div>
-                      <Button 
-                        size="sm"
-                        onClick={() => handleQuickAdd(suggestion)}
-                        disabled={createCarePlanMutation.isPending}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add
-                      </Button>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs font-semibold text-gray-600 mb-1">Interventions:</p>
-                        <ul className="space-y-1">
-                          {suggestion.interventions?.map((intervention, i) => (
-                            <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-                              <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                              {intervention}
-                            </li>
-                          ))}
-                        </ul>
+                        <Button 
+                          size="sm"
+                          onClick={() => handleQuickAdd(suggestion)}
+                          disabled={createCarePlanMutation.isPending}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add
+                        </Button>
                       </div>
 
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                          <p className="text-xs font-semibold text-blue-900 mb-1">📊 Monitoring:</p>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-xs font-semibold text-gray-600 mb-1">Interventions:</p>
                           <ul className="space-y-1">
-                            {suggestion.monitoring_parameters?.map((param, i) => (
-                              <li key={i} className="text-xs text-blue-800">• {param}</li>
+                            {suggestion.interventions?.map((intervention, i) => (
+                              <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                                {intervention}
+                              </li>
                             ))}
                           </ul>
                         </div>
-                        <div className="bg-green-50 p-3 rounded-lg">
-                          <p className="text-xs font-semibold text-green-900 mb-1">🎯 Expected Outcomes:</p>
-                          <p className="text-xs text-green-800">{suggestion.expected_outcomes}</p>
-                        </div>
-                      </div>
 
-                      <div className="bg-purple-50 p-3 rounded-lg">
-                        <p className="text-xs font-semibold text-purple-900 mb-1">📋 Clinical Rationale:</p>
-                        <p className="text-xs text-purple-800">{suggestion.rationale}</p>
-                      </div>
-
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="w-4 h-4 text-gray-600" />
-                          <p className="text-xs font-semibold text-gray-700">Implementation Details:</p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <span className="font-medium">Frequency:</span> {suggestion.frequency}
+                        <div className="grid md:grid-cols-2 gap-3">
+                          <div className="bg-blue-50 p-3 rounded-lg">
+                            <p className="text-xs font-semibold text-blue-900 mb-1">📊 Monitoring:</p>
+                            <ul className="space-y-1">
+                              {suggestion.monitoring_parameters?.map((param, i) => (
+                                <li key={i} className="text-xs text-blue-800">• {param}</li>
+                              ))}
+                            </ul>
                           </div>
-                          <div>
-                            <span className="font-medium">Timeframe:</span> {suggestion.target_timeframe}
+                          <div className="bg-green-50 p-3 rounded-lg">
+                            <p className="text-xs font-semibold text-green-900 mb-1">🎯 Expected Outcomes:</p>
+                            <p className="text-xs text-green-800">{suggestion.expected_outcomes}</p>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Adherence Prediction */}
-                      {suggestion.adherence_prediction && (
-                        <div className="bg-white border-2 border-purple-200 p-4 rounded-lg">
-                          <div className="flex items-center gap-2 mb-3">
-                            <TrendingUp className="w-5 h-5 text-purple-600" />
-                            <h5 className="font-semibold text-gray-900">Adherence Prediction</h5>
+                        <div className="bg-purple-50 p-3 rounded-lg">
+                          <p className="text-xs font-semibold text-purple-900 mb-1">📋 Clinical Rationale:</p>
+                          <p className="text-xs text-purple-800">{suggestion.rationale}</p>
+                        </div>
+
+                        <div className="bg-gray-50 p-3 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Clock className="w-4 h-4 text-gray-600" />
+                            <p className="text-xs font-semibold text-gray-700">Implementation Details:</p>
                           </div>
-                          
-                          <div className="mb-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm text-gray-600">Predicted Adherence</span>
-                              <span className={`text-2xl font-bold ${getAdherenceColor(suggestion.adherence_prediction.probability_percentage)}`}>
-                                {suggestion.adherence_prediction.probability_percentage}%
-                              </span>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="font-medium">Frequency:</span> {suggestion.frequency}
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full ${
-                                  suggestion.adherence_prediction.probability_percentage >= 80 ? 'bg-green-600' :
-                                  suggestion.adherence_prediction.probability_percentage >= 60 ? 'bg-yellow-600' : 'bg-red-600'
-                                }`}
-                                style={{ width: `${suggestion.adherence_prediction.probability_percentage}%` }}
-                              />
+                            <div>
+                              <span className="font-medium">Timeframe:</span> {suggestion.target_timeframe}
                             </div>
-                            <p className="text-xs text-gray-600 mt-1">
-                              Confidence: {suggestion.adherence_prediction.confidence_level}
-                            </p>
                           </div>
+                        </div>
 
-                          <div className="grid md:grid-cols-2 gap-3">
-                            {suggestion.adherence_prediction.facilitating_factors?.length > 0 && (
-                              <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                <p className="text-xs font-semibold text-green-900 mb-1">✅ Facilitating Factors:</p>
+                        {/* Adherence Prediction */}
+                        {suggestion.adherence_prediction && (
+                          <div className="bg-white border-2 border-purple-200 p-4 rounded-lg">
+                            <div className="flex items-center gap-2 mb-3">
+                              <TrendingUp className="w-5 h-5 text-purple-600" />
+                              <h5 className="font-semibold text-gray-900">Adherence Prediction</h5>
+                            </div>
+                            
+                            <div className="mb-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm text-gray-600">Predicted Adherence</span>
+                                <span className={`text-2xl font-bold ${getAdherenceColor(suggestion.adherence_prediction.probability_percentage)}`}>
+                                  {suggestion.adherence_prediction.probability_percentage}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full ${
+                                    suggestion.adherence_prediction.probability_percentage >= 80 ? 'bg-green-600' :
+                                    suggestion.adherence_prediction.probability_percentage >= 60 ? 'bg-yellow-600' : 'bg-red-600'
+                                  }`}
+                                  style={{ width: `${suggestion.adherence_prediction.probability_percentage}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-gray-600 mt-1">
+                                Confidence: {suggestion.adherence_prediction.confidence_level}
+                              </p>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-3">
+                              {suggestion.adherence_prediction.facilitating_factors?.length > 0 && (
+                                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                  <p className="text-xs font-semibold text-green-900 mb-1">✅ Facilitating Factors:</p>
+                                  <ul className="space-y-1">
+                                    {suggestion.adherence_prediction.facilitating_factors.map((factor, i) => (
+                                      <li key={i} className="text-xs text-green-800">• {factor}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {suggestion.adherence_prediction.barriers?.length > 0 && (
+                                <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                                  <p className="text-xs font-semibold text-red-900 mb-1">⚠️ Barriers:</p>
+                                  <ul className="space-y-1">
+                                    {suggestion.adherence_prediction.barriers.map((barrier, i) => (
+                                      <li key={i} className="text-xs text-red-800">• {barrier}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+
+                            {suggestion.adherence_prediction.adherence_strategies?.length > 0 && (
+                              <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 mt-3">
+                                <p className="text-xs font-semibold text-blue-900 mb-1">💡 Strategies to Improve Adherence:</p>
                                 <ul className="space-y-1">
-                                  {suggestion.adherence_prediction.facilitating_factors.map((factor, i) => (
-                                    <li key={i} className="text-xs text-green-800">• {factor}</li>
+                                  {suggestion.adherence_prediction.adherence_strategies.map((strategy, i) => (
+                                    <li key={i} className="text-xs text-blue-800">• {strategy}</li>
                                   ))}
                                 </ul>
                               </div>
                             )}
-
-                            {suggestion.adherence_prediction.barriers?.length > 0 && (
-                              <div className="bg-red-50 p-3 rounded-lg border border-red-200">
-                                <p className="text-xs font-semibold text-red-900 mb-1">⚠️ Barriers:</p>
-                                <ul className="space-y-1">
-                                  {suggestion.adherence_prediction.barriers.map((barrier, i) => (
-                                    <li key={i} className="text-xs text-red-800">• {barrier}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
                           </div>
-
-                          {suggestion.adherence_prediction.adherence_strategies?.length > 0 && (
-                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 mt-3">
-                              <p className="text-xs font-semibold text-blue-900 mb-1">💡 Strategies to Improve Adherence:</p>
-                              <ul className="space-y-1">
-                                {suggestion.adherence_prediction.adherence_strategies.map((strategy, i) => (
-                                  <li key={i} className="text-xs text-blue-800">• {strategy}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
               )}
             </TabsContent>
 
