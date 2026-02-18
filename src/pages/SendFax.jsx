@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Send, Phone, Loader2, CheckCircle2, WifiOff, Wifi, FileText, Users, Clock } from "lucide-react";
+import { Send, Phone, Loader2, CheckCircle2, WifiOff, Wifi, FileText, Users, Clock, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -27,7 +27,6 @@ import RecurringFaxManager from "@/components/fax/RecurringFaxManager";
 import FaxTemplateManager from "@/components/fax/FaxTemplateManager";
 import { generateCoverSheetPDF } from "@/components/fax/CoverSheetPDFGenerator";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
-import { Save, FileText } from "lucide-react";
 
 export default function SendFax() {
   const queryClient = useQueryClient();
