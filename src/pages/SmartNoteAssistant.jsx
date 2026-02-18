@@ -43,7 +43,7 @@ import CustomTemplateCreator from "@/components/smartNote/CustomTemplateCreator"
 import EnhancedTemplateSelector from "@/components/templates/EnhancedTemplateSelector";
 import TemplateEducationSuggestions from "@/components/education/TemplateEducationSuggestions";
 import QuickPatientAccess from "@/components/smartNote/QuickPatientAccess";
-import VisitTypePresets from "@/components/smartNote/VisitTypePresets";
+
 import VitalSignsQuickButton from "@/components/smartNote/VitalSignsQuickButton";
 import AutoSaveIndicator from "@/components/smartNote/AutoSaveIndicator";
 import NoteDraftVersions from "@/components/smartNote/NoteDraftVersions";
@@ -700,8 +700,21 @@ export default function SmartNoteAssistant() {
 
   return (
     <PremiumFeatureGate featureName="Smart Note Assistant" featureDescription="AI-powered clinical documentation with real-time compliance monitoring and quality scoring." allowTrial={true}>
-    <div className="min-h-screen p-2 sm:p-3 md:p-4 lg:p-6 pb-20 sm:pb-6 overflow-x-hidden w-full max-w-full min-w-0">
-      <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 p-4 sm:p-6 pb-20 sm:pb-6">
+      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
+        
+        {/* Professional Header */}
+        <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-4 sm:p-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg">
+              <Wand2 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Smart Note Assistant</h1>
+              <p className="text-sm text-slate-600 mt-0.5">AI-powered clinical documentation with compliance monitoring</p>
+            </div>
+          </div>
+        </div>
         {/* Enhanced Offline Sync Status */}
         {currentUser?.email && (
           <EnhancedOfflineNoteSync 
@@ -732,29 +745,22 @@ export default function SmartNoteAssistant() {
 
         {!showResults ?
         <>
-            {/* Streamlined Input Form */}
-            <Card className="w-full max-w-full overflow-hidden">
-              <CardHeader className="bg-slate-200 p-3 sm:p-4 flex flex-col space-y-1.5">
-                <CardTitle className="flex items-center gap-2 text-xs sm:text-sm md:text-base">
-                  <Wand2 className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
+            {/* Clinical Documentation Form */}
+            <Card className="border-blue-200 shadow-md">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                  <FileText className="w-5 h-5 text-blue-600" />
                   Clinical Documentation
                 </CardTitle>
+                <p className="text-sm text-slate-600 mt-1">Complete the required fields to generate your enhanced note</p>
               </CardHeader>
-              <CardContent className="bg-slate-100 pt-0 p-3 sm:p-4 space-y-3">
+              <CardContent className="bg-white p-4 sm:p-6 space-y-5">
                  {/* Quick Patient Access */}
                  {allPatients.length > 0 && (
                    <QuickPatientAccess
                      onSelectPatient={setSelectedPatient}
                      onSelectVisitType={setVisitType}
                      currentUser={currentUser}
-                   />
-                 )}
-
-                 {/* Visit Type Presets */}
-                 {(providerType && careSetting) && (
-                   <VisitTypePresets
-                     onSelectVisitType={setVisitType}
-                     providerType={providerType}
                    />
                  )}
 
@@ -769,9 +775,11 @@ export default function SmartNoteAssistant() {
                    />
                  )}
 
+                 {/* Core Documentation Fields */}
+                 <div className="grid gap-5">
                  {/* Patient Selection Dropdown */}
-                 <div className="bg-slate-100 w-full">
-                   <Label className="text-xs sm:text-sm font-medium">Patient *</Label>
+                 <div className="w-full">
+                   <Label className="text-sm font-semibold text-slate-700 mb-2 block">Patient *</Label>
                   <Select value={selectedPatient} onValueChange={setSelectedPatient}>
                     <SelectTrigger className="w-full h-11">
                       <SelectValue placeholder="Select patient..." />
@@ -815,7 +823,7 @@ export default function SmartNoteAssistant() {
 
                 {/* Visit Type Selection */}
                 <div className="w-full">
-                  <Label className="text-xs sm:text-sm font-medium">Visit Type *</Label>
+                  <Label className="text-sm font-semibold text-slate-700 mb-2 block">Visit Type *</Label>
                   <Select value={visitType} onValueChange={setVisitType}>
                     <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select visit type..." />
@@ -832,7 +840,7 @@ export default function SmartNoteAssistant() {
 
                 {/* Diagnosis Selection */}
                 <div className="w-full">
-                  <Label className="text-xs sm:text-sm font-medium">Primary Diagnosis *</Label>
+                  <Label className="text-sm font-semibold text-slate-700 mb-2 block">Primary Diagnosis *</Label>
                   {!showCustomSearch ? (
                     <div className="space-y-2">
                       <Input
@@ -1090,9 +1098,11 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
-                {/* Vital Signs */}
-                <div className="w-full">
-                 <Label className="text-xs sm:text-sm font-medium">Vital Signs</Label>
+                </div>
+
+                {/* Vital Signs Section */}
+                <div className="w-full bg-slate-50 p-4 rounded-lg border border-slate-200">
+                 <Label className="text-sm font-semibold text-slate-700 mb-3 block">Vital Signs</Label>
                  {selectedPatient !== 'no_patient' && (
                    <VitalSignsQuickButton
                      patientId={selectedPatient}
@@ -1206,13 +1216,11 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
-                {/* Rough Notes Input with Voice Dictation & Auto-Save */}
+                {/* Clinical Notes Section */}
                 <div className="w-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <Label className="text-xs sm:text-sm font-medium">Clinical Notes *</Label>
-                      <p className="text-[10px] sm:text-xs text-slate-500">Type or dictate your clinical notes</p>
-                    </div>
+                  <div className="mb-3">
+                    <Label className="text-sm font-semibold text-slate-700 mb-1 block">Clinical Notes *</Label>
+                    <p className="text-xs text-slate-600">Type or dictate your clinical observations and findings</p>
                   </div>
 
                   {/* Auto-Save Indicator */}
@@ -1260,25 +1268,27 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                   />
                 </div>
 
-                {/* Enhance Button */}
+                {/* Generate Enhanced Note Button */}
+                <div className="pt-2 border-t border-slate-200">
                 <Button
                 onClick={enhanceNote}
                 disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()}
-                className="w-full h-12 sm:h-12 bg-indigo-600 hover:bg-indigo-700 text-white text-sm sm:text-base touch-target"
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all"
                 size="lg">
 
                   {enhancing ?
-                <>
+                  <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Enhancing Note & Running Compliance Checks...
+                      Generating Enhanced Note...
                     </> :
 
-                <>
-                      <Wand2 className="w-5 h-5 mr-2" />
-                      Enhance Note
+                  <>
+                      <Sparkles className="w-5 h-5 mr-2" />
+                      Generate Enhanced Note
                     </>
-                }
-                </Button>
+                  }
+                  </Button>
+                  </div>
               </CardContent>
             </Card>
           </> :
@@ -1304,41 +1314,46 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 providerType={providerType}
               />
 
-              {/* Enhanced Note Display - Streamlined */}
-              <Card className="w-full max-w-full overflow-hidden">
-                <CardHeader className="pb-3 p-3 sm:p-4">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
-                      <span className="font-semibold text-sm sm:text-base">Enhanced Note</span>
+              {/* Enhanced Note Display */}
+              <Card className="border-green-200 shadow-md">
+                <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-100 p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="p-1.5 bg-green-600 rounded-lg">
+                        <CheckCircle2 className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <span className="font-semibold text-lg text-slate-900 block">Enhanced Clinical Note</span>
+                        <span className="text-xs text-slate-600">AI-optimized and compliance-checked</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                       {complianceResults?.compliance_score && (
-                        <Badge variant={complianceResults.compliance_score >= 85 ? "default" : "outline"} className="bg-green-100 text-green-800 text-xs whitespace-nowrap">
+                        <Badge className={`${complianceResults.compliance_score >= 85 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'} text-xs font-semibold px-3 py-1`}>
                           {complianceResults.compliance_score}% Compliant
                         </Badge>
                       )}
-                    </div>
-                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                      <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied!"); }} variant="outline" size="sm" className="flex-1 sm:flex-initial">Copy</Button>
-                      {!isEditMode && <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm" className="flex-1 sm:flex-initial">Edit</Button>}
+                      <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied!"); }} variant="outline" size="sm">Copy</Button>
+                      {!isEditMode && <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm">Edit</Button>}
                       {patientData && !isEditMode && (
-                        <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-initial" size="sm">
+                        <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700" size="sm">
                           {savingToPatient ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save to Record'}
                         </Button>
                       )}
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="p-3 sm:p-4 pt-0">
+                <CardContent className="p-4 sm:p-6">
                   {isEditMode ? (
-                    <div className="space-y-2">
-                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-56 sm:h-64 md:h-72 p-2 sm:p-3 border rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-green-500" />
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600 w-full sm:w-auto touch-target" size="sm">Save & Recheck</Button>
-                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline" className="w-full sm:w-auto" size="sm">Cancel</Button>
+                    <div className="space-y-3">
+                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-64 p-4 border-2 border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono" />
+                      <div className="flex gap-2">
+                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600 hover:bg-green-700">Save & Recheck</Button>
+                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline">Cancel</Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-slate-50 dark:bg-slate-900 p-2 sm:p-3 md:p-4 rounded-lg text-xs sm:text-sm whitespace-pre-wrap max-h-56 sm:max-h-64 md:max-h-72 overflow-y-auto border break-words">
+                    <div className="bg-slate-50 p-5 rounded-lg text-sm whitespace-pre-wrap max-h-96 overflow-y-auto border border-slate-200 leading-relaxed">
                       {enhancedNote}
                     </div>
                   )}
@@ -1385,16 +1400,19 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 <Button onClick={() => { setShowResults(false); setEnhancedNote(null); setRoughNotes(""); setIsEditMode(false); }} variant="outline" className="flex-1 w-full sm:w-auto touch-target">New Note</Button>
               </div>
 
-              {/* Collapsible Details */}
+              {/* Collapsible Sections */}
               {(medicareViolations.length > 0 || complianceResults?.quality_analysis?.suggestions?.length > 0) && (
                 <details className="group w-full">
                   <summary className="cursor-pointer list-none">
-                    <Card className="hover:shadow-md transition-shadow w-full">
-                      <CardHeader className="pb-3 p-3 sm:p-4 md:p-6">
+                    <Card className="hover:shadow-md transition-all border-blue-200">
+                      <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 sm:p-5">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs sm:text-sm font-medium">Compliance & Quality Details</span>
-                          <span className="text-[10px] sm:text-xs text-slate-500 group-open:hidden">Click to expand</span>
-                          <span className="text-[10px] sm:text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert className="w-5 h-5 text-blue-600" />
+                            <span className="text-sm font-semibold text-slate-900">Compliance & Quality Details</span>
+                          </div>
+                          <span className="text-xs text-slate-500 group-open:hidden">Click to expand ▼</span>
+                          <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse ▲</span>
                         </div>
                       </CardHeader>
                     </Card>
@@ -1406,15 +1424,18 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 </details>
               )}
 
-              {/* Collapsible Tools */}
+              {/* Clinical Tools */}
               <details className="group w-full">
                 <summary className="cursor-pointer list-none">
-                  <Card className="hover:shadow-md transition-shadow w-full">
-                    <CardHeader className="pb-3 p-3 sm:p-4 md:p-6">
+                  <Card className="hover:shadow-md transition-all border-blue-200">
+                    <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 sm:p-5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs sm:text-sm font-medium">Clinical Tools & Education</span>
-                        <span className="text-[10px] sm:text-xs text-slate-500 group-open:hidden">Click to expand</span>
-                        <span className="text-[10px] sm:text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
+                        <div className="flex items-center gap-2">
+                          <Brain className="w-5 h-5 text-blue-600" />
+                          <span className="text-sm font-semibold text-slate-900">Clinical Tools & Education</span>
+                        </div>
+                        <span className="text-xs text-slate-500 group-open:hidden">Click to expand ▼</span>
+                        <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse ▲</span>
                       </div>
                     </CardHeader>
                   </Card>
