@@ -19,7 +19,8 @@ import {
   ShieldAlert,
   ListTodo,
   Clock,
-  Settings
+  Settings,
+  FileText
   } from "lucide-react";
 import { 
   getVisitTypesForProvider, 
