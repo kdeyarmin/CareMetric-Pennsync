@@ -25,6 +25,8 @@ import SmartPriorityRules from "@/components/fax/SmartPriorityRules";
 import ContactGroupManager from "@/components/fax/ContactGroupManager";
 import RecurringFaxManager from "@/components/fax/RecurringFaxManager";
 import FaxTemplateManager from "@/components/fax/FaxTemplateManager";
+import DocumentTemplateBuilder from "@/components/fax/DocumentTemplateBuilder";
+import DeliveryStatusTracker from "@/components/fax/DeliveryStatusTracker";
 import { generateCoverSheetPDF } from "@/components/fax/CoverSheetPDFGenerator";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
@@ -40,6 +42,8 @@ export default function SendFax() {
   const [showBatchDialog, setShowBatchDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [showDocumentTemplates, setShowDocumentTemplates] = useState(false);
+  const [lastSentFaxId, setLastSentFaxId] = useState(null);
   const [coverData, setCoverData] = useState({
     sender_name: "",
     sender_company: "",
@@ -130,6 +134,14 @@ export default function SendFax() {
       include_hipaa: template.include_hipaa_notice !== false
     });
     toast.success(`Template "${template.name}" loaded`);
+  };
+
+  const handleUseDocumentTemplate = (doc) => {
+    setDocuments([...documents, {
+      name: doc.name,
+      url: doc.url,
+      size: 0
+    }]);
   };
 
   const handleSendFax = async () => {
@@ -283,7 +295,15 @@ export default function SendFax() {
               className="flex-1 text-xs gap-1"
               onClick={() => setShowTemplateManager(true)}
             >
-              <FileText className="w-3 h-3" /> Templates
+              <FileText className="w-3 h-3" /> Cover Templates
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs gap-1"
+              onClick={() => setShowDocumentTemplates(true)}
+            >
+              <FileText className="w-3 h-3" /> Documents
             </Button>
           </div>
 
@@ -473,13 +493,21 @@ export default function SendFax() {
             fromFaxNumber={usePersonalFaxNumber ? currentUser?.sending_fax_number : undefined}
           />
           
-          {/* Template Manager Dialog */}
+          {/* Template Dialogs */}
           {showTemplateManager && (
             <FaxTemplateManager
               userEmail={currentUser?.email}
               open={showTemplateManager}
               onOpenChange={setShowTemplateManager}
               onSelectTemplate={handleLoadTemplate}
+            />
+          )}
+          {showDocumentTemplates && (
+            <DocumentTemplateBuilder
+              userEmail={currentUser?.email}
+              open={showDocumentTemplates}
+              onOpenChange={setShowDocumentTemplates}
+              onUseTemplate={handleUseDocumentTemplate}
             />
           )}
 
@@ -495,6 +523,13 @@ export default function SendFax() {
 
         {/* Sidebar */}
         <div className="space-y-4">
+          {lastSentFaxId && (
+            <DeliveryStatusTracker 
+              faxId={lastSentFaxId}
+              userEmail={currentUser?.email}
+            />
+          )}
+          
           <RecurringFaxManager userEmail={currentUser?.email} />
           
           <Tabs defaultValue="history">
