@@ -38,7 +38,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
-import NoteTemplateSelector from "@/components/smartNote/NoteTemplateSelector";
+import SmartTemplateSuggester from "@/components/smartNote/SmartTemplateSuggester";
+import CustomTemplateCreator from "@/components/smartNote/CustomTemplateCreator";
 import EnhancedTemplateSelector from "@/components/templates/EnhancedTemplateSelector";
 import TemplateEducationSuggestions from "@/components/education/TemplateEducationSuggestions";
 import QuickPatientAccess from "@/components/smartNote/QuickPatientAccess";
@@ -148,6 +149,8 @@ export default function SmartNoteAssistant() {
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [timeSavedMinutes, setTimeSavedMinutes] = useState(0);
   const [conflictData, setConflictData] = useState(null);
+  const [showTemplateCreator, setShowTemplateCreator] = useState(false);
+  const [templateCreatorInitData, setTemplateCreatorInitData] = useState(null);
   const location = useLocation();
   const { isOnline, saveOfflineNote } = useOfflineNotes();
 
@@ -903,24 +906,31 @@ export default function SmartNoteAssistant() {
                   )}
                 </div>
 
-                {/* Template Selector with Education Materials */}
+                {/* Smart Template Suggester with AI matching */}
+                {visitType && providerType && (
+                  <SmartTemplateSuggester
+                    visitType={visitType}
+                    providerType={providerType}
+                    diagnosis={selectedDiagnosis}
+                    patientData={patientData}
+                    onSelectTemplate={(formattedNote, template) => {
+                      setRoughNotes(formattedNote);
+                      setSelectedTemplate(template);
+                    }}
+                    onOpenCreator={(initialData) => {
+                      setTemplateCreatorInitData(initialData || null);
+                      setShowTemplateCreator(true);
+                    }}
+                  />
+                )}
+
+                {/* Template Education Suggestions */}
                 {visitType && providerType && selectedTemplate && (
                   <TemplateEducationSuggestions
                     templateId={selectedTemplate.id}
                     patientDiagnosis={selectedDiagnosis}
                   />
                 )}
-
-                {visitType && providerType &&
-                <NoteTemplateSelector
-                visitType={visitType}
-                providerType={providerType}
-                onSelectTemplate={(formattedNote, template) => {
-                  setRoughNotes(formattedNote);
-                  setSelectedTemplate(template);
-                }} />
-
-                }
 
                 {/* Visit Type Guidance */}
                 {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
@@ -1543,6 +1553,17 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
             </Card>
           </div>
         }
+        {/* Custom Template Creator Dialog */}
+        {showTemplateCreator && (
+          <CustomTemplateCreator
+            onClose={() => { setShowTemplateCreator(false); setTemplateCreatorInitData(null); }}
+            onSaved={() => { setShowTemplateCreator(false); setTemplateCreatorInitData(null); }}
+            initialData={templateCreatorInitData}
+            visitType={visitType}
+            providerType={providerType}
+            diagnosis={selectedDiagnosis}
+          />
+        )}
                     </div>
                     </div>
     </PremiumFeatureGate>);
