@@ -1007,16 +1007,7 @@ export default function SmartNoteAssistant() {
                   />
                 )}
 
-                {/* Code Search & Inserter - Only for Physicians & NPs */}
-                {(providerType === 'MD' || providerType === 'NP') && (
-                  <CodeSearchInserter
-                    onInsertCode={(code) => {
-                      setRoughNotes(roughNotes + '\n\n' + code);
-                      toast.success('Code inserted into notes');
-                    }}
-                    noteType="rough"
-                  />
-                )}
+
 
                 </div>
 
