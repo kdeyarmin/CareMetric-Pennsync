@@ -1386,21 +1386,39 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 contextData={{ visit_type: visitType, diagnosis: selectedDiagnosis, care_setting: careSetting }}
               />
 
-              {/* Quick Actions Row */}
-              <div className="flex flex-col sm:flex-row gap-2 w-full">
-                <div className="flex-1 w-full">
-                  <ResolveAllIssues
-                    issues={[...(complianceResults?.issues || []), ...medicareViolations.map(v => ({ element: v.violation, severity: v.severity, problem: v.cop_reference, suggestion: v.remediation }))]}
-                    gaps={complianceResults?.quality_analysis?.missing_elements}
-                    suggestions={complianceResults?.quality_analysis?.suggestions}
-                    noteContent={isEditMode ? editedNote : enhancedNote}
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    onResolved={(correctedNote, summary) => { setEditedNote(correctedNote); setEnhancedNote(correctedNote); setIsEditMode(false); toast.success(summary); recheckCompliance(); }}
-                  />
-                </div>
-                <Button onClick={() => { setShowResults(false); setEnhancedNote(null); setRoughNotes(""); setIsEditMode(false); }} variant="outline" className="flex-1 w-full sm:w-auto touch-target">New Note</Button>
-              </div>
+              {/* Unified Suggestions & Quick Actions */}
+              <UnifiedSuggestionsApplier
+                complianceIssues={complianceResults?.issues || []}
+                qualitySuggestions={complianceResults?.quality_analysis?.suggestions || []}
+                educationMaterials={suggestedEducation}
+                medicareViolations={medicareViolations}
+                noteContent={isEditMode ? editedNote : enhancedNote}
+                loading={enhancing}
+                onApplyAll={async () => {
+                  // Apply all quality improvements
+                  let improvedNote = isEditMode ? editedNote : enhancedNote;
+                  
+                  // Apply quality suggestions
+                  if (complianceResults?.quality_analysis?.suggestions) {
+                    for (const suggestion of complianceResults.quality_analysis.suggestions) {
+                      if (suggestion.excerpt && suggestion.improved_text && improvedNote.includes(suggestion.excerpt)) {
+                        improvedNote = improvedNote.replace(suggestion.excerpt, suggestion.improved_text);
+                      }
+                    }
+                  }
+                  
+                  setEditedNote(improvedNote);
+                  setEnhancedNote(improvedNote);
+                  setIsEditMode(false);
+                  toast.success("All suggestions applied successfully!");
+                  await recheckCompliance();
+                }}
+              />
+
+              {/* New Note Button */}
+              <Button onClick={() => { setShowResults(false); setEnhancedNote(null); setRoughNotes(""); setIsEditMode(false); }} variant="outline" className="w-full touch-target">
+                Create New Note
+              </Button>
 
               {/* Collapsible Sections */}
               {(medicareViolations.length > 0 || complianceResults?.quality_analysis?.suggestions?.length > 0) && (
