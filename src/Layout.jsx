@@ -173,7 +173,7 @@ export default function Layout({ children, currentPageName }) {
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-64 bg-gradient-to-b from-slate-50 via-white to-blue-50/20 dark:from-slate-800 dark:via-slate-800 dark:to-blue-950/20 border-r border-slate-200/60 dark:border-slate-700/60 transition-all duration-300 overflow-y-auto shadow-lg lg:shadow-sm ${
+          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-56 bg-gradient-to-b from-slate-50 via-white to-blue-50/20 dark:from-slate-800 dark:via-slate-800 dark:to-blue-950/20 border-r border-slate-200/60 dark:border-slate-700/60 transition-all duration-300 overflow-y-auto shadow-lg lg:shadow-sm ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           }`}
         >
