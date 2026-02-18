@@ -7,13 +7,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Brain, Loader2, FileText, ClipboardCheck, BarChart3,
   ChevronDown, ChevronUp, Sparkles, AlertTriangle,
-  CheckCircle2, TrendingUp, TrendingDown, Minus, RefreshCw, Copy
+  CheckCircle2, TrendingUp, TrendingDown, Minus, RefreshCw, Copy,
+  ShieldAlert, Stethoscope
 } from "lucide-react";
 import { toast } from "sonner";
 import HistorySummaryView from "./assistant/HistorySummaryView";
 import DraftNoteView from "./assistant/DraftNoteView";
 import AssessmentSuggestionsView from "./assistant/AssessmentSuggestionsView";
 import QualityFeedbackView from "./assistant/QualityFeedbackView";
+import DrugInteractionView from "./assistant/DrugInteractionView";
+import DiagnosticReferralView from "./assistant/DiagnosticReferralView";
 
 export default function AIClinicalAssistantPanel({
   patientId,
@@ -52,8 +55,10 @@ export default function AIClinicalAssistantPanel({
 
   const tabConfig = [
     { id: "history", label: "History", icon: FileText, action: "summarize_history", needsPatient: true },
-    { id: "draft", label: "Draft Note", icon: Sparkles, action: "generate_draft_note", needsPatient: false },
-    { id: "assess", label: "Assessments", icon: ClipboardCheck, action: "suggest_assessments", needsPatient: false },
+    { id: "draft", label: "Draft", icon: Sparkles, action: "generate_draft_note", needsPatient: false },
+    { id: "assess", label: "Assess", icon: ClipboardCheck, action: "suggest_assessments", needsPatient: false },
+    { id: "drugs", label: "Drugs", icon: ShieldAlert, action: "drug_interaction_check", needsPatient: true },
+    { id: "dx_ref", label: "Dx/Ref", icon: Stethoscope, action: "diagnostic_referral_suggestions", needsPatient: false },
     { id: "quality", label: "Quality", icon: BarChart3, action: "quality_feedback", needsNote: true },
   ];
 
@@ -92,7 +97,7 @@ export default function AIClinicalAssistantPanel({
       {expanded && (
         <CardContent className="p-3 sm:p-4 pt-0">
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="w-full grid grid-cols-4 h-8">
+            <TabsList className="w-full grid grid-cols-6 h-8">
               {tabConfig.map(tab => (
                 <TabsTrigger
                   key={tab.id}
@@ -156,6 +161,36 @@ export default function AIClinicalAssistantPanel({
                 <ActionPrompt
                   label="Get OASIS & assessment suggestions"
                   onClick={() => callAssistant("suggest_assessments")}
+                />
+              )}
+            </TabsContent>
+
+            {/* Drug Interactions */}
+            <TabsContent value="drugs" className="mt-3">
+              {!patientId ? (
+                <EmptyTab message="Select a patient to check drug interactions" />
+              ) : loading.drug_interaction_check ? (
+                <LoadingView label="Analyzing medications for interactions..." />
+              ) : results.drug_interaction_check ? (
+                <DrugInteractionView data={results.drug_interaction_check} onRefresh={() => callAssistant("drug_interaction_check")} />
+              ) : (
+                <ActionPrompt
+                  label="Check drug interactions & contraindications"
+                  onClick={() => callAssistant("drug_interaction_check")}
+                />
+              )}
+            </TabsContent>
+
+            {/* Diagnostic & Referral Suggestions */}
+            <TabsContent value="dx_ref" className="mt-3">
+              {loading.diagnostic_referral_suggestions ? (
+                <LoadingView label="Analyzing for diagnostic tests & referrals..." />
+              ) : results.diagnostic_referral_suggestions ? (
+                <DiagnosticReferralView data={results.diagnostic_referral_suggestions} onRefresh={() => callAssistant("diagnostic_referral_suggestions")} />
+              ) : (
+                <ActionPrompt
+                  label="Get diagnostic test & referral suggestions"
+                  onClick={() => callAssistant("diagnostic_referral_suggestions")}
                 />
               )}
             </TabsContent>
