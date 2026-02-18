@@ -164,9 +164,7 @@ export default function Documentation() {
                         <div>
                           <h4 className="font-semibold mb-1">Log In & Set Up Profile</h4>
                           <p className="text-sm text-gray-600">Access your account and complete your provider profile with credentials and specialization.</p>
-                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                            📸 Screenshot: Login page with email and password fields
-                          </div>
+
                         </div>
                       </div>
 
@@ -175,9 +173,7 @@ export default function Documentation() {
                         <div>
                           <h4 className="font-semibold mb-1">Navigate the Dashboard</h4>
                           <p className="text-sm text-gray-600">View your daily tasks, high-risk patients, and pending alerts at a glance.</p>
-                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                            📸 Screenshot: Main dashboard showing patient list, tasks, and alerts
-                          </div>
+
                         </div>
                       </div>
 
@@ -186,9 +182,7 @@ export default function Documentation() {
                         <div>
                           <h4 className="font-semibold mb-1">Add Your First Patient</h4>
                           <p className="text-sm text-gray-600">Click "Add Patient" and enter demographics, diagnoses, and contact information.</p>
-                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                            📸 Screenshot: Patient creation form
-                          </div>
+
                         </div>
                       </div>
 
@@ -197,9 +191,7 @@ export default function Documentation() {
                         <div>
                           <h4 className="font-semibold mb-1">Document Your First Visit</h4>
                           <p className="text-sm text-gray-600">Use Smart Note Assistant to create compliant clinical documentation in minutes.</p>
-                          <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                            📸 Screenshot: Smart Note Assistant interface
-                          </div>
+
                         </div>
                       </div>
                     </div>
@@ -241,9 +233,7 @@ export default function Documentation() {
                       </li>
                       <li>Click <strong>"Save Patient"</strong></li>
                     </ol>
-                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                      📸 Screenshot: Patient form with all fields labeled
-                    </div>
+
                   </div>
 
                   <div>
@@ -263,9 +253,7 @@ export default function Documentation() {
                         <p className="text-xs text-gray-600">Schedule visits, generate documents, send education materials</p>
                       </div>
                     </div>
-                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                      📸 Screenshot: Patient Details page with annotated sections
-                    </div>
+
                   </div>
 
                   <div className="bg-yellow-50 p-4 rounded-lg border-l-4 border-yellow-600">
@@ -319,9 +307,7 @@ export default function Documentation() {
                           <li>• Select visit type (Admission, Routine, Recertification, etc.)</li>
                           <li>• AI automatically loads patient context and history</li>
                         </ul>
-                        <div className="mt-2 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                          📸 Screenshot: Smart Note patient selection screen
-                        </div>
+
                       </div>
 
                       <div className="border-l-4 border-green-600 pl-4">
@@ -341,9 +327,7 @@ export default function Documentation() {
                             <p className="text-xs text-gray-600">Fill structured fields - AI ensures nothing is missed</p>
                           </div>
                         </div>
-                        <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                          📸 Screenshot: Voice dictation interface with waveform
-                        </div>
+
                       </div>
 
                       <div className="border-l-4 border-purple-600 pl-4">
@@ -356,9 +340,7 @@ export default function Documentation() {
                           <li>✅ ICD-10 code suggestions</li>
                           <li>✅ Compliance checks passed</li>
                         </ul>
-                        <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                          📸 Screenshot: Generated note with compliance indicators
-                        </div>
+
                       </div>
                     </div>
                   </div>
@@ -436,9 +418,7 @@ export default function Documentation() {
                         <p className="text-xs text-gray-600 mt-1">Monitors ADL changes and mobility trends</p>
                       </div>
                     </div>
-                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                      📸 Screenshot: Risk dashboard with color-coded indicators
-                    </div>
+
                   </div>
 
                   <div>
@@ -467,9 +447,7 @@ export default function Documentation() {
                         </div>
                       </li>
                     </ul>
-                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                      📸 Screenshot: Suggested interventions panel with quick-confirm buttons
-                    </div>
+
                   </div>
 
                   <div className="bg-blue-50 p-4 rounded-lg">
@@ -551,9 +529,7 @@ export default function Documentation() {
                         </div>
                       </li>
                     </ol>
-                    <div className="mt-3 p-3 bg-gray-50 rounded border text-sm text-gray-500 italic">
-                      📸 Screenshot: Education generation form with language selector
-                    </div>
+
                   </div>
 
                   <div>
