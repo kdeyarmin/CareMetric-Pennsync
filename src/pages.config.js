@@ -91,6 +91,9 @@ import InternalMessaging from './pages/InternalMessaging';
 import RegulatoryUpdates from './pages/RegulatoryUpdates';
 import ReferralIntake from './pages/ReferralIntake';
 import ComplianceRulesEngine from './pages/ComplianceRulesEngine';
+import ReportsCenter from './pages/ReportsCenter';
+import ClinicalPathways from './pages/ClinicalPathways';
+import BillingManagement from './pages/BillingManagement';
 import __Layout from './Layout.jsx';
 
 
@@ -139,6 +142,9 @@ export const PAGES = {
     "RegulatoryUpdates": RegulatoryUpdates,
     "ReferralIntake": ReferralIntake,
     "ComplianceRulesEngine": ComplianceRulesEngine,
+    "ReportsCenter": ReportsCenter,
+    "ClinicalPathways": ClinicalPathways,
+    "BillingManagement": BillingManagement,
 }
 
 export const pagesConfig = {

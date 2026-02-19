@@ -1,380 +1,207 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import {
-  Shield,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  Lock,
-  FileWarning,
-  RefreshCw,
-  HelpCircle,
-  Sparkles
-} from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { AlertTriangle, Lock, CheckCircle, XCircle } from 'lucide-react';
 
-export default function MandatoryComplianceGate({
-  noteText,
-  careType = "home_health",
-  visitType = "routine_visit",
-  diagnosis,
-  vitalSigns,
-  onCompliancePassed,
-  onInsertFix
+export default function MandatoryComplianceGate({ 
+  entityType, 
+  entityData, 
+  onValidationComplete 
 }) {
-  const [isChecking, setIsChecking] = useState(false);
-  const [complianceResult, setComplianceResult] = useState(null);
-  const [acknowledgedIssues, setAcknowledgedIssues] = useState([]);
-  const [overrideReason, setOverrideReason] = useState("");
+  const [violations, setViolations] = useState([]);
+  const [showDialog, setShowDialog] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
 
-  const checkCompliance = async () => {
-    if (!noteText || noteText.trim().length < 50) {
-      setComplianceResult({
-        passed: false,
-        critical_issues: [{ 
-          id: 'note_length',
-          issue: 'Note is too short',
-          requirement: 'Clinical notes must contain sufficient detail for Medicare compliance',
-          fix: 'Please add more clinical detail to your note.'
-        }],
-        warnings: [],
-        score: 0
+  const { data: rules } = useQuery({
+    queryKey: ['mandatory-rules', entityType],
+    queryFn: async () => {
+      const allRules = await base44.entities.CustomValidationRule.filter({
+        target_entity: entityType,
+        is_mandatory: true,
+        is_active: true
       });
-      return;
+      return allRules;
     }
+  });
 
-    setIsChecking(true);
-
-    try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a STRICT Medicare compliance auditor for ${careType === 'hospice' ? 'Hospice' : 'Home Health'} nursing documentation. Your job is to BLOCK non-compliant notes from being finalized.
-
-VISIT TYPE: ${visitType}
-DIAGNOSIS: ${diagnosis || 'Not specified'}
-VITAL SIGNS PROVIDED: ${vitalSigns ? 'Yes' : 'No'}
-
-CLINICAL NOTE TO AUDIT:
-${noteText}
-
-MANDATORY REQUIREMENTS - These MUST be present or the note FAILS:
-
-${careType === 'home_health' ? `
-HOME HEALTH MANDATORY ELEMENTS:
-1. HOMEBOUND STATUS - Must explicitly state why patient is homebound (taxing effort, medical restriction, etc.)
-2. SKILLED NEED - Must document why RN skill/judgment is required (not just medication setup)
-3. VITAL SIGNS - Must include relevant vital signs with interpretation
-4. PATIENT RESPONSE - Must document patient/caregiver response to teaching/interventions
-5. PLAN FOR NEXT VISIT - Must include plan/goals for next visit
-` : `
-HOSPICE MANDATORY ELEMENTS:
-1. DISEASE PROGRESSION - Evidence of terminal prognosis decline
-2. SYMPTOM MANAGEMENT - Pain/symptom assessment with intervention
-3. COMFORT MEASURES - Focus on quality of life, not curative treatment
-4. PATIENT/FAMILY COPING - Emotional and spiritual support documented
-5. GOALS OF CARE - Confirmation of comfort-focused care
-`}
-
-ADDITIONAL REQUIREMENTS FOR ${visitType.toUpperCase().replace('_', ' ')}:
-${visitType === 'admission' ? '- Complete head-to-toe assessment\n- Medication reconciliation\n- Emergency contacts documented' : ''}
-${visitType === 'recertification' ? '- Continued homebound status\n- Ongoing skilled need justification\n- Progress toward goals' : ''}
-${visitType === 'discharge' ? '- Goals met or reason for discharge\n- Patient education on self-care\n- Follow-up instructions' : ''}
-
-Analyze the note and identify:
-1. CRITICAL ISSUES (note CANNOT be finalized until fixed)
-2. WARNINGS (should fix but can proceed with acknowledgment)
-3. Suggestions for improvement
-
-Return JSON:
-{
-  "passed": false if any critical issues exist,
-  "score": 0-100 compliance score,
-  "critical_issues": [
-    {
-      "id": "unique_id",
-      "issue": "what is missing/wrong",
-      "requirement": "the specific Medicare requirement",
-      "fix": "suggested text to add",
-      "location": "where in note to add"
+  useEffect(() => {
+    if (rules && entityData) {
+      validateData();
     }
-  ],
-  "warnings": [
-    {
-      "id": "unique_id", 
-      "issue": "concern",
-      "recommendation": "how to improve"
-    }
-  ],
-  "compliant_elements": ["list of elements that ARE compliant"],
-  "overall_assessment": "summary of compliance status"
-}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            passed: { type: "boolean" },
-            score: { type: "number" },
-            critical_issues: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  issue: { type: "string" },
-                  requirement: { type: "string" },
-                  fix: { type: "string" },
-                  location: { type: "string" }
-                }
-              }
-            },
-            warnings: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  issue: { type: "string" },
-                  recommendation: { type: "string" }
-                }
-              }
-            },
-            compliant_elements: { type: "array", items: { type: "string" } },
-            overall_assessment: { type: "string" }
+  }, [rules, entityData]);
+
+  const validateData = () => {
+    if (!rules || !entityData) return;
+
+    setIsValidating(true);
+    const newViolations = [];
+
+    for (const rule of rules) {
+      try {
+        const fieldValue = entityData[rule.target_field];
+        
+        // Create a safe evaluation context
+        const evalContext = {
+          value: fieldValue,
+          data: entityData
+        };
+
+        // Simple validation logic evaluation
+        let isValid = false;
+        
+        if (rule.rule_type === 'field_required') {
+          isValid = fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
+        } else if (rule.rule_type === 'field_format') {
+          // Evaluate format validation
+          try {
+            const validationFn = new Function('value', 'data', `return ${rule.validation_logic}`);
+            isValid = validationFn(fieldValue, entityData);
+          } catch (e) {
+            console.error('Validation error:', e);
+            isValid = false;
+          }
+        } else if (rule.rule_type === 'conditional') {
+          try {
+            const validationFn = new Function('value', 'data', `return ${rule.validation_logic}`);
+            isValid = validationFn(fieldValue, entityData);
+          } catch (e) {
+            console.error('Validation error:', e);
+            isValid = false;
           }
         }
-      });
 
-      setComplianceResult(result);
-      
-      if (result.passed) {
-        onCompliancePassed && onCompliancePassed(true);
+        if (!isValid) {
+          newViolations.push({
+            rule_name: rule.rule_name,
+            field: rule.target_field,
+            message: rule.error_message,
+            severity: rule.severity
+          });
+        }
+      } catch (error) {
+        console.error('Rule validation error:', rule.rule_name, error);
       }
-
-    } catch (error) {
-      console.error("Error checking compliance:", error);
     }
 
-    setIsChecking(false);
+    setViolations(newViolations);
+    setIsValidating(false);
+
+    if (newViolations.length > 0 && newViolations.some(v => v.severity === 'error')) {
+      setShowDialog(true);
+      onValidationComplete?.(false, newViolations);
+    } else {
+      onValidationComplete?.(true, newViolations);
+    }
   };
 
-  const handleInsertFix = (fix) => {
-    onInsertFix && onInsertFix(fix);
-  };
+  const errorViolations = violations.filter(v => v.severity === 'error');
+  const warningViolations = violations.filter(v => v.severity === 'warning');
 
-  const toggleAcknowledge = (issueId) => {
-    setAcknowledgedIssues(prev =>
-      prev.includes(issueId)
-        ? prev.filter(id => id !== issueId)
-        : [...prev, issueId]
-    );
-  };
-
-  const canOverride = () => {
-    // Can only override if all warnings are acknowledged and there's a reason
-    const allWarningsAcknowledged = complianceResult?.warnings?.every(w => 
-      acknowledgedIssues.includes(w.id)
-    );
-    return allWarningsAcknowledged && overrideReason.length >= 20;
-  };
-
-  const handleOverride = () => {
-    // Log the override for audit purposes
-    console.log('Compliance override:', {
-      reason: overrideReason,
-      acknowledged: acknowledgedIssues,
-      timestamp: new Date().toISOString()
-    });
-    onCompliancePassed && onCompliancePassed(true, { overridden: true, reason: overrideReason });
-  };
-
-  const getScoreColor = (score) => {
-    if (score >= 90) return 'text-green-600';
-    if (score >= 70) return 'text-yellow-600';
-    return 'text-red-600';
-  };
+  if (violations.length === 0) {
+    return null;
+  }
 
   return (
-    <Card className="border-2 border-red-200">
-      <CardHeader className="py-3 bg-gradient-to-r from-red-50 to-orange-50">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Shield className="w-4 h-4 text-red-600" />
-          Mandatory Compliance Check
-          {complianceResult?.passed && (
-            <Badge className="bg-green-500 text-white ml-auto">
-              <CheckCircle2 className="w-3 h-3 mr-1" />
-              Passed
-            </Badge>
-          )}
-          {complianceResult && !complianceResult.passed && (
-            <Badge className="bg-red-500 text-white ml-auto">
-              <XCircle className="w-3 h-3 mr-1" />
-              Blocked
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
+    <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5 text-red-600" />
+            Mandatory Compliance Check
+          </DialogTitle>
+          <DialogDescription>
+            {errorViolations.length > 0 
+              ? 'The following compliance requirements must be met before saving'
+              : 'Please review the following warnings'}
+          </DialogDescription>
+        </DialogHeader>
 
-      <CardContent className="p-4 space-y-4">
-        {!complianceResult ? (
-          <div className="text-center py-4">
-            <Lock className="w-12 h-12 mx-auto mb-3 text-red-300" />
-            <p className="text-sm text-gray-600 mb-3">
-              Notes must pass compliance check before finalization
-            </p>
-            <Button
-              onClick={checkCompliance}
-              disabled={isChecking || !noteText}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {isChecking ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Checking Compliance...
-                </>
-              ) : (
-                <>
-                  <Shield className="w-4 h-4 mr-2" />
-                  Run Compliance Check
-                </>
-              )}
-            </Button>
-          </div>
-        ) : (
-          <>
-            {/* Score Display */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Compliance Score:</span>
-              <span className={`text-2xl font-bold ${getScoreColor(complianceResult.score)}`}>
-                {complianceResult.score}%
-              </span>
-            </div>
-
-            {/* Overall Assessment */}
-            <Alert className={complianceResult.passed ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}>
-              {complianceResult.passed ? (
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-red-600" />
-              )}
-              <AlertDescription className={complianceResult.passed ? 'text-green-900' : 'text-red-900'}>
-                {complianceResult.overall_assessment}
-              </AlertDescription>
-            </Alert>
-
-            {/* Critical Issues - MUST FIX */}
-            {complianceResult.critical_issues?.length > 0 && (
+        <div className="space-y-4 py-4">
+          {errorViolations.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <XCircle className="h-5 w-5 text-red-600" />
+                <h3 className="font-semibold text-red-900">
+                  Errors ({errorViolations.length})
+                </h3>
+              </div>
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-red-700 flex items-center gap-1">
-                  <XCircle className="w-4 h-4" />
-                  Critical Issues (Must Fix):
-                </p>
-                {complianceResult.critical_issues.map((issue) => (
-                  <div key={issue.id} className="p-3 bg-red-50 rounded-lg border border-red-200">
-                    <p className="font-medium text-red-900 text-sm">{issue.issue}</p>
-                    <p className="text-xs text-red-700 mt-1">
-                      <strong>Requirement:</strong> {issue.requirement}
+                {errorViolations.map((violation, idx) => (
+                  <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="font-medium text-sm text-red-900 mb-1">
+                      {violation.rule_name}
                     </p>
-                    {issue.fix && (
-                      <div className="mt-2 flex items-start gap-2">
-                        <div className="flex-1 bg-white p-2 rounded text-xs text-gray-700 border">
-                          <strong>Suggested Fix:</strong> {issue.fix}
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={() => handleInsertFix(issue.fix)}
-                          className="bg-red-600 hover:bg-red-700 text-xs"
-                        >
-                          <Sparkles className="w-3 h-3 mr-1" />
-                          Insert
-                        </Button>
-                      </div>
-                    )}
+                    <p className="text-sm text-red-800">{violation.message}</p>
+                    <p className="text-xs text-red-600 mt-1">Field: {violation.field}</p>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Warnings - Should Fix */}
-            {complianceResult.warnings?.length > 0 && (
+          {warningViolations.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                <h3 className="font-semibold text-yellow-900">
+                  Warnings ({warningViolations.length})
+                </h3>
+              </div>
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-yellow-700 flex items-center gap-1">
-                  <AlertTriangle className="w-4 h-4" />
-                  Warnings (Acknowledge to Continue):
-                </p>
-                {complianceResult.warnings.map((warning) => (
-                  <div key={warning.id} className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                    <div className="flex items-start gap-2">
-                      <Checkbox
-                        checked={acknowledgedIssues.includes(warning.id)}
-                        onCheckedChange={() => toggleAcknowledge(warning.id)}
-                        className="mt-0.5"
-                      />
-                      <div className="flex-1">
-                        <p className="font-medium text-yellow-900 text-sm">{warning.issue}</p>
-                        <p className="text-xs text-yellow-700 mt-1">{warning.recommendation}</p>
-                      </div>
-                    </div>
+                {warningViolations.map((violation, idx) => (
+                  <div key={idx} className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="font-medium text-sm text-yellow-900 mb-1">
+                      {violation.rule_name}
+                    </p>
+                    <p className="text-sm text-yellow-800">{violation.message}</p>
+                    <p className="text-xs text-yellow-600 mt-1">Field: {violation.field}</p>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
+          )}
+        </div>
 
-            {/* Compliant Elements */}
-            {complianceResult.compliant_elements?.length > 0 && (
-              <div className="bg-green-50 p-3 rounded-lg">
-                <p className="text-xs font-semibold text-green-800 mb-1">✓ Compliant Elements:</p>
-                <div className="flex flex-wrap gap-1">
-                  {complianceResult.compliant_elements.map((element, idx) => (
-                    <Badge key={idx} className="bg-green-100 text-green-800 text-xs">
-                      {element}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Override Section (only for warnings, not critical) */}
-            {!complianceResult.passed && complianceResult.critical_issues?.length === 0 && (
-              <div className="border-t pt-4 mt-4">
-                <p className="text-sm font-medium text-gray-700 mb-2">
-                  Override with Justification:
-                </p>
-                <Textarea
-                  placeholder="Provide clinical justification for proceeding without fixing warnings (min 20 characters)..."
-                  value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value)}
-                  rows={2}
-                  className="mb-2"
-                />
-                <Button
-                  onClick={handleOverride}
-                  disabled={!canOverride()}
-                  variant="outline"
-                  className="w-full"
-                >
-                  <FileWarning className="w-4 h-4 mr-2" />
-                  Override & Continue ({acknowledgedIssues.length}/{complianceResult.warnings?.length || 0} acknowledged)
-                </Button>
-              </div>
-            )}
-
-            {/* Re-check Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={checkCompliance}
-              disabled={isChecking}
-              className="w-full"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isChecking ? 'animate-spin' : ''}`} />
-              Re-check Compliance
+        <DialogFooter>
+          {errorViolations.length > 0 ? (
+            <Button onClick={() => setShowDialog(false)} className="w-full">
+              Fix Issues
             </Button>
-          </>
-        )}
-      </CardContent>
-    </Card>
+          ) : (
+            <div className="flex gap-2 w-full">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowDialog(false);
+                  onValidationComplete?.(false, violations);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => {
+                  setShowDialog(false);
+                  onValidationComplete?.(true, violations);
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                Continue Anyway
+              </Button>
+            </div>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
