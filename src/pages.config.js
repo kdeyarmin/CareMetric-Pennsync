@@ -90,6 +90,7 @@ import Patient360View from './pages/Patient360View';
 import InternalMessaging from './pages/InternalMessaging';
 import RegulatoryUpdates from './pages/RegulatoryUpdates';
 import ReferralIntake from './pages/ReferralIntake';
+import ComplianceRulesEngine from './pages/ComplianceRulesEngine';
 import __Layout from './Layout.jsx';
 
 
@@ -137,6 +138,7 @@ export const PAGES = {
     "InternalMessaging": InternalMessaging,
     "RegulatoryUpdates": RegulatoryUpdates,
     "ReferralIntake": ReferralIntake,
+    "ComplianceRulesEngine": ComplianceRulesEngine,
 }
 
 export const pagesConfig = {

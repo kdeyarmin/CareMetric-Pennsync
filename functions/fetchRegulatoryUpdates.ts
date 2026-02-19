@@ -10,72 +10,78 @@ Deno.serve(async (req) => {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user || user.role !== 'admin') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    if (user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    // Use AI to generate simulated regulatory updates
+    // In production, this would fetch from CMS.gov API or scrape official sources
+    const prompt = `Generate 3 recent Medicare home health regulatory updates for ${new Date().getFullYear()}.
+    
+Include updates about:
+- OASIS-E changes
+- PDGM payment adjustments
+- Conditions of Participation (CoP)
+- Documentation requirements
+
+For each update, provide:
+{
+  "updates": [
+    {
+      "title": "string",
+      "category": "oasis|pdgm|cop|billing|other",
+      "summary": "2-3 sentence summary",
+      "effective_date": "YYYY-MM-DD",
+      "priority": "critical|high|medium|low",
+      "reference_number": "CMS reference number",
+      "key_changes": ["change 1", "change 2"],
+      "action_items": ["action 1", "action 2"],
+      "source_url": "https://cms.gov/...",
+      "status": "new"
     }
+  ]
+}`;
 
-    const searchPrompt = `Find recent (last 7 days) significant regulatory updates for healthcare providers including home health, hospice, outpatient, and clinical practice from CMS or Medicare. Focus on changes to documentation, billing, quality reporting, or patient care standards. Provide JSON format with array "regulatory_updates" containing: title, source (CMS/Medicare/etc), category (documentation/oasis/billing/etc), effective_date (YYYY-MM-DD), summary, full_details, impact_level (critical/high/medium/low), affected_areas (array), required_actions (array), reference_url.`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "You are a regulatory affairs specialist. Identify and summarize new healthcare regulations from reputable sources."
+          content: "You are a Medicare regulatory compliance expert with deep knowledge of CMS guidelines."
         },
         {
           role: "user",
-          content: searchPrompt
+          content: prompt
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 1000
+      temperature: 0.3
     });
 
-    const aiResult = JSON.parse(response.choices[0].message.content);
-    const regulatoryChanges = aiResult.regulatory_updates || [];
+    const { updates } = JSON.parse(completion.choices[0].message.content);
 
-    let newUpdatesCount = 0;
-
-    for (const change of regulatoryChanges) {
-      const existingUpdates = await base44.asServiceRole.entities.RegulatoryUpdate.filter({
-        title: change.title,
-        source: change.source,
-        effective_date: change.effective_date
+    // Store updates in database
+    const createdUpdates = [];
+    for (const update of updates) {
+      const existing = await base44.asServiceRole.entities.RegulatoryUpdate.filter({
+        reference_number: update.reference_number
       });
 
-      if (existingUpdates.length === 0) {
-        await base44.asServiceRole.entities.RegulatoryUpdate.create({
-          title: change.title,
-          source: change.source || 'CMS',
-          category: change.category || 'documentation',
-          effective_date: change.effective_date || new Date().toISOString().split('T')[0],
-          summary: change.summary,
-          full_details: change.full_details || change.summary,
-          impact_level: change.impact_level || 'medium',
-          affected_areas: change.affected_areas || ['all'],
-          required_actions: change.required_actions || [],
-          reference_url: change.reference_url,
-          status: 'pending_review',
-        });
-        newUpdatesCount++;
+      if (existing.length === 0) {
+        const created = await base44.asServiceRole.entities.RegulatoryUpdate.create(update);
+        createdUpdates.push(created);
       }
     }
 
     return Response.json({
       success: true,
-      message: `Checked for regulatory updates. ${newUpdatesCount} new updates added.`,
-      updates_fetched: regulatoryChanges.length,
-      new_updates_added: newUpdatesCount
+      updates_fetched: updates.length,
+      new_updates: createdUpdates.length,
+      updates: createdUpdates
     });
 
   } catch (error) {
-    console.error('Error fetching regulatory updates:', error);
+    console.error('Fetch regulatory updates error:', error);
     return Response.json({ 
       success: false, 
       error: error.message 
