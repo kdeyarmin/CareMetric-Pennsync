@@ -54,16 +54,16 @@ export default function Layout({ children, currentPageName }) {
     'FaxAnalytics': 'Fax Analytics',
     'AIAnalyticsDashboard': 'AI Analytics',
     'DocumentLibrary': 'Doc Library',
-    'SecureMessaging': 'Messages',
+    'SecureMessaging': 'Patient Messages',
     'PHIVault': 'PHI Vault',
     'ComplianceDashboard': 'Compliance',
     'ComplianceRulesEngine': 'Rules Engine',
     'AnalyticsDashboard': 'Analytics',
     'KPIDashboard': 'KPI Dashboard',
     'PDGMAnalytics': 'PDGM Analytics',
-    'PatientAlerts': 'Patient Alerts',
-    'ReferralIntake': 'Referral Intake',
-    'RegulatoryUpdates': 'Regulatory Updates',
+    'PatientAlerts': 'Alerts',
+    'ReferralIntake': 'Referrals',
+    'RegulatoryUpdates': 'Updates',
     'TrainingHub': 'Training',
     'Documentation': 'Help & Docs',
     'Settings': 'Settings',
@@ -73,7 +73,7 @@ export default function Layout({ children, currentPageName }) {
     'AgencyDashboard': 'Agency Management',
     'ReportsCenter': 'Reports',
     'BillingManagement': 'Billing',
-    'ClinicalPathways': 'Pathways'
+    'ClinicalPathways': 'Clinical Pathways'
   };
 
   // Determine current page name from URL path
@@ -101,43 +101,56 @@ export default function Layout({ children, currentPageName }) {
       ]
     },
     {
-      title: "Documentation",
+      title: "Clinical",
        items: [
          { name: "Smart Note", icon: FileText, page: "SmartNoteAssistant" },
          { name: "Voice Scribe", icon: Activity, page: "MedicalScribe" },
-         { name: "OASIS", icon: FileText, page: "OASIS" },
          { name: "Care Plans", icon: Target, page: "CarePlanManagement" },
+         { name: "OASIS", icon: FileText, page: "OASIS" },
        ]
      },
     {
-      title: "Fax & Documents",
+      title: "Revenue & Billing",
       items: [
-        { name: "Fax Center", icon: Send, page: "FaxCenter" },
+        { name: "PDGM Analytics", icon: DollarSign, page: "PDGMAnalytics" },
+        { name: "KPI Dashboard", icon: BarChart3, page: "KPIDashboard" },
+        { name: "Billing", icon: DollarSign, page: "BillingManagement" },
       ]
     },
     {
-      title: "Insights",
+      title: "Compliance",
       items: [
-        { name: "KPI Dashboard", icon: BarChart3, page: "KPIDashboard" },
-        { name: "PDGM Analytics", icon: DollarSign, page: "PDGMAnalytics" },
-        { name: "Analytics", icon: BarChart3, page: "AnalyticsDashboard" },
         { name: "Compliance", icon: Shield, page: "ComplianceDashboard" },
-        { name: "Rules Engine", icon: Shield, page: "ComplianceRulesEngine" },
+        { name: "Rules Engine", icon: Lock, page: "ComplianceRulesEngine" },
         { name: "Patient Alerts", icon: Bell, page: "PatientAlerts" },
+        { name: "Regulatory Updates", icon: Shield, page: "RegulatoryUpdates" },
       ]
     },
     {
       title: "Workflow",
       items: [
-        { name: "Referral Intake", icon: Users, page: "ReferralIntake" },
-        { name: "Regulatory Updates", icon: FileText, page: "RegulatoryUpdates" },
+        { name: "Referral Intake", icon: UserCog, page: "ReferralIntake" },
+        { name: "Clinical Pathways", icon: Activity, page: "ClinicalPathways" },
+        { name: "Fax Center", icon: Send, page: "FaxCenter" },
+      ]
+    },
+    {
+      title: "Communication",
+      items: [
+        { name: "Team Messages", icon: MessageSquare, page: "InternalMessaging" },
+        { name: "Patient Messages", icon: MessageSquare, page: "SecureMessaging" },
+      ]
+    },
+    {
+      title: "Reports & Analytics",
+      items: [
+        { name: "Analytics", icon: BarChart3, page: "AnalyticsDashboard" },
+        { name: "Reports Center", icon: FileText, page: "ReportsCenter" },
       ]
     },
     {
       title: "Support",
       items: [
-        { name: "Messages", icon: MessageSquare, page: "SecureMessaging" },
-        { name: "Team Messages", icon: MessageSquare, page: "InternalMessaging" },
         { name: "Training", icon: BookOpen, page: "TrainingHub" },
         { name: "Help & Docs", icon: FileText, page: "Documentation" },
         { name: "Settings", icon: Settings, page: "Settings" },
@@ -157,11 +170,8 @@ export default function Layout({ children, currentPageName }) {
     title: "Administration",
     items: [
       { name: "Admin Dashboard", icon: Award, page: "AdminDashboard" },
-      { name: "User Management", icon: UserCog, page: "UserManagement" },
+      { name: "User Management", icon: Users, page: "UserManagement" },
       { name: "Agency Management", icon: Building2, page: "AgencyDashboard" },
-      { name: "Reports Center", icon: FileText, page: "ReportsCenter" },
-      { name: "Billing", icon: DollarSign, page: "BillingManagement" },
-      { name: "Clinical Pathways", icon: Activity, page: "ClinicalPathways" },
     ]
   } : null;
 
