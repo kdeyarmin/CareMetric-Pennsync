@@ -77,10 +77,10 @@ import OfflineSyncNotification from "@/components/mobile/OfflineSyncNotification
 import { useOfflineNotes } from "@/components/mobile/OfflineNoteCache";
 import ProactiveClinicalOrders from "@/components/clinical/ProactiveClinicalOrders";
 import PriorAuthGenerator from "@/components/clinical/PriorAuthGenerator";
-import VoiceToSOAPConverter from "@/components/smartNote/VoiceToSOAPConverter";
-import SmartEducationRecommender from "@/components/smartNote/SmartEducationRecommender";
-import MultiRegulationComplianceChecker from "@/components/compliance/MultiRegulationComplianceChecker";
-import AIFeedbackTrainer from "@/components/smartNote/AIFeedbackTrainer";
+import VoiceToSOAPConverter from "@/components/smartNote/VoiceToSOAPConverter.jsx";
+import SmartEducationRecommender from "@/components/smartNote/SmartEducationRecommender.jsx";
+import MultiRegulationComplianceChecker from "@/components/compliance/MultiRegulationComplianceChecker.jsx";
+import AIFeedbackTrainer from "@/components/smartNote/AIFeedbackTrainer.jsx";
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
