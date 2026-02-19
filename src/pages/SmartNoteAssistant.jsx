@@ -77,6 +77,10 @@ import OfflineSyncNotification from "@/components/mobile/OfflineSyncNotification
 import { useOfflineNotes } from "@/components/mobile/OfflineNoteCache";
 import ProactiveClinicalOrders from "@/components/clinical/ProactiveClinicalOrders";
 import PriorAuthGenerator from "@/components/clinical/PriorAuthGenerator";
+import VoiceToSOAPConverter from "@/components/smartNote/VoiceToSOAPConverter";
+import SmartEducationRecommender from "@/components/smartNote/SmartEducationRecommender";
+import MultiRegulationComplianceChecker from "@/components/compliance/MultiRegulationComplianceChecker";
+import AIFeedbackTrainer from "@/components/smartNote/AIFeedbackTrainer";
 import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
 import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
 import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
@@ -155,6 +159,9 @@ export default function SmartNoteAssistant() {
   const [conflictData, setConflictData] = useState(null);
   const [showTemplateCreator, setShowTemplateCreator] = useState(false);
   const [templateCreatorInitData, setTemplateCreatorInitData] = useState(null);
+  const [showVoiceToSOAP, setShowVoiceToSOAP] = useState(false);
+  const [selectedRegulations, setSelectedRegulations] = useState(['medicare', 'hipaa']);
+  const [showFeedbackTrainer, setShowFeedbackTrainer] = useState(false);
   const location = useLocation();
   const { isOnline, saveOfflineNote } = useOfflineNotes();
 
@@ -961,29 +968,71 @@ export default function SmartNoteAssistant() {
 
                 {/* AI Clinical Assistance - Consolidated */}
                 {visitType && selectedDiagnosis && (
-                  <UnifiedAIDocumentationAssistant
-                    patientId={selectedPatient}
-                    patientData={patientData}
+                   <UnifiedAIDocumentationAssistant
+                     patientId={selectedPatient}
+                     patientData={patientData}
+                     visitType={visitType}
+                     diagnosis={selectedDiagnosis}
+                     clinicalNotes={roughNotes}
+                     extractedData={extractedData}
+                     onFieldsPopulated={(result) => {
+                       if (result.fields) {
+                         const populated = `\nAssessment: ${result.fields.assessment}\n\nPlan: ${result.fields.plan}`;
+                         setRoughNotes(roughNotes + populated);
+                         toast.success('Fields populated');
+                       }
+                     }}
+                     onCodesGenerated={(result) => {
+                       console.log('ICD-10 codes generated:', result.codes);
+                     }}
+                     onEducationGenerated={(result) => {
+                       setSuggestedEducation([result.material]);
+                       toast.success('Education material generated');
+                     }}
+                     onComplianceChecked={(result) => {
+                       console.log('Compliance check completed:', result);
+                     }}
+                   />
+                 )}
+
+                {/* Voice to SOAP Converter */}
+                {visitType && selectedDiagnosis && (
+                  <VoiceToSOAPConverter
                     visitType={visitType}
                     diagnosis={selectedDiagnosis}
-                    clinicalNotes={roughNotes}
-                    extractedData={extractedData}
-                    onFieldsPopulated={(result) => {
-                      if (result.fields) {
-                        const populated = `\nAssessment: ${result.fields.assessment}\n\nPlan: ${result.fields.plan}`;
-                        setRoughNotes(roughNotes + populated);
-                        toast.success('Fields populated');
-                      }
+                    nurseType={providerType}
+                    patientContext={patientData ? {
+                      patient_name: `${patientData.first_name} ${patientData.last_name}`,
+                      age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+                      diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])]
+                    } : null}
+                    onSOAPGenerated={(soapNote) => {
+                      setRoughNotes(soapNote);
+                      toast.success('SOAP note generated from voice');
                     }}
-                    onCodesGenerated={(result) => {
-                      console.log('ICD-10 codes generated:', result.codes);
+                  />
+                )}
+
+                {/* Smart Education Recommender */}
+                {selectedDiagnosis && (
+                  <SmartEducationRecommender
+                    diagnosis={selectedDiagnosis}
+                    visitType={visitType}
+                    onMaterialsGenerated={(materials) => {
+                      setSuggestedEducation(materials);
+                      toast.success('Education recommendations generated');
                     }}
-                    onEducationGenerated={(result) => {
-                      setSuggestedEducation([result.material]);
-                      toast.success('Education material generated');
-                    }}
-                    onComplianceChecked={(result) => {
-                      console.log('Compliance check completed:', result);
+                  />
+                )}
+
+                {/* Multi-Regulation Compliance Checker */}
+                {visitType && selectedDiagnosis && roughNotes && roughNotes.length > 100 && (
+                  <MultiRegulationComplianceChecker
+                    noteContent={roughNotes}
+                    visitType={visitType}
+                    regulations={selectedRegulations}
+                    onComplianceAnalyzed={(analysis) => {
+                      console.log('Multi-regulation compliance analysis:', analysis);
                     }}
                   />
                 )}
@@ -1292,13 +1341,35 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
                 }}
               />
 
-              {/* AI Feedback */}
+              {/* AI Feedback & Training */}
               <InlineAIFeedback
                 suggestionType="note_enhancement"
                 suggestionContent={enhancedNote?.substring(0, 500)}
                 userEmail={currentUser?.email}
                 contextData={{ visit_type: visitType, diagnosis: selectedDiagnosis, care_setting: careSetting }}
               />
+
+              {/* AI Feedback Trainer */}
+              <AIFeedbackTrainer
+                enhancedNote={isEditMode ? editedNote : enhancedNote}
+                originalNote={roughNotes}
+                visitType={visitType}
+                outputType="note"
+                userEmail={currentUser?.email}
+                onFeedbackSubmitted={() => {
+                  toast.success('Your feedback helps improve the AI');
+                }}
+              />
+
+              {currentUser?.role === 'admin' && (
+                <Button 
+                  onClick={() => setShowFeedbackTrainer(true)}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Train AI From User Feedback (Admin)
+                </Button>
+              )}
 
               {/* Unified Suggestions & Quick Actions */}
               <UnifiedSuggestionsApplier
