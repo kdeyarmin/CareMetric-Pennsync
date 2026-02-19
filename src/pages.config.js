@@ -94,6 +94,7 @@ import ComplianceRulesEngine from './pages/ComplianceRulesEngine';
 import ReportsCenter from './pages/ReportsCenter';
 import ClinicalPathways from './pages/ClinicalPathways';
 import BillingManagement from './pages/BillingManagement';
+import PDGMAnalytics from './pages/PDGMAnalytics';
 import __Layout from './Layout.jsx';
 
 
@@ -145,6 +146,7 @@ export const PAGES = {
     "ReportsCenter": ReportsCenter,
     "ClinicalPathways": ClinicalPathways,
     "BillingManagement": BillingManagement,
+    "PDGMAnalytics": PDGMAnalytics,
 }
 
 export const pagesConfig = {

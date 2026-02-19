@@ -28,7 +28,8 @@ import {
   Send,
   Clock,
   Lock,
-  MessageSquare
+  MessageSquare,
+  DollarSign
 } from "lucide-react";
 
 export default function Layout({ children, currentPageName }) {
@@ -59,6 +60,7 @@ export default function Layout({ children, currentPageName }) {
     'ComplianceRulesEngine': 'Rules Engine',
     'AnalyticsDashboard': 'Analytics',
     'KPIDashboard': 'KPI Dashboard',
+    'PDGMAnalytics': 'PDGM Analytics',
     'PatientAlerts': 'Patient Alerts',
     'ReferralIntake': 'Referral Intake',
     'RegulatoryUpdates': 'Regulatory Updates',
@@ -68,7 +70,10 @@ export default function Layout({ children, currentPageName }) {
     'EnterpriseAnalytics': 'Agency Analytics',
     'AdminDashboard': 'Admin Dashboard',
     'UserManagement': 'User Management',
-    'AgencyDashboard': 'Agency Management'
+    'AgencyDashboard': 'Agency Management',
+    'ReportsCenter': 'Reports',
+    'BillingManagement': 'Billing',
+    'ClinicalPathways': 'Pathways'
   };
 
   // Determine current page name from URL path
@@ -114,6 +119,7 @@ export default function Layout({ children, currentPageName }) {
       title: "Insights",
       items: [
         { name: "KPI Dashboard", icon: BarChart3, page: "KPIDashboard" },
+        { name: "PDGM Analytics", icon: DollarSign, page: "PDGMAnalytics" },
         { name: "Analytics", icon: BarChart3, page: "AnalyticsDashboard" },
         { name: "Compliance", icon: Shield, page: "ComplianceDashboard" },
         { name: "Rules Engine", icon: Shield, page: "ComplianceRulesEngine" },
