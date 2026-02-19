@@ -143,7 +143,9 @@ export default function Dashboard() {
         <DashboardWidgetCustomizer widgets={widgets} setWidgets={setWidgets} onClose={() => setShowCustomizer(false)} />
       )}
 
+      <SessionTimeoutWarning />
       <MobileOfflineBanner />
+      <OfflineDataSync />
 
       {announcements.length > 0 && (
         <Card>
@@ -271,42 +273,9 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-red-500" />
-                High Risk Patients
-              </span>
-              <Link to={createPageUrl("Patients")}><Button variant="ghost" size="sm">View All</Button></Link>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {highRiskPatients.length === 0 ? (
-              <div className="text-center py-8">
-                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
-                <p className="text-sm font-medium text-green-600">All Stable</p>
-                <p className="text-xs text-muted-foreground">No high-risk patients</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {highRiskPatients.map((patient) => (
-                  <Link key={patient.id} to={createPageUrl("PatientDetails") + `?id=${patient.id}`}>
-                    <div className="flex items-center justify-between p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 hover:shadow-md transition-all card-hover">
-                      <div>
-                        <p className="text-sm font-medium">{patient.first_name} {patient.last_name}</p>
-                        <p className="text-xs text-muted-foreground">{patient.primary_diagnosis || "No diagnosis"}</p>
-                      </div>
-                      <Badge variant="destructive">High Risk</Badge>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <QuickAccessPatientCard />
 
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
