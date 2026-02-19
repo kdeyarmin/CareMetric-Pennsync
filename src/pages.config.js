@@ -86,6 +86,10 @@ import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
 import KPIDashboard from './pages/KPIDashboard';
+import Patient360View from './pages/Patient360View';
+import InternalMessaging from './pages/InternalMessaging';
+import RegulatoryUpdates from './pages/RegulatoryUpdates';
+import ReferralIntake from './pages/ReferralIntake';
 import __Layout from './Layout.jsx';
 
 
@@ -129,6 +133,10 @@ export const PAGES = {
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
     "KPIDashboard": KPIDashboard,
+    "Patient360View": Patient360View,
+    "InternalMessaging": InternalMessaging,
+    "RegulatoryUpdates": RegulatoryUpdates,
+    "ReferralIntake": ReferralIntake,
 }
 
 export const pagesConfig = {
