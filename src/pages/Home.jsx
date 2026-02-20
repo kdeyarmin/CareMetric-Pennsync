@@ -31,6 +31,7 @@ import MobileOfflineBanner from "@/components/mobile/MobileOfflineBanner";
 import ProactiveComplianceTraining from "@/components/training/ProactiveComplianceTraining";
 import CollapsibleMobileSection from "@/components/mobile/CollapsibleMobileSection";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
+import TrialStatusBanner from "@/components/subscription/TrialStatusBanner";
 
 export default function Home() {
   const [showCustomizer, setShowCustomizer] = useState(false);
@@ -119,6 +120,7 @@ export default function Home() {
     <div className="p-4 sm:p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       <SessionTimeoutWarning />
       <OfflineDataSync />
+      <TrialStatusBanner />
       
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>

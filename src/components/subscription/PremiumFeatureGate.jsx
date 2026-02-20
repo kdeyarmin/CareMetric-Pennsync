@@ -63,12 +63,27 @@ export default function PremiumFeatureGate({
   
   // Check trial: must be trialing AND within 14-day window
   let hasTrialAccess = false;
-  if (allowTrial && subscription && subscription.status === 'trialing' && subscription.trial_end) {
+  if (subscription && subscription.status === 'trialing' && subscription.trial_end) {
     const trialEnd = new Date(subscription.trial_end);
-    hasTrialAccess = new Date() <= trialEnd;
+    const now = new Date();
+    hasTrialAccess = now <= trialEnd;
+    console.log('[PremiumFeatureGate] Trial check:', { 
+      trialEnd: trialEnd.toISOString(), 
+      now: now.toISOString(), 
+      hasAccess: hasTrialAccess 
+    });
   }
   
-  // No access if: no subscription, expired, canceled, or any non-active/non-trialing status
+  // User has access ONLY if:
+  // - They're an admin, OR
+  // - They have an active paid subscription, OR  
+  // - They have a lifetime free subscription, OR
+  // - They have a valid trial (trialing status AND within 14-day window)
+  // 
+  // BLOCKED if:
+  // - No subscription at all
+  // - Subscription is expired, canceled, past_due, unpaid, incomplete, or paused
+  // - Trial period has ended (even if status is still 'trialing')
   const hasAccess = isAdmin || hasActiveSubscription || hasTrialAccess || hasLifetimeFree;
 
   // Show paywall if no access
