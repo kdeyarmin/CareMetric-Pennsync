@@ -180,7 +180,7 @@ export default function PaywallScreen({
               <ArrowRight className="w-5 h-5 ml-2" />
             </Button>
           </Link>
-          <Link to={createPageUrl("Dashboard")}>
+          <Link to={createPageUrl("Home")}>
             <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg px-8 py-6">
               Back to Dashboard
             </Button>

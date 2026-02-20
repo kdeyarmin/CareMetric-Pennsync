@@ -42,15 +42,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Auto-expire trial if past trial_end date
+    // CRITICAL: Auto-expire trial if past trial_end date
+    // This ensures users cannot access features after trial ends
     if (subscription.status === 'trialing' && subscription.trial_end) {
       const trialEnd = new Date(subscription.trial_end);
-      if (new Date() > trialEnd) {
-        console.log('[getMySubscription] Trial expired for:', user.email);
+      const now = new Date();
+      if (now > trialEnd) {
+        console.log('[getMySubscription] ⚠️ Trial expired for:', user.email, 'Expired on:', trialEnd.toISOString());
         await base44.asServiceRole.entities.Subscription.update(subscription.id, {
           status: 'expired'
         });
         subscription = { ...subscription, status: 'expired' };
+      } else {
+        const daysRemaining = Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24));
+        console.log('[getMySubscription] ✅ Trial active for:', user.email, 'Days remaining:', daysRemaining);
       }
     }
 
