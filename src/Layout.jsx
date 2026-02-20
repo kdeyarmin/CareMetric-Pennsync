@@ -38,6 +38,7 @@ export default function Layout({ children, currentPageName }) {
 
   // Map page names to their display labels
   const pageNameMap = {
+    'Home': 'Dashboard',
     'Dashboard': 'Dashboard',
     'Patients': 'Patients',
     'Patient360View': 'Patient 360',
@@ -95,7 +96,7 @@ export default function Layout({ children, currentPageName }) {
     {
       title: "Main",
       items: [
-        { name: "Dashboard", icon: Home, page: "Dashboard" },
+        { name: "Dashboard", icon: Home, page: "Home" },
         { name: "Patients", icon: Users, page: "Patients" },
         { name: "Tasks", icon: CheckCircle, page: "Tasks" },
       ]

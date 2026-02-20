@@ -22,6 +22,9 @@ import {
   Award,
   Settings
 } from "lucide-react";
+import SessionTimeoutWarning from "@/components/security/SessionTimeoutWarning";
+import OfflineDataSync from "@/components/mobile/OfflineDataSync";
+import QuickAccessPatientCard from "@/components/dashboard/QuickAccessPatientCard";
 import TimeSavingsWidget from "@/components/dashboard/TimeSavingsWidget";
 import DashboardWidgetCustomizer, { useDashboardWidgets } from "@/components/dashboard/DashboardWidgetCustomizer";
 import MobileOfflineBanner from "@/components/mobile/MobileOfflineBanner";
@@ -29,7 +32,7 @@ import ProactiveComplianceTraining from "@/components/training/ProactiveComplian
 import CollapsibleMobileSection from "@/components/mobile/CollapsibleMobileSection";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
-export default function Dashboard() {
+export default function Home() {
   const [showCustomizer, setShowCustomizer] = useState(false);
   const { widgets, setWidgets, isVisible } = useDashboardWidgets();
 
@@ -114,6 +117,9 @@ export default function Dashboard() {
   return (
     <PremiumFeatureGate featureName="Dashboard" featureDescription="Your central hub for patient management, tasks, and clinical insights." allowTrial={true}>
     <div className="p-4 sm:p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
+      <SessionTimeoutWarning />
+      <OfflineDataSync />
+      
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-700 to-blue-900 bg-clip-text text-transparent">
@@ -143,9 +149,7 @@ export default function Dashboard() {
         <DashboardWidgetCustomizer widgets={widgets} setWidgets={setWidgets} onClose={() => setShowCustomizer(false)} />
       )}
 
-      <SessionTimeoutWarning />
       <MobileOfflineBanner />
-      <OfflineDataSync />
 
       {announcements.length > 0 && (
         <Card>
@@ -304,9 +308,7 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         {isVisible("compliance") && (
           <Card>
             <CardHeader>

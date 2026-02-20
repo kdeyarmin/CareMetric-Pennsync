@@ -51,9 +51,11 @@ import AIAnalyticsDashboard from './pages/AIAnalyticsDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import AgencyDashboard from './pages/AgencyDashboard';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import BillingManagement from './pages/BillingManagement';
 import CarePlanManagement from './pages/CarePlanManagement';
+import ClinicalPathways from './pages/ClinicalPathways';
 import ComplianceDashboard from './pages/ComplianceDashboard';
-import Dashboard from './pages/Dashboard';
+import ComplianceRulesEngine from './pages/ComplianceRulesEngine';
 import DeleteAccount from './pages/DeleteAccount';
 import DocumentLibrary from './pages/DocumentLibrary';
 import Documentation from './pages/Documentation';
@@ -64,16 +66,23 @@ import FaxAnalytics from './pages/FaxAnalytics';
 import FaxCenter from './pages/FaxCenter';
 import FaxQueue from './pages/FaxQueue';
 import IncomingFaxes from './pages/IncomingFaxes';
+import InternalMessaging from './pages/InternalMessaging';
+import KPIDashboard from './pages/KPIDashboard';
 import Marketing from './pages/Marketing';
 import MedicalScribe from './pages/MedicalScribe';
 import MySubscription from './pages/MySubscription';
 import OASIS from './pages/OASIS';
+import PDGMAnalytics from './pages/PDGMAnalytics';
 import PHIVault from './pages/PHIVault';
+import Patient360View from './pages/Patient360View';
 import PatientAlerts from './pages/PatientAlerts';
 import PatientDetails from './pages/PatientDetails';
 import Patients from './pages/Patients';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import ReferralIntake from './pages/ReferralIntake';
+import RegulatoryUpdates from './pages/RegulatoryUpdates';
+import ReportsCenter from './pages/ReportsCenter';
 import SecureMessaging from './pages/SecureMessaging';
 import SendFax from './pages/SendFax';
 import Settings from './pages/Settings';
@@ -85,16 +94,7 @@ import TeamCollaboration from './pages/TeamCollaboration';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import KPIDashboard from './pages/KPIDashboard';
-import Patient360View from './pages/Patient360View';
-import InternalMessaging from './pages/InternalMessaging';
-import RegulatoryUpdates from './pages/RegulatoryUpdates';
-import ReferralIntake from './pages/ReferralIntake';
-import ComplianceRulesEngine from './pages/ComplianceRulesEngine';
-import ReportsCenter from './pages/ReportsCenter';
-import ClinicalPathways from './pages/ClinicalPathways';
-import BillingManagement from './pages/BillingManagement';
-import PDGMAnalytics from './pages/PDGMAnalytics';
+import Home from './pages/Home';
 import __Layout from './Layout.jsx';
 
 
@@ -103,9 +103,11 @@ export const PAGES = {
     "AdminDashboard": AdminDashboard,
     "AgencyDashboard": AgencyDashboard,
     "AnalyticsDashboard": AnalyticsDashboard,
+    "BillingManagement": BillingManagement,
     "CarePlanManagement": CarePlanManagement,
+    "ClinicalPathways": ClinicalPathways,
     "ComplianceDashboard": ComplianceDashboard,
-    "Dashboard": Dashboard,
+    "ComplianceRulesEngine": ComplianceRulesEngine,
     "DeleteAccount": DeleteAccount,
     "DocumentLibrary": DocumentLibrary,
     "Documentation": Documentation,
@@ -116,16 +118,23 @@ export const PAGES = {
     "FaxCenter": FaxCenter,
     "FaxQueue": FaxQueue,
     "IncomingFaxes": IncomingFaxes,
+    "InternalMessaging": InternalMessaging,
+    "KPIDashboard": KPIDashboard,
     "Marketing": Marketing,
     "MedicalScribe": MedicalScribe,
     "MySubscription": MySubscription,
     "OASIS": OASIS,
+    "PDGMAnalytics": PDGMAnalytics,
     "PHIVault": PHIVault,
+    "Patient360View": Patient360View,
     "PatientAlerts": PatientAlerts,
     "PatientDetails": PatientDetails,
     "Patients": Patients,
     "PaymentSuccess": PaymentSuccess,
     "PrivacyPolicy": PrivacyPolicy,
+    "ReferralIntake": ReferralIntake,
+    "RegulatoryUpdates": RegulatoryUpdates,
+    "ReportsCenter": ReportsCenter,
     "SecureMessaging": SecureMessaging,
     "SendFax": SendFax,
     "Settings": Settings,
@@ -137,16 +146,7 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "KPIDashboard": KPIDashboard,
-    "Patient360View": Patient360View,
-    "InternalMessaging": InternalMessaging,
-    "RegulatoryUpdates": RegulatoryUpdates,
-    "ReferralIntake": ReferralIntake,
-    "ComplianceRulesEngine": ComplianceRulesEngine,
-    "ReportsCenter": ReportsCenter,
-    "ClinicalPathways": ClinicalPathways,
-    "BillingManagement": BillingManagement,
-    "PDGMAnalytics": PDGMAnalytics,
+    "Home": Home,
 }
 
 export const pagesConfig = {
