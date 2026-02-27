@@ -180,27 +180,27 @@ export default function Layout({ children, currentPageName }) {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-50 bg-white dark:bg-slate-800 border-b border-slate-300 dark:border-slate-600 shadow-md">
-        <div className="flex items-start justify-between px-4 py-2">
-          <div className="flex items-start gap-4 flex-1">
+        <div className="flex items-center justify-between px-3 sm:px-4 py-2 h-14">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden mt-1"
+              className="lg:hidden h-9 w-9 flex-shrink-0"
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
             <img 
               src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/879f7eecc_caremetric_ai_logo-removebg-preview.png" 
               alt="CareMetric AI" 
-              className="h-12 sm:h-14 w-auto flex-shrink-0"
+              className="h-9 sm:h-11 w-auto flex-shrink-0"
             />
-          </div>
-          <div className="flex items-center gap-2">
-            {user?.email && <FaxNotificationBell userEmail={user.email} />}
-            <span className="text-xs sm:text-sm font-medium text-blue-900 hidden sm:block">
+            <span className="text-xs font-semibold text-blue-900 truncate hidden xs:block sm:block ml-1">
               {displayPageName}
             </span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {user?.email && <FaxNotificationBell userEmail={user.email} />}
           </div>
         </div>
       </header>
