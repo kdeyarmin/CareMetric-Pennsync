@@ -256,22 +256,22 @@ export default function Home() {
 
       {isVisible("quickActions") && (
         <Card>
-          <CardHeader className="p-3 sm:p-4">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
+          <CardHeader className="p-3 sm:p-4 pb-2">
+            <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+              <Activity className="h-4 w-4" />
               Quick Actions
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 sm:p-4">
-            <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+          <CardContent className="p-2 sm:p-4 pt-1">
+            <div className="grid gap-2 grid-cols-4 sm:grid-cols-4 md:grid-cols-7">
               {quickActions.map((action) => (
                 <Link key={action.page} to={createPageUrl(action.page)} className="block">
-                  <Button variant="outline" className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-slate-800/60 dark:to-slate-900/40 hover:from-blue-100 hover:to-slate-100 hover:shadow-md transition-all rounded-lg card-hover touch-target">
-                    <div className={`p-1.5 sm:p-2 rounded-lg ${action.color}`}>
-                      <action.icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  <button className="w-full flex flex-col items-center justify-center gap-1 p-2 sm:p-3 bg-gradient-to-br from-blue-50 to-slate-50 hover:from-blue-100 hover:to-slate-100 active:scale-95 rounded-xl border border-slate-200 transition-all touch-manipulation">
+                    <div className={`p-2 rounded-lg ${action.color}`}>
+                      <action.icon className="h-4 w-4 text-white" />
                     </div>
-                    <span className="text-[10px] sm:text-xs font-medium text-center leading-tight px-1">{action.label}</span>
-                  </Button>
+                    <span className="text-[10px] sm:text-xs font-medium text-center leading-tight">{action.label}</span>
+                  </button>
                 </Link>
               ))}
             </div>
