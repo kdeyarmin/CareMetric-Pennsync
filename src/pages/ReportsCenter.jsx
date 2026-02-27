@@ -108,10 +108,10 @@ export default function ReportsCenter() {
 
         {/* Report Types */}
         <Tabs value={reportType} onValueChange={setReportType}>
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="pdgm">PDGM Revenue</TabsTrigger>
             <TabsTrigger value="nurse">Nurse Performance</TabsTrigger>
-          <TabsTrigger value="nurse-trends">Nurse Trends</TabsTrigger>
+            <TabsTrigger value="nurse-trends">Nurse Trends</TabsTrigger>
             <TabsTrigger value="outcomes">Patient Outcomes</TabsTrigger>
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
           </TabsList>
