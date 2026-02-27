@@ -208,7 +208,7 @@ export default function Layout({ children, currentPageName }) {
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className={`fixed lg:sticky top-[57px] left-0 z-40 h-[calc(100vh-57px)] w-56 bg-white dark:bg-slate-800 border-r border-slate-300 dark:border-slate-600 transition-all duration-300 overflow-y-auto shadow-md ${
+          className={`fixed lg:sticky top-14 left-0 z-40 h-[calc(100vh-3.5rem)] w-56 bg-white dark:bg-slate-800 border-r border-slate-300 dark:border-slate-600 transition-all duration-300 overflow-y-auto shadow-md ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           }`}
         >
