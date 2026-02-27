@@ -113,7 +113,7 @@ export default function ReportsCenter() {
         <Tabs value={reportType} onValueChange={setReportType}>
           <div className="overflow-x-auto scrollbar-hide -mx-3 sm:-mx-6 px-3 sm:px-6">
             <TabsList className="inline-flex w-max min-w-full gap-0.5 h-auto p-1">
-              <TabsTrigger value="pdgm" className="whitespace-nowrap text-xs sm:text-sm">PDGM Revenue</TabsTrigger>
+              {isAdmin && <TabsTrigger value="pdgm" className="whitespace-nowrap text-xs sm:text-sm">PDGM Revenue</TabsTrigger>}
               <TabsTrigger value="nurse" className="whitespace-nowrap text-xs sm:text-sm">Nurse Performance</TabsTrigger>
               <TabsTrigger value="nurse-trends" className="whitespace-nowrap text-xs sm:text-sm">Nurse Trends</TabsTrigger>
               <TabsTrigger value="outcomes" className="whitespace-nowrap text-xs sm:text-sm">Patient Outcomes</TabsTrigger>
