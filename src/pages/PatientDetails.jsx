@@ -108,6 +108,7 @@ import AIClinicalWorkflowPanel from "../components/clinical/AIClinicalWorkflowPa
 import ProactiveTaskAutomation from "../components/clinical/ProactiveTaskAutomation";
 import AIClinicalAssistantPanel from "../components/clinical/AIClinicalAssistantPanel";
 import AdvancedCarePlanAI from "../components/carePlan/AdvancedCarePlanAI";
+import AIPatientChartSummary from "../components/patient/AIPatientChartSummary";
 
 export default function PatientDetails() {
   const navigate = useNavigate();
