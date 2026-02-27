@@ -46,6 +46,7 @@ import RealTimeDashboardWidget from "../components/admin/RealTimeDashboardWidget
 import AgencyManagement from "../components/admin/AgencyManagement";
 import SubscriptionAnalyticsDashboard from "../components/admin/SubscriptionAnalyticsDashboard";
 import InactiveUserEmailManager from "../components/admin/InactiveUserEmailManager";
+import GranularUserActivityPanel from "../components/admin/GranularUserActivityPanel";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
