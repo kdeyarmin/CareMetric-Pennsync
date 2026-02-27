@@ -4,11 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, TrendingUp, Heart, Shield, Download, RefreshCw } from "lucide-react";
+import { BarChart3, TrendingUp, Heart, Shield, Download, RefreshCw, AlertTriangle, Target, Activity } from "lucide-react";
 import { toast } from "sonner";
 import PatientOutcomeAnalytics from "@/components/analytics/PatientOutcomeAnalytics";
 import ComplianceQualityTrends from "@/components/analytics/ComplianceQualityTrends";
 import ReadmissionRiskAnalytics from "@/components/analytics/ReadmissionRiskAnalytics";
+import PredictiveReadmissionModel from "@/components/analytics/PredictiveReadmissionModel";
+import CarePlanAIRecommendations from "@/components/analytics/CarePlanAIRecommendations";
+import HighRiskPatientIdentifier from "@/components/analytics/HighRiskPatientIdentifier";
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
 export default function AIAnalyticsDashboard() {
