@@ -66,17 +66,17 @@ export default function ReportsCenter() {
 
   return (
     <PremiumFeatureGate featureName="Reports Center" featureDescription="Generate comprehensive operational, clinical, and financial analytics reports." allowTrial={true}>
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 p-3 sm:p-6">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Reports Center</h1>
-            <p className="text-sm text-slate-600 mt-1">Generate comprehensive analytics reports</p>
+            <h1 className="text-xl sm:text-3xl font-bold text-slate-900">Reports Center</h1>
+            <p className="text-xs sm:text-sm text-slate-600 mt-0.5 sm:mt-1">Generate comprehensive analytics reports</p>
           </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Download className="h-4 w-4 mr-2" />
-            Export PDF
+          <Button className="bg-blue-600 hover:bg-blue-700 flex-shrink-0" size="sm">
+            <Download className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Export PDF</span>
           </Button>
         </div>
 
