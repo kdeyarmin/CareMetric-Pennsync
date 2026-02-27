@@ -394,6 +394,16 @@ export default function PatientDetails() {
           </CardContent>
         </Card>
 
+        {/* AI Patient Chart Summary - Top of profile */}
+        <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
+          <AIPatientChartSummary
+            patient={patient}
+            visits={visits}
+            carePlans={carePlans}
+            incidents={incidents}
+          />
+        </div>
+
         {/* AI Clinical Workflow Automation */}
         <div className="mb-3 sm:mb-4 w-full max-w-full overflow-hidden min-w-0">
           <AIClinicalWorkflowPanel 
