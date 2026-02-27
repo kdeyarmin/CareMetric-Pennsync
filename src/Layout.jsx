@@ -115,7 +115,6 @@ export default function Layout({ children, currentPageName }) {
       items: [
         { name: "PDGM Analytics", icon: DollarSign, page: "PDGMAnalytics" },
         { name: "KPI Dashboard", icon: BarChart3, page: "KPIDashboard" },
-        { name: "Billing", icon: DollarSign, page: "BillingManagement" },
       ]
     },
     {
