@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import PDGMRevenueReport from '@/components/reports/PDGMRevenueReport';
 import PatientOutcomeAnalytics from '@/components/analytics/PatientOutcomeAnalytics';
-import ComplianceScorecard from '@/components/analytics/ComplianceScorecard';
+import ComplianceTrendsChart from '@/components/analytics/ComplianceTrendsChart';
 import NursePerformanceTrends from '@/components/analytics/NursePerformanceTrends';
 import PremiumFeatureGate from '@/components/subscription/PremiumFeatureGate';
 import { 
@@ -161,7 +161,7 @@ export default function ReportsCenter() {
 
           {/* Nurse Trends Report */}
           <TabsContent value="nurse-trends">
-            <NursePerformanceTrends />
+            <NursePerformanceTrends dateRange={30} />
           </TabsContent>
 
           {/* Patient Outcomes Report */}
@@ -171,7 +171,7 @@ export default function ReportsCenter() {
 
           {/* Compliance Report */}
           <TabsContent value="compliance">
-            <ComplianceScorecard />
+            <ComplianceTrendsChart />
           </TabsContent>
         </Tabs>
       </div>
