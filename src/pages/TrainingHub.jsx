@@ -22,6 +22,7 @@ import StaffProgressTracker from "../components/training/StaffProgressTracker";
 import SkillGapAnalysisPanel from "../components/training/SkillGapAnalysisPanel";
 import PersonalTrainingDashboard from "../components/training/PersonalTrainingDashboard";
 import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
+import YearlyInservices from "../components/training/YearlyInservices";
 
 export default function TrainingHub() {
   const [selectedTraining, setSelectedTraining] = useState(null);
