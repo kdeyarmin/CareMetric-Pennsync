@@ -7,6 +7,7 @@ import { base44 } from "@/api/base44Client";
 import MobileFieldToolbar from "@/components/mobile/MobileFieldToolbar";
 import FaxNotificationBell from "@/components/fax/FaxNotificationBell";
 import FavoritesBar from "@/components/navigation/FavoritesBar";
+import GlobalSearch from "@/components/search/GlobalSearch";
 import {
   Home,
   Users,
