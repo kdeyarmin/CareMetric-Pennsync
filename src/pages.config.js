@@ -51,7 +51,6 @@ import AIAnalyticsDashboard from './pages/AIAnalyticsDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import AgencyDashboard from './pages/AgencyDashboard';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
-import BillingManagement from './pages/BillingManagement';
 import CarePlanManagement from './pages/CarePlanManagement';
 import ClinicalPathways from './pages/ClinicalPathways';
 import ComplianceDashboard from './pages/ComplianceDashboard';
@@ -103,7 +102,6 @@ export const PAGES = {
     "AdminDashboard": AdminDashboard,
     "AgencyDashboard": AgencyDashboard,
     "AnalyticsDashboard": AnalyticsDashboard,
-    "BillingManagement": BillingManagement,
     "CarePlanManagement": CarePlanManagement,
     "ClinicalPathways": ClinicalPathways,
     "ComplianceDashboard": ComplianceDashboard,
