@@ -179,7 +179,7 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 bg-white dark:bg-slate-800 border-b border-slate-300 dark:border-slate-600 shadow-md">
+      <header className="sticky top-0 z-50 bg-white dark:bg-slate-800 border-b border-slate-300 dark:border-slate-600 shadow-md h-14">
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 h-14">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Button
