@@ -65,6 +65,7 @@ import FAQ from './pages/FAQ';
 import FaxAnalytics from './pages/FaxAnalytics';
 import FaxCenter from './pages/FaxCenter';
 import FaxQueue from './pages/FaxQueue';
+import Home from './pages/Home';
 import IncomingFaxes from './pages/IncomingFaxes';
 import InternalMessaging from './pages/InternalMessaging';
 import KPIDashboard from './pages/KPIDashboard';
@@ -94,7 +95,6 @@ import TeamCollaboration from './pages/TeamCollaboration';
 import TermsOfUse from './pages/TermsOfUse';
 import TrainingHub from './pages/TrainingHub';
 import UserManagement from './pages/UserManagement';
-import Home from './pages/Home';
 import __Layout from './Layout.jsx';
 
 
@@ -117,6 +117,7 @@ export const PAGES = {
     "FaxAnalytics": FaxAnalytics,
     "FaxCenter": FaxCenter,
     "FaxQueue": FaxQueue,
+    "Home": Home,
     "IncomingFaxes": IncomingFaxes,
     "InternalMessaging": InternalMessaging,
     "KPIDashboard": KPIDashboard,
@@ -146,7 +147,6 @@ export const PAGES = {
     "TermsOfUse": TermsOfUse,
     "TrainingHub": TrainingHub,
     "UserManagement": UserManagement,
-    "Home": Home,
 }
 
 export const pagesConfig = {

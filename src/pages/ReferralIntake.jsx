@@ -17,6 +17,7 @@ import {
   Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import PremiumFeatureGate from '../components/subscription/PremiumFeatureGate';
 
 export default function ReferralIntake() {
   const [extractedData, setExtractedData] = useState(null);
@@ -151,6 +152,7 @@ export default function ReferralIntake() {
   const rejectedReferrals = referrals?.filter(r => r.status === 'rejected') || [];
 
   return (
+    <PremiumFeatureGate featureName="Referral Intake" featureDescription="Manage and process new patient referrals with AI-powered data extraction." allowTrial={true}>
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
@@ -401,5 +403,6 @@ export default function ReferralIntake() {
         </Card>
       </div>
     </div>
+    </PremiumFeatureGate>
   );
 }

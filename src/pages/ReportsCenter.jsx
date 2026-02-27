@@ -6,6 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import PDGMRevenueReport from '@/components/reports/PDGMRevenueReport';
+import PatientOutcomeAnalytics from '@/components/analytics/PatientOutcomeAnalytics';
+import ComplianceScorecard from '@/components/analytics/ComplianceScorecard';
+import NursePerformanceTrends from '@/components/analytics/NursePerformanceTrends';
+import PremiumFeatureGate from '@/components/subscription/PremiumFeatureGate';
 import { 
   FileText, 
   Download, 
@@ -61,6 +65,7 @@ export default function ReportsCenter() {
   });
 
   return (
+    <PremiumFeatureGate featureName="Reports Center" featureDescription="Generate comprehensive operational, clinical, and financial analytics reports." allowTrial={true}>
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
@@ -106,6 +111,7 @@ export default function ReportsCenter() {
           <TabsList className="grid grid-cols-4 w-full">
             <TabsTrigger value="pdgm">PDGM Revenue</TabsTrigger>
             <TabsTrigger value="nurse">Nurse Performance</TabsTrigger>
+          <TabsTrigger value="nurse-trends">Nurse Trends</TabsTrigger>
             <TabsTrigger value="outcomes">Patient Outcomes</TabsTrigger>
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
           </TabsList>
@@ -153,38 +159,19 @@ export default function ReportsCenter() {
             </Card>
           </TabsContent>
 
+          {/* Nurse Trends Report */}
+          <TabsContent value="nurse-trends">
+            <NursePerformanceTrends />
+          </TabsContent>
+
           {/* Patient Outcomes Report */}
           <TabsContent value="outcomes">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5" />
-                  Patient Outcomes Report
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-600 text-center py-8">
-                  Patient outcomes analysis coming soon
-                </p>
-              </CardContent>
-            </Card>
+            <PatientOutcomeAnalytics />
           </TabsContent>
 
           {/* Compliance Report */}
           <TabsContent value="compliance">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Compliance Report
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-600 text-center py-8">
-                  Compliance analysis coming soon
-                </p>
-              </CardContent>
-            </Card>
+            <ComplianceScorecard />
           </TabsContent>
         </Tabs>
       </div>
