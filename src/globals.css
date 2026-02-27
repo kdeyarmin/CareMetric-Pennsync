@@ -377,6 +377,34 @@
     box-shadow: 0 0 20px 0 rgb(59 130 246 / 0.2), 0 4px 6px -1px rgb(0 0 0 / 0.1);
   }
 
+  /* Better tap targets for mobile */
+  @media (hover: none) and (pointer: coarse) {
+    a, button, [role="button"], [role="tab"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    /* But allow smaller inline elements */
+    .allow-small {
+      min-height: unset;
+      min-width: unset;
+    }
+  }
+
+  /* Responsive table on mobile */
+  .mobile-table-card {
+    display: block;
+  }
+  .mobile-table-card thead {
+    display: none;
+  }
+  .mobile-table-card tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
   /* Mobile-safe glass effect */
   @supports (backdrop-filter: blur(12px)) {
     .glass-effect {
