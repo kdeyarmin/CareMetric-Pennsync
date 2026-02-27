@@ -218,7 +218,7 @@ export default function Home() {
       {isVisible("timeSavings") && <TimeSavingsWidget />}
 
       {isVisible("secondaryStats") && (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
           <Card className="bg-gradient-to-br from-blue-200 to-slate-300 border-blue-400">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Care Plans</CardTitle>
