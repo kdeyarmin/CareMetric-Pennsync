@@ -122,25 +122,25 @@ export default function Home() {
       <OfflineDataSync />
       <TrialStatusBanner />
       
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-700 to-blue-900 bg-clip-text text-transparent">
-            Welcome back, {user?.full_name || "Nurse"}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-700 to-blue-900 bg-clip-text text-transparent truncate">
+            Welcome, {user?.full_name?.split(' ')[0] || "Nurse"} 👋
           </h1>
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-0.5 hidden sm:block">
             Here's what's happening with your patients today
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowCustomizer(!showCustomizer)} className="touch-target">
-            <Settings className="h-4 w-4 mr-2" />
-            Customize
+        <div className="flex gap-1.5 flex-shrink-0">
+          <Button variant="outline" size="sm" onClick={() => setShowCustomizer(!showCustomizer)} className="h-8 px-2 sm:px-3">
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline ml-1.5">Customize</span>
           </Button>
           {user?.role === "admin" && (
             <Link to={createPageUrl("AdminDashboard")}>
-              <Button variant="outline" size="sm" className="touch-target">
-                <Award className="h-4 w-4 mr-2" />
-                Admin Panel
+              <Button variant="outline" size="sm" className="h-8 px-2 sm:px-3">
+                <Award className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1.5">Admin</span>
               </Button>
             </Link>
           )}
