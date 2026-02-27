@@ -15,7 +15,7 @@ import HighRiskPatientIdentifier from "@/components/analytics/HighRiskPatientIde
 import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
 
 export default function AIAnalyticsDashboard() {
-  const [activeTab, setActiveTab] = useState("outcomes");
+  const [activeTab, setActiveTab] = useState("high-risk");
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: user } = useQuery({
