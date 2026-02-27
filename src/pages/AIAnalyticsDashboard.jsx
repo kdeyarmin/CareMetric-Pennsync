@@ -200,13 +200,16 @@ For detailed insights, please visit the Analytics Dashboard in the application.`
             </CardHeader>
             <CardContent className="text-sm text-slate-700 dark:text-slate-300 space-y-2">
               <p>
-                <strong>Patient Outcomes:</strong> Analyzes treatment protocol effectiveness and success rates across diagnoses, identifying top-performing protocols and those needing improvement.
+                <strong>High-Risk Identification:</strong> Automatically scores patients using visit history, compliance scores, active alerts, and diagnoses to surface critical cases.
               </p>
               <p>
-                <strong>Compliance Trends:</strong> Tracks documentation quality and compliance metrics by provider, identifies violation patterns, and recommends targeted improvements.
+                <strong>Predictive Modeling:</strong> AI-powered 30/60/90-day readmission forecasting with trend analysis and risk cohort breakdowns.
               </p>
               <p>
-                <strong>Readmission Risk:</strong> Uses AI to predict high-risk patients based on clinical context, medications, comorbidities, and historical patterns, with actionable intervention recommendations.
+                <strong>Care Plan AI:</strong> Generates personalized care plan adjustment recommendations per patient with evidence-based protocols.
+              </p>
+              <p>
+                <strong>Outcomes & Compliance:</strong> Treatment effectiveness analytics and documentation quality tracking by provider.
               </p>
               <p className="pt-2 border-t border-blue-200 dark:border-blue-700">
                 All insights are powered by AI analysis and updated based on your latest clinical data. Refresh data regularly for the most current insights.
