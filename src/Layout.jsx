@@ -212,15 +212,15 @@ export default function Layout({ children, currentPageName }) {
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           }`}
         >
-          <div className="p-4 pb-3 border-b border-slate-200/40 dark:border-slate-700/40">
+          <div className="p-3 pb-2 border-b border-slate-200/40 dark:border-slate-700/40">
             <div className="flex items-center gap-2">
-                    <img 
-                      src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/879f7eecc_caremetric_ai_logo-removebg-preview.png" 
-                      alt="CareMetric AI" 
-                      className="h-8 w-8 rounded-lg shadow-sm"
-                    />
-                    <span className="hidden sm:inline font-bold text-sm text-blue-900">{displayPageName}</span>
-                  </div>
+              <img 
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/694ec16e72e01b60d22f7cbf/879f7eecc_caremetric_ai_logo-removebg-preview.png" 
+                alt="CareMetric AI" 
+                className="h-7 w-7 rounded-lg shadow-sm flex-shrink-0"
+              />
+              <span className="font-bold text-xs text-blue-900 truncate">{displayPageName}</span>
+            </div>
           </div>
           {user?.email && <FavoritesBar userEmail={user.email} />}
           <nav className="p-3 space-y-3">
