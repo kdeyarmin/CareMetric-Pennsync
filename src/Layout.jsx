@@ -322,7 +322,7 @@ export default function Layout({ children, currentPageName }) {
       {/* Overlay for mobile */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          className="fixed inset-0 top-14 bg-black/50 z-30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
