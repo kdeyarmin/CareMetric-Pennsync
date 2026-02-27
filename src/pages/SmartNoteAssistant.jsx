@@ -725,13 +725,7 @@ export default function SmartNoteAssistant() {
             </div>
           </div>
         </div>
-        {/* Enhanced Offline Sync Status */}
-        {currentUser?.email && (
-          <EnhancedOfflineNoteSync 
-            userEmail={currentUser.email} 
-            isOnline={isOnline}
-          />
-        )}
+
 
         {/* Conflict Resolution */}
         {conflictData && (
