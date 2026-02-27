@@ -110,12 +110,13 @@ export default function ReportsCenter() {
         <Tabs value={reportType} onValueChange={setReportType}>
           <div className="overflow-x-auto scrollbar-hide -mx-6 px-6">
           <TabsList className="inline-flex w-max min-w-full gap-0.5 h-auto p-1">
-            <TabsTrigger value="pdgm">PDGM Revenue</TabsTrigger>
-            <TabsTrigger value="nurse">Nurse Performance</TabsTrigger>
-            <TabsTrigger value="nurse-trends">Nurse Trends</TabsTrigger>
-            <TabsTrigger value="outcomes">Patient Outcomes</TabsTrigger>
-            <TabsTrigger value="compliance">Compliance</TabsTrigger>
+            <TabsTrigger value="pdgm" className="whitespace-nowrap text-xs sm:text-sm">PDGM Revenue</TabsTrigger>
+            <TabsTrigger value="nurse" className="whitespace-nowrap text-xs sm:text-sm">Nurse Performance</TabsTrigger>
+            <TabsTrigger value="nurse-trends" className="whitespace-nowrap text-xs sm:text-sm">Nurse Trends</TabsTrigger>
+            <TabsTrigger value="outcomes" className="whitespace-nowrap text-xs sm:text-sm">Patient Outcomes</TabsTrigger>
+            <TabsTrigger value="compliance" className="whitespace-nowrap text-xs sm:text-sm">Compliance</TabsTrigger>
           </TabsList>
+          </div>
 
           {/* PDGM Revenue Report */}
           <TabsContent value="pdgm">
