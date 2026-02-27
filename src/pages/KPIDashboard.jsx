@@ -45,6 +45,8 @@ export default function KPIDashboard() {
     };
   });
 
+  if (user && user.role !== 'admin') return <FinancialAccessDenied />;
+
   const queryClient = useQueryClient();
 
   const { data: kpis, isLoading } = useQuery({

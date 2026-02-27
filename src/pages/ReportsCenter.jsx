@@ -39,6 +39,8 @@ export default function ReportsCenter() {
     queryFn: () => base44.auth.me()
   });
 
+  const isAdmin = user?.role === 'admin';
+
   const generateNurseReportMutation = useMutation({
     mutationFn: async (nurseEmail) => {
       const response = await base44.functions.invoke('generateNursePerformanceReport', {
