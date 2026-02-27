@@ -174,6 +174,7 @@ export default function TrainingHub() {
             <TabsTrigger value="library" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Library</TabsTrigger>
             <TabsTrigger value="skills" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Skills</TabsTrigger>
             <TabsTrigger value="badges" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Badges</TabsTrigger>
+            <TabsTrigger value="inservices" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">📋 Yearly Inservices</TabsTrigger>
             {isAdmin && <TabsTrigger value="staff" className="text-[10px] sm:text-xs md:text-sm px-2 sm:px-3 whitespace-nowrap">Staff</TabsTrigger>}
           </TabsList>
         </div>
