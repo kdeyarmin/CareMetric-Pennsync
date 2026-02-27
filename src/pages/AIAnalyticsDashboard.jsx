@@ -139,25 +139,47 @@ For detailed insights, please visit the Analytics Dashboard in the application.`
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="outcomes" className="text-xs sm:text-sm">
-                <TrendingUp className="w-4 h-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Patient Outcomes</span>
-                <span className="sm:hidden">Outcomes</span>
-              </TabsTrigger>
-              <TabsTrigger value="compliance" className="text-xs sm:text-sm">
-                <Shield className="w-4 h-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Compliance Trends</span>
-                <span className="sm:hidden">Compliance</span>
-              </TabsTrigger>
-              <TabsTrigger value="readmission" className="text-xs sm:text-sm">
-                <Heart className="w-4 h-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Readmission Risk</span>
-                <span className="sm:hidden">Risk</span>
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto scrollbar-hide -mx-3 sm:-mx-0 px-3 sm:px-0">
+              <TabsList className="inline-flex w-max min-w-full gap-0.5 h-auto p-1">
+                <TabsTrigger value="high-risk" className="whitespace-nowrap text-xs sm:text-sm">
+                  <AlertTriangle className="w-3.5 h-3.5 mr-1" />
+                  <span>High-Risk</span>
+                </TabsTrigger>
+                <TabsTrigger value="predictive" className="whitespace-nowrap text-xs sm:text-sm">
+                  <Activity className="w-3.5 h-3.5 mr-1" />
+                  <span>Predictive</span>
+                </TabsTrigger>
+                <TabsTrigger value="careplan" className="whitespace-nowrap text-xs sm:text-sm">
+                  <Target className="w-3.5 h-3.5 mr-1" />
+                  <span>Care Plans</span>
+                </TabsTrigger>
+                <TabsTrigger value="outcomes" className="whitespace-nowrap text-xs sm:text-sm">
+                  <TrendingUp className="w-3.5 h-3.5 mr-1" />
+                  <span>Outcomes</span>
+                </TabsTrigger>
+                <TabsTrigger value="compliance" className="whitespace-nowrap text-xs sm:text-sm">
+                  <Shield className="w-3.5 h-3.5 mr-1" />
+                  <span>Compliance</span>
+                </TabsTrigger>
+                <TabsTrigger value="readmission" className="whitespace-nowrap text-xs sm:text-sm">
+                  <Heart className="w-3.5 h-3.5 mr-1" />
+                  <span>Risk</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-            {/* Content Tabs */}
+            <TabsContent value="high-risk" className="space-y-4">
+              <HighRiskPatientIdentifier />
+            </TabsContent>
+
+            <TabsContent value="predictive" className="space-y-4">
+              <PredictiveReadmissionModel />
+            </TabsContent>
+
+            <TabsContent value="careplan" className="space-y-4">
+              <CarePlanAIRecommendations />
+            </TabsContent>
+
             <TabsContent value="outcomes" className="space-y-4">
               <PatientOutcomeAnalytics />
             </TabsContent>
