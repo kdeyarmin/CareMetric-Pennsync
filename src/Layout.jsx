@@ -311,7 +311,7 @@ export default function Layout({ children, currentPageName }) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-h-[calc(100vh-57px)] pb-16 md:pb-0">
+        <main className="flex-1 min-h-[calc(100vh-3.5rem)] pb-16 lg:pb-0 overflow-x-hidden">
           {children}
         </main>
       </div>
