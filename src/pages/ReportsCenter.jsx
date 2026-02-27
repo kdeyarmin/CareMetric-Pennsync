@@ -171,7 +171,7 @@ export default function ReportsCenter() {
 
           {/* Compliance Report */}
           <TabsContent value="compliance">
-            <ComplianceTrendsChart />
+            <ComplianceTrendsChart data={[]} />
           </TabsContent>
         </Tabs>
       </div>
