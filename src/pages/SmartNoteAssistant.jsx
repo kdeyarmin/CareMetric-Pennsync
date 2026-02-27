@@ -1536,6 +1536,14 @@ Example: Patient reports feeling better, pain level 2/10. Medications reviewed, 
           </>
         }
 
+        {/* Offline Sync Status - Bottom */}
+        {currentUser?.email && (
+          <EnhancedOfflineNoteSync 
+            userEmail={currentUser.email} 
+            isOnline={isOnline}
+          />
+        )}
+
         {/* Create Patient Dialog */}
         {(showCreatePatient || selectedPatient === "create_new") &&
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
