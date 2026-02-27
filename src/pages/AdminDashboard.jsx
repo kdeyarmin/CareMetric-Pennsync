@@ -1799,6 +1799,7 @@ export default function AdminDashboard() {
 
         {/* Activity Tab */}
         <TabsContent value="activity" className="space-y-3 sm:space-y-6">
+          <GranularUserActivityPanel />
           <Card>
             <CardHeader className="p-3 sm:p-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
