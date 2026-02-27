@@ -117,7 +117,7 @@ export default function Home() {
 
   return (
     <PremiumFeatureGate featureName="Dashboard" featureDescription="Your central hub for patient management, tasks, and clinical insights." allowTrial={true}>
-    <div className="p-4 sm:p-6 space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
+    <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 min-h-screen bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
       <SessionTimeoutWarning />
       <OfflineDataSync />
       <TrialStatusBanner />
