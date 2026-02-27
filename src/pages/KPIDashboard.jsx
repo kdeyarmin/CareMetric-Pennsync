@@ -20,7 +20,20 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const FinancialAccessDenied = () => (
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+    <div className="text-center max-w-md">
+      <div className="bg-red-100 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+        <Lock className="h-8 w-8 text-red-600" />
+      </div>
+      <h2 className="text-2xl font-bold text-slate-900 mb-2">Access Restricted</h2>
+      <p className="text-slate-600">Financial and revenue information is only accessible to agency admins and super admins.</p>
+    </div>
+  </div>
+);
+
 export default function KPIDashboard() {
+  const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
   const [periodType, setPeriodType] = useState('monthly');
   const [selectedPeriod, setSelectedPeriod] = useState(() => {
     const now = new Date();
