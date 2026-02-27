@@ -276,6 +276,14 @@ export default function TrainingHub() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="inservices" className="mt-6">
+          <YearlyInservices
+            userEmail={currentUser?.email}
+            userRole={currentUser?.credential_type || "RN"}
+            isAdmin={isAdmin}
+          />
+        </TabsContent>
+
         {isAdmin && (
           <TabsContent value="staff" className="mt-6">
             <StaffProgressTracker 
