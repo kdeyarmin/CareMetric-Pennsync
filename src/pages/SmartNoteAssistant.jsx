@@ -113,6 +113,7 @@ import ClinicalDecisionSupportPanel from '../components/smartNote/ClinicalDecisi
 import PostEnhancementInsights from '../components/smartNote/PostEnhancementInsights';
 import AIClinicalAssistantPanel from '../components/clinical/AIClinicalAssistantPanel';
 import UnifiedSuggestionsApplier from '../components/smartNote/UnifiedSuggestionsApplier';
+import ClinicalDocumentationAIAssistant from '../components/clinical/ClinicalDocumentationAIAssistant';
 
 export default function SmartNoteAssistant() {
   const [selectedPatient, setSelectedPatient] = useState("no_patient");
