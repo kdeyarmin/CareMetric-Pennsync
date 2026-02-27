@@ -1182,6 +1182,35 @@ export default function SmartNoteAssistant() {
                   </details>
                 )}
 
+                {/* AI Documentation Assistant - Code Suggestions, Auto-Populate, Compliance */}
+                {visitType && selectedDiagnosis && (
+                  <ClinicalDocumentationAIAssistant
+                    noteContent={roughNotes}
+                    visitType={visitType}
+                    diagnosis={selectedDiagnosis}
+                    providerType={providerType}
+                    patientData={patientData}
+                    onCodesSelected={(codes) => {
+                      const codeText = '\n\nSuggested ICD-10 Codes:\n' + codes.map(c => `- ${c.code}: ${c.description}`).join('\n');
+                      setRoughNotes(prev => prev + codeText);
+                      toast.success(`${codes.length} code(s) added to notes`);
+                    }}
+                    onFieldsPopulated={(fields) => {
+                      if (fields.assessment || fields.plan) {
+                        const addText = [
+                          fields.subjective ? `\nS: ${fields.subjective}` : '',
+                          fields.objective ? `\nO: ${fields.objective}` : '',
+                          fields.assessment ? `\nA: ${fields.assessment}` : '',
+                          fields.plan ? `\nP: ${fields.plan}` : ''
+                      ].filter(Boolean).join('');
+                        if (addText.trim() && !roughNotes.includes(addText.trim())) {
+                          setRoughNotes(prev => prev + addText);
+                        }
+                      }
+                    }}
+                  />
+                )}
+
                 {/* Clinical Notes Section */}
                 <div className="w-full">
                   <div className="mb-3">
