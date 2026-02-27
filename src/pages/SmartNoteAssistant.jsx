@@ -1184,22 +1184,30 @@ export default function SmartNoteAssistant() {
                     diagnosis={selectedDiagnosis}
                     providerType={providerType}
                     patientData={patientData}
+                    onSOAPGenerated={(soapNote) => {
+                      setRoughNotes(soapNote);
+                      toast.success('SOAP note generated from voice');
+                    }}
                     onCodesSelected={(codes) => {
-                      const codeText = '\n\nSuggested ICD-10 Codes:\n' + codes.map(c => `- ${c.code}: ${c.description}`).join('\n');
-                      setRoughNotes(prev => prev + codeText);
+                      const icd = codes.filter(c => c.code?.match(/^[A-Z]/));
+                      const cpt = codes.filter(c => c.code?.match(/^\d/));
+                      let codeText = '';
+                      if (icd.length) codeText += '\n\nICD-10 Codes:\n' + icd.map(c => `- ${c.code}: ${c.description}`).join('\n');
+                      if (cpt.length) codeText += '\n\nCPT Codes:\n' + cpt.map(c => `- ${c.code}: ${c.description}`).join('\n');
+                      if (codeText) setRoughNotes(prev => prev + codeText);
                       toast.success(`${codes.length} code(s) added to notes`);
                     }}
                     onFieldsPopulated={(fields) => {
-                      if (fields.assessment || fields.plan) {
+                      if (fields.assessment || fields.plan || fields.subjective) {
                         const addText = [
                           fields.subjective ? `\nS: ${fields.subjective}` : '',
                           fields.objective ? `\nO: ${fields.objective}` : '',
                           fields.assessment ? `\nA: ${fields.assessment}` : '',
-                          fields.plan ? `\nP: ${fields.plan}` : ''
-                      ].filter(Boolean).join('');
-                        if (addText.trim() && !roughNotes.includes(addText.trim())) {
-                          setRoughNotes(prev => prev + addText);
-                        }
+                          fields.plan ? `\nP: ${fields.plan}` : '',
+                          fields.homebound_status ? `\nHomebound: ${fields.homebound_status}` : '',
+                          fields.skilled_need_justification ? `\nSkilled Need: ${fields.skilled_need_justification}` : ''
+                        ].filter(Boolean).join('');
+                        if (addText.trim()) setRoughNotes(prev => prev + addText);
                       }
                     }}
                   />
