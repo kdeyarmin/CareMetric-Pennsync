@@ -110,13 +110,13 @@ export default function Layout({ children, currentPageName }) {
          { name: "OASIS", icon: FileText, page: "OASIS" },
        ]
      },
-    {
+    ...(user?.role === 'admin' ? [{
       title: "Revenue & Billing",
       items: [
         { name: "PDGM Analytics", icon: DollarSign, page: "PDGMAnalytics" },
         { name: "KPI Dashboard", icon: BarChart3, page: "KPIDashboard" },
       ]
-    },
+    }] : []),
     {
       title: "Compliance",
       items: [
