@@ -176,5 +176,6 @@ export default function ReportsCenter() {
         </Tabs>
       </div>
     </div>
+    </PremiumFeatureGate>
   );
 }
