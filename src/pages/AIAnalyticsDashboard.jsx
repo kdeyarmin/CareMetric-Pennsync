@@ -111,10 +111,10 @@ For detailed insights, please visit the Analytics Dashboard in the application.`
           {/* Key Metrics Overview */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { icon: TrendingUp, label: 'Patient Outcomes', color: 'blue', desc: 'Treatment effectiveness' },
-              { icon: Shield, label: 'Compliance', color: 'green', desc: 'Quality & documentation' },
-              { icon: Heart, label: 'Risk Prediction', color: 'red', desc: 'Readmission risks' },
-              { icon: BarChart3, label: 'AI Insights', color: 'purple', desc: 'Actionable intelligence' }
+              { icon: AlertTriangle, label: 'High-Risk Patients', color: 'red', desc: 'Multi-factor identification' },
+              { icon: Activity, label: 'Predictive Modeling', color: 'blue', desc: '30/60/90-day forecasts' },
+              { icon: Target, label: 'Care Plan AI', color: 'purple', desc: 'Personalized adjustments' },
+              { icon: Shield, label: 'Compliance Trends', color: 'green', desc: 'Quality & documentation' }
             ].map((metric, idx) => {
               const Icon = metric.icon;
               const colorClasses = {
