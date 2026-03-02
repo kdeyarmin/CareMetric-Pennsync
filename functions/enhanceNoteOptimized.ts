@@ -229,66 +229,12 @@ Rate the note on:
 Provide scores (0-100) and specific feedback.`;
 
       try {
-        const qualityClaudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': anthropicApiKey,
-            'anthropic-version': '2023-06-01'
-          },
-          body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 4096,
-            messages: [{ role: 'user', content: qualityPrompt }],
-            tools: [{
-              name: 'generate_structured_response',
-              description: 'Generate a structured JSON response',
-              input_schema: {
-            type: "object",
-            properties: {
-              overall_quality_score: { type: "number" },
-              clarity_score: { type: "number" },
-              completeness_score: { type: "number" },
-              clinical_reasoning_score: { type: "number" },
-              strengths: {
-                type: "array",
-                items: { type: "string" }
-              },
-              areas_for_improvement: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    issue: { type: "string" },
-                    suggestion: { type: "string" },
-                    severity: { type: "string", enum: ["high", "medium", "low"] }
-                  }
-                }
-              },
-              missing_elements: {
-                type: "array",
-                items: { type: "string" }
-              }
-            }
-          },
-            tool_choice: {
-              type: 'tool',
-              name: 'generate_structured_response'
-            }
-          })
-        });
-
-        if (qualityClaudeResponse.ok) {
-          const qualityResult = await qualityClaudeResponse.json();
-          qualityAnalysis = qualityResult.content?.[0]?.type === 'tool_use' 
-            ? qualityResult.content[0].input 
-            : null;
-        }
+        qualityAnalysis = await callGPT4oJSON(
+          qualityPrompt + '\n\nReturn JSON: { "overall_quality_score": number, "clarity_score": number, "completeness_score": number, "clinical_reasoning_score": number, "strengths": [string], "areas_for_improvement": [ { "issue": string, "suggestion": string, "severity": "high"|"medium"|"low" } ], "missing_elements": [string] }',
+          2048
+        );
       } catch (error) {
-        console.error('[enhanceNoteOptimized] Quality analysis error:', {
-          message: error.message,
-          stack: error.stack
-        });
+        console.error('[enhanceNoteOptimized] Quality analysis error:', error.message);
       }
       }
 
