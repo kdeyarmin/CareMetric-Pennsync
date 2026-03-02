@@ -96,55 +96,56 @@ CRITICAL: Flag potential compliance issues including:
 
 Output the enhanced clinical note only, properly formatted.`;
 
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
-    if (!anthropicApiKey) {
-      console.error('[enhanceNoteOptimized] ANTHROPIC_API_KEY not configured');
-      throw new Error('ANTHROPIC_API_KEY not configured');
-    }
-
-    console.log('[enhanceNoteOptimized] Calling Claude API for note enhancement');
-
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: enhancePrompt }]
-      })
-    });
-
-    if (!claudeResponse.ok) {
-      const errorText = await claudeResponse.text();
-      console.error('[enhanceNoteOptimized] Claude API error:', {
-        status: claudeResponse.status,
-        statusText: claudeResponse.statusText,
-        error: errorText
+    // Helper: call GPT-4o for text completion
+    async function callGPT4o(prompt, maxTokens = 4096) {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          max_tokens: maxTokens,
+          messages: [{ role: 'user', content: prompt }]
+        })
       });
-      throw new Error(`Claude API failed: ${claudeResponse.status} - ${errorText}`);
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`GPT-4o error: ${res.status} - ${err}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || '';
     }
 
-    const claudeResult = await claudeResponse.json();
-    console.log('[enhanceNoteOptimized] Claude response structure:', {
-      hasContent: !!claudeResult.content,
-      contentLength: claudeResult.content?.length,
-      firstContentType: claudeResult.content?.[0]?.type
-    });
-
-    const textContent = claudeResult.content?.find(c => c.type === 'text');
-    const response = textContent?.text || '';
-
-    if (!response) {
-      console.error('[enhanceNoteOptimized] No text content in Claude response:', claudeResult);
-      throw new Error('Claude returned empty response');
+    // Helper: call GPT-4o for structured JSON output
+    async function callGPT4oJSON(prompt, maxTokens = 2048) {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          max_tokens: maxTokens,
+          response_format: { type: 'json_object' },
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`GPT-4o JSON error: ${res.status} - ${err}`);
+      }
+      const data = await res.json();
+      const text = data.choices?.[0]?.message?.content || '{}';
+      return JSON.parse(text);
     }
 
-    const enhancedNote = typeof response === 'string' ? response : response.content || response.text || '';
+    if (!openaiApiKey) {
+      console.error('[enhanceNoteOptimized] OPENAI_API_KEY not configured');
+      throw new Error('OPENAI_API_KEY not configured');
+    }
+
+    console.log('[enhanceNoteOptimized] Calling GPT-4o for note enhancement');
+    const enhancedNote = await callGPT4o(enhancePrompt, 4096);
     console.log('[enhanceNoteOptimized] Enhanced note generated:', {
       length: enhancedNote.length
     });
