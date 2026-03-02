@@ -199,77 +199,15 @@ Provide:
 2. Appropriate ICD-10 codes with descriptions
 3. Recommended CPT codes for documented services`;
 
-      const diagnosticClaudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicApiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: diagnosticPrompt }],
-          tools: [{
-            name: 'generate_structured_response',
-            description: 'Generate a structured JSON response',
-            input_schema: {
-          type: "object",
-          properties: {
-            differential_diagnoses: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  diagnosis: { type: "string" },
-                  reasoning: { type: "string" },
-                  probability: { type: "string", enum: ["high", "moderate", "low"] }
-                }
-              }
-            },
-            icd10_codes: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  code: { type: "string" },
-                  description: { type: "string" },
-                  relevance: { type: "string" }
-                }
-              }
-            },
-            cpt_codes: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  code: { type: "string" },
-                  description: { type: "string" },
-                  documentation_basis: { type: "string" }
-                }
-              }
-            }
-          }
-        },
-          tool_choice: {
-            type: 'tool',
-            name: 'generate_structured_response'
-          }
-        })
-      });
-
-      if (diagnosticClaudeResponse.ok) {
-        const diagnosticResult = await diagnosticClaudeResponse.json();
-        const diagnosticResponse = diagnosticResult.content?.[0]?.type === 'tool_use' 
-          ? diagnosticResult.content[0].input 
-          : {};
-        
-        differentialDiagnoses = diagnosticResponse.differential_diagnoses || [];
-        suggestedCodes = {
-          icd10: diagnosticResponse.icd10_codes || [],
-          cpt: diagnosticResponse.cpt_codes || []
-        };
-      }
+      const diagnosticResult = await callGPT4oJSON(
+        diagnosticPrompt + '\n\nReturn JSON: { "differential_diagnoses": [ { "diagnosis": string, "reasoning": string, "probability": "high"|"moderate"|"low" } ], "icd10_codes": [ { "code": string, "description": string, "relevance": string } ], "cpt_codes": [ { "code": string, "description": string, "documentation_basis": string } ] }',
+        2048
+      );
+      differentialDiagnoses = diagnosticResult.differential_diagnoses || [];
+      suggestedCodes = {
+        icd10: diagnosticResult.icd10_codes || [],
+        cpt: diagnosticResult.cpt_codes || []
+      };
     }
 
     // Generate quality analysis
