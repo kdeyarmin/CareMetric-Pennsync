@@ -43,35 +43,39 @@ Also provide an overall compliance_score (0-100) where:
 Return as JSON with these fields.`;
     }
 
-    const response = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: compliancePrompt,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          compliance_score: { type: 'number', minimum: 0, maximum: 100 },
-          issues: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                title: { type: 'string' },
-                description: { type: 'string' },
-                severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
-                example: { type: 'string' },
-                recommendation: { type: 'string' }
-              }
-            }
-          },
-          summary: { type: 'string' }
-        }
-      }
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) throw new Error('OPENAI_API_KEY not configured');
+
+    const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiApiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 2048,
+        response_format: { type: 'json_object' },
+        messages: [{
+          role: 'user',
+          content: compliancePrompt + '\n\nReturn JSON: { "compliance_score": number, "issues": [ { "title": string, "description": string, "severity": "critical"|"high"|"medium"|"low", "example": string, "recommendation": string } ], "summary": string }'
+        }]
+      })
     });
+
+    if (!gptRes.ok) {
+      const errText = await gptRes.text();
+      throw new Error(`GPT-4o error: ${gptRes.status} - ${errText}`);
+    }
+
+    const gptData = await gptRes.json();
+    const response = JSON.parse(gptData.choices?.[0]?.message?.content || '{}');
+
+    console.log('[checkRealtimeCompliance] GPT-4o compliance check complete, score:', response.compliance_score);
 
     return Response.json({
       compliance_score: response.compliance_score || 100,
       issues: response.issues || [],
       summary: response.summary || '',
       check_type,
+      model: 'gpt-4o',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
