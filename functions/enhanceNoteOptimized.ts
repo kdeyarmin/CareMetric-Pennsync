@@ -171,56 +171,13 @@ Identify:
 Format as specific, actionable findings.`;
 
       try {
-        const complianceClaudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': anthropicApiKey,
-            'anthropic-version': '2023-06-01'
-          },
-          body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 4096,
-            messages: [{ role: 'user', content: complianceCheckPrompt }],
-            tools: [{
-              name: 'generate_structured_response',
-              description: 'Generate a structured JSON response',
-              input_schema: {
-            type: "object",
-            properties: {
-              compliance_flags: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    issue: { type: "string" },
-                    severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
-                    category: { type: "string" },
-                    remediation: { type: "string" }
-                  }
-                }
-              }
-            }
-          },
-            tool_choice: {
-              type: 'tool',
-              name: 'generate_structured_response'
-            }
-          })
-        });
-
-        if (complianceClaudeResponse.ok) {
-          const complianceResult = await complianceClaudeResponse.json();
-          const complianceResponse = complianceResult.content?.[0]?.type === 'tool_use' 
-            ? complianceResult.content[0].input 
-            : {};
-          complianceFlags = complianceResponse.compliance_flags || [];
-        }
+        const complianceResult = await callGPT4oJSON(
+          complianceCheckPrompt + '\n\nReturn JSON: { "compliance_flags": [ { "issue": string, "severity": "critical"|"high"|"medium"|"low", "category": string, "remediation": string } ] }',
+          2048
+        );
+        complianceFlags = complianceResult.compliance_flags || [];
       } catch (error) {
-        console.error('[enhanceNoteOptimized] Compliance check error:', {
-          message: error.message,
-          stack: error.stack
-        });
+        console.error('[enhanceNoteOptimized] Compliance check error:', error.message);
       }
       }
 
