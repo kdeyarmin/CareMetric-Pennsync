@@ -1053,6 +1053,11 @@ export default function AdminDashboard() {
           <AIKnowledgeBaseManager />
         </TabsContent>
 
+        {/* Clinical Trends Tab */}
+        <TabsContent value="clinical-trends" className="space-y-6">
+          <ClinicalTrendsAnalyzer />
+        </TabsContent>
+
         {/* Export Tab */}
         <TabsContent value="export" className="space-y-6">
           <ComprehensiveDataExport 
