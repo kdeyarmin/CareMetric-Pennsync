@@ -722,6 +722,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="training" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">🎓 Training</TabsTrigger>
             <TabsTrigger value="system-health" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">⚡ System</TabsTrigger>
             <TabsTrigger value="activity" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">📝 Activity</TabsTrigger>
+            <TabsTrigger value="clinical-trends" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">🧠 AI Trends</TabsTrigger>
             <TabsTrigger value="export" className="text-[9px] sm:text-xs md:text-sm px-1.5 sm:px-2 py-1.5 sm:py-2 whitespace-nowrap">📥 Export</TabsTrigger>
           </TabsList>
         </div>
