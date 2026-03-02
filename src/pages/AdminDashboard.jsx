@@ -47,6 +47,7 @@ import AgencyManagement from "../components/admin/AgencyManagement";
 import SubscriptionAnalyticsDashboard from "../components/admin/SubscriptionAnalyticsDashboard";
 import InactiveUserEmailManager from "../components/admin/InactiveUserEmailManager";
 import GranularUserActivityPanel from "../components/admin/GranularUserActivityPanel";
+import ClinicalTrendsAnalyzer from "../components/admin/ClinicalTrendsAnalyzer";
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState(30);
