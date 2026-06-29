@@ -116,6 +116,87 @@
     "is_active": {
       "type": "boolean",
       "default": true
+    },
+    "ai_verbosity": {
+      "type": "string",
+      "default": "balanced",
+      "description": "Per-user verbosity preference written/read by UserSettings (distinct from verbosity_level)"
+    },
+    "clinical_terminology": {
+      "type": "string",
+      "default": "standard",
+      "description": "Preferred clinical terminology style"
+    },
+    "enable_oasis_analysis": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable AI OASIS analysis for this user"
+    },
+    "enable_auto_summarization": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable automatic note summarization"
+    },
+    "enable_compliance_checking": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable automated compliance checking"
+    },
+    "enable_care_plan_suggestions": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable AI care plan suggestions"
+    },
+    "enable_task_generation": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable AI task generation"
+    },
+    "enable_proactive_suggestions": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable proactive AI suggestions"
+    },
+    "auto_enhance_on_completion": {
+      "type": "boolean",
+      "default": false,
+      "description": "Automatically enhance notes on completion (distinct from auto_apply_minor_fixes)"
+    },
+    "preferred_note_style": {
+      "type": "string",
+      "default": "narrative",
+      "description": "Per-user preferred note style written/read by UserSettings (distinct from preferred_note_structure)"
+    },
+    "include_assessment_details": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include assessment details in enhanced notes"
+    },
+    "include_teaching_points": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include teaching points (distinct from include_education_tips)"
+    },
+    "show_confidence_scores": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show AI confidence scores in the UI"
+    },
+    "setting_name": {
+      "type": "string",
+      "description": "Admin key-value shape: name of the agency-wide AI setting (e.g. compliance_target_score)"
+    },
+    "setting_category": {
+      "type": "string",
+      "description": "Admin key-value shape: category of the setting (compliance, documentation, analysis, general)"
+    },
+    "value": {
+      "type": "object",
+      "description": "Admin key-value shape: setting value object (e.g. { target: 90 }, { level }, { enabled })"
+    },
+    "description": {
+      "type": "string",
+      "description": "Admin key-value shape: human-readable description of the setting"
     }
   },
   "required": [

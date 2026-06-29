@@ -745,6 +745,29 @@
       "type": "boolean",
       "default": false,
       "description": "Whether this is sample data visible to all users"
+    },
+    "is_archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this patient record has been soft-archived (e.g. merged duplicate or discharged in a bulk cleanup)"
+    },
+    "assigned_nurses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Emails of nurses assigned to this patient"
+    },
+    "data_completeness_score": {
+      "type": "number",
+      "description": "Computed 0-100 score of how complete the patient's critical data is"
+    },
+    "missing_critical_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of critical field names that are missing/empty on this record"
     }
   },
   "required": [

@@ -6,6 +6,10 @@
       "type": "string",
       "description": "Name of the template"
     },
+    "name": {
+      "type": "string",
+      "description": "Template name (written by TemplateManagement form)"
+    },
     "description": {
       "type": "string",
       "description": "Brief description of what this template is for"
@@ -22,6 +26,10 @@
         "oasis",
         "discharge",
         "admission",
+        "consent",
+        "assessment",
+        "plan",
+        "education",
         "other"
       ],
       "description": "Template category"

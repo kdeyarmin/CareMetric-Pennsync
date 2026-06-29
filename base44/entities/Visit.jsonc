@@ -136,6 +136,33 @@
       "type": "boolean",
       "default": false,
       "description": "Whether this is sample data visible to all users"
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Offline idempotency key (queue id) used to dedupe visits created from the offline sync queue"
+    },
+    "compliance_score": {
+      "type": "number",
+      "description": "0-100 documentation coverage/compliance score computed from the visit note"
+    },
+    "compliance_issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of compliance issue descriptions derived from chart findings"
+    },
+    "homebound_status_verified": {
+      "type": "boolean",
+      "description": "Whether homebound status was documented/verified in the visit note"
+    },
+    "skilled_intervention_documented": {
+      "type": "boolean",
+      "description": "Whether a skilled intervention/need was documented in the visit note"
+    },
+    "homebound_justification": {
+      "type": "string",
+      "description": "Evidence text justifying the patient's homebound status"
     }
   },
   "required": [

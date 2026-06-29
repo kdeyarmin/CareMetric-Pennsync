@@ -48,6 +48,47 @@
         "low"
       ],
       "default": "medium"
+    },
+    "topic": {
+      "type": "string",
+      "description": "Education topic"
+    },
+    "content": {
+      "type": "string",
+      "description": "Education content or summary"
+    },
+    "format": {
+      "type": "string",
+      "description": "Delivery format (e.g. handout, video)"
+    },
+    "assigned_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the education was assigned"
+    },
+    "materials_provided": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Key points / materials provided to the patient"
+    },
+    "care_plan_id": {
+      "type": "string",
+      "description": "Reference to the care plan this education is tied to"
+    },
+    "comprehension_verified": {
+      "type": "boolean",
+      "description": "Whether patient comprehension was verified"
+    },
+    "teach_back_notes": {
+      "type": "string",
+      "description": "Teach-back verification notes"
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the education was completed"
     }
   },
   "required": [
