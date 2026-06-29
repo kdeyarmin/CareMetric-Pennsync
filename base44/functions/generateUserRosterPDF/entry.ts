@@ -20,7 +20,8 @@ Deno.serve(async (req) => {
 
     // Fetch and add logo
     try {
-      const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/52cac091f_20170AA9-BB95-4BA4-B4E7-793615312CC4.png';
+      const logoUrl = Deno.env.get('APP_LOGO_URL') || '';
+      if (!logoUrl) throw new Error('No logo URL');
       const logoResponse = await fetch(logoUrl);
       const logoBlob = await logoResponse.blob();
       const logoArrayBuffer = await logoBlob.arrayBuffer();
@@ -148,7 +149,7 @@ Deno.serve(async (req) => {
       doc.rect(0, 200, 297, 10, 'F');
       doc.setTextColor(107, 114, 128);
       doc.setFontSize(8);
-      doc.text(`Penn Sync - User Roster - Page ${i} of ${pageCount}`, 148.5, 205, { align: 'center' });
+      doc.text(`CareMetric AI - User Roster - Page ${i} of ${pageCount}`, 148.5, 205, { align: 'center' });
     }
 
     const pdfBytes = doc.output('arraybuffer');

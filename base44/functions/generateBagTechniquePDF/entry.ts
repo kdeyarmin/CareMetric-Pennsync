@@ -15,7 +15,8 @@ Deno.serve(async (req) => {
 
     // Fetch and add logo
     try {
-      const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/52cac091f_20170AA9-BB95-4BA4-B4E7-793615312CC4.png';
+      const logoUrl = Deno.env.get('APP_LOGO_URL') || '';
+      if (!logoUrl) throw new Error('No logo URL configured');
       const logoResponse = await fetch(logoUrl);
       const logoBlob = await logoResponse.blob();
       const logoArrayBuffer = await logoBlob.arrayBuffer();
@@ -178,7 +179,7 @@ Deno.serve(async (req) => {
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(8);
       doc.setFont(undefined, 'normal');
-      doc.text('Penn Sync - Bag Technique Checklist', 20, 291);
+      doc.text('CareMetric AI - Bag Technique Checklist', 20, 291);
       doc.text(`Generated: ${new Date().toLocaleDateString()}`, 105, 291, { align: 'center' });
       doc.text(`Page ${i} of ${pageCount}`, 190, 291, { align: 'right' });
     }
