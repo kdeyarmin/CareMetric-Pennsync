@@ -617,9 +617,27 @@
       "enum": [
         "active",
         "discharged",
-        "hospitalized"
+        "hospitalized",
+        "merged"
       ],
       "default": "active"
+    },
+    "merged_into_id": {
+      "type": "string",
+      "description": "When this record was merged into another as a duplicate, the surviving Patient id (set by the dedupe/merge flow)"
+    },
+    "merged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this record was merged into the surviving patient"
+    },
+    "merged_by": {
+      "type": "string",
+      "description": "Email of the user who performed the merge"
+    },
+    "validation_overrides": {
+      "type": "object",
+      "description": "Map of field name -> override justification for validation warnings the user acknowledged when saving the patient"
     },
     "clinical_notes": {
       "type": "string",

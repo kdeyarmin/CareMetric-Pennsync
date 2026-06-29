@@ -179,7 +179,7 @@ export default function Telehealth() {
         icon={Video}
         eyebrow="Communication"
         title="Telehealth"
-        description="Secure video visits with patients via Telnyx"
+        description="Secure video visits with patients"
         favoritePage="Telehealth"
         actions={
           <Button onClick={() => setShowNewSession(true)} className="gap-2 w-full sm:w-auto">

@@ -81,7 +81,7 @@ export default function TrainingVideoStudio() {
             <div className="min-w-0">
               <h2 className="font-semibold text-slate-900">AI Presenter Video Studio</h2>
               <p className="text-sm text-slate-600">
-                Generate a HeyGen presenter video for each lesson from its script, or regenerate to
+                Generate an AI presenter video for each lesson from its script, or regenerate to
                 enhance an existing one. Videos generate in the background and attach to the module
                 automatically — staff see the video at the top of the lesson, then take the quiz.
               </p>

@@ -79,6 +79,30 @@
       ],
       "default": "pending"
     },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "rejected"
+      ],
+      "default": "pending",
+      "description": "Per-record signature status written/read across the e-signature UI (package create, signature submit, trackers). ('signed' is a display-only normalization in signatureUtils.js and is never persisted.)"
+    },
+    "document_title": {
+      "type": "string",
+      "description": "Human-readable document title shown in signature lists/cover sheets"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Source document file name"
+    },
+    "last_reminder_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the most recent signature reminder sent"
+    },
     "created_by": {
       "type": "string"
     },
