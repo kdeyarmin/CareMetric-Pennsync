@@ -1,3 +1,4 @@
+// Telnyx connection diagnostic — redeployed to resolve endpoint 404.
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
