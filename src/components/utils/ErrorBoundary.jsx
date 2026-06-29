@@ -15,8 +15,13 @@ class ErrorBoundary extends React.Component {
     // the dev server restarts and the browser's in-memory module graph holds a
     // chunk URL the restarted server no longer serves. Auto-reload once to
     // re-fetch a fresh module graph instead of dead-ending on the error screen.
+    // Detect a failed dynamic import — the browser reports this as a TypeError
+    // when a Vite dev-server restart leaves the in-memory module graph holding
+    // a chunk URL the restarted server no longer serves. Some browsers phrase
+    // it "Failed to fetch" and others "error loading" a dynamically imported
+    // module, so match on the common "dynamically imported module" substring.
     const isStaleChunk = error?.name === 'TypeError' &&
-      /Failed to fetch dynamically imported module/.test(error?.message || '');
+      /dynamically imported module/i.test(error?.message || '');
     return { hasError: true, error, isStaleChunk };
   }
 

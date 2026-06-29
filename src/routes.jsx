@@ -23,30 +23,12 @@ import Dashboard from '@/pages/Dashboard';
 const pageModules = import.meta.glob('./pages/*.jsx');
 const factoryFor = (name) => pageModules[`./pages/${name}.jsx`];
 
-// Wrap React.lazy so a stale dynamic-import chunk (which happens after a Vite
-// dev-server restart — the browser's in-memory module graph holds a chunk URL
-// the restarted server no longer serves) triggers a single silent page reload
-// to re-fetch a fresh module graph, instead of throwing into the error boundary.
-// sessionStorage guards against a reload loop if the chunk is genuinely broken.
-const lazyWithRetry = (factory) =>
-  lazy(() =>
-    factory().catch((err) => {
-      const isStaleChunk = err?.name === 'TypeError' &&
-        /Failed to fetch dynamically imported module/.test(err?.message || '');
-      if (isStaleChunk) {
-        const key = `vite-chunk-reloaded:${window.location.pathname}`;
-        if (!sessionStorage.getItem(key)) {
-          sessionStorage.setItem(key, '1');
-          window.location.reload();
-          // Hold the promise pending so React doesn't render the error boundary
-          // before the reload navigates away.
-          return new Promise(() => {});
-        }
-        sessionStorage.removeItem(key);
-      }
-      throw err;
-    })
-  );
+// NOTE: stale-chunk auto-recovery (the "Failed to fetch dynamically imported
+// module" error after a Vite dev-server restart) is handled centrally by the
+// ErrorBoundary in App.jsx, which is always loaded as part of the app shell.
+// Do NOT add a second reload mechanism here — using the same sessionStorage
+// key as the ErrorBoundary creates a reload loop (each layer removes the key
+// the other set). Plain lazy() lets the error bubble to the single boundary.
 
 // Pages that are NOT authenticated, manifest-driven routes:
 //  - Dashboard is added eagerly above.
@@ -81,7 +63,7 @@ export const ROUTES = [
     // `adminOnly` mirrors the manifest so App.jsx can gate admin routes at the
     // router level (non-admins typing the URL get blocked, not just hidden from
     // the sidebar). Client-side defense in depth; server RLS is the real gate.
-    .map((entry) => ({ name: entry.name, Component: lazyWithRetry(entry.factory), adminOnly: entry.adminOnly, superAdminOnly: entry.superAdminOnly })),
+    .map((entry) => ({ name: entry.name, Component: lazy(entry.factory), adminOnly: entry.adminOnly, superAdminOnly: entry.superAdminOnly })),
 ];
 
 /**
