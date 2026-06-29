@@ -182,6 +182,8 @@ const ENUM_USAGE = {
   // pipeline. NOTE: 'signed' is a display-only normalization in
   // src/components/signature/signatureUtils.js and is never persisted here.
   'DocumentSignature.status': ['pending', 'in_progress', 'completed', 'rejected'],
+  // DocumentSignature.document_type — written by the signature-request creators.
+  'DocumentSignature.document_type': ['custom_request', 'other'],
   // PatientAlert.alert_type — written by monitorComplianceRisks /
   // predictiveRiskAnalysis. 'documentation_risk' was the historically-dropped value.
   'PatientAlert.alert_type': ['care_gap', 'documentation_risk', 'readmission_risk'],
@@ -204,7 +206,17 @@ const ENUM_USAGE = {
 const FIELD_USAGE = {
   Notification: ['metadata'],
   FaxLog: ['retry_claimed_by', 'retry_claimed_at'],
-  DocumentSignature: ['document_title', 'document_name', 'signers', 'last_reminder_sent_at'],
+  DocumentSignature: [
+    'document_title', 'document_name', 'signers', 'last_reminder_sent_at',
+    // Added after the 2026-06-29 write-drift sweep: the e-signature pipeline
+    // writes these but the schema lacked them (silent drops). Reader analysis
+    // confirmed the schema was simply incomplete (the similarly-named
+    // completed_at/expiration_date belong to DocumentPackage, not this entity).
+    'document_content', 'signed_pdf_url', 'completed_date', 'due_date', 'expires_at',
+    'sent_date', 'reminder_sent', 'created_by_email', 'message', 'required_signatures',
+    'signer_name', 'signer_email', 'signature_hash', 'signature_hash_alg',
+    'signature_hash_at', 'archived', 'admin_notified',
+  ],
   Patient: ['merged_into_id', 'merged_at', 'merged_by', 'validation_overrides'],
   Referral: ['page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by'],
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],

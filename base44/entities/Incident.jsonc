@@ -20,7 +20,8 @@
         "infection_suspected",
         "refusal_of_care",
         "pressure_injury",
-        "emergency_visit"
+        "emergency_visit",
+        "other"
       ],
       "description": "Type of incident"
     },
@@ -89,6 +90,36 @@
       "type": "boolean",
       "default": false,
       "description": "Whether this is sample data visible to all users"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Patient display name captured on the incident (denormalized for reporting)"
+    },
+    "photo_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URLs of photos uploaded with the incident report"
+    },
+    "alert_triggered": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether an automated alert was triggered for this incident"
+    },
+    "state_reportable": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this incident is a state-reportable event (read top-level by the review queue and reporting module)"
+    },
+    "state_reportable_pdf_url": {
+      "type": "string",
+      "description": "URL of the generated state-reportable incident PDF"
+    },
+    "state_reportable_alert_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp when the state-reportable alert was sent"
     }
   },
   "required": [

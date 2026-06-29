@@ -134,6 +134,89 @@
       ],
       "default": "nurse",
       "description": "Role within the agency"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the user account is active"
+    },
+    "phone": {
+      "type": "string",
+      "description": "User phone number (distinct from phone_number; this is the field read/written across the app)"
+    },
+    "license_number": {
+      "type": "string",
+      "description": "Professional license number"
+    },
+    "is_approved": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the user has been approved for access"
+    },
+    "is_manager": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the user is a manager"
+    },
+    "manager_email": {
+      "type": "string",
+      "description": "Email of this user's manager"
+    },
+    "profile_completeness_score": {
+      "type": "number",
+      "description": "Computed profile completeness score (0-100)"
+    },
+    "account_type": {
+      "type": "string",
+      "description": "Account type (e.g. super_admin)"
+    },
+    "care_scope": {
+      "type": "string",
+      "description": "Service line scope the user covers (home_health, hospice, both); distinct from service_type"
+    },
+    "credentials": {
+      "type": "string",
+      "description": "Free-text professional credentials (distinct from credential_type enum)"
+    },
+    "duty_status": {
+      "type": "string",
+      "description": "Nurse duty status (on_duty/off_duty)"
+    },
+    "duty_on_since": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the nurse toggled on duty"
+    },
+    "off_duty_message": {
+      "type": "string",
+      "description": "Auto-reply message shown while off duty"
+    },
+    "scheduled_off_duty_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Scheduled off-duty window start (ISO timestamp)"
+    },
+    "scheduled_off_duty_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Scheduled off-duty window end (ISO timestamp)"
+    },
+    "scheduled_off_duty_recurring": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the scheduled off-duty window recurs"
+    },
+    "work_phone_number": {
+      "type": "string",
+      "description": "Assigned work phone number (E.164)"
+    },
+    "twilio_phone_number_sid": {
+      "type": "string",
+      "description": "Twilio SID for the assigned work phone number"
+    },
+    "personal_cell_e164": {
+      "type": "string",
+      "description": "Nurse personal cell number in E.164 format"
     }
   },
   "required": [

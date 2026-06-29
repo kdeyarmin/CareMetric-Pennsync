@@ -28,8 +28,8 @@
     "verify:workflow-quality": "npm run lint:workflow-targets && npm run typecheck:utils && npm run test:utils && npm run test:contracts && npm run test:components && npm run check:shared-helpers && npm run build"
   },
   "dependencies": {
-    "@base44/sdk": "^0.8.34",
-    "@base44/vite-plugin": "^1.0.23",
+    "@base44/sdk": "^0.8.35",
+    "@base44/vite-plugin": "^1.0.24",
     "@fontsource-variable/inter": "^5.2.8",
     "@hello-pangea/dnd": "^18.0.1",
     "@radix-ui/react-accordion": "^1.2.12",

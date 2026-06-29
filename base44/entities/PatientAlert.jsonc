@@ -29,7 +29,8 @@
         "care_plan_stalled",
         "overdue_task",
         "hospitalization_risk",
-        "predictive_risk"
+        "predictive_risk",
+        "documentation_risk"
       ],
       "description": "Type of alert"
     },

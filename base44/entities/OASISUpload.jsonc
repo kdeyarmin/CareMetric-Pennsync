@@ -83,6 +83,27 @@
     "notes": {
       "type": "string",
       "description": "Additional notes about this OASIS"
+    },
+    "extracted_data": {
+      "type": "object",
+      "description": "Extracted/edited OASIS field data (item values, AI suggestions, supervisor approvals)"
+    },
+    "supervisor_review_status": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "rejected"
+      ],
+      "description": "Supervisor approval decision for this OASIS"
+    },
+    "supervisor_reviewed_by": {
+      "type": "string",
+      "description": "Email of supervisor who reviewed this OASIS"
+    },
+    "supervisor_reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the supervisor review was recorded"
     }
   },
   "required": [

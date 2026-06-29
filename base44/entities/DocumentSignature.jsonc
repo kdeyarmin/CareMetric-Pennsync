@@ -18,6 +18,7 @@
         "financial_agreement",
         "advance_directive",
         "release",
+        "custom_request",
         "other"
       ]
     },
@@ -79,6 +80,30 @@
       ],
       "default": "pending"
     },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "rejected"
+      ],
+      "default": "pending",
+      "description": "Per-record signature status written/read across the e-signature UI (package create, signature submit, trackers). ('signed' is a display-only normalization in signatureUtils.js and is never persisted.)"
+    },
+    "document_title": {
+      "type": "string",
+      "description": "Human-readable document title shown in signature lists/cover sheets"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Source document file name"
+    },
+    "last_reminder_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the most recent signature reminder sent"
+    },
     "created_by": {
       "type": "string"
     },
@@ -100,7 +125,79 @@
     },
     "document_url": {
       "type": "string",
-      "description": "Final signed document URL"
+      "description": "Source document URL to be signed"
+    },
+    "document_content": {
+      "type": "string",
+      "description": "Inline document content/HTML for the signature request"
+    },
+    "signed_pdf_url": {
+      "type": "string",
+      "description": "URL of the generated signed PDF (written on completion)"
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the signature package was completed (read across the trackers; the legacy completed_at is unused here)"
+    },
+    "due_date": {
+      "type": "string",
+      "description": "When the signature is due"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the signature request expires"
+    },
+    "sent_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the signature request was sent"
+    },
+    "reminder_sent": {
+      "type": "boolean",
+      "description": "Whether a reminder has been sent (boolean flag complementing reminder_sent_count)"
+    },
+    "created_by_email": {
+      "type": "string",
+      "description": "Email of the creator (app field; distinct from the Base44 created_by system field)"
+    },
+    "message": {
+      "type": "string",
+      "description": "Optional message included with the signature request"
+    },
+    "required_signatures": {
+      "type": "array",
+      "description": "Signer specs for the package create flow (parallel to signers[])"
+    },
+    "signer_name": {
+      "type": "string",
+      "description": "Legacy single-signer name written by the bulk package create path"
+    },
+    "signer_email": {
+      "type": "string",
+      "description": "Legacy single-signer email written by the bulk package create path"
+    },
+    "signature_hash": {
+      "type": "string",
+      "description": "Integrity hash of the signed document"
+    },
+    "signature_hash_alg": {
+      "type": "string",
+      "description": "Algorithm used for signature_hash"
+    },
+    "signature_hash_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the integrity hash was computed"
+    },
+    "archived": {
+      "type": "boolean",
+      "description": "Whether the signed document has been archived"
+    },
+    "admin_notified": {
+      "type": "boolean",
+      "description": "Idempotency flag: admin has been notified of completion"
     },
     "audit_trail": {
       "type": "array",

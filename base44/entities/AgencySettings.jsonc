@@ -112,6 +112,140 @@
       "type": "number",
       "default": 0,
       "description": "Number of custom templates created"
+    },
+    "tcpa_quiet_hours_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether TCPA quiet hours are enforced for outbound texting"
+    },
+    "tcpa_quiet_start_hour": {
+      "type": "number",
+      "default": 8,
+      "description": "Hour (local) when quiet hours end / texting may begin"
+    },
+    "tcpa_quiet_end_hour": {
+      "type": "number",
+      "default": 21,
+      "description": "Hour (local) when quiet hours begin / texting must stop"
+    },
+    "fax_receiving_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether inbound fax receiving is enabled"
+    },
+    "main_office_number_e164": {
+      "type": "string",
+      "description": "Main office phone number in E.164 format"
+    },
+    "office_fax_number_e164": {
+      "type": "string",
+      "description": "Office fax number in E.164 format"
+    },
+    "default_off_duty_template": {
+      "type": "string",
+      "description": "Default off-duty auto-reply message template"
+    },
+    "sms_messaging_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether SMS messaging is enabled"
+    },
+    "sms_quick_replies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Quick-reply SMS message strings"
+    },
+    "sms_templates": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Reusable SMS templates"
+    },
+    "voicemail_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether voicemail is enabled"
+    },
+    "voicemail_greeting": {
+      "type": "string",
+      "description": "Voicemail greeting text"
+    },
+    "allow_international": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether international calling/texting is allowed"
+    },
+    "monthly_sms_cap": {
+      "type": "number",
+      "description": "Monthly SMS cap (positive number, or null for no cap)"
+    },
+    "business_hours_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether business-hours routing is enabled"
+    },
+    "business_hours_timezone": {
+      "type": "string",
+      "description": "IANA timezone for business hours"
+    },
+    "business_hours": {
+      "type": "object",
+      "description": "Per-day business hours schedule"
+    },
+    "business_hours_holidays": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Holiday date strings excluded from business hours"
+    },
+    "after_hours_call_action": {
+      "type": "string",
+      "enum": [
+        "transfer",
+        "voicemail",
+        "hangup"
+      ],
+      "default": "transfer",
+      "description": "Action for after-hours inbound calls"
+    },
+    "after_hours_transfer_number_e164": {
+      "type": "string",
+      "description": "After-hours call transfer number in E.164 format"
+    },
+    "after_hours_call_greeting": {
+      "type": "string",
+      "description": "After-hours call greeting text"
+    },
+    "after_hours_sms_auto_reply_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether after-hours SMS auto-reply is enabled"
+    },
+    "after_hours_sms_auto_reply": {
+      "type": "string",
+      "description": "After-hours SMS auto-reply message"
+    },
+    "a2p_10dlc_status": {
+      "type": "string",
+      "enum": [
+        "not_registered",
+        "pending",
+        "registered"
+      ],
+      "default": "not_registered",
+      "description": "A2P 10DLC registration status"
+    },
+    "a2p_brand_id": {
+      "type": "string",
+      "description": "A2P 10DLC brand ID"
+    },
+    "a2p_campaign_id": {
+      "type": "string",
+      "description": "A2P 10DLC campaign ID"
     }
   },
   "rls": {

@@ -155,6 +155,77 @@
     "order": {
       "type": "number",
       "description": "Display order within category"
+    },
+    "course_id": {
+      "type": "string",
+      "description": "ID of the parent course this module belongs to (readers filter modules by course_id)"
+    },
+    "type": {
+      "type": "string",
+      "description": "Module type as written by generators/seeders (e.g. 'lesson', 'video'); distinct from module_type/content_type and read by TrainingModuleViewer"
+    },
+    "content_json": {
+      "type": "object",
+      "description": "Structured module content as written by generators/seeders; read by TrainingModuleViewer"
+    },
+    "order_index": {
+      "type": "number",
+      "description": "Zero-based ordering index within a course; used as the filter sort key by TrainingCoursePlayer/OnboardingTracker"
+    },
+    "estimated_minutes": {
+      "type": "number",
+      "description": "Estimated completion time in minutes as written by generators; read across training dashboards"
+    },
+    "attachment_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URLs of files attached to this module"
+    },
+    "attachment_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Display names of attached files"
+    },
+    "video_url": {
+      "type": "string",
+      "description": "Top-level generated video URL for the module"
+    },
+    "video_thumbnail_url": {
+      "type": "string",
+      "description": "Thumbnail URL for the generated video"
+    },
+    "video_duration_seconds": {
+      "type": "number",
+      "description": "Duration of the generated video in seconds"
+    },
+    "video_status": {
+      "type": "string",
+      "description": "Status of video generation (e.g. processing, completed, failed)"
+    },
+    "video_generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the video was generated (ISO timestamp)"
+    },
+    "video_error": {
+      "type": "string",
+      "description": "Error message from video generation, if any"
+    },
+    "video_job_id": {
+      "type": "string",
+      "description": "ID of the external video generation job"
+    },
+    "video_avatar_id": {
+      "type": "string",
+      "description": "Avatar ID used for video generation"
+    },
+    "video_voice_id": {
+      "type": "string",
+      "description": "Voice ID used for video generation"
     }
   },
   "required": [
