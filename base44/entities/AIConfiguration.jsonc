@@ -10,16 +10,6 @@
       "type": "string",
       "description": "Name of the user"
     },
-    "verbosity_level": {
-      "type": "string",
-      "enum": [
-        "concise",
-        "balanced",
-        "detailed"
-      ],
-      "default": "balanced",
-      "description": "How verbose enhanced notes should be"
-    },
     "compliance_priority": {
       "type": "string",
       "enum": [
@@ -40,27 +30,6 @@
       ],
       "default": "moderate",
       "description": "How many quality suggestions to provide"
-    },
-    "preferred_note_structure": {
-      "type": "string",
-      "enum": [
-        "narrative",
-        "soap",
-        "bullet",
-        "mixed"
-      ],
-      "default": "narrative",
-      "description": "Preferred format for enhanced notes"
-    },
-    "auto_apply_minor_fixes": {
-      "type": "boolean",
-      "default": false,
-      "description": "Automatically fix minor grammar/spelling issues"
-    },
-    "include_education_tips": {
-      "type": "boolean",
-      "default": true,
-      "description": "Include patient education recommendations"
     },
     "custom_compliance_rules": {
       "type": "array",

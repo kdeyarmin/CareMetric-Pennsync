@@ -37,9 +37,6 @@
       "type": "string",
       "description": "Why this was assigned"
     },
-    "related_care_plan_id": {
-      "type": "string"
-    },
     "priority": {
       "type": "string",
       "enum": [

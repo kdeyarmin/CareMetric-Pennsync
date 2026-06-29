@@ -2,10 +2,6 @@
   "name": "OCRTrainingSession",
   "type": "object",
   "properties": {
-    "admin_email": {
-      "type": "string",
-      "description": "Admin who triggered the training"
-    },
     "feedback_count": {
       "type": "number",
       "description": "Number of feedback items processed"
@@ -82,7 +78,6 @@
     }
   },
   "required": [
-    "admin_email",
     "status"
   ],
   "rls": {

@@ -16,19 +16,31 @@ checked and the field was added only when readers actually use the code's name (
 schema's similarly-named field was unused / belonged to a different entity such as
 DocumentPackage). No code renames were required.
 
-**Follow-up cleanup (optional, not done — requires code changes):** a few entities now
-carry a *redundant legacy field* alongside the name the code actually uses. Consolidating
-onto one name (code edit) would tidy these up:
+### Follow-up consolidation (done)
 
-- `Message`: `body`/`recipient_email` (legacy) vs. used `message_text`/`sender_email`
-- `FaxContact`: `company` (legacy) vs. used `organization`
-- `DocumentTemplate`: `template_name` (legacy) vs. used `name`
-- `AIConfiguration`: `verbosity_level`/`preferred_note_structure`/`include_education_tips`/`auto_apply_minor_fixes` vs. used `ai_verbosity`/`preferred_note_style`/`include_teaching_points`/`auto_enhance_on_completion`
-- `OASISScenario`: `notes`/`scenario_data` vs. used `description`/`modified_pdgm_data`
-- `PatientEducationAssignment`: `completion_date`/`related_care_plan_id` vs. used `completed_date`/`care_plan_id`
-- `OCRFeedback`: `original_text`/`is_applied`/`fax_history_id`/`user_email` vs. used `original_ocr_text`/`applied_to_training`/`fax_log_id`/`corrected_by`
-- `OCRTrainingSession`: `admin_email` vs. used `initiated_by`
-- `DocumentSignature`: `completed_at`/`expiration_date` are read on DocumentPackage, not here; this entity uses `completed_date`/`due_date`/`expires_at`
+A second pass measured real usage (read + write) of each redundant *legacy* field
+across `src/` and `base44/functions/` and removed only those with **zero references
+anywhere** — provably dead, so removal is safe and carries no data-loss risk:
+
+- `AIConfiguration`: removed `verbosity_level`, `preferred_note_structure`,
+  `include_education_tips`, `auto_apply_minor_fixes` (code uses `ai_verbosity`,
+  `preferred_note_style`, `include_teaching_points`, `auto_enhance_on_completion`).
+- `PatientEducationAssignment`: removed `related_care_plan_id` (code uses `care_plan_id`).
+- `OCRFeedback`: removed `is_applied`, `fax_history_id` (code uses `applied_to_training`,
+  `fax_log_id`).
+- `OCRTrainingSession`: removed `admin_email` — it was also in `required[]` while the code
+  only ever writes `initiated_by`, so live creates would have been **rejected** for a
+  missing required field. Removed from both `properties` and `required[]` (latent bug fix).
+
+**Kept (intentionally — NOT redundant):** fields whose "legacy" name is still used
+somewhere, so removal would risk dropping live writes:
+- `OASISScenario.scenario_data` — actively read/written by `PDGMScenarioModeler.jsx`
+  (a different component persists this entity with that field).
+- `Message.body`/`recipient_email`, `OASISScenario.notes`,
+  `PatientEducationAssignment.completion_date`, `OCRFeedback.original_text`/`user_email`,
+  `DocumentSignature.completed_at`/`expiration_date`, `FaxContact.company`,
+  `DocumentTemplate.template_name` — each still referenced by some code path (often a
+  shared field name across entities); left in place as harmless.
 
 The per-entity catalog below is retained as the source of evidence (`file:line`).
 

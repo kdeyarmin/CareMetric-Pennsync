@@ -6,10 +6,6 @@
       "type": "string",
       "description": "Email of the user who provided correction"
     },
-    "fax_history_id": {
-      "type": "string",
-      "description": "Related FaxHistory record"
-    },
     "document_url": {
       "type": "string",
       "description": "URL of the document"
@@ -34,11 +30,6 @@
     "document_type": {
       "type": "string",
       "description": "Type of document for categorization"
-    },
-    "is_applied": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether this feedback has been used for retraining"
     },
     "training_session_id": {
       "type": "string",
