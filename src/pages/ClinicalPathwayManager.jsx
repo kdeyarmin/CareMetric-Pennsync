@@ -489,7 +489,7 @@ export default function ClinicalPathwayManager() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {/* Stats */}
-                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                     <div className="bg-blue-50 p-2 rounded">
                       <Zap className="w-3 h-3 text-blue-600 mx-auto mb-1" />
                       <p className="font-bold text-blue-700">{pathway.trigger_conditions?.length || 0}</p>
@@ -747,7 +747,7 @@ function PathwayForm({ pathway, onSave, onCancel, isSaving }) {
         <div className="space-y-2 max-h-40 overflow-y-auto">
           {formData.trigger_conditions?.map((trigger, idx) => (
             <div key={idx} className="flex gap-2 items-end bg-slate-50 p-2 rounded">
-              <div className="flex-1 grid grid-cols-3 gap-2">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <Select value={trigger.type} onValueChange={(v) => updateTrigger(idx, 'type', v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />

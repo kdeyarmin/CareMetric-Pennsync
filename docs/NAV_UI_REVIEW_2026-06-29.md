@@ -71,40 +71,56 @@ storage failures in private mode are non-fatal).
 - `npm run build` — passes.
 - ESLint on changed files — clean (`--max-warnings 0`).
 
-## Roadmap — further nav/UI opportunities (not done here)
+## Roadmap follow-through — all items actioned
 
-Recommended next, in priority order. None block use today; each is a deliberate
-product decision rather than a safe mechanical change.
+The roadmap below was implemented in the same effort (a second commit on this
+branch). Each is recorded with its outcome.
 
-**P1 — robustness / clarity**
-- **Role-aware mobile bottom bar.** `MobileBottomNav` hardcodes Home / Patients /
-  Notes / Fax / Messages for everyone. Faxing is an admin/back-office task; a
-  nurse's most-used fifth slot is more likely Messages or the OASIS center.
-  Drive the 5 slots from role (mirror the sidebar's role split) so each employee
-  gets their real top tasks.
-- **Command-palette quick actions.** The palette only navigates. Adding a few
-  verbs ("New referral", "Start Smart Note", "Send fax", "Request time off")
-  would turn it into a do-things bar, which is the highest-leverage speed-up for
-  power users.
+**P1 — robustness / clarity — DONE ✅**
+- **Role-aware mobile bottom bar.** `MobileBottomNav` previously hardcoded Home /
+  Patients / Notes / Fax / Messages for everyone, surfacing back-office faxing to
+  nurses while hiding referrals/documents from admins. It now takes `isAdmin`
+  (passed by `Layout`) and renders the role's real top tasks: nurses keep the
+  clinical set (Notes, Fax); facility/super admins get **Referrals** and
+  **Documents**. Both keep Home / Patients / Messages. Active state is the new
+  ancestor-aware match, so deep pages keep the right tab lit.
+- **Command-palette quick actions.** The `⌘K` palette is now a "do things" bar,
+  not just a jump list: a top **Actions** group offers *Start a Smart Note*,
+  *Send a fax*, *New message*, *Request time off*, and *New referral / intake*
+  (admin-gated). Each routes to the page that begins the flow, so an action can
+  never dead-end.
 
-**P2 — information architecture**
-- **Duplicate page families.** `UI_UX_REVIEW.md` finding #4 (OASIS / Compliance /
-  Training / Dashboard near-duplicates) is partly consolidated via redirects;
-  finish collapsing each family to one canonical page with tabs so employees
-  never wonder "which OASIS page do I use?".
-- **Surface the Admin Console launchpad to facility admins consistently.** Many
-  admin tools are `category: null` and reachable only via the console + palette;
-  confirm the console directory lists every one so nothing is palette-only.
+**P2 — information architecture — DONE ✅**
+- **Duplicate page families** (`UI_UX_REVIEW.md` #4) — verified **already
+  complete**: OASIS (9 variants), Compliance (5), Learning/Training (8), and the
+  dashboard duplicates each now redirect into a single canonical tabbed page (see
+  `REDIRECTS` in `src/routes.jsx`). Every family has exactly one routed home;
+  nothing unsafe remained to collapse. Deleting the orphaned page files still on
+  disk is a separate "dead code" effort (`NURSE_APP_IMPROVEMENTS.md` #23),
+  deliberately not bundled into this nav/UI change.
+- **Admin Console launchpad completeness.** Audited every admin routed page
+  against `AdminConsoleDirectory`. The only gap was **ReferralIntake /
+  ReferralTriage** (reachable via the sidebar but absent from the console). Added
+  an **Intake & Referrals** group so the launchpad now lists every admin tool.
 
-**P3 — polish**
-- Remaining mobile items from `MOBILE_RESPONSIVENESS_REVIEW.md` §Recommendations
-  (responsive stat grids, `max-h-[60vh]` scroll caps, KPI font downscale).
+**P3 — polish — DONE ✅**
+- Applied the genuine non-tab mobile offenders: `ClinicalPathwayManager`'s 4-up
+  stat grid (`grid-cols-2 sm:grid-cols-4`) and its 3-up trigger-editor form row
+  (`grid-cols-1 sm:grid-cols-3`, so the dropdowns stack on phones). The remaining
+  `grid-cols-4/5` instances are all `TabsList` bars already handled by the global
+  wrapping-flex rule from `MOBILE_RESPONSIVENESS_REVIEW.md` #1, and the dashboard
+  KPI fonts/scroll areas were already responsive — so no further churn was
+  warranted.
 
 ## Changes made
 
 | File | Change |
 | --- | --- |
 | `src/lib/nav.manifest.js` | Add `navActivePage` + `isNavItemActive` (ancestor-aware active state) |
-| `src/components/Layout.jsx` | `isActive` delegates to `isNavItemActive`; persist sidebar collapse to `localStorage` |
+| `src/components/Layout.jsx` | `isActive` delegates to `isNavItemActive`; persist sidebar collapse; pass `isAdmin` to bottom nav |
+| `src/components/layout/MobileBottomNav.jsx` | Role-aware nurse vs admin tab sets |
+| `src/components/navigation/CommandPalette.jsx` | Add role-gated quick-action verbs |
+| `src/components/admin/AdminConsoleDirectory.jsx` | Add Intake & Referrals group (launchpad completeness) |
+| `src/pages/ClinicalPathwayManager.jsx` | Responsive stat grid + trigger-editor form row |
 | `src/lib/nav.manifest.spec.js` | **New** unit tests for the active-state helpers |
 | `docs/NAV_UI_REVIEW_2026-06-29.md` | This review |

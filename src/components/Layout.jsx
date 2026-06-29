@@ -351,7 +351,7 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </main>
 
-        <MobileBottomNav isActive={isActive} unreadMessageCount={unreadMessageCount} />
+        <MobileBottomNav isActive={isActive} unreadMessageCount={unreadMessageCount} isAdmin={isAdmin} />
 
         {/* Floating Sync Status — only appears when there are pending items to sync */}
         <div className="fixed bottom-20 md:bottom-4 right-4 z-40 max-w-sm">
