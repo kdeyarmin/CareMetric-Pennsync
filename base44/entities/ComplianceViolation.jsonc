@@ -1,0 +1,141 @@
+{
+  "name": "ComplianceViolation",
+  "type": "object",
+  "properties": {
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "visit",
+        "note",
+        "care_plan",
+        "assessment",
+        "oasis"
+      ],
+      "description": "Type of entity that has the violation"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID of the entity with violation"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "User who created the documentation"
+    },
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the compliance rule violated"
+    },
+    "rule_category": {
+      "type": "string",
+      "description": "Category of the rule"
+    },
+    "violation_description": {
+      "type": "string",
+      "description": "Description of what was violated"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "description": "Severity level"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "in_progress",
+        "resolved",
+        "dismissed"
+      ],
+      "default": "open",
+      "description": "Current status"
+    },
+    "recommended_action": {
+      "type": "string",
+      "description": "Recommended corrective action"
+    },
+    "auto_fix_available": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether auto-fix is available"
+    },
+    "suggested_fix": {
+      "type": "string",
+      "description": "Suggested text or fix"
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Why this rule is important for compliance"
+    },
+    "detection_method": {
+      "type": "string",
+      "enum": [
+        "automated",
+        "manual",
+        "scheduled"
+      ],
+      "default": "automated",
+      "description": "How the violation was detected"
+    },
+    "resolved_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the violation was resolved"
+    },
+    "resolved_by": {
+      "type": "string",
+      "description": "Who resolved the violation"
+    },
+    "resolution_notes": {
+      "type": "string",
+      "description": "Notes on how it was resolved"
+    },
+    "document_analyzed": {
+      "type": "string",
+      "description": "Excerpt of analyzed document"
+    },
+    "ai_feedback": {
+      "type": "string",
+      "enum": [
+        "helpful",
+        "not_helpful",
+        "partially_helpful"
+      ],
+      "description": "User feedback on AI suggestion"
+    },
+    "ai_feedback_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When feedback was provided"
+    },
+    "ai_feedback_notes": {
+      "type": "string",
+      "description": "Additional feedback notes from user"
+    }
+  },
+  "required": [
+    "user_email",
+    "rule_name",
+    "violation_description",
+    "severity"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_email": "{{user.email}}"
+        }
+      ]
+    },
+    "write": {}
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "name": "ComplianceTrainingProgress",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "User taking the training"
+    },
+    "training_module_id": {
+      "type": "string",
+      "description": "ID of the training module"
+    },
+    "module_title": {
+      "type": "string",
+      "description": "Title of the training module"
+    },
+    "error_patterns_addressed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Compliance error patterns this training addresses"
+    },
+    "quiz_score": {
+      "type": "number",
+      "description": "Score on the quiz (0-100)"
+    },
+    "quiz_attempts": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of quiz attempts"
+    },
+    "quiz_responses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "user_answer": {
+            "type": "string"
+          },
+          "correct_answer": {
+            "type": "string"
+          },
+          "is_correct": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Quiz response history"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "in_progress",
+        "completed",
+        "mastered"
+      ],
+      "default": "not_started"
+    },
+    "completion_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When training was completed"
+    },
+    "time_spent_minutes": {
+      "type": "number",
+      "default": 0,
+      "description": "Time spent on this training"
+    },
+    "improvement_score": {
+      "type": "number",
+      "description": "Improvement in compliance after training (0-100)"
+    },
+    "violations_before_training": {
+      "type": "number",
+      "description": "Number of violations in pattern before training"
+    },
+    "violations_after_training": {
+      "type": "number",
+      "description": "Number of violations in pattern after training"
+    }
+  },
+  "required": [
+    "user_email",
+    "module_title"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

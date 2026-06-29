@@ -1,0 +1,68 @@
+{
+  "name": "TranscriptionLearning",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of the user"
+    },
+    "original_transcription": {
+      "type": "string",
+      "description": "What Deepgram transcribed"
+    },
+    "corrected_transcription": {
+      "type": "string",
+      "description": "What the user corrected it to"
+    },
+    "custom_terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "term": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Learned medical terms and their frequency"
+    },
+    "context": {
+      "type": "string",
+      "description": "Where the transcription was used (e.g., visit note, care plan)"
+    }
+  },
+  "required": [
+    "user_email",
+    "original_transcription",
+    "corrected_transcription"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

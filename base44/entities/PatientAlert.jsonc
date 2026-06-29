@@ -19,7 +19,17 @@
         "urgent_intervention",
         "hospice_transition",
         "caregiver_burnout",
-        "documentation_risk"
+        "vital_sign_threshold",
+        "lab_result_critical",
+        "missed_visit",
+        "medication_adherence",
+        "weight_change",
+        "pain_level",
+        "functional_decline",
+        "care_plan_stalled",
+        "overdue_task",
+        "hospitalization_risk",
+        "predictive_risk"
       ],
       "description": "Type of alert"
     },
@@ -40,6 +50,10 @@
     "message": {
       "type": "string",
       "description": "Detailed alert message"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed alert description"
     },
     "contributing_factors": {
       "type": "array",
@@ -62,6 +76,19 @@
     "data_sources": {
       "type": "object",
       "description": "Data points that contributed to the alert"
+    },
+    "triggered_data": {
+      "type": "object",
+      "description": "Specific data that triggered the alert"
+    },
+    "triggered_by_rule_id": {
+      "type": "string",
+      "description": "ID of AlertTriggerRule that created this alert"
+    },
+    "detected_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the alert condition was detected"
     },
     "status": {
       "type": "string",
@@ -95,6 +122,10 @@
       "type": "string",
       "description": "Notes on how alert was resolved"
     },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "expires_at": {
       "type": "string",
       "format": "date-time",
@@ -105,7 +136,32 @@
     "patient_id",
     "alert_type",
     "severity",
-    "title",
-    "message"
-  ]
+    "title"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

@@ -1,0 +1,44 @@
+{
+  "name": "VerificationCode",
+  "type": "object",
+  "properties": {
+    "phone_number": {
+      "type": "string",
+      "description": "Phone number to verify"
+    },
+    "code": {
+      "type": "string",
+      "description": "6-digit verification code"
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "authentication",
+        "signup",
+        "password_reset"
+      ],
+      "default": "authentication",
+      "description": "Purpose of the verification"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this code expires"
+    },
+    "verified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the code has been verified"
+    },
+    "verified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the code was verified"
+    }
+  },
+  "required": [
+    "phone_number",
+    "code",
+    "expires_at"
+  ]
+}

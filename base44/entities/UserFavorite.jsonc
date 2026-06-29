@@ -1,0 +1,43 @@
+{
+  "name": "UserFavorite",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "item_type": {
+      "type": "string",
+      "enum": [
+        "patient",
+        "page"
+      ],
+      "description": "Type of favorited item"
+    },
+    "item_id": {
+      "type": "string",
+      "description": "ID of the patient or page name"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Display label for the favorite"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Icon name for display"
+    }
+  },
+  "required": [
+    "user_email",
+    "item_type",
+    "item_id",
+    "display_name"
+  ],
+  "rls": {
+    "read": {
+      "user_email": "{{user.email}}"
+    },
+    "write": {
+      "user_email": "{{user.email}}"
+    }
+  }
+}

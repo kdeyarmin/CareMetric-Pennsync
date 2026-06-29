@@ -1,0 +1,127 @@
+{
+  "name": "GeneratedDocument",
+  "type": "object",
+  "properties": {
+    "document_name": {
+      "type": "string",
+      "description": "Name/title of the generated document"
+    },
+    "template_id": {
+      "type": "string",
+      "description": "Reference to DocumentTemplate"
+    },
+    "template_type": {
+      "type": "string",
+      "description": "Type of document (patient_education, discharge_instructions, etc.)"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Patient name (de-identified for security)"
+    },
+    "patient_email": {
+      "type": "string",
+      "description": "Patient email for sharing"
+    },
+    "generated_content": {
+      "type": "string",
+      "description": "Final populated document content (HTML)"
+    },
+    "generation_data": {
+      "type": "object",
+      "description": "Data used to populate template (patient info, custom fields)"
+    },
+    "custom_text": {
+      "type": "string",
+      "description": "Custom text added by provider"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "final",
+        "sent",
+        "archived"
+      ],
+      "default": "draft",
+      "description": "Document status"
+    },
+    "sent_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When document was sent to patient"
+    },
+    "sent_via": {
+      "type": "string",
+      "enum": [
+        "email",
+        "portal",
+        "print",
+        "none"
+      ],
+      "description": "How document was sent"
+    },
+    "hipaa_audit": {
+      "type": "object",
+      "properties": {
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_accessed": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "access_count": {
+          "type": "number"
+        }
+      },
+      "description": "HIPAA audit trail"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for organization"
+    }
+  },
+  "required": [
+    "document_name",
+    "template_id",
+    "template_type",
+    "patient_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

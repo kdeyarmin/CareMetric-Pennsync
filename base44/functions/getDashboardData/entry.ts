@@ -13,7 +13,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * invalidations are left untouched.
  */
 
-// Today's date in America/New_York (matches the client's todayEastern()).
+// Today's date in America/New_York (matches the client's todayEastern()). Returns YYYY-MM-DD.
 function todayEastern() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -29,17 +29,15 @@ Deno.serve(async (req) => {
     const sr = base44.asServiceRole.entities;
     const today = todayEastern();
 
-    // Agency-wide view for any administrator tier: the agency `admin` role, an
-    // agency_admin/super_admin account_type, or the designated platform owner.
-    // (Mirrors lib/roles.js getRoleView — kept inline since Deno functions can't
-    // import frontend modules.) Without the account_type/owner checks a super
-    // admin who isn't yet role:'admin' would incorrectly get the nurse view.
-    const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase() || null;
+    // Agency-wide view for any administrator tier: the agency `admin` role, or an
+    // agency_admin/super_admin account_type. (Mirrors lib/roles.js getRoleView —
+    // kept inline since Deno functions can't import frontend modules.) Without
+    // the account_type checks a super admin who isn't yet role:'admin' would
+    // incorrectly get the nurse view.
     const isAdmin =
       user.role === 'admin' ||
       user.account_type === 'agency_admin' ||
-      user.account_type === 'super_admin' ||
-      String(user.email || '').trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+      user.account_type === 'super_admin';
 
     if (isAdmin) {
       const [patients, visits, carePlans, incidents] = await Promise.all([

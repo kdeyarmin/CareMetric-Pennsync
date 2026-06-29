@@ -1,0 +1,81 @@
+{
+  "name": "AIModelTestResult",
+  "type": "object",
+  "properties": {
+    "configuration_id": {
+      "type": "string",
+      "description": "Reference to AIModelConfiguration"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider type used"
+    },
+    "task_type": {
+      "type": "string",
+      "description": "Task type performed"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "User who performed this task"
+    },
+    "ab_test_group": {
+      "type": "string",
+      "enum": [
+        "A",
+        "B"
+      ],
+      "description": "Which variant was used"
+    },
+    "quality_score": {
+      "type": "number",
+      "description": "Quality score of output (0-100)"
+    },
+    "compliance_score": {
+      "type": "number",
+      "description": "Compliance score (0-100)"
+    },
+    "processing_time_ms": {
+      "type": "number",
+      "description": "Time taken to process"
+    },
+    "tokens_used": {
+      "type": "number",
+      "description": "Total tokens consumed"
+    },
+    "success": {
+      "type": "boolean",
+      "description": "Whether the task completed successfully"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if failed"
+    },
+    "user_feedback": {
+      "type": "object",
+      "properties": {
+        "rating": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "comments": {
+          "type": "string"
+        }
+      },
+      "description": "Optional user feedback"
+    }
+  },
+  "required": [
+    "configuration_id",
+    "provider_type",
+    "task_type"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {}
+  }
+}

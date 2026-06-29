@@ -1,0 +1,148 @@
+{
+  "name": "ProviderUsagePattern",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Provider's email"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider specialty/type"
+    },
+    "frequent_visit_types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "visit_type": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "last_used": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Most frequently used visit types"
+    },
+    "frequent_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "diagnosis": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "last_used": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Most frequently used diagnoses"
+    },
+    "template_usage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "template_name": {
+            "type": "string"
+          },
+          "usage_count": {
+            "type": "number"
+          },
+          "last_used": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Template usage patterns"
+    },
+    "feature_usage": {
+      "type": "object",
+      "properties": {
+        "magic_edit_count": {
+          "type": "number",
+          "default": 0
+        },
+        "voice_dictation_count": {
+          "type": "number",
+          "default": 0
+        },
+        "patient_chat_count": {
+          "type": "number",
+          "default": 0
+        },
+        "letter_generation_count": {
+          "type": "number",
+          "default": 0
+        },
+        "billing_codes_count": {
+          "type": "number",
+          "default": 0
+        },
+        "compliance_check_count": {
+          "type": "number",
+          "default": 0
+        }
+      },
+      "description": "AI feature usage statistics"
+    },
+    "preferred_quick_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Most clicked quick actions"
+    },
+    "avg_note_length": {
+      "type": "number",
+      "description": "Average rough note length"
+    },
+    "preferred_time_of_day": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "afternoon",
+        "evening"
+      ],
+      "description": "When provider typically documents"
+    },
+    "ai_suggestion_acceptance_rate": {
+      "type": "number",
+      "description": "Percentage of AI suggestions accepted"
+    },
+    "total_notes_generated": {
+      "type": "number",
+      "default": 0
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "provider_email"
+  ],
+  "rls": {
+    "read": {
+      "provider_email": "{{user.email}}"
+    },
+    "write": {
+      "provider_email": "{{user.email}}"
+    }
+  }
+}

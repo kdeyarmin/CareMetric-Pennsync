@@ -1,0 +1,161 @@
+{
+  "name": "IncomingFax",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "sender_name": {
+      "type": "string"
+    },
+    "sender_fax_number": {
+      "type": "string"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "document_url": {
+      "type": "string",
+      "description": "URL to the received fax document"
+    },
+    "page_count": {
+      "type": "number"
+    },
+    "telnyx_fax_id": {
+      "type": "string"
+    },
+    "processing_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "ocr_text": {
+      "type": "string",
+      "description": "Extracted text from OCR"
+    },
+    "ocr_confidence": {
+      "type": "number"
+    },
+    "ai_summary": {
+      "type": "string",
+      "description": "Concise AI-generated summary of fax content"
+    },
+    "ai_category": {
+      "type": "string",
+      "enum": [
+        "lab_results",
+        "referral",
+        "consultation_note",
+        "prescription",
+        "insurance_authorization",
+        "discharge_summary",
+        "imaging_report",
+        "progress_note",
+        "consent_form",
+        "other"
+      ]
+    },
+    "extracted_info": {
+      "type": "object",
+      "properties": {
+        "patient_name": {
+          "type": "string"
+        },
+        "patient_dob": {
+          "type": "string"
+        },
+        "patient_mrn": {
+          "type": "string"
+        },
+        "document_date": {
+          "type": "string"
+        },
+        "provider_name": {
+          "type": "string"
+        },
+        "diagnosis": {
+          "type": "string"
+        },
+        "medications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "urgency_level": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "urgency_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Reasons why this fax is flagged as urgent"
+    },
+    "suggested_patient_id": {
+      "type": "string",
+      "description": "AI-suggested patient record to attach this to"
+    },
+    "suggested_routing": {
+      "type": "string",
+      "enum": [
+        "nurse_review",
+        "physician_review",
+        "admin",
+        "billing",
+        "patient_record"
+      ],
+      "description": "Suggested destination for this fax"
+    },
+    "confidence_score": {
+      "type": "number",
+      "description": "AI confidence in analysis 0-100"
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unread",
+        "reviewing",
+        "routed",
+        "archived"
+      ],
+      "default": "unread"
+    },
+    "routed_to": {
+      "type": "string",
+      "description": "User/queue this was routed to"
+    },
+    "routed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_email",
+    "document_url"
+  ]
+}

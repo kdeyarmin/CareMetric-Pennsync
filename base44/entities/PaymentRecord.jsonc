@@ -1,0 +1,79 @@
+{
+  "name": "PaymentRecord",
+  "type": "object",
+  "properties": {
+    "invoice_id": {
+      "type": "string",
+      "description": "Reference to Invoice entity"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date payment was received"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Payment amount"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "cash",
+        "check",
+        "credit_card",
+        "insurance",
+        "bank_transfer",
+        "other"
+      ],
+      "description": "Payment method"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "Check number, transaction ID, etc."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Payment notes"
+    },
+    "processed_by": {
+      "type": "string",
+      "description": "Email of user who recorded payment"
+    }
+  },
+  "required": [
+    "invoice_id",
+    "patient_id",
+    "payment_date",
+    "amount"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "processed_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "processed_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "name": "AppliedDataLog",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "analysis_id": {
+      "type": "string",
+      "description": "Reference to DocumentAnalysisHistory"
+    },
+    "applied_by": {
+      "type": "string",
+      "description": "Email of user who applied the data"
+    },
+    "data_type": {
+      "type": "string",
+      "enum": [
+        "demographics",
+        "diagnosis",
+        "medication",
+        "allergy",
+        "vital_sign",
+        "clinical_note"
+      ],
+      "description": "Type of data applied"
+    },
+    "item_name": {
+      "type": "string",
+      "description": "Name/identifier of the specific item (e.g., medication name, diagnosis)"
+    },
+    "old_value": {
+      "type": "object",
+      "description": "Previous value if updating existing record"
+    },
+    "new_value": {
+      "type": "object",
+      "description": "Value that was applied"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "create",
+        "update",
+        "append"
+      ],
+      "description": "Action performed"
+    },
+    "target_entity": {
+      "type": "string",
+      "description": "Entity type modified (Patient, Task, etc.)"
+    },
+    "applied_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of when data was applied"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about the change"
+    }
+  },
+  "required": [
+    "patient_id",
+    "data_type",
+    "item_name",
+    "new_value",
+    "action",
+    "applied_by"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "applied_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "applied_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

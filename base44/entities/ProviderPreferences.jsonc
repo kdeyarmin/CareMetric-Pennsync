@@ -1,0 +1,302 @@
+{
+  "name": "ProviderPreferences",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "RN",
+        "LPN",
+        "NP",
+        "MD",
+        "DO",
+        "PT",
+        "OT",
+        "ST",
+        "MSW",
+        "Chiropractor"
+      ],
+      "description": "Type of healthcare provider"
+    },
+    "preferred_phrasing": {
+      "type": "object",
+      "properties": {
+        "vital_signs": {
+          "type": "string",
+          "description": "Preferred way to describe vital signs"
+        },
+        "patient_response": {
+          "type": "string",
+          "description": "Preferred way to describe patient response"
+        },
+        "assessment": {
+          "type": "string",
+          "description": "Preferred assessment format"
+        },
+        "interventions": {
+          "type": "string",
+          "description": "Preferred way to document interventions"
+        },
+        "education": {
+          "type": "string",
+          "description": "Preferred way to document patient education"
+        },
+        "custom_phrases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "element": {
+                "type": "string"
+              },
+              "preferred_text": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Custom phrase preferences for specific elements"
+        }
+      },
+      "description": "Preferred phrasing for common documentation elements"
+    },
+    "priority_checklists": {
+      "type": "object",
+      "properties": {
+        "visit_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "visit_type": {
+                "type": "string"
+              },
+              "priority_elements": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "weight": {
+                "type": "number",
+                "description": "Importance weight (1-10)"
+              }
+            }
+          },
+          "description": "Priority checklists for different visit types"
+        },
+        "default_priorities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Elements this provider always wants to prioritize"
+        }
+      },
+      "description": "Provider's priority preferences for checklists"
+    },
+    "custom_templates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "visit_type": {
+            "type": "string"
+          },
+          "diagnosis_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "template_content": {
+            "type": "string"
+          },
+          "is_favorite": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "description": "Custom templates created by the provider"
+    },
+    "default_values": {
+      "type": "object",
+      "properties": {
+        "default_visit_type": {
+          "type": "string",
+          "description": "Default visit type for new notes"
+        },
+        "default_diagnosis": {
+          "type": "string",
+          "description": "Most common diagnosis this provider works with"
+        },
+        "common_diagnoses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Top diagnoses for quick selection"
+        },
+        "common_visit_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Most common visit types"
+        },
+        "default_education_level": {
+          "type": "string",
+          "enum": [
+            "basic",
+            "intermediate",
+            "advanced"
+          ],
+          "default": "intermediate",
+          "description": "Default patient education complexity level"
+        }
+      },
+      "description": "Default values for common fields"
+    },
+    "ai_personalization": {
+      "type": "object",
+      "properties": {
+        "writing_style": {
+          "type": "string",
+          "enum": [
+            "clinical",
+            "detailed",
+            "concise",
+            "narrative"
+          ],
+          "default": "clinical",
+          "description": "Preferred writing style for AI-generated notes"
+        },
+        "focus_areas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Areas AI should emphasize (e.g., 'patient education', 'safety')"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "professional",
+            "warm",
+            "objective",
+            "empathetic"
+          ],
+          "default": "professional",
+          "description": "Preferred tone for generated content"
+        },
+        "detail_level": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "moderate",
+            "comprehensive"
+          ],
+          "default": "moderate",
+          "description": "How detailed the AI notes should be"
+        },
+        "learning_profile": {
+          "type": "object",
+          "properties": {
+            "total_notes_generated": {
+              "type": "number",
+              "default": 0
+            },
+            "feedback_count": {
+              "type": "number",
+              "default": 0
+            },
+            "improvement_suggestions_count": {
+              "type": "number",
+              "default": 0
+            },
+            "last_feedback_date": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "preferred_improvements": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Categories of improvements this provider typically suggests"
+            }
+          },
+          "description": "AI learning profile based on provider feedback"
+        }
+      },
+      "description": "Personalization settings for AI note generation"
+    },
+    "notifications_preferences": {
+      "type": "object",
+      "properties": {
+        "suggest_improvements": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show suggestions for improvement"
+        },
+        "compliance_alerts": {
+          "type": "boolean",
+          "default": true,
+          "description": "Alert on compliance gaps"
+        },
+        "feedback_reminders": {
+          "type": "boolean",
+          "default": false,
+          "description": "Remind to provide feedback on notes"
+        }
+      },
+      "description": "Notification preferences"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether these preferences are active"
+    }
+  },
+  "required": [
+    "provider_email",
+    "provider_type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

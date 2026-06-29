@@ -1,0 +1,49 @@
+{
+  "name": "ServiceCode",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "Service code (e.g., 99203, G0151)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name of the service"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the service"
+    },
+    "default_price": {
+      "type": "number",
+      "description": "Default price for this service"
+    },
+    "billing_category": {
+      "type": "string",
+      "enum": [
+        "evaluation_management",
+        "therapy",
+        "procedure",
+        "nursing",
+        "other"
+      ],
+      "description": "Category of billing"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this service code is currently active"
+    },
+    "requires_authorization": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this service requires pre-authorization"
+    }
+  },
+  "required": [
+    "code",
+    "name",
+    "default_price",
+    "billing_category"
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "name": "WorkflowExecution",
+  "type": "object",
+  "properties": {
+    "workflow_definition_id": {
+      "type": "string",
+      "description": "Reference to WorkflowDefinition"
+    },
+    "workflow_name": {
+      "type": "string"
+    },
+    "triggered_by": {
+      "type": "string",
+      "description": "Email of user who triggered"
+    },
+    "trigger_event": {
+      "type": "string"
+    },
+    "trigger_data": {
+      "type": "object",
+      "description": "Data associated with the trigger"
+    },
+    "current_step": {
+      "type": "number",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "approved",
+        "rejected",
+        "cancelled",
+        "completed"
+      ],
+      "default": "pending"
+    },
+    "step_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step_name": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "completion_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rejection_reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "workflow_definition_id",
+    "workflow_name",
+    "triggered_by",
+    "trigger_event"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "triggered_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "triggered_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

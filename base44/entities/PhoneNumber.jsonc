@@ -1,13 +1,6 @@
 {
   "name": "PhoneNumber",
   "type": "object",
-  // Pool of Twilio virtual numbers the agency has purchased, so an admin can add
-  // a number once and then assign/reassign it to nurses from a dropdown instead of
-  // retyping it every time. The number itself isn't PHI; the actual masking
-  // mapping still lives on User.work_phone_number (the source of truth a webhook
-  // resolves against). This entity is the admin-facing inventory + assignment
-  // status. All writes go through the managePhoneNumberPool backend function
-  // (service role) so assignment stays consistent with the User record.
   "properties": {
     "e164": {
       "type": "string",
@@ -19,7 +12,10 @@
     },
     "status": {
       "type": "string",
-      "enum": ["available", "assigned"],
+      "enum": [
+        "available",
+        "assigned"
+      ],
       "default": "available",
       "description": "Whether the number is unassigned (available) or currently assigned to a nurse."
     },
@@ -29,18 +25,17 @@
     },
     "twilio_phone_number_sid": {
       "type": "string",
-      "description": "Twilio IncomingPhoneNumber SID (PN…) for this number, used for provisioning/config."
+      "description": "Twilio IncomingPhoneNumber SID (PN\u2026) for this number, used for provisioning/config."
     },
     "notes": {
       "type": "string",
       "description": "Optional admin notes about the number."
     }
   },
-  "required": ["e164"],
+  "required": [
+    "e164"
+  ],
   "rls": {
-    // Read is open to authenticated users (the pool is admin-surfaced and the
-    // numbers are not sensitive); writes are service-role only so they can only
-    // happen through the validated managePhoneNumberPool backend function.
     "read": {},
     "write": {
       "user_condition": {

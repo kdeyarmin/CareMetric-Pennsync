@@ -1,0 +1,148 @@
+{
+  "name": "Subscription",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "stripe_customer_id": {
+      "type": "string"
+    },
+    "stripe_subscription_id": {
+      "type": "string"
+    },
+    "stripe_price_id": {
+      "type": "string",
+      "description": "The Stripe price ID for this subscription"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "trialing",
+        "past_due",
+        "canceled",
+        "unpaid",
+        "incomplete",
+        "incomplete_expired",
+        "paused",
+        "lifetime_free",
+        "expired"
+      ],
+      "description": "Subscription status synced from Stripe"
+    },
+    "plan_name": {
+      "type": "string"
+    },
+    "monthly_amount": {
+      "type": "number"
+    },
+    "current_period_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of current billing period"
+    },
+    "current_period_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End of current billing period"
+    },
+    "cancel_at_period_end": {
+      "type": "boolean",
+      "default": false
+    },
+    "canceled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the subscription was canceled"
+    },
+    "trial_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Trial start date"
+    },
+    "trial_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Trial end date"
+    },
+    "last_payment_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last successful payment date"
+    },
+    "last_payment_amount": {
+      "type": "number",
+      "description": "Last successful payment amount"
+    },
+    "failed_payment_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of consecutive failed payments"
+    },
+    "last_failed_payment_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date of last failed payment"
+    },
+    "is_apple_iap": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is an Apple in-app purchase subscription"
+    },
+    "apple_receipt": {
+      "type": "string",
+      "enum": [
+        "production",
+        "sandbox"
+      ],
+      "description": "Apple receipt environment (production or sandbox)"
+    },
+    "apple_bundle_id": {
+      "type": "string",
+      "description": "Bundle ID from Apple receipt"
+    },
+    "webhook_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "details": {
+            "type": "object"
+          }
+        }
+      },
+      "description": "Log of webhook events for audit trail"
+    }
+  },
+  "required": [
+    "user_email",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

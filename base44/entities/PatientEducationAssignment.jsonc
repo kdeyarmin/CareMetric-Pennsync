@@ -3,32 +3,17 @@
   "type": "object",
   "properties": {
     "patient_id": {
-      "type": "string",
-      "description": "Reference to Patient entity"
+      "type": "string"
     },
-    "care_plan_id": {
-      "type": "string",
-      "description": "Related care plan if applicable"
+    "material_id": {
+      "type": "string"
     },
-    "topic": {
+    "assigned_by": {
       "type": "string",
-      "description": "Education topic"
+      "description": "Email of provider who assigned"
     },
-    "content": {
-      "type": "string",
-      "description": "Educational content"
-    },
-    "format": {
-      "type": "string",
-      "enum": [
-        "handout",
-        "verbal",
-        "demonstration",
-        "video",
-        "written"
-      ],
-      "default": "handout",
-      "description": "Format of education delivery"
+    "assigned_by_name": {
+      "type": "string"
     },
     "status": {
       "type": "string",
@@ -36,40 +21,24 @@
         "assigned",
         "in_progress",
         "completed",
-        "declined"
+        "dismissed"
       ],
-      "default": "assigned",
-      "description": "Status of education"
+      "default": "assigned"
     },
-    "assigned_date": {
+    "due_date": {
       "type": "string",
-      "format": "date",
-      "description": "Date assigned"
+      "format": "date"
     },
-    "completed_date": {
+    "completion_date": {
       "type": "string",
-      "format": "date",
-      "description": "Date completed"
+      "format": "date-time"
     },
-    "assigned_by": {
+    "notes": {
       "type": "string",
-      "description": "Nurse who assigned"
+      "description": "Why this was assigned"
     },
-    "comprehension_verified": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether patient understanding was verified"
-    },
-    "teach_back_notes": {
-      "type": "string",
-      "description": "Notes from teach-back verification"
-    },
-    "materials_provided": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Materials given to patient"
+    "related_care_plan_id": {
+      "type": "string"
     },
     "priority": {
       "type": "string",
@@ -83,7 +52,7 @@
   },
   "required": [
     "patient_id",
-    "topic",
-    "content"
+    "material_id",
+    "assigned_by"
   ]
 }

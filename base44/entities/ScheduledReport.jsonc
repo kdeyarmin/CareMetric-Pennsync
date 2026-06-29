@@ -1,0 +1,136 @@
+{
+  "name": "ScheduledReport",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "report_type": {
+      "type": "string",
+      "enum": [
+        "compliance",
+        "performance",
+        "analytics",
+        "user_activity",
+        "patient_outcomes",
+        "financial",
+        "custom"
+      ]
+    },
+    "schedule": {
+      "type": "object",
+      "properties": {
+        "frequency": {
+          "type": "string",
+          "enum": [
+            "daily",
+            "weekly",
+            "monthly",
+            "quarterly"
+          ]
+        },
+        "day_of_week": {
+          "type": "string"
+        },
+        "day_of_month": {
+          "type": "number"
+        },
+        "time": {
+          "type": "string"
+        }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "date_range": {
+          "type": "string"
+        },
+        "filters": {
+          "type": "object"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "grouping": {
+          "type": "string"
+        }
+      }
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "csv",
+        "excel",
+        "json"
+      ],
+      "default": "pdf"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "last_run": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_run": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_run_status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed",
+        "pending"
+      ]
+    },
+    "last_run_error": {
+      "type": "string"
+    },
+    "run_count": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "name",
+    "report_type",
+    "schedule",
+    "recipients"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

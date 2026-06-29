@@ -1,0 +1,141 @@
+{
+  "name": "NotificationRule",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "rule_type": {
+      "type": "string",
+      "enum": [
+        "event_based",
+        "threshold_based",
+        "time_based",
+        "condition_based"
+      ]
+    },
+    "trigger_event": {
+      "type": "string",
+      "enum": [
+        "patient_alert",
+        "task_overdue",
+        "compliance_issue",
+        "user_action",
+        "system_event",
+        "data_threshold"
+      ]
+    },
+    "conditions": {
+      "type": "object",
+      "properties": {
+        "entity_type": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "equals",
+            "greater_than",
+            "less_than",
+            "contains",
+            "changes_to"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "threshold": {
+          "type": "number"
+        }
+      }
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "email",
+              "role",
+              "user",
+              "creator",
+              "assigned_user"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notification_template": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "throttle": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_per_hour": {
+          "type": "number"
+        },
+        "max_per_day": {
+          "type": "number"
+        }
+      }
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "last_triggered": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trigger_count": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "name",
+    "rule_type",
+    "trigger_event",
+    "recipients"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

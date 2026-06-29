@@ -1,0 +1,171 @@
+{
+  "name": "InterventionLog",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "prediction_type": {
+      "type": "string",
+      "enum": [
+        "hospital_readmission",
+        "fall_risk",
+        "disease_exacerbation",
+        "medication_adverse_event",
+        "functional_decline",
+        "pressure_injury",
+        "ed_visit",
+        "mortality_risk"
+      ],
+      "description": "Type of prediction this intervention addresses"
+    },
+    "risk_analysis_id": {
+      "type": "string",
+      "description": "Reference to the RiskAnalysis that prompted this intervention"
+    },
+    "original_risk_score": {
+      "type": "number",
+      "description": "Risk score before intervention (0-100)"
+    },
+    "intervention_category": {
+      "type": "string",
+      "enum": [
+        "medication_adjustment",
+        "therapy_referral",
+        "care_plan_update",
+        "monitoring_increase",
+        "equipment_provision",
+        "education_provided",
+        "physician_consult",
+        "environmental_modification",
+        "caregiver_support",
+        "emergency_intervention"
+      ],
+      "description": "Category of intervention performed"
+    },
+    "intervention_description": {
+      "type": "string",
+      "description": "Detailed description of the intervention"
+    },
+    "intervention_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date intervention was performed"
+    },
+    "performed_by": {
+      "type": "string",
+      "description": "Email of user who performed intervention"
+    },
+    "performed_by_name": {
+      "type": "string",
+      "description": "Name of user who performed intervention"
+    },
+    "expected_outcome": {
+      "type": "string",
+      "description": "Expected outcome of the intervention"
+    },
+    "outcome_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "improved",
+        "stable",
+        "declined",
+        "no_change",
+        "adverse_event"
+      ],
+      "default": "pending",
+      "description": "Observed outcome of intervention"
+    },
+    "outcome_description": {
+      "type": "string",
+      "description": "Detailed description of observed outcome"
+    },
+    "outcome_assessed_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date outcome was assessed"
+    },
+    "outcome_assessed_by": {
+      "type": "string",
+      "description": "Email of user who assessed outcome"
+    },
+    "follow_up_risk_score": {
+      "type": "number",
+      "description": "Risk score after intervention (0-100)"
+    },
+    "risk_reduction_achieved": {
+      "type": "number",
+      "description": "Percentage reduction in risk score"
+    },
+    "barriers_encountered": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Barriers encountered during implementation"
+    },
+    "patient_response": {
+      "type": "string",
+      "enum": [
+        "very_positive",
+        "positive",
+        "neutral",
+        "resistant",
+        "refused"
+      ],
+      "description": "Patient's response to intervention"
+    },
+    "cost_estimate": {
+      "type": "number",
+      "description": "Estimated cost of intervention"
+    },
+    "time_spent_minutes": {
+      "type": "number",
+      "description": "Time spent implementing intervention"
+    },
+    "requires_follow_up": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether follow-up is needed"
+    },
+    "follow_up_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Scheduled follow-up date"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    },
+    "effectiveness_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Effectiveness rating (1-5 stars)"
+    }
+  },
+  "required": [
+    "patient_id",
+    "prediction_type",
+    "intervention_description",
+    "intervention_date",
+    "performed_by"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "performed_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {}
+  }
+}

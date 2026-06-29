@@ -1,0 +1,46 @@
+{
+  "name": "FaxContactGroup",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "group_name": {
+      "type": "string",
+      "description": "Name of the contact group"
+    },
+    "description": {
+      "type": "string"
+    },
+    "contact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of FaxContact records in this group"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for organization (e.g., hospitals, specialists, urgent)"
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "user_email",
+    "group_name"
+  ],
+  "rls": {
+    "read": {
+      "user_email": "{{user.email}}"
+    },
+    "write": {
+      "user_email": "{{user.email}}"
+    }
+  }
+}

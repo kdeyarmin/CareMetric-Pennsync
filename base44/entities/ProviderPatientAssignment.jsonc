@@ -1,0 +1,97 @@
+{
+  "name": "ProviderPatientAssignment",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "assignment_type": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "secondary",
+        "oversight",
+        "consultant"
+      ],
+      "default": "primary",
+      "description": "Type of assignment relationship"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When assignment began"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When assignment ends (if applicable)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether assignment is currently active"
+    },
+    "access_level": {
+      "type": "string",
+      "enum": [
+        "full",
+        "limited",
+        "view_only",
+        "summary_only"
+      ],
+      "default": "full",
+      "description": "Data access level for this assignment"
+    },
+    "accessible_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Specific patient data fields provider can access (empty = all based on role)"
+    },
+    "restricted_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Patient data fields explicitly restricted"
+    },
+    "facility_id": {
+      "type": "string",
+      "description": "Facility where assignment applies"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notes about this assignment"
+    }
+  },
+  "required": [
+    "provider_email",
+    "patient_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

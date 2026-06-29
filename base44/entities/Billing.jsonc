@@ -1,0 +1,144 @@
+{
+  "name": "Billing",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "billing_period_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "billing_period_end": {
+      "type": "string",
+      "format": "date"
+    },
+    "payer_type": {
+      "type": "string",
+      "enum": [
+        "medicare",
+        "medicaid",
+        "private_insurance",
+        "self_pay",
+        "other"
+      ],
+      "description": "Primary payer"
+    },
+    "payer_name": {
+      "type": "string"
+    },
+    "payer_id": {
+      "type": "string",
+      "description": "Insurance ID or Medicare number"
+    },
+    "total_visits": {
+      "type": "number"
+    },
+    "rn_visits": {
+      "type": "number"
+    },
+    "lpn_visits": {
+      "type": "number"
+    },
+    "pt_visits": {
+      "type": "number"
+    },
+    "ot_visits": {
+      "type": "number"
+    },
+    "st_visits": {
+      "type": "number"
+    },
+    "hha_visits": {
+      "type": "number"
+    },
+    "msw_visits": {
+      "type": "number"
+    },
+    "pdgm_case_mix_id": {
+      "type": "string",
+      "description": "Reference to PDGMCaseMix"
+    },
+    "case_mix_weight": {
+      "type": "number"
+    },
+    "base_payment": {
+      "type": "number"
+    },
+    "adjustments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "total_billed": {
+      "type": "number"
+    },
+    "total_paid": {
+      "type": "number"
+    },
+    "outstanding_balance": {
+      "type": "number"
+    },
+    "billing_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "paid",
+        "denied",
+        "appealing",
+        "written_off"
+      ],
+      "default": "draft"
+    },
+    "claim_number": {
+      "type": "string"
+    },
+    "submission_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "denial_reason": {
+      "type": "string"
+    },
+    "appeal_status": {
+      "type": "string"
+    },
+    "revenue_per_visit": {
+      "type": "number"
+    },
+    "cost_per_visit": {
+      "type": "number"
+    },
+    "margin": {
+      "type": "number",
+      "description": "Profit margin"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "patient_id",
+    "billing_period_start",
+    "billing_period_end",
+    "payer_type"
+  ]
+}

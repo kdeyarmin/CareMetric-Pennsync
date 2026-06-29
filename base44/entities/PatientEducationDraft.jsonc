@@ -1,0 +1,105 @@
+{
+  "name": "PatientEducationDraft",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "generated_by": {
+      "type": "string",
+      "description": "Email of the provider who generated"
+    },
+    "title": {
+      "type": "string"
+    },
+    "topic": {
+      "type": "string",
+      "description": "The condition/topic this covers"
+    },
+    "reading_level": {
+      "type": "string",
+      "enum": [
+        "simple",
+        "intermediate",
+        "advanced"
+      ],
+      "default": "simple"
+    },
+    "content": {
+      "type": "string",
+      "description": "Full markdown body of the education material"
+    },
+    "key_points": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warning_signs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "approved",
+        "sent",
+        "rejected"
+      ],
+      "default": "draft"
+    },
+    "reviewer_email": {
+      "type": "string",
+      "description": "Email of staff who reviewed"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reviewer_notes": {
+      "type": "string"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "message_id": {
+      "type": "string",
+      "description": "ID of the PatientMessage sent"
+    }
+  },
+  "required": [
+    "patient_id",
+    "generated_by",
+    "title",
+    "content"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "generated_by": "{{user.email}}"
+        },
+        {
+          "reviewer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {}
+  }
+}

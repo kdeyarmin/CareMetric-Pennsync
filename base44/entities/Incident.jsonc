@@ -6,10 +6,6 @@
       "type": "string",
       "description": "Reference to Patient entity"
     },
-    "patient_name": {
-      "type": "string",
-      "description": "Patient display name"
-    },
     "visit_id": {
       "type": "string",
       "description": "Reference to Visit entity"
@@ -24,10 +20,7 @@
         "infection_suspected",
         "refusal_of_care",
         "pressure_injury",
-        "emergency_visit",
-        "safety_event",
-        "wound_concern",
-        "other"
+        "emergency_visit"
       ],
       "description": "Type of incident"
     },
@@ -61,13 +54,6 @@
       "type": "string",
       "description": "Full incident report text"
     },
-    "photo_urls": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Uploaded wound or event photos"
-    },
     "physician_notified": {
       "type": "boolean",
       "default": false,
@@ -77,25 +63,6 @@
       "type": "boolean",
       "default": false,
       "description": "Whether office was notified"
-    },
-    "alert_triggered": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether an urgent admin alert was triggered"
-    },
-    "state_reportable": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether this incident is a state-reportable event (drives the admin State Reportable folder/filter)"
-    },
-    "state_reportable_pdf_url": {
-      "type": "string",
-      "description": "URL of the retained PDF copy of the state-reportable report"
-    },
-    "state_reportable_alert_sent_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When the immediate admin email alert was sent for a state-reportable incident"
     },
     "status": {
       "type": "string",
@@ -117,14 +84,17 @@
         "type": "string"
       },
       "description": "AI-generated tags for categorization and trend analysis"
+    },
+    "is_sample": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is sample data visible to all users"
     }
   },
   "required": [
     "patient_id",
     "incident_type",
-    "incident_date",
-    "severity",
-    "report"
+    "incident_date"
   ],
   "rls": {
     "read": {
@@ -136,6 +106,9 @@
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "is_sample": true
         }
       ]
     },

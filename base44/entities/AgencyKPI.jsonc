@@ -1,0 +1,101 @@
+{
+  "name": "AgencyKPI",
+  "type": "object",
+  "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Reference to Agency if multi-agency"
+    },
+    "metric_name": {
+      "type": "string",
+      "description": "Name of KPI metric"
+    },
+    "metric_category": {
+      "type": "string",
+      "enum": [
+        "financial",
+        "clinical",
+        "operational",
+        "compliance",
+        "quality"
+      ],
+      "description": "Category of metric"
+    },
+    "period_type": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly",
+        "quarterly",
+        "yearly"
+      ],
+      "description": "Reporting period"
+    },
+    "period_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "period_end": {
+      "type": "string",
+      "format": "date"
+    },
+    "metric_value": {
+      "type": "number",
+      "description": "Actual metric value"
+    },
+    "target_value": {
+      "type": "number",
+      "description": "Target/goal value"
+    },
+    "benchmark_value": {
+      "type": "number",
+      "description": "Industry benchmark"
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unit of measurement (%, $, count, etc.)"
+    },
+    "trend": {
+      "type": "string",
+      "enum": [
+        "up",
+        "down",
+        "stable"
+      ],
+      "description": "Trend direction"
+    },
+    "variance_percentage": {
+      "type": "number",
+      "description": "Variance from target (%)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "on_target",
+        "warning",
+        "critical"
+      ],
+      "description": "Performance status"
+    },
+    "contributing_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "improvement_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "metric_name",
+    "metric_category",
+    "period_start",
+    "period_end",
+    "metric_value"
+  ]
+}

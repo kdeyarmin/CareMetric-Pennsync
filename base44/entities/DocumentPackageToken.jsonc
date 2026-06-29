@@ -67,15 +67,29 @@
   "rls": {
     "read": {
       "$or": [
-        { "signer_email": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
+        {
+          "signer_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       ]
     },
     "write": {
       "$or": [
-        { "signer_email": "{{user.email}}" },
-        { "created_by": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
+        {
+          "signer_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
       ]
     }
   }

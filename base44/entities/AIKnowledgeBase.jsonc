@@ -1,0 +1,101 @@
+{
+  "name": "AIKnowledgeBase",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the knowledge base entry"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "clinical_documentation",
+        "compliance",
+        "best_practice",
+        "terminology",
+        "care_plan",
+        "diagnosis_specific",
+        "visit_type_specific",
+        "provider_specific"
+      ],
+      "description": "Category of knowledge"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Specific provider type this applies to (RN, LPN, NP, etc.) or 'all'"
+    },
+    "care_setting": {
+      "type": "string",
+      "description": "Care setting this applies to or 'all'"
+    },
+    "visit_type": {
+      "type": "string",
+      "description": "Specific visit type or 'all'"
+    },
+    "diagnosis": {
+      "type": "string",
+      "description": "Specific diagnosis or 'all'"
+    },
+    "content": {
+      "type": "string",
+      "description": "The actual knowledge content - examples, templates, best practices"
+    },
+    "example_note": {
+      "type": "string",
+      "description": "Example of high-quality documentation"
+    },
+    "compliance_score": {
+      "type": "number",
+      "description": "Compliance score of example (0-100)"
+    },
+    "quality_score": {
+      "type": "number",
+      "description": "Quality score of example (0-100)"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for search and retrieval"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "learned_from_edits",
+        "high_quality_note",
+        "compliance_pass",
+        "admin_curated"
+      ],
+      "description": "How this knowledge was acquired"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0,
+      "description": "How many times this has been used in AI prompts"
+    },
+    "effectiveness_score": {
+      "type": "number",
+      "default": 0,
+      "description": "Calculated effectiveness based on outcomes"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "title",
+    "category",
+    "content"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

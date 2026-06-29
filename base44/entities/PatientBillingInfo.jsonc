@@ -1,0 +1,88 @@
+{
+  "name": "PatientBillingInfo",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "billing_contact_name": {
+      "type": "string",
+      "description": "Name of billing contact"
+    },
+    "billing_phone": {
+      "type": "string",
+      "description": "Billing contact phone"
+    },
+    "billing_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Billing contact email"
+    },
+    "billing_address": {
+      "type": "string",
+      "description": "Billing address"
+    },
+    "insurance_primary_name": {
+      "type": "string",
+      "description": "Primary insurance provider"
+    },
+    "insurance_primary_policy": {
+      "type": "string",
+      "description": "Primary insurance policy number"
+    },
+    "insurance_primary_group": {
+      "type": "string",
+      "description": "Primary insurance group number"
+    },
+    "insurance_secondary_name": {
+      "type": "string",
+      "description": "Secondary insurance provider"
+    },
+    "insurance_secondary_policy": {
+      "type": "string",
+      "description": "Secondary insurance policy number"
+    },
+    "payment_plan_active": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether patient is on payment plan"
+    },
+    "payment_plan_amount": {
+      "type": "number",
+      "description": "Monthly payment plan amount"
+    },
+    "payment_plan_start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Payment plan start date"
+    },
+    "preferred_payment_method": {
+      "type": "string",
+      "enum": [
+        "cash",
+        "check",
+        "credit_card",
+        "insurance",
+        "bank_transfer"
+      ],
+      "description": "Preferred payment method"
+    },
+    "credit_limit": {
+      "type": "number",
+      "default": 0,
+      "description": "Credit limit for patient"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Billing notes"
+    }
+  },
+  "required": [
+    "patient_id"
+  ],
+  "rls": {
+    "read": {},
+    "write": {}
+  }
+}

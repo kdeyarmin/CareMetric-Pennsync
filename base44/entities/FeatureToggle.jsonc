@@ -1,0 +1,48 @@
+{
+  "name": "FeatureToggle",
+  "type": "object",
+  "properties": {
+    "feature_name": {
+      "type": "string",
+      "description": "Name of the feature (e.g., 'Telehealth', 'OASIS', 'SmartNotes')"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "description": "User role this toggle applies to"
+    },
+    "team_name": {
+      "type": "string",
+      "description": "Optional team/group name for more granular control"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this feature is enabled for this role/team"
+    },
+    "description": {
+      "type": "string",
+      "description": "Notes about why feature is enabled/disabled"
+    }
+  },
+  "required": [
+    "feature_name",
+    "role",
+    "enabled"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

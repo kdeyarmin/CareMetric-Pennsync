@@ -1,0 +1,56 @@
+{
+  "name": "FaxCoverTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "sender_name": {
+      "type": "string"
+    },
+    "sender_company": {
+      "type": "string"
+    },
+    "sender_phone": {
+      "type": "string"
+    },
+    "sender_fax": {
+      "type": "string"
+    },
+    "subject_line": {
+      "type": "string"
+    },
+    "message_body": {
+      "type": "string",
+      "description": "Default message body"
+    },
+    "urgency": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "urgent",
+        "for_review",
+        "please_reply",
+        "confidential"
+      ],
+      "default": "normal"
+    },
+    "include_hipaa_notice": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include HIPAA confidentiality notice"
+    },
+    "user_email": {
+      "type": "string"
+    },
+    "is_default": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "name",
+    "user_email"
+  ]
+}

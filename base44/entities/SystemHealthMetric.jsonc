@@ -1,0 +1,81 @@
+{
+  "name": "SystemHealthMetric",
+  "type": "object",
+  "properties": {
+    "metric_type": {
+      "type": "string",
+      "enum": [
+        "api_response_time",
+        "database_latency",
+        "ai_response_time",
+        "compliance_check_time",
+        "error_rate",
+        "cache_hit_rate"
+      ],
+      "description": "Type of metric being tracked"
+    },
+    "value": {
+      "type": "number",
+      "description": "Metric value (milliseconds for times, percentage for rates)"
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "ms",
+        "percentage",
+        "count"
+      ],
+      "description": "Unit of measurement"
+    },
+    "service": {
+      "type": "string",
+      "description": "Service that generated the metric (e.g., 'SmartNoteAssistant', 'ComplianceChecker')"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "warning",
+        "critical"
+      ],
+      "default": "healthy",
+      "description": "Health status based on thresholds"
+    },
+    "threshold_warning": {
+      "type": "number",
+      "description": "Warning threshold for this metric"
+    },
+    "threshold_critical": {
+      "type": "number",
+      "description": "Critical threshold for this metric"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When metric was recorded"
+    },
+    "details": {
+      "type": "object",
+      "description": "Additional context (error messages, affected users, etc.)"
+    }
+  },
+  "required": [
+    "metric_type",
+    "value",
+    "unit",
+    "service",
+    "timestamp"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

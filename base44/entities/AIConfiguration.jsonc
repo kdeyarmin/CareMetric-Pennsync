@@ -2,27 +2,116 @@
   "name": "AIConfiguration",
   "type": "object",
   "properties": {
-    "setting_name": {
+    "user_email": {
       "type": "string",
-      "description": "Name of the AI setting"
+      "description": "Email of the user who owns this configuration"
     },
-    "setting_category": {
+    "user_name": {
+      "type": "string",
+      "description": "Name of the user"
+    },
+    "verbosity_level": {
       "type": "string",
       "enum": [
-        "compliance",
-        "documentation",
-        "analysis",
-        "general"
+        "concise",
+        "balanced",
+        "detailed"
       ],
-      "description": "Category of setting"
+      "default": "balanced",
+      "description": "How verbose enhanced notes should be"
     },
-    "value": {
-      "type": "object",
-      "description": "Setting value (flexible structure)"
-    },
-    "description": {
+    "compliance_priority": {
       "type": "string",
-      "description": "What this setting controls"
+      "enum": [
+        "medicare",
+        "joint_commission",
+        "state",
+        "balanced"
+      ],
+      "default": "medicare",
+      "description": "Which compliance standards to prioritize"
+    },
+    "suggestion_aggressiveness": {
+      "type": "string",
+      "enum": [
+        "minimal",
+        "moderate",
+        "comprehensive"
+      ],
+      "default": "moderate",
+      "description": "How many quality suggestions to provide"
+    },
+    "preferred_note_structure": {
+      "type": "string",
+      "enum": [
+        "narrative",
+        "soap",
+        "bullet",
+        "mixed"
+      ],
+      "default": "narrative",
+      "description": "Preferred format for enhanced notes"
+    },
+    "auto_apply_minor_fixes": {
+      "type": "boolean",
+      "default": false,
+      "description": "Automatically fix minor grammar/spelling issues"
+    },
+    "include_education_tips": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include patient education recommendations"
+    },
+    "custom_compliance_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_name": {
+            "type": "string"
+          },
+          "rule_description": {
+            "type": "string"
+          },
+          "applies_to_visit_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "is_active": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "description": "User-defined custom compliance rules in natural language"
+    },
+    "custom_prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean",
+            "default": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Custom AI prompts created by the user"
     },
     "is_active": {
       "type": "boolean",
@@ -30,16 +119,32 @@
     }
   },
   "required": [
-    "setting_name",
-    "setting_category",
-    "value"
+    "user_email"
   ],
   "rls": {
-    "read": {},
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "write": {
-      "user_condition": {
-        "role": "admin"
-      }
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
     }
   }
 }

@@ -1,0 +1,160 @@
+{
+  "name": "Invoice",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "visit_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of Visit IDs included in this invoice"
+    },
+    "invoice_number": {
+      "type": "string",
+      "description": "Unique invoice identifier"
+    },
+    "invoice_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date invoice was generated"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date payment is due"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Total amount due"
+    },
+    "paid_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "Amount paid so far"
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "service_code_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit_price": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Line items for each service rendered"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "sent",
+        "paid",
+        "partially_paid",
+        "overdue",
+        "cancelled"
+      ],
+      "default": "pending",
+      "description": "Invoice status"
+    },
+    "patient_email_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether invoice was emailed to patient"
+    },
+    "patient_email_sent_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invoice was emailed to patient"
+    },
+    "insurance_billed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether invoice was sent to insurance"
+    },
+    "insurance_provider_id": {
+      "type": "string",
+      "description": "Reference to InsuranceProvider entity"
+    },
+    "insurance_submitted_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When claim was submitted to insurance"
+    },
+    "payment_notes": {
+      "type": "string",
+      "description": "Internal notes about payments"
+    },
+    "reminders_sent": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of payment reminders sent"
+    },
+    "last_reminder_sent": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date of last payment reminder"
+    },
+    "billing_model": {
+      "type": "string",
+      "enum": [
+        "fee_for_service",
+        "bundled",
+        "capitated"
+      ],
+      "default": "fee_for_service",
+      "description": "Type of billing model"
+    }
+  },
+  "required": [
+    "patient_id",
+    "visit_ids",
+    "invoice_number",
+    "invoice_date",
+    "due_date",
+    "total_amount",
+    "line_items"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

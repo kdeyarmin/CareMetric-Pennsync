@@ -49,56 +49,10 @@
         "type": "string"
       },
       "description": "Factors that led to the match"
-    },
-    "visit_id": {
-      "type": "string",
-      "description": "Visit the AI suggestion feedback relates to (OASISFeedbackPanel path)"
-    },
-    "patient_id": {
-      "type": "string",
-      "description": "Patient the AI suggestion feedback relates to (OASISFeedbackPanel path)"
-    },
-    "suggestion_type": {
-      "type": "string",
-      "description": "Category of the AI suggestion being rated"
-    },
-    "oasis_item": {
-      "type": "string",
-      "description": "OASIS M-item the suggestion targeted (e.g. M1830)"
-    },
-    "original_suggestion": {
-      "type": "string",
-      "description": "Serialized snapshot of the AI suggestion the user acted on"
-    },
-    "user_action": {
-      "type": "string",
-      "enum": [
-        "accepted",
-        "modified",
-        "rejected"
-      ],
-      "description": "What the clinician did with the suggestion"
-    },
-    "modified_text": {
-      "type": "string",
-      "description": "Edited documentation text when user_action is 'modified'"
-    },
-    "feedback_reason": {
-      "type": "string",
-      "description": "Free-text reason captured on reject/modify"
-    },
-    "reimbursement_impact_accuracy": {
-      "type": "string",
-      "description": "Clinician rating of the reimbursement-impact estimate's accuracy"
-    },
-    "clinical_accuracy": {
-      "type": "number",
-      "description": "Clinician star rating (0-5) of the suggestion's clinical accuracy"
-    },
-    "helpfulness_rating": {
-      "type": "number",
-      "description": "Clinician star rating (0-5) of how helpful the suggestion was"
     }
   },
-  "required": []
+  "required": [
+    "feedback_type",
+    "extracted_name"
+  ]
 }

@@ -1,0 +1,67 @@
+{
+  "name": "DocumentationTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "skilled_nursing",
+        "physical_therapy",
+        "occupational_therapy",
+        "speech_therapy",
+        "social_work"
+      ],
+      "description": "Professional category"
+    },
+    "visit_type": {
+      "type": "string",
+      "enum": [
+        "admission",
+        "routine",
+        "recertification",
+        "discharge"
+      ],
+      "description": "Type of visit"
+    },
+    "content": {
+      "type": "string",
+      "description": "Template content with placeholders"
+    },
+    "required_elements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Required documentation elements"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for searchability"
+    },
+    "is_agency_wide": {
+      "type": "boolean",
+      "default": true,
+      "description": "Available to all agency users"
+    }
+  },
+  "required": [
+    "name",
+    "category",
+    "content"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

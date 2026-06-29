@@ -1,0 +1,68 @@
+{
+  "name": "PatientEducationEngagement",
+  "type": "object",
+  "properties": {
+    "assignment_id": {
+      "type": "string",
+      "description": "Reference to PatientEducationAssignment"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "material_id": {
+      "type": "string"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "opened",
+        "viewed",
+        "completed",
+        "downloaded",
+        "shared",
+        "quiz_attempted",
+        "quiz_passed"
+      ],
+      "description": "Type of engagement action"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Time spent on content"
+    },
+    "progress_percentage": {
+      "type": "number",
+      "description": "Completion percentage (0-100)"
+    },
+    "quiz_score": {
+      "type": "number",
+      "description": "Quiz score if applicable"
+    },
+    "device_type": {
+      "type": "string",
+      "enum": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ],
+      "description": "Device used to access content"
+    },
+    "language_used": {
+      "type": "string",
+      "description": "Language content was viewed in"
+    },
+    "feedback_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "User rating of content"
+    },
+    "feedback_comments": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "patient_id",
+    "material_id",
+    "action_type"
+  ]
+}

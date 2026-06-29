@@ -1,0 +1,125 @@
+{
+  "name": "ApprovalRequest",
+  "type": "object",
+  "properties": {
+    "workflow_execution_id": {
+      "type": "string",
+      "description": "Reference to WorkflowExecution"
+    },
+    "request_type": {
+      "type": "string",
+      "enum": [
+        "user_access",
+        "role_change",
+        "data_export",
+        "patient_merge",
+        "system_change",
+        "other"
+      ]
+    },
+    "requester_email": {
+      "type": "string"
+    },
+    "requester_name": {
+      "type": "string"
+    },
+    "approver_email": {
+      "type": "string"
+    },
+    "approver_role": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "request_data": {
+      "type": "object",
+      "description": "Data associated with the request"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "escalated"
+      ],
+      "default": "pending"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "urgent"
+      ],
+      "default": "medium"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "approved_by": {
+      "type": "string"
+    },
+    "rejection_reason": {
+      "type": "string"
+    },
+    "approver_notes": {
+      "type": "string"
+    },
+    "escalated_to": {
+      "type": "string"
+    },
+    "escalated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "request_type",
+    "requester_email",
+    "approver_email",
+    "title"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "requester_email": "{{user.email}}"
+        },
+        {
+          "approver_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "requester_email": "{{user.email}}"
+        },
+        {
+          "approver_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -6,10 +6,6 @@
       "type": "string",
       "description": "Reference to Patient entity"
     },
-    "client_request_id": {
-      "type": "string",
-      "description": "Client-generated idempotency key for offline-queued creates. Used by OfflineManager to dedupe before re-creating a visit whose prior create may have succeeded but not been confirmed."
-    },
     "visit_date": {
       "type": "string",
       "format": "date"
@@ -88,23 +84,6 @@
         }
       }
     },
-    "skilled_intervention_documented": {
-      "type": "boolean",
-      "description": "Whether skilled nursing intervention was clearly documented"
-    },
-    "homebound_justification": {
-      "type": "string",
-      "description": "Required documentation of homebound status for Medicare compliance"
-    },
-    "homebound_status_verified": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether homebound status meets Medicare criteria"
-    },
-    "checklist_progress": {
-      "type": "object",
-      "description": "Tracking of completed checklist items for diagnosis-specific assessment"
-    },
     "family_update_sent": {
       "type": "boolean",
       "description": "Whether family update was sent",
@@ -126,16 +105,37 @@
       },
       "description": "AI-generated tags for searchability and trend analysis"
     },
-    "compliance_score": {
-      "type": "number",
-      "description": "Medicare compliance score 0-100"
+    "telehealth_room_id": {
+      "type": "string",
+      "description": "Twilio room ID for telehealth visits"
     },
-    "compliance_issues": {
+    "telehealth_room_name": {
+      "type": "string",
+      "description": "Twilio room name"
+    },
+    "telehealth_call_duration": {
+      "type": "number",
+      "description": "Call duration in seconds"
+    },
+    "telehealth_summary": {
+      "type": "string",
+      "description": "Post-call summary"
+    },
+    "telehealth_shared_files": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "object"
       },
-      "description": "List of identified compliance issues"
+      "description": "Files shared during telehealth call"
+    },
+    "telehealth_recording_url": {
+      "type": "string",
+      "description": "URL to call recording if enabled"
+    },
+    "is_sample": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is sample data visible to all users"
     }
   },
   "required": [
@@ -153,6 +153,9 @@
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "is_sample": true
         }
       ]
     },

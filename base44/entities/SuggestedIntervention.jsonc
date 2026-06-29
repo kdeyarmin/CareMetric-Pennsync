@@ -1,0 +1,100 @@
+{
+  "name": "SuggestedIntervention",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "prediction_type": {
+      "type": "string",
+      "enum": [
+        "hospital_readmission",
+        "fall_risk",
+        "disease_exacerbation",
+        "medication_adverse_event",
+        "functional_decline",
+        "pressure_injury",
+        "ed_visit",
+        "mortality_risk"
+      ]
+    },
+    "risk_analysis_id": {
+      "type": "string",
+      "description": "Reference to RiskAnalysis that triggered this suggestion"
+    },
+    "risk_score": {
+      "type": "number",
+      "description": "Risk score that triggered this suggestion"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "high",
+        "very_high",
+        "critical"
+      ]
+    },
+    "suggested_intervention_category": {
+      "type": "string"
+    },
+    "suggested_intervention_description": {
+      "type": "string",
+      "description": "AI-generated intervention description"
+    },
+    "suggested_expected_outcome": {
+      "type": "string"
+    },
+    "suggested_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "immediate",
+        "high",
+        "moderate",
+        "low"
+      ],
+      "default": "high"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "confirmed",
+        "modified",
+        "dismissed"
+      ],
+      "default": "pending_review"
+    },
+    "intervention_log_id": {
+      "type": "string",
+      "description": "ID of confirmed InterventionLog if confirmed"
+    },
+    "dismissed_reason": {
+      "type": "string"
+    },
+    "dismissed_by": {
+      "type": "string"
+    },
+    "dismissed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Auto-dismiss if not acted upon"
+    }
+  },
+  "required": [
+    "patient_id",
+    "prediction_type",
+    "risk_score",
+    "suggested_intervention_description"
+  ]
+}

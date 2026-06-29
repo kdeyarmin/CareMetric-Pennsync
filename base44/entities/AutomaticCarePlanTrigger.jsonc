@@ -14,16 +14,6 @@
       "type": "string",
       "description": "The specific diagnosis or medication name that triggers this care plan"
     },
-    "care_type": {
-      "type": "string",
-      "enum": [
-        "home_health",
-        "hospice",
-        "both"
-      ],
-      "default": "both",
-      "description": "Which care line(s) this trigger applies to"
-    },
     "problem": {
       "type": "string",
       "description": "The nursing diagnosis/problem"

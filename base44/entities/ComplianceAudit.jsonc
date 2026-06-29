@@ -81,31 +81,6 @@
     "review_notes": {
       "type": "string",
       "description": "Notes from manual review"
-    },
-    "acknowledgment": {
-      "type": "object",
-      "description": "Override trail when a critical chart conflict (e.g. an allergy conflict) was knowingly acknowledged by the documenting nurse at save time",
-      "properties": {
-        "acknowledged_by": {
-          "type": "string",
-          "description": "Email of the nurse who acknowledged the conflict"
-        },
-        "acknowledged_at": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "justification": {
-          "type": "string",
-          "description": "Optional clinical rationale the nurse provided"
-        },
-        "finding_ids": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Ids of the critical chart findings that were acknowledged"
-        }
-      }
     }
   },
   "required": [
@@ -113,5 +88,31 @@
     "nurse_email",
     "compliance_score",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

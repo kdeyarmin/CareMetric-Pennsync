@@ -1,0 +1,122 @@
+{
+  "name": "MedicalCode",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "ID of the patient"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "ID of the visit/encounter"
+    },
+    "code_type": {
+      "type": "string",
+      "enum": [
+        "icd10",
+        "cpt"
+      ],
+      "description": "Type of code"
+    },
+    "code": {
+      "type": "string",
+      "description": "The actual code (e.g., E11.9, 99213)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the code"
+    },
+    "category": {
+      "type": "string",
+      "description": "Code category (diagnosis, procedure, E&M, etc.)"
+    },
+    "specificity": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "description": "How confident the suggestion is"
+    },
+    "billable": {
+      "type": "boolean",
+      "description": "Whether this code is billable"
+    },
+    "rvu": {
+      "type": "number",
+      "description": "Relative Value Unit for CPT codes"
+    },
+    "modifiers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "CPT modifiers if applicable"
+    },
+    "selected_by": {
+      "type": "string",
+      "description": "Email of clinician who selected the code"
+    },
+    "note_content_excerpt": {
+      "type": "string",
+      "description": "Brief excerpt of clinical note for context"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "approved",
+        "used",
+        "rejected"
+      ],
+      "default": "pending_review",
+      "description": "Status of code selection"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "Email of clinician who approved (if applicable)"
+    },
+    "approval_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When code was approved"
+    }
+  },
+  "required": [
+    "patient_id",
+    "code_type",
+    "code",
+    "description",
+    "selected_by"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "selected_by": "{{user.email}}"
+        },
+        {
+          "approved_by": "{{user.email}}"
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "selected_by": "{{user.email}}"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "name": "CarePlanReview",
+  "type": "object",
+  "properties": {
+    "care_plan_id": {
+      "type": "string",
+      "description": "Reference to CarePlan"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "review_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of care plan review"
+    },
+    "next_review_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When next review is scheduled"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Provider email who completed review"
+    },
+    "review_status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "overdue",
+        "scheduled"
+      ],
+      "default": "scheduled"
+    },
+    "overall_progress": {
+      "type": "string",
+      "enum": [
+        "excellent",
+        "good",
+        "fair",
+        "poor"
+      ],
+      "description": "Overall progress assessment"
+    },
+    "goal_status": {
+      "type": "string",
+      "enum": [
+        "achieved",
+        "progressing",
+        "not_progressing",
+        "needs_revision"
+      ],
+      "description": "Status of goal achievement"
+    },
+    "plan_modifications": {
+      "type": "string",
+      "description": "Any modifications made to the care plan"
+    },
+    "provider_notes": {
+      "type": "string",
+      "description": "Review notes from provider"
+    },
+    "patient_feedback": {
+      "type": "string",
+      "description": "Patient's feedback on care plan"
+    },
+    "reminder_sent": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "care_plan_id",
+    "patient_id",
+    "review_date",
+    "reviewed_by"
+  ]
+}

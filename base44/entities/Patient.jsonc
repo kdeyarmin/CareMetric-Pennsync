@@ -31,36 +31,45 @@
     },
     "payor": {
       "type": "string",
-      "description": "Primary payor or insurance type"
+      "description": "Primary payor or insurance type (e.g., Medicare, Medicaid, Private Insurance)"
     },
     "emergency_contact_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Primary emergency contact"
     },
     "emergency_contact_phone": {
-      "type": "string"
+      "type": "string",
+      "description": "Emergency contact phone number"
     },
     "emergency_contact_relationship": {
-      "type": "string"
+      "type": "string",
+      "description": "Relationship to patient"
     },
     "physician_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Primary care physician name"
     },
     "physician_phone": {
-      "type": "string"
+      "type": "string",
+      "description": "Primary care physician phone"
     },
     "physician_email": {
       "type": "string",
-      "format": "email"
+      "format": "email",
+      "description": "Primary physician email for notifications"
     },
     "caregiver_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Primary caregiver name"
     },
     "caregiver_email": {
       "type": "string",
-      "format": "email"
+      "format": "email",
+      "description": "Primary caregiver email"
     },
     "caregiver_phone": {
-      "type": "string"
+      "type": "string",
+      "description": "Primary caregiver phone"
     },
     "primary_diagnosis": {
       "type": "string"
@@ -69,80 +78,508 @@
       "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "description": "List of secondary diagnoses"
+    },
+    "chronic_conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "condition": {
+            "type": "string"
+          },
+          "date_diagnosed": {
+            "type": "string",
+            "format": "date"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "mild",
+              "moderate",
+              "severe"
+            ]
+          },
+          "management_notes": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "List of chronic/long-term conditions"
+    },
+    "past_surgeries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "procedure": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "surgeon": {
+            "type": "string"
+          },
+          "hospital": {
+            "type": "string"
+          },
+          "complications": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Detailed surgical history"
+    },
+    "family_medical_history": {
+      "type": "object",
+      "properties": {
+        "heart_disease": {
+          "type": "boolean"
+        },
+        "diabetes": {
+          "type": "boolean"
+        },
+        "cancer": {
+          "type": "boolean"
+        },
+        "hypertension": {
+          "type": "boolean"
+        },
+        "stroke": {
+          "type": "boolean"
+        },
+        "alzheimers_dementia": {
+          "type": "boolean"
+        },
+        "mental_illness": {
+          "type": "boolean"
+        },
+        "other_conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "condition": {
+                "type": "string"
+              },
+              "relation": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "description": "Family medical history for genetic risk assessment"
+    },
+    "social_determinants": {
+      "type": "object",
+      "properties": {
+        "housing_stability": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "unstable",
+            "homeless",
+            "temporary"
+          ]
+        },
+        "food_security": {
+          "type": "string",
+          "enum": [
+            "secure",
+            "insecure",
+            "very_insecure"
+          ]
+        },
+        "financial_strain": {
+          "type": "string",
+          "enum": [
+            "none",
+            "mild",
+            "moderate",
+            "severe"
+          ]
+        },
+        "social_isolation": {
+          "type": "string",
+          "enum": [
+            "well_connected",
+            "some_isolation",
+            "isolated",
+            "severely_isolated"
+          ]
+        },
+        "caregiver_burden": {
+          "type": "string",
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "severe"
+          ]
+        },
+        "health_literacy": {
+          "type": "string",
+          "enum": [
+            "high",
+            "adequate",
+            "limited",
+            "very_limited"
+          ]
+        },
+        "medication_access": {
+          "type": "string",
+          "enum": [
+            "no_barriers",
+            "some_barriers",
+            "significant_barriers"
+          ]
+        },
+        "utilities_access": {
+          "type": "boolean",
+          "description": "Has access to heat, water, electricity"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "description": "Social determinants of health affecting care delivery and outcomes"
     },
     "allergies": {
-      "type": "string"
+      "type": "string",
+      "description": "Known allergies and adverse reactions"
     },
     "current_medications": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "dosage": { "type": "string" },
-          "frequency": { "type": "string" },
-          "route": { "type": "string" },
-          "prescriber": { "type": "string" },
-          "start_date": { "type": "string" },
-          "indication": { "type": "string" },
-          "status": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "dosage": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "prescriber": {
+            "type": "string"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date"
+          }
         }
       },
-      "description": "Patient's current medication list (read across the app as patient.current_medications). Populated from referral/import extraction."
+      "description": "Current medication list"
     },
     "past_medical_history": {
       "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "description": "Past medical conditions and surgeries"
     },
     "past_hospitalizations": {
       "type": "array",
       "items": {
-        "type": "object"
-      }
-    },
-    "family_medical_history": {
-      "type": "string"
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "hospital": {
+            "type": "string"
+          },
+          "length_of_stay": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "History of hospitalizations"
     },
     "baseline_vitals": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "blood_pressure_systolic": {
+          "type": "number"
+        },
+        "blood_pressure_diastolic": {
+          "type": "number"
+        },
+        "heart_rate": {
+          "type": "number"
+        },
+        "respiratory_rate": {
+          "type": "number"
+        },
+        "temperature": {
+          "type": "number"
+        },
+        "oxygen_saturation": {
+          "type": "number"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "bmi": {
+          "type": "number"
+        },
+        "pain_level": {
+          "type": "number"
+        }
+      },
+      "description": "Baseline vital signs at admission"
     },
     "functional_status": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "ambulation": {
+          "type": "string",
+          "enum": [
+            "independent",
+            "walker",
+            "cane",
+            "wheelchair",
+            "bedbound"
+          ]
+        },
+        "adl_independence": {
+          "type": "string",
+          "enum": [
+            "independent",
+            "minimal_assist",
+            "moderate_assist",
+            "total_assist"
+          ]
+        },
+        "cognitive_status": {
+          "type": "string",
+          "enum": [
+            "alert_oriented",
+            "mild_confusion",
+            "moderate_impairment",
+            "severe_impairment"
+          ]
+        },
+        "fall_risk": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "description": "Baseline functional assessment"
     },
     "social_history": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "living_situation": {
+          "type": "string",
+          "enum": [
+            "alone",
+            "with_family",
+            "assisted_living",
+            "group_home"
+          ]
+        },
+        "primary_language": {
+          "type": "string"
+        },
+        "interpreter_needed": {
+          "type": "boolean"
+        },
+        "smoking_status": {
+          "type": "string",
+          "enum": [
+            "never",
+            "former",
+            "current"
+          ]
+        },
+        "alcohol_use": {
+          "type": "string",
+          "enum": [
+            "none",
+            "occasional",
+            "moderate",
+            "heavy"
+          ]
+        },
+        "support_system": {
+          "type": "string"
+        },
+        "transportation": {
+          "type": "string"
+        }
+      },
+      "description": "Social determinants and history"
     },
     "mental_health": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "depression_screening": {
+          "type": "string"
+        },
+        "anxiety_level": {
+          "type": "string"
+        },
+        "psychiatric_history": {
+          "type": "string"
+        },
+        "current_mental_health_treatment": {
+          "type": "boolean"
+        }
+      },
+      "description": "Mental health assessment"
     },
     "pain_management": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "chronic_pain": {
+          "type": "boolean"
+        },
+        "pain_location": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pain_interventions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pain_goals": {
+          "type": "string"
+        }
+      },
+      "description": "Pain management plan"
     },
     "wounds": {
       "type": "array",
       "items": {
-        "type": "object"
-      }
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "size_length": {
+            "type": "number"
+          },
+          "size_width": {
+            "type": "number"
+          },
+          "size_depth": {
+            "type": "number"
+          },
+          "onset_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "treatment_plan": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Active wound tracking"
     },
     "advance_directives": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "has_living_will": {
+          "type": "boolean"
+        },
+        "has_healthcare_proxy": {
+          "type": "boolean"
+        },
+        "dnr_status": {
+          "type": "boolean"
+        },
+        "proxy_name": {
+          "type": "string"
+        },
+        "proxy_phone": {
+          "type": "string"
+        },
+        "special_instructions": {
+          "type": "string"
+        }
+      },
+      "description": "Advance care planning documentation"
     },
     "insurance_primary": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "policy_number": {
+          "type": "string"
+        },
+        "group_number": {
+          "type": "string"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "description": "Primary insurance information"
     },
     "insurance_secondary": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "policy_number": {
+          "type": "string"
+        },
+        "group_number": {
+          "type": "string"
+        }
+      },
+      "description": "Secondary insurance information"
     },
     "admission_date": {
       "type": "string",
-      "format": "date"
+      "format": "date",
+      "description": "Date admitted to home health/hospice"
     },
     "discharge_date": {
       "type": "string",
-      "format": "date"
+      "format": "date",
+      "description": "Date discharged from service"
     },
     "admission_source": {
       "type": "string",
@@ -152,7 +589,8 @@
         "skilled_nursing_facility",
         "rehab",
         "other"
-      ]
+      ],
+      "description": "Where patient was admitted from"
     },
     "discharge_disposition": {
       "type": "string",
@@ -162,7 +600,8 @@
         "skilled_nursing_facility",
         "deceased",
         "other"
-      ]
+      ],
+      "description": "Where patient was discharged to"
     },
     "care_type": {
       "type": "string",
@@ -170,89 +609,133 @@
         "home_health",
         "hospice"
       ],
-      "default": "home_health"
+      "default": "home_health",
+      "description": "Type of care being provided"
     },
     "status": {
       "type": "string",
       "enum": [
         "active",
         "discharged",
-        "hospitalized",
-        "merged"
+        "hospitalized"
       ],
       "default": "active"
     },
-    "is_archived": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether the patient should be hidden from active rosters"
-    },
     "clinical_notes": {
-      "type": "string"
+      "type": "string",
+      "description": "General clinical notes and observations"
     },
     "goals_of_care": {
       "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "description": "Patient and family goals for care"
+    },
+    "active_alerts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "References to active PatientAlert entity IDs for quick access to critical alerts"
     },
     "enhanced_notes_history": {
       "type": "array",
       "items": {
-        "type": "object"
-      }
-    },
-    "assigned_nurses": {
-      "type": "array",
-      "items": {
-        "type": "string"
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "visit_type": {
+            "type": "string"
+          },
+          "diagnosis": {
+            "type": "string"
+          },
+          "enhanced_note": {
+            "type": "string"
+          },
+          "rough_note": {
+            "type": "string"
+          },
+          "quality_score": {
+            "type": "number"
+          },
+          "nurse_email": {
+            "type": "string"
+          },
+          "vital_signs": {
+            "type": "object"
+          }
+        }
       },
-      "description": "List of nurse emails who have documented visits for this patient"
+      "description": "History of AI-enhanced notes for context building and documentation improvement"
     },
-    "data_completeness_score": {
-      "type": "number",
-      "description": "Percentage of critical fields completed (0-100)"
-    },
-    "missing_critical_fields": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "List of missing critical patient safety fields"
-    },
-    "validation_overrides": {
+    "risk_assessment": {
       "type": "object",
-      "description": "Audit trail of validation warnings the user explicitly overrode, keyed by field name"
+      "properties": {
+        "score": {
+          "type": "number",
+          "description": "Overall risk score 0-100"
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "critical"
+          ],
+          "description": "Risk level category"
+        },
+        "last_calculated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When risk score was last calculated"
+        },
+        "confidence": {
+          "type": "number",
+          "description": "AI confidence in assessment 0-100"
+        },
+        "category_scores": {
+          "type": "object",
+          "properties": {
+            "clinical_stability": {
+              "type": "number"
+            },
+            "functional_status": {
+              "type": "number"
+            },
+            "safety_risk": {
+              "type": "number"
+            },
+            "readmission_risk": {
+              "type": "number"
+            },
+            "social_factors": {
+              "type": "number"
+            }
+          },
+          "description": "Breakdown of risk by category"
+        }
+      },
+      "description": "Comprehensive AI-calculated risk assessment"
     },
-    "merged_into_id": {
-      "type": "string",
-      "description": "ID of the surviving patient this record was merged into during deduplication"
-    },
-    "merged_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When this patient record was merged into another during deduplication"
-    },
-    "merged_by": {
-      "type": "string",
-      "description": "Email of the user who merged this patient record"
+    "is_sample": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is sample data visible to all users"
     }
   },
   "required": [
     "first_name",
-    "last_name",
-    "date_of_birth",
-    "phone",
-    "address",
-    "emergency_contact_name",
-    "emergency_contact_phone"
+    "last_name"
   ],
   "rls": {
     "read": {
       "$or": [
-        {
-          "assigned_nurses": "{{user.email}}"
-        },
         {
           "created_by": "{{user.email}}"
         },
@@ -260,14 +743,14 @@
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "is_sample": true
         }
       ]
     },
     "write": {
       "$or": [
-        {
-          "assigned_nurses": "{{user.email}}"
-        },
         {
           "created_by": "{{user.email}}"
         },

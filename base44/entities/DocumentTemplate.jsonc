@@ -2,30 +2,45 @@
   "name": "DocumentTemplate",
   "type": "object",
   "properties": {
-    "name": {
+    "template_name": {
       "type": "string",
-      "description": "Template name"
+      "description": "Name of the template"
     },
     "description": {
       "type": "string",
-      "description": "What this template is used for"
+      "description": "Brief description of what this template is for"
     },
     "category": {
       "type": "string",
       "enum": [
-        "consent",
+        "skilled_nursing",
+        "physical_therapy",
+        "occupational_therapy",
+        "speech_therapy",
+        "social_work",
+        "care_plan",
+        "oasis",
         "discharge",
         "admission",
-        "assessment",
-        "plan",
-        "education",
         "other"
       ],
-      "description": "Document category"
+      "description": "Template category"
+    },
+    "visit_type": {
+      "type": "string",
+      "enum": [
+        "admission",
+        "routine",
+        "recertification",
+        "discharge",
+        "reassessment",
+        "follow_up"
+      ],
+      "description": "Type of visit this template is for"
     },
     "content": {
       "type": "string",
-      "description": "Document content with placeholders like {{patient_name}}, {{date}}, etc."
+      "description": "Template content with {{placeholders}}"
     },
     "placeholders": {
       "type": "array",
@@ -33,47 +48,95 @@
         "type": "object",
         "properties": {
           "key": {
-            "type": "string",
-            "description": "Placeholder key without braces (e.g., 'patient_name')"
+            "type": "string"
           },
           "label": {
-            "type": "string",
-            "description": "Display name for the placeholder"
+            "type": "string"
           },
-          "required": {
-            "type": "boolean",
-            "default": true
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "date",
+              "number",
+              "select"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
-      "description": "List of placeholders used in this template"
+      "description": "List of available placeholders and their types"
     },
-    "is_active": {
+    "required_elements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Required documentation elements"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for searchability"
+    },
+    "linked_education_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of linked PatientEducationMaterial resources"
+    },
+    "related_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Diagnoses this template is relevant for"
+    },
+    "is_system_template": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is a system-provided template"
+    },
+    "is_public": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this template is shared publicly with all users"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times this template has been used"
+    },
+    "ai_generated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this template was AI-generated"
+    },
+    "generation_prompt": {
+      "type": "string",
+      "description": "The prompt used to generate this template (if AI-generated)"
+    },
+    "auto_suggest_materials": {
       "type": "boolean",
       "default": true,
-      "description": "Whether template is available for use"
-    },
-    "created_by_email": {
-      "type": "string",
-      "description": "Email of template creator"
+      "description": "Whether to auto-suggest linked education materials"
     }
   },
   "required": [
-    "name",
+    "template_name",
     "category",
-    "content",
-    "placeholders"
+    "content"
   ],
   "rls": {
-    "read": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "write": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
+    "read": {},
+    "write": {}
   }
 }

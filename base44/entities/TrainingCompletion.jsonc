@@ -1,0 +1,132 @@
+{
+  "name": "TrainingCompletion",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse"
+    },
+    "training_module_id": {
+      "type": "string",
+      "description": "Reference to TrainingModule"
+    },
+    "completion_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of completion"
+    },
+    "score": {
+      "type": "number",
+      "description": "Score if applicable (0-100)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "assigned",
+        "in_progress",
+        "completed",
+        "expired"
+      ],
+      "default": "assigned"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Due date for required training"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When this completion expires"
+    },
+    "certificate_url": {
+      "type": "string",
+      "description": "URL to completion certificate"
+    },
+    "feedback": {
+      "type": "string",
+      "description": "Nurse feedback on the training"
+    },
+    "effectiveness_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "How effective the nurse found this module (1-5 stars)"
+    },
+    "difficulty_rating": {
+      "type": "string",
+      "enum": [
+        "too_easy",
+        "just_right",
+        "too_hard"
+      ],
+      "description": "How appropriate the difficulty level was"
+    },
+    "relevance_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "How relevant to their work (1-5)"
+    },
+    "would_recommend": {
+      "type": "boolean",
+      "description": "Whether they would recommend this module"
+    },
+    "improvement_suggestions": {
+      "type": "string",
+      "description": "Suggestions for improvement"
+    },
+    "performance_metrics": {
+      "type": "object",
+      "properties": {
+        "avg_time_per_question": {
+          "type": "number"
+        },
+        "hints_used": {
+          "type": "number"
+        },
+        "retry_count": {
+          "type": "number"
+        },
+        "struggle_areas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Aggregated performance metrics from the session"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "training_module_id",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "FormTemplate",
+  "type": "object",
+  "properties": {
+    "form_name": {
+      "type": "string",
+      "description": "Name of the form template"
+    },
+    "form_type": {
+      "type": "string",
+      "enum": [
+        "medical_history",
+        "consent",
+        "intake",
+        "pre_screening",
+        "symptoms",
+        "insurance"
+      ],
+      "description": "Type of form"
+    },
+    "appointment_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which appointment types this form applies to"
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_name": {
+            "type": "string"
+          },
+          "field_label": {
+            "type": "string"
+          },
+          "field_type": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "help_text": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Form field definitions"
+    },
+    "send_days_before": {
+      "type": "number",
+      "default": 3,
+      "description": "Days before appointment to send form"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "form_name",
+    "form_type",
+    "fields"
+  ]
+}

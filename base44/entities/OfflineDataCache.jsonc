@@ -44,19 +44,5 @@
     "user_email",
     "data_type",
     "cached_data"
-  ],
-  "rls": {
-    "read": {
-      "$or": [
-        { "user_email": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
-      ]
-    },
-    "write": {
-      "$or": [
-        { "user_email": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
-      ]
-    }
-  }
+  ]
 }

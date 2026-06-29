@@ -1,0 +1,78 @@
+{
+  "name": "AILearningPattern",
+  "type": "object",
+  "properties": {
+    "pattern_type": {
+      "type": "string",
+      "enum": [
+        "edit_correction",
+        "phrase_preference",
+        "terminology",
+        "structure",
+        "compliance_fix"
+      ],
+      "description": "Type of learned pattern"
+    },
+    "provider_email": {
+      "type": "string",
+      "description": "Provider who made the correction (or 'global' for agency-wide)"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider type for this pattern"
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "visit_type": {
+          "type": "string"
+        },
+        "diagnosis": {
+          "type": "string"
+        },
+        "care_setting": {
+          "type": "string"
+        },
+        "documentation_section": {
+          "type": "string"
+        }
+      },
+      "description": "Context where this pattern applies"
+    },
+    "original_text": {
+      "type": "string",
+      "description": "AI-generated text that was corrected"
+    },
+    "corrected_text": {
+      "type": "string",
+      "description": "User's corrected version"
+    },
+    "pattern_rule": {
+      "type": "string",
+      "description": "Extracted rule/pattern from the correction"
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confidence in this pattern (0-100)"
+    },
+    "occurrences": {
+      "type": "number",
+      "default": 1,
+      "description": "How many times this pattern has been observed"
+    },
+    "successful_applications": {
+      "type": "number",
+      "default": 0,
+      "description": "Times this pattern was applied and not re-corrected"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "pattern_type",
+    "provider_email",
+    "pattern_rule"
+  ]
+}

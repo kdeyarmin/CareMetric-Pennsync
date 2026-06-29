@@ -1,0 +1,68 @@
+{
+  "name": "InsuranceProvider",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the insurance company"
+    },
+    "address": {
+      "type": "string",
+      "description": "Billing address for the insurance company"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Contact phone number"
+    },
+    "website": {
+      "type": "string",
+      "description": "Website for provider portal"
+    },
+    "billing_contact_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email for submitting claims"
+    },
+    "payer_id": {
+      "type": "string",
+      "description": "Standard payer ID for electronic claims"
+    },
+    "billing_rules": {
+      "type": "object",
+      "properties": {
+        "requires_preauth": {
+          "type": "boolean"
+        },
+        "claim_submission_method": {
+          "type": "string",
+          "enum": [
+            "email",
+            "portal",
+            "edi",
+            "paper"
+          ]
+        },
+        "days_to_pay": {
+          "type": "number",
+          "description": "Expected days to payment"
+        },
+        "allowed_services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Insurance-specific billing rules"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "billing_contact_email",
+    "payer_id"
+  ]
+}

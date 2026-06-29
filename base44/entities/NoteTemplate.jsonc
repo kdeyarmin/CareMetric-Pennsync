@@ -1,0 +1,86 @@
+{
+  "name": "NoteTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "visit_type": {
+      "type": "string",
+      "enum": [
+        "admission",
+        "routine_visit",
+        "recertification",
+        "discharge",
+        "prn"
+      ],
+      "description": "Which visit type this template applies to"
+    },
+    "diagnosis_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Associated diagnoses (CHF, COPD, etc.) for quick filtering"
+    },
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "RN",
+        "LPN",
+        "NP",
+        "MD",
+        "DO",
+        "PT",
+        "OT",
+        "ST",
+        "MSW",
+        "Chiropractor"
+      ],
+      "description": "Provider type this template is for"
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "section_name": {
+            "type": "string"
+          },
+          "template_text": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Pre-defined sections with template text (Assessment, Plan, Interventions, etc.)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of when to use this template"
+    },
+    "is_system_template": {
+      "type": "boolean",
+      "default": false,
+      "description": "System-created templates available to all users"
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether user marked as favorite"
+    }
+  },
+  "required": [
+    "name",
+    "visit_type",
+    "provider_type",
+    "sections"
+  ],
+  "rls": {
+    "read": {},
+    "write": {}
+  }
+}

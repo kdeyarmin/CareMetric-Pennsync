@@ -1,0 +1,90 @@
+{
+  "name": "ProviderCertification",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "certification_type": {
+      "type": "string",
+      "enum": [
+        "smart_notes_expert",
+        "ai_scribe_master",
+        "care_plan_optimizer",
+        "oasis_specialist",
+        "advanced_features",
+        "compliance_champion"
+      ],
+      "description": "Type of certification earned"
+    },
+    "certification_name": {
+      "type": "string",
+      "description": "Display name of the certification"
+    },
+    "required_modules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Module IDs required for certification"
+    },
+    "required_score": {
+      "type": "number",
+      "default": 80,
+      "description": "Minimum score needed (0-100)"
+    },
+    "earned_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date certification was earned"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When certification expires (if applicable)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "earned",
+        "in_progress",
+        "expired"
+      ],
+      "default": "in_progress"
+    },
+    "completion_percentage": {
+      "type": "number",
+      "description": "Progress toward certification (0-100)"
+    },
+    "certificate_url": {
+      "type": "string",
+      "description": "URL to downloadable certificate"
+    }
+  },
+  "required": [
+    "provider_email",
+    "certification_type",
+    "certification_name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

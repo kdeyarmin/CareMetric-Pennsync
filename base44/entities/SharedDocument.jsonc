@@ -1,0 +1,169 @@
+{
+  "name": "SharedDocument",
+  "type": "object",
+  "properties": {
+    "document_name": {
+      "type": "string",
+      "description": "Name of the document"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "care_plan",
+        "assessment",
+        "treatment_protocol",
+        "clinical_note",
+        "referral",
+        "policy",
+        "other"
+      ],
+      "description": "Type of document"
+    },
+    "description": {
+      "type": "string",
+      "description": "Document description"
+    },
+    "owner_agency_code": {
+      "type": "string",
+      "description": "Agency that owns the document"
+    },
+    "shared_with_agencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Agency codes that have access"
+    },
+    "related_patient_id": {
+      "type": "string",
+      "description": "Patient this document relates to"
+    },
+    "current_version": {
+      "type": "number",
+      "default": 1,
+      "description": "Current version number"
+    },
+    "versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "version_number": {
+            "type": "number"
+          },
+          "file_url": {
+            "type": "string"
+          },
+          "uploaded_by": {
+            "type": "string"
+          },
+          "uploaded_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "change_notes": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Version history"
+    },
+    "access_permissions": {
+      "type": "object",
+      "properties": {
+        "can_view": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "can_edit": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "can_comment": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Granular access permissions by agency"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for categorization"
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "commenter_email": {
+            "type": "string"
+          },
+          "commenter_name": {
+            "type": "string"
+          },
+          "comment_text": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Comments on the document"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    },
+    "last_modified_by": {
+      "type": "string"
+    },
+    "last_modified_date": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "document_name",
+    "document_type",
+    "owner_agency_code"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "owner_agency_code": "{{user.agency_code}}"
+        },
+        {
+          "shared_with_agencies": {
+            "$contains": "{{user.agency_code}}"
+          }
+        }
+      ]
+    },
+    "write": {}
+  }
+}

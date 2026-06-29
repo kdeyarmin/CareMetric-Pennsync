@@ -1,0 +1,158 @@
+{
+  "name": "LearnedFormatPattern",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Provider whose style was learned"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider type"
+    },
+    "visit_type": {
+      "type": "string",
+      "description": "Visit type this pattern applies to"
+    },
+    "diagnosis_category": {
+      "type": "string",
+      "description": "Diagnosis category (CHF, COPD, etc.)"
+    },
+    "original_ai_note": {
+      "type": "string",
+      "description": "Original AI-generated note"
+    },
+    "edited_note": {
+      "type": "string",
+      "description": "Nurse's edited version"
+    },
+    "extracted_patterns": {
+      "type": "object",
+      "properties": {
+        "sentence_structure": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Preferred sentence patterns"
+        },
+        "terminology_preferences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ai_term": {
+                "type": "string"
+              },
+              "preferred_term": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "section_order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Preferred order of documentation sections"
+        },
+        "detail_preferences": {
+          "type": "object",
+          "properties": {
+            "vitals": {
+              "type": "string"
+            },
+            "assessment": {
+              "type": "string"
+            },
+            "interventions": {
+              "type": "string"
+            },
+            "patient_response": {
+              "type": "string"
+            }
+          }
+        },
+        "formatting_style": {
+          "type": "object",
+          "properties": {
+            "uses_bullets": {
+              "type": "boolean"
+            },
+            "paragraph_length": {
+              "type": "string"
+            },
+            "uses_abbreviations": {
+              "type": "boolean"
+            },
+            "specific_abbreviations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "added_elements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Elements nurse consistently adds"
+        },
+        "removed_elements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Elements nurse consistently removes"
+        },
+        "phrasing_examples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "example": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "confidence_score": {
+      "type": "number",
+      "description": "Confidence in this pattern (0-100)"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 1,
+      "description": "How many times this pattern was observed"
+    },
+    "last_observed": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "provider_email",
+    "visit_type"
+  ],
+  "rls": {
+    "read": {
+      "provider_email": "{{user.email}}"
+    },
+    "write": {
+      "provider_email": "{{user.email}}"
+    }
+  }
+}

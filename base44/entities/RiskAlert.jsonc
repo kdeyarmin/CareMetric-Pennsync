@@ -1,0 +1,68 @@
+{
+  "name": "RiskAlert",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of nurse to alert"
+    },
+    "risk_category": {
+      "type": "string",
+      "enum": [
+        "hospitalization",
+        "fall",
+        "readmission",
+        "overall"
+      ],
+      "description": "Which risk category to monitor"
+    },
+    "threshold_score": {
+      "type": "number",
+      "description": "Alert when risk score exceeds this value"
+    },
+    "alert_on_increase": {
+      "type": "boolean",
+      "default": true,
+      "description": "Alert when risk increases"
+    },
+    "alert_on_decrease": {
+      "type": "boolean",
+      "default": false,
+      "description": "Alert when risk decreases (improvement)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this alert is currently active"
+    },
+    "last_score": {
+      "type": "number",
+      "description": "Last known risk score"
+    },
+    "last_checked": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When alert was last checked"
+    },
+    "notification_method": {
+      "type": "string",
+      "enum": [
+        "in_app",
+        "email",
+        "both"
+      ],
+      "default": "in_app",
+      "description": "How to notify the nurse"
+    }
+  },
+  "required": [
+    "patient_id",
+    "nurse_email",
+    "risk_category",
+    "threshold_score"
+  ]
+}

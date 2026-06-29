@@ -1,0 +1,157 @@
+{
+  "name": "FaxHistory",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "recipient_name": {
+      "type": "string"
+    },
+    "recipient_fax_number": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "cover_sheet_message": {
+      "type": "string"
+    },
+    "document_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URLs of documents sent"
+    },
+    "page_count": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "sending",
+        "sent",
+        "delivered",
+        "failed",
+        "scheduled"
+      ],
+      "default": "queued"
+    },
+    "telnyx_fax_id": {
+      "type": "string",
+      "description": "Telnyx fax ID for tracking"
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Related patient if applicable"
+    },
+    "folder_id": {
+      "type": "string",
+      "description": "Reference to FaxFolder"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for organization and search"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "urgent",
+        "high",
+        "normal",
+        "low"
+      ],
+      "default": "normal",
+      "description": "AI-detected or manual fax priority"
+    },
+    "priority_reason": {
+      "type": "string",
+      "description": "Reason for priority classification"
+    },
+    "retry_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of retry attempts"
+    },
+    "max_retries": {
+      "type": "number",
+      "default": 3,
+      "description": "Maximum retry attempts allowed"
+    },
+    "last_retry_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the last retry was attempted"
+    },
+    "scheduled_send_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Scheduled time for sending"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "Groups faxes sent as part of a batch"
+    },
+    "ocr_text": {
+      "type": "string",
+      "description": "Extracted OCR text from fax documents"
+    },
+    "ocr_confidence": {
+      "type": "number",
+      "description": "OCR extraction confidence 0-100"
+    },
+    "ai_analysis": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "urgency": {
+          "type": "string"
+        },
+        "key_points": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "action_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reply_draft": {
+          "type": "string"
+        },
+        "suggested_contacts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "description": "AI analysis results of fax content"
+    }
+  },
+  "required": [
+    "user_email",
+    "recipient_fax_number",
+    "status"
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "name": "FaxDocumentTemplate",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "template_name": {
+      "type": "string",
+      "description": "Name of the document template"
+    },
+    "template_type": {
+      "type": "string",
+      "enum": [
+        "referral",
+        "consent_form",
+        "lab_request",
+        "prescription",
+        "insurance_auth",
+        "medical_records_request",
+        "discharge_summary",
+        "progress_note",
+        "custom"
+      ],
+      "description": "Type of document template"
+    },
+    "document_content": {
+      "type": "string",
+      "description": "Template content with placeholders like {{patient_name}}, {{date}}, etc."
+    },
+    "placeholders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "date",
+              "number",
+              "dropdown"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "description": "List of placeholders in the template"
+    },
+    "is_shared": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this template is shared with agency"
+    },
+    "agency_id": {
+      "type": "string"
+    },
+    "times_used": {
+      "type": "number",
+      "default": 0
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "user_email",
+    "template_name",
+    "template_type",
+    "document_content"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "is_shared": true
+        }
+      ]
+    },
+    "write": {
+      "user_email": "{{user.email}}"
+    }
+  }
+}

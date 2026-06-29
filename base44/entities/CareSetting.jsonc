@@ -1,0 +1,179 @@
+{
+  "name": "CareSetting",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Display name of the care setting (e.g., 'Home Health Agency', 'Outpatient Clinic')"
+    },
+    "code": {
+      "type": "string",
+      "description": "Unique code identifier for the care setting (e.g., 'home_health', 'clinic_outpatient')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the care setting"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "telehealth",
+        "clinic_outpatient",
+        "hospital_inpatient",
+        "skilled_nursing",
+        "hospice",
+        "other"
+      ],
+      "description": "Care setting category for standardized filtering"
+    },
+    "visit_types_available": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of valid visit type IDs for this care setting (e.g., ['admission', 'routine_visit', 'discharge'])"
+    },
+    "provider_types_allowed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of provider types that can work in this care setting (e.g., ['RN', 'LPN', 'PT'])"
+    },
+    "documentation_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "is_required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "description": "Required documentation fields specific to this care setting"
+    },
+    "billing_category": {
+      "type": "string",
+      "description": "Billing/coding category for this care setting"
+    },
+    "requires_oasis": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether OASIS documentation is required for this care setting"
+    },
+    "requires_prior_auth": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether prior authorization is typically required"
+    },
+    "visit_duration_minutes": {
+      "type": "number",
+      "description": "Average expected visit duration in minutes"
+    },
+    "billing_unit": {
+      "type": "string",
+      "enum": [
+        "per_visit",
+        "per_15_minutes",
+        "per_hour",
+        "per_episode",
+        "per_month"
+      ],
+      "description": "How visits are billed in this setting"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "facility_name": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "fax": {
+          "type": "string"
+        }
+      },
+      "description": "Physical location details for this care setting"
+    },
+    "operational_hours": {
+      "type": "object",
+      "properties": {
+        "monday": {
+          "type": "string"
+        },
+        "tuesday": {
+          "type": "string"
+        },
+        "wednesday": {
+          "type": "string"
+        },
+        "thursday": {
+          "type": "string"
+        },
+        "friday": {
+          "type": "string"
+        },
+        "saturday": {
+          "type": "string"
+        },
+        "sunday": {
+          "type": "string"
+        }
+      },
+      "description": "Operating hours for each day (e.g., '8:00 AM - 5:00 PM')"
+    },
+    "special_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Special compliance, safety, or operational requirements"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this care setting is currently available for selection"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional administrative notes"
+    },
+    "is_sample": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is sample data visible to all users"
+    }
+  },
+  "required": [
+    "name",
+    "code",
+    "category",
+    "visit_types_available"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {},
+        {
+          "is_sample": true
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

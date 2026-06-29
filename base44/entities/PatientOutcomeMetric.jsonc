@@ -1,0 +1,139 @@
+{
+  "name": "PatientOutcomeMetric",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string"
+    },
+    "episode_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "episode_end": {
+      "type": "string",
+      "format": "date"
+    },
+    "admission_source": {
+      "type": "string",
+      "enum": [
+        "hospital",
+        "community",
+        "snf",
+        "other"
+      ]
+    },
+    "discharge_disposition": {
+      "type": "string",
+      "enum": [
+        "remained_home",
+        "hospital",
+        "snf",
+        "deceased",
+        "other"
+      ]
+    },
+    "length_of_service": {
+      "type": "number",
+      "description": "Days in service"
+    },
+    "total_visits_provided": {
+      "type": "number"
+    },
+    "readmission_30_day": {
+      "type": "boolean"
+    },
+    "readmission_60_day": {
+      "type": "boolean"
+    },
+    "er_visit_30_day": {
+      "type": "boolean"
+    },
+    "functional_improvement": {
+      "type": "object",
+      "properties": {
+        "ambulation_improved": {
+          "type": "boolean"
+        },
+        "bathing_improved": {
+          "type": "boolean"
+        },
+        "transferring_improved": {
+          "type": "boolean"
+        },
+        "medication_management_improved": {
+          "type": "boolean"
+        },
+        "overall_improvement_score": {
+          "type": "number"
+        }
+      }
+    },
+    "care_plan_goals_achieved": {
+      "type": "number",
+      "description": "Number of goals met"
+    },
+    "care_plan_goals_total": {
+      "type": "number"
+    },
+    "goal_achievement_rate": {
+      "type": "number",
+      "description": "Percentage"
+    },
+    "wound_healing_outcome": {
+      "type": "string",
+      "enum": [
+        "healed",
+        "improved",
+        "stable",
+        "deteriorated",
+        "n/a"
+      ]
+    },
+    "pain_improvement": {
+      "type": "number",
+      "description": "Pain level change (admission to discharge)"
+    },
+    "patient_satisfaction_score": {
+      "type": "number",
+      "description": "1-5 rating"
+    },
+    "complications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      }
+    },
+    "adverse_events": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "outcome_quality_score": {
+      "type": "number",
+      "description": "Composite quality score 0-100"
+    },
+    "primary_diagnosis": {
+      "type": "string"
+    },
+    "comorbidities_count": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "patient_id",
+    "episode_start"
+  ]
+}

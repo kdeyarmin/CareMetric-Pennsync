@@ -1,0 +1,122 @@
+{
+  "name": "BIIntegration",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Integration name"
+    },
+    "bi_tool": {
+      "type": "string",
+      "enum": [
+        "tableau",
+        "powerbi",
+        "looker",
+        "metabase",
+        "superset",
+        "custom"
+      ],
+      "description": "BI tool type"
+    },
+    "connection_type": {
+      "type": "string",
+      "enum": [
+        "api",
+        "webhook",
+        "export",
+        "database"
+      ],
+      "description": "How data is shared"
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "api_key": {
+          "type": "string"
+        },
+        "endpoint_url": {
+          "type": "string"
+        },
+        "database_connection": {
+          "type": "string"
+        },
+        "export_path": {
+          "type": "string"
+        }
+      }
+    },
+    "data_sources": {
+      "type": "array",
+      "description": "Which data to export",
+      "items": {
+        "type": "string",
+        "enum": [
+          "patients",
+          "visits",
+          "care_plans",
+          "incidents",
+          "compliance",
+          "training",
+          "outcomes",
+          "all"
+        ]
+      }
+    },
+    "sync_schedule": {
+      "type": "object",
+      "properties": {
+        "frequency": {
+          "type": "string",
+          "enum": [
+            "realtime",
+            "hourly",
+            "daily",
+            "weekly"
+          ]
+        },
+        "time": {
+          "type": "string"
+        }
+      }
+    },
+    "last_sync": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sync_status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "error"
+      ],
+      "default": "active"
+    },
+    "records_synced": {
+      "type": "number",
+      "default": 0
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "bi_tool",
+    "connection_type",
+    "data_sources"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

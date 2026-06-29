@@ -1,0 +1,118 @@
+{
+  "name": "PatientMessage",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "conversation_id": {
+      "type": "string",
+      "description": "Groups messages in same conversation thread"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "team",
+        "patient"
+      ],
+      "description": "team = internal care team, patient = patient/caregiver facing"
+    },
+    "sender_type": {
+      "type": "string",
+      "enum": [
+        "provider",
+        "patient",
+        "caregiver"
+      ],
+      "description": "Who sent this message"
+    },
+    "sender_email": {
+      "type": "string",
+      "description": "Email of sender"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Display name of sender"
+    },
+    "body": {
+      "type": "string",
+      "description": "Message content"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Thread subject (set on first message)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal",
+      "description": "Message priority"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unread",
+        "read",
+        "responded",
+        "closed"
+      ],
+      "default": "unread",
+      "description": "Message status"
+    },
+    "read_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of emails who have read this message"
+    },
+    "is_pinned": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether message is pinned in thread"
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "file_url": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Attached files"
+    }
+  },
+  "required": [
+    "patient_id",
+    "channel",
+    "sender_type",
+    "sender_email",
+    "body"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "sender_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {}
+  }
+}

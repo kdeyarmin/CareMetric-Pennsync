@@ -1,0 +1,93 @@
+{
+  "name": "FeaturePackage",
+  "type": "object",
+  "properties": {
+    "package_name": {
+      "type": "string",
+      "description": "Name of the feature package (e.g., Basic, Professional, Enterprise)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what's included in this package"
+    },
+    "price_per_user": {
+      "type": "number",
+      "description": "Monthly price per user for this package"
+    },
+    "included_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of feature page names included in this package"
+    },
+    "max_users": {
+      "type": "number",
+      "description": "Maximum users allowed (null for unlimited)"
+    },
+    "is_custom": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is a custom package created for specific agency"
+    },
+    "agency_code": {
+      "type": "string",
+      "description": "Agency code if this is a custom package"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "professional",
+        "enterprise",
+        "custom"
+      ],
+      "default": "professional",
+      "description": "Package tier level"
+    },
+    "features_summary": {
+      "type": "object",
+      "properties": {
+        "ai_tools": {
+          "type": "boolean",
+          "default": true
+        },
+        "advanced_analytics": {
+          "type": "boolean",
+          "default": false
+        },
+        "custom_training": {
+          "type": "boolean",
+          "default": false
+        },
+        "api_access": {
+          "type": "boolean",
+          "default": false
+        },
+        "dedicated_support": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "High-level feature summary for quick reference"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "package_name",
+    "price_per_user",
+    "included_features",
+    "tier"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

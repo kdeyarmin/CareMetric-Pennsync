@@ -1,0 +1,173 @@
+{
+  "name": "Agency",
+  "type": "object",
+  "properties": {
+    "agency_name": {
+      "type": "string",
+      "description": "Name of the agency/organization"
+    },
+    "agency_code": {
+      "type": "string",
+      "description": "Unique code for providers to join"
+    },
+    "admin_email": {
+      "type": "string",
+      "description": "Primary admin email for the agency"
+    },
+    "admin_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User IDs of agency admins who can manage the agency"
+    },
+    "contact_name": {
+      "type": "string",
+      "description": "Primary contact person"
+    },
+    "contact_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Billing contact email"
+    },
+    "contact_phone": {
+      "type": "string",
+      "description": "Contact phone number"
+    },
+    "billing_address": {
+      "type": "string",
+      "description": "Billing address"
+    },
+    "max_users": {
+      "type": "number",
+      "default": 10,
+      "description": "Maximum number of users allowed"
+    },
+    "price_per_user": {
+      "type": "number",
+      "default": 29.99,
+      "description": "Monthly price per user"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "trial",
+        "cancelled"
+      ],
+      "default": "active"
+    },
+    "billing_cycle": {
+      "type": "string",
+      "enum": [
+        "monthly",
+        "quarterly",
+        "annually"
+      ],
+      "default": "monthly"
+    },
+    "trial_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "stripe_customer_id": {
+      "type": "string",
+      "description": "Stripe customer ID for billing"
+    },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription ID"
+    },
+    "stripe_price_id": {
+      "type": "string",
+      "description": "Stripe price ID for usage-based billing"
+    },
+    "current_user_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Current number of active users"
+    },
+    "total_billed_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "Total amount billed to date"
+    },
+    "last_billing_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last billing date"
+    },
+    "next_billing_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Next billing date"
+    },
+    "enabled_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [
+        "SmartNoteAssistant",
+        "MedicalScribe",
+        "ClinicalDecisionSupport",
+        "OASIS",
+        "Compliance",
+        "CarePlanManagement",
+        "DocumentGenerator",
+        "BillingOptimization"
+      ],
+      "description": "List of enabled feature pages for this agency"
+    },
+    "auto_billing_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether automatic Stripe billing is enabled"
+    },
+    "logo_url": {
+      "type": "string",
+      "description": "Agency logo URL for branding"
+    },
+    "primary_color": {
+      "type": "string",
+      "default": "#3b82f6",
+      "description": "Primary brand color for emails and UI"
+    },
+    "welcome_message": {
+      "type": "string",
+      "description": "Custom welcome message for new users"
+    },
+    "email_footer": {
+      "type": "string",
+      "description": "Custom footer for invitation emails"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Internal notes about the agency"
+    }
+  },
+  "required": [
+    "agency_name",
+    "agency_code"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "admin_email": "{{user.email}}"
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

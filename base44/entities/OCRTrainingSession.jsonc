@@ -2,83 +2,65 @@
   "name": "OCRTrainingSession",
   "type": "object",
   "properties": {
-    "session_name": {
+    "admin_email": {
       "type": "string",
-      "description": "Name/identifier for this training session"
-    },
-    "status": {
-      "type": "string",
-      "enum": [
-        "queued",
-        "in_progress",
-        "completed",
-        "failed"
-      ],
-      "default": "queued",
-      "description": "Current status of the training session"
+      "description": "Admin who triggered the training"
     },
     "feedback_count": {
       "type": "number",
-      "description": "Number of feedback items used for training"
+      "description": "Number of feedback items processed"
     },
     "accuracy_before": {
       "type": "number",
-      "description": "Average OCR confidence before retraining"
+      "description": "Estimated accuracy before training"
     },
     "accuracy_after": {
       "type": "number",
-      "description": "Average OCR confidence after retraining"
+      "description": "Estimated accuracy after training"
     },
     "improvement_percentage": {
       "type": "number",
-      "description": "Percentage improvement in accuracy"
+      "description": "Percentage improvement"
     },
-    "document_types_trained": {
+    "patterns_learned": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "Types of documents included in training"
+      "description": "Key patterns identified from corrections"
     },
-    "training_metrics": {
+    "ai_insights": {
+      "type": "string",
+      "description": "AI-generated insights about correction patterns"
+    },
+    "correction_categories": {
       "type": "object",
-      "properties": {
-        "minor_corrections": {
-          "type": "number"
-        },
-        "moderate_corrections": {
-          "type": "number"
-        },
-        "major_corrections": {
-          "type": "number"
-        },
-        "avg_correction_length": {
-          "type": "number"
-        }
-      },
-      "description": "Detailed training metrics"
+      "description": "Breakdown of corrections by type"
     },
-    "started_at": {
+    "status": {
       "type": "string",
-      "format": "date-time",
-      "description": "When training started"
-    },
-    "completed_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When training completed"
-    },
-    "error_message": {
-      "type": "string",
-      "description": "Error message if training failed"
-    },
-    "initiated_by": {
-      "type": "string",
-      "description": "Email of admin who initiated training"
+      "enum": [
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "processing"
     }
   },
   "required": [
-    "session_name",
+    "admin_email",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

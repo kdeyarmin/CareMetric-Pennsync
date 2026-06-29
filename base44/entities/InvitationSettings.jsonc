@@ -1,0 +1,30 @@
+{
+  "name": "InvitationSettings",
+  "type": "object",
+  "properties": {
+    "expiry_days": {
+      "type": "number",
+      "default": 7,
+      "description": "Number of days before an invitation expires"
+    },
+    "cleanup_after_days": {
+      "type": "number",
+      "default": 30,
+      "description": "Number of days after expiry/revocation before auto-deletion"
+    },
+    "notify_before_cleanup": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to notify admins before cleaning up invitations"
+    }
+  },
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "required": []
+}

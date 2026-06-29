@@ -1,0 +1,127 @@
+{
+  "name": "ProviderFacilityAssignment",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "facility_id": {
+      "type": "string",
+      "description": "Facility identifier"
+    },
+    "facility_name": {
+      "type": "string",
+      "description": "Name of the facility"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider role at this facility"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Employment/assignment start date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Employment/assignment end date"
+    },
+    "is_primary_facility": {
+      "type": "boolean",
+      "default": false,
+      "description": "Primary work location"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Currently assigned to this facility"
+    },
+    "departments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Departments provider works in at this facility"
+    },
+    "shift_schedules": {
+      "type": "object",
+      "properties": {
+        "monday": {
+          "type": "string"
+        },
+        "tuesday": {
+          "type": "string"
+        },
+        "wednesday": {
+          "type": "string"
+        },
+        "thursday": {
+          "type": "string"
+        },
+        "friday": {
+          "type": "string"
+        },
+        "saturday": {
+          "type": "string"
+        },
+        "sunday": {
+          "type": "string"
+        }
+      },
+      "description": "Work schedules for each day"
+    },
+    "supervision_permissions": {
+      "type": "object",
+      "properties": {
+        "can_supervise": {
+          "type": "boolean"
+        },
+        "supervises_roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "num_supervised_staff": {
+          "type": "number"
+        }
+      },
+      "description": "Supervision capabilities at this facility"
+    },
+    "is_on_call": {
+      "type": "boolean",
+      "default": false,
+      "description": "Provider available for on-call coverage"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notes about facility assignment"
+    }
+  },
+  "required": [
+    "provider_email",
+    "facility_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

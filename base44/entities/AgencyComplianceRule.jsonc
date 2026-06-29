@@ -1,0 +1,82 @@
+{
+  "name": "AgencyComplianceRule",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the agency-specific compliance rule"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the rule"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "documentation",
+        "safety",
+        "quality",
+        "billing",
+        "training",
+        "oasis",
+        "custom"
+      ],
+      "description": "Category of the rule"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium",
+      "description": "Severity if violated"
+    },
+    "required_elements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Required documentation elements"
+    },
+    "validation_logic": {
+      "type": "string",
+      "description": "AI validation instructions for this rule"
+    },
+    "auto_fix_available": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether one-click fix is available"
+    },
+    "fix_template": {
+      "type": "string",
+      "description": "Template for auto-fixing this issue"
+    },
+    "applies_to_provider_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which provider types this applies to"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "rule_name",
+    "description",
+    "category"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

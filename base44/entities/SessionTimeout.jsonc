@@ -1,0 +1,32 @@
+{
+  "name": "SessionTimeout",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "last_activity": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session_token": {
+      "type": "string"
+    },
+    "timeout_minutes": {
+      "type": "number",
+      "default": 15
+    },
+    "warning_shown": {
+      "type": "boolean",
+      "default": false
+    },
+    "auto_logout": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "user_email",
+    "last_activity"
+  ]
+}

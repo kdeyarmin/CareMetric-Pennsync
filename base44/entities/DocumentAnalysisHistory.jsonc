@@ -1,0 +1,75 @@
+{
+  "name": "DocumentAnalysisHistory",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "description": "Email of provider who ran the analysis"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider type at time of analysis"
+    },
+    "care_setting": {
+      "type": "string",
+      "description": "Care setting at time of analysis"
+    },
+    "document_type": {
+      "type": "string",
+      "description": "Type of document analyzed"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Linked patient ID if applicable"
+    },
+    "file_count": {
+      "type": "number",
+      "description": "Number of files analyzed"
+    },
+    "file_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Names of files analyzed"
+    },
+    "analysis_summary": {
+      "type": "string",
+      "description": "Executive summary of analysis"
+    },
+    "full_analysis": {
+      "type": "object",
+      "description": "Complete analysis results"
+    }
+  },
+  "required": [
+    "provider_email",
+    "file_count"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

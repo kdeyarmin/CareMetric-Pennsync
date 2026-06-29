@@ -1,0 +1,82 @@
+{
+  "name": "AnomalyAlert",
+  "type": "object",
+  "properties": {
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "unusual_access_pattern",
+        "data_breach_risk",
+        "permission_mismatch",
+        "bulk_export",
+        "unauthorized_access_attempt"
+      ],
+      "description": "Type of anomaly detected"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "description": "Severity of the anomaly"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "User involved in the anomaly"
+    },
+    "details": {
+      "type": "object",
+      "description": "Specific details about the anomaly (what records, when, frequency, etc.)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "acknowledged",
+        "investigating",
+        "resolved",
+        "false_positive"
+      ],
+      "default": "new",
+      "description": "Status of the alert"
+    },
+    "admin_notes": {
+      "type": "string",
+      "description": "Notes from admin investigation"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the anomaly was resolved"
+    },
+    "detected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the anomaly was detected"
+    },
+    "auto_remediation_attempted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether system attempted automatic remediation"
+    }
+  },
+  "required": [
+    "alert_type",
+    "severity"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

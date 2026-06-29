@@ -1,0 +1,143 @@
+{
+  "name": "DigitalSignature",
+  "type": "object",
+  "properties": {
+    "signer_email": {
+      "type": "string",
+      "description": "Email of the person signing"
+    },
+    "signer_name": {
+      "type": "string",
+      "description": "Full name of signer"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "consent_form",
+        "care_plan",
+        "visit_note",
+        "discharge_summary",
+        "assessment",
+        "authorization",
+        "telehealth_consent",
+        "other"
+      ],
+      "description": "Type of document being signed"
+    },
+    "document_id": {
+      "type": "string",
+      "description": "Reference to the document (visit_id, patient_id, etc.)"
+    },
+    "signature_data": {
+      "type": "string",
+      "description": "Base64 encoded signature image"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address of signer at time of signing"
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "Browser/device information"
+    },
+    "consent_text": {
+      "type": "string",
+      "description": "Full text of what was agreed to"
+    },
+    "signature_method": {
+      "type": "string",
+      "enum": [
+        "drawn",
+        "typed",
+        "uploaded"
+      ],
+      "description": "How signature was captured"
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "verified",
+        "rejected"
+      ],
+      "default": "verified",
+      "description": "Verification status"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional context (patient_id, visit_date, etc.)"
+    },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "ip_address": {
+            "type": "string"
+          },
+          "device_info": {
+            "type": "string"
+          },
+          "geolocation": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Complete audit trail for compliance"
+    },
+    "mfa_verified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether MFA was used for this signature"
+    },
+    "mfa_method": {
+      "type": "string",
+      "enum": [
+        "sms",
+        "email",
+        "authenticator",
+        "none"
+      ],
+      "description": "MFA method used"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to patient if signed by patient"
+    },
+    "signed_by_role": {
+      "type": "string",
+      "enum": [
+        "provider",
+        "patient",
+        "caregiver",
+        "admin"
+      ],
+      "description": "Role of person signing"
+    },
+    "witness_email": {
+      "type": "string",
+      "description": "Email of witness if applicable"
+    },
+    "witness_signature_data": {
+      "type": "string",
+      "description": "Witness signature if required"
+    }
+  },
+  "required": [
+    "signer_email",
+    "signer_name",
+    "document_type",
+    "signature_data",
+    "consent_text"
+  ]
+}

@@ -202,10 +202,18 @@
       "items": {
         "type": "object",
         "properties": {
-          "field_name": { "type": "string" },
-          "patient_field": { "type": "string" },
-          "label": { "type": "string" },
-          "document_id": { "type": "string" }
+          "field_name": {
+            "type": "string"
+          },
+          "patient_field": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          }
         }
       },
       "description": "Fields whose captured value carries forward across documents in a packet"
@@ -215,15 +223,45 @@
       "items": {
         "type": "object",
         "properties": {
-          "document_id": { "type": "string" },
-          "document_name": { "type": "string" },
-          "original_file_name": { "type": "string" },
-          "template_file_url": { "type": "string" },
-          "order": { "type": "number" },
-          "field_mappings": { "type": "array", "items": { "type": "object" } },
-          "signature_fields": { "type": "array", "items": { "type": "object" } },
-          "carry_forward_fields": { "type": "array", "items": { "type": "object" } },
-          "visual_elements": { "type": "array", "items": { "type": "object" } }
+          "document_id": {
+            "type": "string"
+          },
+          "document_name": {
+            "type": "string"
+          },
+          "original_file_name": {
+            "type": "string"
+          },
+          "template_file_url": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "field_mappings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "signature_fields": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "carry_forward_fields": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "visual_elements": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
         }
       },
       "description": "Per-document configuration for a multi-document packet template"

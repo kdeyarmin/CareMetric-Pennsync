@@ -32,6 +32,7 @@
     "priority": {
       "type": "string",
       "enum": [
+        "critical",
         "high",
         "medium",
         "low"
@@ -55,6 +56,10 @@
       "format": "date",
       "description": "Due date for the task"
     },
+    "due_time": {
+      "type": "string",
+      "description": "Due time for the task"
+    },
     "due_timeframe": {
       "type": "string",
       "enum": [
@@ -76,7 +81,8 @@
         "ai_generated",
         "manual",
         "incident",
-        "care_plan"
+        "care_plan",
+        "recurring"
       ],
       "default": "manual",
       "description": "How the task was created"
@@ -92,12 +98,75 @@
     "completion_notes": {
       "type": "string",
       "description": "Notes added when task is completed"
+    },
+    "is_recurring": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is a recurring task"
+    },
+    "recurrence_type": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly",
+        "custom"
+      ],
+      "description": "Type of recurrence"
+    },
+    "recurrence_interval": {
+      "type": "number",
+      "default": 1,
+      "description": "Interval for recurrence (e.g., every 2 weeks)"
+    },
+    "recurrence_days": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Days of week for weekly recurrence (Monday, Tuesday, etc.)"
+    },
+    "recurrence_end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When recurrence should end"
+    },
+    "parent_task_id": {
+      "type": "string",
+      "description": "Reference to parent task if this is a recurring instance"
+    },
+    "last_notification_sent": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of last notification sent"
+    },
+    "notification_preferences": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "notify_before_hours": {
+          "type": "number",
+          "default": 24
+        },
+        "notify_on_overdue": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "description": "Notification settings for this task"
+    },
+    "is_sample": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is sample data visible to all users"
     }
   },
   "required": [
     "title",
-    "priority",
-    "assigned_to"
+    "priority"
   ],
   "rls": {
     "read": {
@@ -106,9 +175,15 @@
           "assigned_to": "{{user.email}}"
         },
         {
+          "created_by": "{{user.email}}"
+        },
+        {
           "user_condition": {
             "role": "admin"
           }
+        },
+        {
+          "is_sample": true
         }
       ]
     },

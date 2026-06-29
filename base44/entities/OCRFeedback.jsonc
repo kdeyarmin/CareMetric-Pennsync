@@ -2,13 +2,21 @@
   "name": "OCRFeedback",
   "type": "object",
   "properties": {
-    "fax_log_id": {
+    "user_email": {
       "type": "string",
-      "description": "Reference to FaxLog entity"
+      "description": "Email of the user who provided correction"
     },
-    "original_ocr_text": {
+    "fax_history_id": {
       "type": "string",
-      "description": "Original OCR extracted text"
+      "description": "Related FaxHistory record"
+    },
+    "document_url": {
+      "type": "string",
+      "description": "URL of the document"
+    },
+    "original_text": {
+      "type": "string",
+      "description": "Original OCR output"
     },
     "corrected_text": {
       "type": "string",
@@ -21,29 +29,40 @@
         "moderate",
         "major"
       ],
-      "description": "Severity of correction needed"
-    },
-    "feedback_notes": {
-      "type": "string",
-      "description": "User notes about the correction"
+      "description": "Severity of correction"
     },
     "document_type": {
       "type": "string",
-      "description": "Type of document (medical form, prescription, etc.)"
+      "description": "Type of document for categorization"
     },
-    "corrected_by": {
-      "type": "string",
-      "description": "Email of user who made correction"
-    },
-    "applied_to_training": {
+    "is_applied": {
       "type": "boolean",
       "default": false,
-      "description": "Whether this feedback was used for model improvement"
+      "description": "Whether this feedback has been used for retraining"
+    },
+    "training_session_id": {
+      "type": "string",
+      "description": "ID of the training session that used this feedback"
     }
   },
   "required": [
-    "fax_log_id",
-    "original_ocr_text",
+    "user_email",
+    "original_text",
     "corrected_text"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {}
+  }
 }

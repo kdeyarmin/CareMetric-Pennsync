@@ -1,0 +1,164 @@
+{
+  "name": "DocumentSignatureTemplate",
+  "type": "object",
+  "properties": {
+    "template_name": {
+      "type": "string",
+      "description": "Name of the template"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this template is for"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "consent_form",
+        "agreement",
+        "authorization",
+        "disclosure",
+        "release",
+        "waiver",
+        "custom"
+      ],
+      "description": "Type of document"
+    },
+    "category": {
+      "type": "string",
+      "description": "Custom category or specialty (e.g., 'Telehealth', 'Pain Management')"
+    },
+    "content": {
+      "type": "string",
+      "description": "HTML content of the template with placeholders like {{patient_name}}"
+    },
+    "placeholders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Placeholder key (e.g., 'patient_name')"
+          },
+          "label": {
+            "type": "string",
+            "description": "Display label for the placeholder"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "date",
+              "email",
+              "phone",
+              "select"
+            ],
+            "description": "Data type of the placeholder"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Options for select type placeholders"
+          }
+        }
+      },
+      "description": "List of available placeholders"
+    },
+    "signature_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "description": "Unique identifier for the signature field"
+          },
+          "label": {
+            "type": "string",
+            "description": "Label for the signature field (e.g., 'Patient Signature')"
+          },
+          "required_role": {
+            "type": "string",
+            "enum": [
+              "patient",
+              "provider",
+              "caregiver",
+              "witness"
+            ],
+            "description": "Who needs to sign this field"
+          },
+          "position": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "number",
+                "description": "Page number (1-indexed)"
+              },
+              "x": {
+                "type": "number",
+                "description": "X coordinate as percentage (0-100)"
+              },
+              "y": {
+                "type": "number",
+                "description": "Y coordinate as percentage (0-100)"
+              }
+            }
+          },
+          "date_field": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to include date field with signature"
+          },
+          "optional": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this signature is optional"
+          }
+        }
+      },
+      "description": "Signature field positions and requirements"
+    },
+    "is_shared": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether template is shared with the team"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether template is active and available for use"
+    },
+    "version": {
+      "type": "number",
+      "default": 1,
+      "description": "Template version number"
+    }
+  },
+  "required": [
+    "template_name",
+    "document_type",
+    "content",
+    "signature_fields"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "is_shared": true
+        }
+      ]
+    },
+    "write": {
+      "created_by": "{{user.email}}"
+    }
+  }
+}

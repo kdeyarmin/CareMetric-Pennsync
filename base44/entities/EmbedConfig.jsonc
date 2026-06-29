@@ -1,0 +1,110 @@
+{
+  "name": "EmbedConfig",
+  "type": "object",
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "description": "Reference to the DocumentRecord being embedded"
+    },
+    "embed_token": {
+      "type": "string",
+      "description": "Unique token for this embed instance"
+    },
+    "allowed_domains": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of domains allowed to embed this document"
+    },
+    "title": {
+      "type": "string",
+      "description": "Title to display in embed"
+    },
+    "show_signature_fields": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to show signature fields in embed"
+    },
+    "show_metadata": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to show document metadata"
+    },
+    "width": {
+      "type": "string",
+      "default": "100%",
+      "description": "Embed width (px or %)"
+    },
+    "height": {
+      "type": "string",
+      "default": "600px",
+      "description": "Embed height (px)"
+    },
+    "allow_download": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow users to download the embedded document"
+    },
+    "allow_print": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow users to print the embedded document"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this embed becomes inactive"
+    },
+    "view_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times the embed has been viewed"
+    },
+    "max_views": {
+      "type": "number",
+      "description": "Maximum allowed views (null for unlimited)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "expired"
+      ],
+      "default": "active",
+      "description": "Current status of the embed"
+    }
+  },
+  "required": [
+    "document_id",
+    "embed_token",
+    "allowed_domains"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

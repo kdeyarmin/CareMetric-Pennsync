@@ -1,0 +1,53 @@
+{
+  "name": "NewFeature",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Feature title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Feature description"
+    },
+    "icon": {
+      "type": "string",
+      "enum": [
+        "sparkles",
+        "star",
+        "rocket",
+        "zap",
+        "heart",
+        "gift"
+      ],
+      "default": "sparkles",
+      "description": "Icon to display"
+    },
+    "link": {
+      "type": "string",
+      "description": "Optional link to feature page"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to show this feature"
+    },
+    "priority": {
+      "type": "number",
+      "default": 0,
+      "description": "Display priority (higher = shown first)"
+    }
+  },
+  "required": [
+    "title",
+    "description"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

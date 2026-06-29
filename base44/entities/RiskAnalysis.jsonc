@@ -1,0 +1,117 @@
+{
+  "name": "RiskAnalysis",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "analysis_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the analysis was performed"
+    },
+    "overall_risk_score": {
+      "type": "number",
+      "description": "Overall risk score 0-100"
+    },
+    "hospitalization_risk": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number"
+        },
+        "level": {
+          "type": "string"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interventions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "monitoring_frequency": {
+          "type": "string"
+        }
+      }
+    },
+    "fall_risk": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number"
+        },
+        "level": {
+          "type": "string"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interventions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "monitoring_frequency": {
+          "type": "string"
+        }
+      }
+    },
+    "readmission_risk": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number"
+        },
+        "level": {
+          "type": "string"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interventions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "monitoring_frequency": {
+          "type": "string"
+        }
+      }
+    },
+    "overall_summary": {
+      "type": "string",
+      "description": "Summary of the risk analysis"
+    },
+    "priority_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Priority actions to take"
+    },
+    "analyzed_by": {
+      "type": "string",
+      "description": "Email of nurse who requested analysis"
+    }
+  },
+  "required": [
+    "patient_id",
+    "analysis_date",
+    "overall_risk_score"
+  ]
+}

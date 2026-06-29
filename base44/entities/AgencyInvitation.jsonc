@@ -1,0 +1,81 @@
+{
+  "name": "AgencyInvitation",
+  "type": "object",
+  "properties": {
+    "agency_code": {
+      "type": "string",
+      "description": "Agency code"
+    },
+    "agency_name": {
+      "type": "string",
+      "description": "Name of agency for display"
+    },
+    "invited_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of invited user"
+    },
+    "invited_by": {
+      "type": "string",
+      "description": "Email of agency admin who sent invite"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "expired",
+        "revoked"
+      ],
+      "default": "pending"
+    },
+    "invitation_token": {
+      "type": "string",
+      "description": "Unique token for invitation link"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invitation expires"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invitation was accepted"
+    },
+    "custom_message": {
+      "type": "string",
+      "description": "Custom message from agency admin"
+    }
+  },
+  "required": [
+    "agency_code",
+    "invited_email"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "invited_by": "{{user.email}}"
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "invited_by": "{{user.email}}"
+        }
+      ]
+    }
+  }
+}

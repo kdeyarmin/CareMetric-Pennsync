@@ -49,18 +49,6 @@
     "conversion_time_ms": {
       "type": "number",
       "description": "Time taken for enhancement in milliseconds"
-    },
-    "draft_presence_score": {
-      "type": "number",
-      "description": "Presence/compliance score of the rough draft before enhancement"
-    },
-    "rough_len": {
-      "type": "number",
-      "description": "Character count of the rough note"
-    },
-    "enhanced_len": {
-      "type": "number",
-      "description": "Character count of the enhanced note"
     }
   },
   "required": [

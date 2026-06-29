@@ -1,0 +1,63 @@
+{
+  "name": "AgencyFeatureAccess",
+  "type": "object",
+  "properties": {
+    "agency_code": {
+      "type": "string",
+      "description": "Agency code this configuration applies to"
+    },
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "RN",
+        "LPN",
+        "NP",
+        "PHYSICIAN",
+        "THERAPIST",
+        "MSW",
+        "Chiropractor",
+        "all"
+      ],
+      "description": "Provider type this configuration applies to, or 'all' for agency-wide"
+    },
+    "enabled_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of enabled feature page names"
+    },
+    "feature_tier": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "professional",
+        "enterprise",
+        "custom"
+      ],
+      "default": "professional",
+      "description": "Feature tier/package level"
+    }
+  },
+  "required": [
+    "agency_code",
+    "provider_type",
+    "enabled_features"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

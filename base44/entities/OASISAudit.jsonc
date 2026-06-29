@@ -2,172 +2,135 @@
   "name": "OASISAudit",
   "type": "object",
   "properties": {
-    "oasis_upload_id": {
+    "user_email": {
       "type": "string",
-      "description": "Reference to OASISUpload entity"
+      "description": "Email of user who performed analysis"
     },
     "patient_id": {
       "type": "string",
-      "description": "Reference to Patient entity"
+      "description": "Reference to Patient entity if applicable"
     },
-    "patient_name": {
-      "type": "string"
-    },
-    "flag_reason": {
+    "status": {
       "type": "string",
       "enum": [
-        "low_accuracy",
-        "low_compliance",
-        "high_audit_risk",
-        "manual_flag",
-        "revenue_opportunity"
+        "compliant",
+        "flagged",
+        "critical"
       ],
-      "description": "Why this was flagged"
+      "description": "Overall status of OASIS assessment"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief summary of analysis"
+    },
+    "details": {
+      "type": "object",
+      "description": "Full AI analysis results"
+    },
+    "oasis_file_url": {
+      "type": "string",
+      "description": "URL to uploaded OASIS file"
+    },
+    "analysis_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When analysis was performed"
+    },
+    "completeness_score": {
+      "type": "number",
+      "description": "OASIS data completeness score (0-100)"
     },
     "accuracy_score": {
-      "type": "number"
+      "type": "number",
+      "description": "OASIS data accuracy score (0-100)"
     },
-    "compliance_score": {
-      "type": "number"
-    },
-    "revenue_score": {
-      "type": "number"
-    },
-    "overall_score": {
-      "type": "number"
-    },
-    "key_issues": {
+    "missing_data_points": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "category": {
+          "field": {
             "type": "string"
           },
-          "item": {
+          "oasis_item": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "medium",
+              "low"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "impact_on_reimbursement": {
+            "type": "boolean"
+          }
+        }
+      },
+      "description": "Identified missing critical data points"
+    },
+    "accuracy_flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "oasis_item": {
             "type": "string"
           },
           "issue": {
             "type": "string"
           },
-          "severity": {
+          "suggested_value": {
             "type": "string"
           },
-          "recommendation": {
-            "type": "string"
+          "confidence": {
+            "type": "number"
           }
         }
-      }
+      },
+      "description": "Flags for potentially inaccurate data"
     },
-    "rescore_opportunities": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "m_item": {
-            "type": "string"
-          },
-          "current_score": {
-            "type": "string"
-          },
-          "recommended_score": {
-            "type": "string"
-          },
-          "revenue_impact": {
-            "type": "string"
-          }
+    "predictive_summary": {
+      "type": "string",
+      "description": "AI-generated summary of predicted patient outcomes/risks"
+    },
+    "care_plan_summary": {
+      "type": "string",
+      "description": "AI-generated care plan recommendations"
+    },
+    "risk_scores": {
+      "type": "object",
+      "properties": {
+        "hospitalization_risk": {
+          "type": "number"
+        },
+        "fall_risk": {
+          "type": "number"
+        },
+        "functional_decline_risk": {
+          "type": "number"
+        },
+        "wound_healing_risk": {
+          "type": "number"
         }
-      }
+      },
+      "description": "Predictive risk scores based on OASIS data"
     },
-    "estimated_revenue_impact": {
+    "predicted_los": {
       "type": "number",
-      "description": "Potential revenue recovery in dollars"
-    },
-    "status": {
-      "type": "string",
-      "enum": [
-        "pending_review",
-        "in_review",
-        "reviewed",
-        "corrected",
-        "dismissed"
-      ],
-      "default": "pending_review"
-    },
-    "priority": {
-      "type": "string",
-      "enum": [
-        "critical",
-        "high",
-        "medium",
-        "low"
-      ],
-      "default": "medium"
-    },
-    "assigned_to": {
-      "type": "string",
-      "description": "Auditor email"
-    },
-    "reviewed_by": {
-      "type": "string"
-    },
-    "reviewed_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "auditor_findings": {
-      "type": "string",
-      "description": "Auditor's notes and findings"
-    },
-    "auditor_recommendations": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "corrections_made": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "type": "string"
-          },
-          "original_value": {
-            "type": "string"
-          },
-          "corrected_value": {
-            "type": "string"
-          },
-          "rationale": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "report_generated": {
-      "type": "boolean",
-      "default": false
-    },
-    "report_url": {
-      "type": "string"
+      "description": "Predicted length of service in days"
     }
   },
   "required": [
-    "oasis_upload_id",
-    "flag_reason",
-    "status"
-  ],
-  "rls": {
-    "read": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "write": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
-  }
+    "user_email",
+    "status",
+    "summary"
+  ]
 }

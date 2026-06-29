@@ -1,0 +1,53 @@
+{
+  "name": "SubscriptionSettings",
+  "type": "object",
+  "properties": {
+    "monthly_price": {
+      "type": "number",
+      "default": 39.99
+    },
+    "stripe_monthly_price_id": {
+      "type": "string"
+    },
+    "quarterly_price": {
+      "type": "number",
+      "default": 99
+    },
+    "stripe_quarterly_price_id": {
+      "type": "string"
+    },
+    "biannual_price": {
+      "type": "number",
+      "default": 210
+    },
+    "stripe_biannual_price_id": {
+      "type": "string"
+    },
+    "yearly_price": {
+      "type": "number",
+      "default": 350
+    },
+    "stripe_yearly_price_id": {
+      "type": "string"
+    },
+    "trial_days": {
+      "type": "number",
+      "default": 14
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "required": []
+}

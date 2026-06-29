@@ -1,0 +1,55 @@
+{
+  "name": "TerminologyGlossary",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "User who created this glossary"
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "es",
+        "fr",
+        "zh",
+        "ar",
+        "pt",
+        "de",
+        "ru",
+        "ja",
+        "hi"
+      ],
+      "default": "en",
+      "description": "Language code"
+    },
+    "term": {
+      "type": "string",
+      "description": "Medical term or phrase"
+    },
+    "preferred_translation": {
+      "type": "string",
+      "description": "Preferred translation or phrasing"
+    },
+    "context": {
+      "type": "string",
+      "description": "When to use this term (e.g., 'wound care', 'vital signs')"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "user_email",
+    "term"
+  ],
+  "rls": {
+    "read": {
+      "user_email": "{{user.email}}"
+    },
+    "write": {
+      "user_email": "{{user.email}}"
+    }
+  }
+}

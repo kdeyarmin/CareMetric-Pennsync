@@ -1,0 +1,89 @@
+{
+  "name": "PatientPathwayAssignment",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string"
+    },
+    "pathway_id": {
+      "type": "string",
+      "description": "Reference to ClinicalPathway"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "current_phase": {
+      "type": "number",
+      "description": "Current phase index"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "completed",
+        "discontinued",
+        "on_hold"
+      ],
+      "default": "active"
+    },
+    "adherence_score": {
+      "type": "number",
+      "description": "% adherence to pathway 0-100"
+    },
+    "variances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "variance_type": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "milestones_achieved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "milestone": {
+            "type": "string"
+          },
+          "achieved_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "phase": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "discontinued_reason": {
+      "type": "string"
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "assigned_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "patient_id",
+    "pathway_id",
+    "start_date"
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "name": "PDGMCaseMix",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "oasis_assessment_id": {
+      "type": "string",
+      "description": "Reference to OASIS assessment"
+    },
+    "timing": {
+      "type": "string",
+      "enum": [
+        "early",
+        "late"
+      ],
+      "description": "Early (days 1-30) or Late (days 31-60)"
+    },
+    "clinical_grouping": {
+      "type": "string",
+      "description": "MMTA, MS-Rehab, Neuro-Rehab, Wounds, Complex, Behavioral Health"
+    },
+    "functional_impairment_level": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "description": "Based on OASIS functional scores"
+    },
+    "comorbidity_adjustment": {
+      "type": "string",
+      "enum": [
+        "none",
+        "low",
+        "high"
+      ],
+      "description": "Comorbidity tier"
+    },
+    "case_mix_weight": {
+      "type": "number",
+      "description": "Calculated PDGM case mix weight"
+    },
+    "estimated_payment": {
+      "type": "number",
+      "description": "Estimated Medicare payment amount"
+    },
+    "wage_index": {
+      "type": "number",
+      "description": "Geographic wage index"
+    },
+    "base_payment_rate": {
+      "type": "number",
+      "description": "Base payment rate for period"
+    },
+    "primary_diagnosis_code": {
+      "type": "string"
+    },
+    "secondary_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lupa_threshold_visits": {
+      "type": "number",
+      "description": "LUPA threshold for this clinical group"
+    },
+    "actual_visits": {
+      "type": "number",
+      "description": "Actual visits provided"
+    },
+    "is_lupa": {
+      "type": "boolean",
+      "description": "Low Utilization Payment Adjustment triggered"
+    },
+    "optimization_score": {
+      "type": "number",
+      "description": "0-100 score for PDGM optimization"
+    },
+    "optimization_opportunities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "area": {
+            "type": "string"
+          },
+          "current_value": {
+            "type": "string"
+          },
+          "recommended_value": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "number"
+          },
+          "rationale": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "period_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "period_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "calculated_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "calculated_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "patient_id",
+    "clinical_grouping",
+    "functional_impairment_level"
+  ]
+}

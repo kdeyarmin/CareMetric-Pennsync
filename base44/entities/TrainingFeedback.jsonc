@@ -2,47 +2,135 @@
   "name": "TrainingFeedback",
   "type": "object",
   "properties": {
-    "course_id": {
+    "feedback_type": {
       "type": "string",
-      "description": "Reference to the TrainingCourse being rated"
+      "enum": [
+        "module_rating",
+        "content_issue",
+        "general_feedback"
+      ],
+      "description": "Type of feedback"
     },
-    "course_title": {
+    "training_module_id": {
       "type": "string",
-      "description": "Course title at time of rating"
+      "description": "Reference to TrainingModule if feedback is about a specific module"
     },
-    "user_id": {
+    "module_title": {
       "type": "string",
-      "description": "Email of the user who submitted the rating"
-    },
-    "user_name": {
-      "type": "string",
-      "description": "Display name of the rater"
+      "description": "Title of the training module for reference"
     },
     "rating": {
       "type": "number",
-      "description": "Star rating from 1 to 5"
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Module rating (1-5 stars)"
     },
-    "would_recommend": {
-      "type": "boolean",
-      "description": "Whether the learner would recommend this course"
+    "effectiveness_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "How effective the module was"
     },
-    "difficulty": {
+    "relevance_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "How relevant the module was to their work"
+    },
+    "difficulty_rating": {
       "type": "string",
       "enum": [
         "too_easy",
         "just_right",
         "too_hard"
       ],
-      "description": "Perceived difficulty"
+      "description": "Difficulty assessment"
     },
-    "comment": {
+    "issue_category": {
       "type": "string",
-      "description": "Optional free-text feedback"
+      "enum": [
+        "technical",
+        "content_accuracy",
+        "clarity",
+        "outdated",
+        "broken_link",
+        "other"
+      ],
+      "description": "Category of content issue"
+    },
+    "issue_description": {
+      "type": "string",
+      "description": "Detailed description of the issue"
+    },
+    "feedback_text": {
+      "type": "string",
+      "description": "General feedback or comments"
+    },
+    "would_recommend": {
+      "type": "boolean",
+      "description": "Whether they would recommend this module"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "reviewed",
+        "addressed",
+        "dismissed"
+      ],
+      "default": "new",
+      "description": "Status of the feedback"
+    },
+    "admin_notes": {
+      "type": "string",
+      "description": "Notes from admin review"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of admin who reviewed the feedback"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When feedback was reviewed"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of user providing feedback"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Name of user providing feedback"
     }
   },
   "required": [
-    "course_id",
-    "user_id",
-    "rating"
-  ]
+    "feedback_type",
+    "user_email"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

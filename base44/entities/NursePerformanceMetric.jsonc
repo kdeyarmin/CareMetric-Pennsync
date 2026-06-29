@@ -1,0 +1,116 @@
+{
+  "name": "NursePerformanceMetric",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string"
+    },
+    "nurse_name": {
+      "type": "string"
+    },
+    "period_type": {
+      "type": "string",
+      "enum": [
+        "weekly",
+        "monthly",
+        "quarterly",
+        "yearly"
+      ]
+    },
+    "period_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "period_end": {
+      "type": "string",
+      "format": "date"
+    },
+    "total_visits": {
+      "type": "number"
+    },
+    "patients_served": {
+      "type": "number"
+    },
+    "avg_documentation_quality_score": {
+      "type": "number",
+      "description": "Average note quality score 0-100"
+    },
+    "avg_compliance_score": {
+      "type": "number",
+      "description": "Average compliance score 0-100"
+    },
+    "documentation_timeliness_score": {
+      "type": "number",
+      "description": "% of notes completed within 24 hours"
+    },
+    "oasis_accuracy_rate": {
+      "type": "number",
+      "description": "OASIS assessment accuracy %"
+    },
+    "patient_satisfaction_score": {
+      "type": "number",
+      "description": "Average patient satisfaction"
+    },
+    "readmission_rate": {
+      "type": "number",
+      "description": "% of patients readmitted"
+    },
+    "goal_achievement_rate": {
+      "type": "number",
+      "description": "% of care plan goals achieved"
+    },
+    "productivity_score": {
+      "type": "number",
+      "description": "Visits per week ratio"
+    },
+    "training_completion_rate": {
+      "type": "number",
+      "description": "% of assigned training completed"
+    },
+    "compliance_violations": {
+      "type": "number",
+      "description": "Count of compliance issues"
+    },
+    "ai_enhancement_usage_rate": {
+      "type": "number",
+      "description": "% of notes using AI enhancement"
+    },
+    "time_saved_minutes": {
+      "type": "number",
+      "description": "Estimated time saved through AI tools"
+    },
+    "strengths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "improvement_areas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended_training": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "overall_performance_rating": {
+      "type": "string",
+      "enum": [
+        "excellent",
+        "good",
+        "satisfactory",
+        "needs_improvement"
+      ],
+      "description": "Overall rating"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "period_start",
+    "period_end"
+  ]
+}

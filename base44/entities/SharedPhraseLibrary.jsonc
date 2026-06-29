@@ -1,0 +1,63 @@
+{
+  "name": "SharedPhraseLibrary",
+  "type": "object",
+  "properties": {
+    "phrase_name": {
+      "type": "string",
+      "description": "Name/title of the phrase"
+    },
+    "phrase_content": {
+      "type": "string",
+      "description": "The actual phrase or template text"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "assessment",
+        "intervention",
+        "education",
+        "homebound",
+        "skilled_need",
+        "vital_signs",
+        "safety",
+        "medication",
+        "wound_care"
+      ],
+      "description": "Category of the phrase"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for searchability"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times this phrase has been used"
+    },
+    "is_best_practice": {
+      "type": "boolean",
+      "default": false,
+      "description": "Marked as agency best practice"
+    },
+    "created_by_role": {
+      "type": "string",
+      "description": "Role of the creator for context"
+    }
+  },
+  "required": [
+    "phrase_name",
+    "phrase_content",
+    "category"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

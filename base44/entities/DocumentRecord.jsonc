@@ -1,0 +1,148 @@
+{
+  "name": "DocumentRecord",
+  "type": "object",
+  "properties": {
+    "document_name": {
+      "type": "string",
+      "description": "Name of the document"
+    },
+    "description": {
+      "type": "string",
+      "description": "Document description"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "consent_form",
+        "agreement",
+        "medical_record",
+        "care_plan",
+        "report",
+        "other"
+      ],
+      "description": "Document category"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL to the uploaded file"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Original file name"
+    },
+    "file_type": {
+      "type": "string",
+      "description": "MIME type of the file (e.g., application/pdf)"
+    },
+    "file_size": {
+      "type": "number",
+      "description": "File size in bytes"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient if document is patient-specific"
+    },
+    "version_number": {
+      "type": "number",
+      "default": 1,
+      "description": "Current version number"
+    },
+    "previous_versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "version_number": {
+            "type": "number"
+          },
+          "file_url": {
+            "type": "string"
+          },
+          "uploaded_by": {
+            "type": "string"
+          },
+          "uploaded_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "change_notes": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "History of previous versions"
+    },
+    "uploaded_by": {
+      "type": "string",
+      "description": "Email of user who uploaded"
+    },
+    "is_signed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether document has been signed"
+    },
+    "signature_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "References to associated DigitalSignature records"
+    },
+    "signature_status": {
+      "type": "string",
+      "enum": [
+        "unsigned",
+        "pending",
+        "signed",
+        "fully_signed"
+      ],
+      "default": "unsigned",
+      "description": "Current signature status"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Custom tags for organizing documents"
+    },
+    "is_archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether document is archived"
+    }
+  },
+  "required": [
+    "document_name",
+    "category",
+    "file_url",
+    "file_name",
+    "file_type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

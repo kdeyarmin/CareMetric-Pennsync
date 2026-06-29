@@ -1,0 +1,84 @@
+{
+  "name": "Payment",
+  "type": "object",
+  "properties": {
+    "invoice_id": {
+      "type": "string",
+      "description": "Reference to Invoice entity"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the payment was received"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Amount of the payment"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "credit_card",
+        "cash",
+        "check",
+        "insurance_payout",
+        "ach",
+        "other"
+      ],
+      "description": "Payment method"
+    },
+    "transaction_id": {
+      "type": "string",
+      "description": "Reference transaction ID"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "Check number, insurance claim number, etc."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about the payment"
+    },
+    "received_by": {
+      "type": "string",
+      "description": "Email of user who recorded the payment"
+    }
+  },
+  "required": [
+    "invoice_id",
+    "patient_id",
+    "payment_date",
+    "amount",
+    "method"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

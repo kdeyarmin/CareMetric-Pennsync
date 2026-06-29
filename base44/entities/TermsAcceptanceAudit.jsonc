@@ -1,0 +1,96 @@
+{
+  "name": "TermsAcceptanceAudit",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User ID who accepted the terms"
+    },
+    "user_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of user who accepted"
+    },
+    "organization_id": {
+      "type": "string",
+      "description": "Organization ID if applicable"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Name of the document accepted (e.g., Terms of Service)"
+    },
+    "document_id": {
+      "type": "string",
+      "description": "Document identifier (e.g., CM-TOS-001)"
+    },
+    "document_version": {
+      "type": "string",
+      "description": "Version of the document (e.g., v1.0)"
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When acceptance occurred in UTC"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address of the user"
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "Browser user agent string"
+    },
+    "acceptance_method": {
+      "type": "string",
+      "enum": [
+        "checkbox",
+        "modal",
+        "api"
+      ],
+      "description": "How the user accepted the terms"
+    },
+    "accepted_documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "All documents accepted in this session"
+    },
+    "audit_log_entry": {
+      "type": "string",
+      "description": "Human-readable audit log entry"
+    }
+  },
+  "required": [
+    "user_id",
+    "user_email",
+    "document_name",
+    "document_id",
+    "document_version",
+    "timestamp_utc",
+    "acceptance_method"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

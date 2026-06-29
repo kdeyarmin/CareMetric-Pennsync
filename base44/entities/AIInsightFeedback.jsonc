@@ -1,0 +1,95 @@
+{
+  "name": "AIInsightFeedback",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse providing feedback"
+    },
+    "insight_type": {
+      "type": "string",
+      "enum": [
+        "compliance_alert",
+        "training_recommendation",
+        "task_prioritization",
+        "patient_risk_alert",
+        "documentation_suggestion",
+        "care_plan_suggestion",
+        "performance_insight",
+        "scheduling_optimization",
+        "other"
+      ],
+      "description": "Type of AI insight being reviewed"
+    },
+    "insight_id": {
+      "type": "string",
+      "description": "ID of the specific insight/recommendation if applicable"
+    },
+    "insight_content": {
+      "type": "string",
+      "description": "The actual content of the AI insight"
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "1-5 star rating of the insight quality"
+    },
+    "accuracy_rating": {
+      "type": "string",
+      "enum": [
+        "very_accurate",
+        "accurate",
+        "somewhat_accurate",
+        "inaccurate",
+        "very_inaccurate"
+      ],
+      "description": "How accurate was the AI insight"
+    },
+    "relevance_rating": {
+      "type": "string",
+      "enum": [
+        "very_relevant",
+        "relevant",
+        "somewhat_relevant",
+        "not_relevant"
+      ],
+      "description": "How relevant was the insight to their work"
+    },
+    "usefulness_rating": {
+      "type": "string",
+      "enum": [
+        "very_useful",
+        "useful",
+        "somewhat_useful",
+        "not_useful"
+      ],
+      "description": "How useful was the insight"
+    },
+    "feedback_text": {
+      "type": "string",
+      "description": "Detailed text feedback from the nurse"
+    },
+    "action_taken": {
+      "type": "boolean",
+      "description": "Whether the nurse acted on the insight"
+    },
+    "action_details": {
+      "type": "string",
+      "description": "What action was taken if any"
+    },
+    "improvement_suggestions": {
+      "type": "string",
+      "description": "Nurse's suggestions for improvement"
+    },
+    "context_data": {
+      "type": "object",
+      "description": "Additional context about when/where feedback was given"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "insight_type",
+    "rating"
+  ]
+}

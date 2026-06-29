@@ -1,0 +1,107 @@
+{
+  "name": "ProviderPermission",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider role (RN, LPN, PT, MD, etc.)"
+    },
+    "permission_category": {
+      "type": "string",
+      "enum": [
+        "dashboard_widget",
+        "feature",
+        "page_access",
+        "visit_type",
+        "patient_data_field",
+        "report_access"
+      ],
+      "description": "Category of permission"
+    },
+    "permission_name": {
+      "type": "string",
+      "description": "Specific permission identifier (e.g., 'smartNotes', 'oasisAccess', 'patientAlerts')"
+    },
+    "is_allowed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this permission is granted or revoked"
+    },
+    "custom_override": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this overrides the role's default setting"
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When this permission becomes effective"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When this permission expires (optional)"
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "facility_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Restrict to specific facilities"
+        },
+        "department_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Restrict to specific departments"
+        },
+        "patient_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "If permission is patient-specific"
+        }
+      },
+      "description": "Scope constraints for this permission"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Administrative notes about this permission"
+    }
+  },
+  "required": [
+    "provider_email",
+    "provider_type",
+    "permission_category",
+    "permission_name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

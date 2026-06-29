@@ -1,0 +1,88 @@
+{
+  "name": "TimeSavings",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of the clinician"
+    },
+    "feature_used": {
+      "type": "string",
+      "enum": [
+        "ai_scribe",
+        "note_enhancement",
+        "compliance_check",
+        "care_plan_generation",
+        "task_generation",
+        "coding_suggestions",
+        "oasis_analysis",
+        "voice_transcription"
+      ],
+      "description": "Which AI feature was used"
+    },
+    "time_saved_minutes": {
+      "type": "number",
+      "description": "Estimated time saved in minutes"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Related patient if applicable"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Related visit if applicable"
+    },
+    "visit_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the visit"
+    },
+    "baseline_time_minutes": {
+      "type": "number",
+      "description": "Estimated manual time without AI"
+    },
+    "actual_time_minutes": {
+      "type": "number",
+      "description": "Actual time spent with AI assistance"
+    },
+    "note_length_chars": {
+      "type": "number",
+      "description": "Length of generated note"
+    },
+    "specialty": {
+      "type": "string",
+      "description": "Medical specialty context"
+    }
+  },
+  "required": [
+    "user_email",
+    "feature_used",
+    "time_saved_minutes"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

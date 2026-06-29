@@ -1,0 +1,129 @@
+{
+  "name": "PersonalizedLearningPath",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider role (RN, LPN, etc.)"
+    },
+    "path_name": {
+      "type": "string",
+      "description": "Name of the learning path"
+    },
+    "path_description": {
+      "type": "string",
+      "description": "Description of what this path covers"
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "module_id": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "in_progress",
+              "completed"
+            ]
+          },
+          "score": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Ordered list of modules in this path"
+    },
+    "skill_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Identified skill gaps based on usage patterns"
+    },
+    "recommended_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "App features recommended for this provider"
+    },
+    "completion_percentage": {
+      "type": "number",
+      "default": 0,
+      "description": "Progress through the learning path (0-100)"
+    },
+    "estimated_hours": {
+      "type": "number",
+      "description": "Estimated time to complete path"
+    },
+    "created_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_recommended_module": {
+      "type": "string",
+      "description": "ID of next module to complete"
+    },
+    "based_on": {
+      "type": "object",
+      "properties": {
+        "usage_patterns": {
+          "type": "boolean"
+        },
+        "role": {
+          "type": "boolean"
+        },
+        "skill_gaps": {
+          "type": "boolean"
+        },
+        "compliance_needs": {
+          "type": "boolean"
+        }
+      },
+      "description": "What factors determined this path"
+    }
+  },
+  "required": [
+    "provider_email",
+    "provider_type",
+    "path_name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

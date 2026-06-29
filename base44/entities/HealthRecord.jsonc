@@ -1,0 +1,192 @@
+{
+  "name": "HealthRecord",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Reference to Visit entity (optional)"
+    },
+    "appointment_id": {
+      "type": "string",
+      "description": "Reference to Appointment entity (optional)"
+    },
+    "record_type": {
+      "type": "string",
+      "enum": [
+        "diagnosis",
+        "medication",
+        "allergy",
+        "procedure",
+        "lab_result",
+        "imaging",
+        "pathology",
+        "medical_history",
+        "family_history",
+        "social_history",
+        "clinical_note",
+        "encounter_summary"
+      ],
+      "description": "Type of health record"
+    },
+    "record_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the record"
+    },
+    "title": {
+      "type": "string",
+      "description": "Title or summary of the record"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the record"
+    },
+    "provider_name": {
+      "type": "string",
+      "description": "Name of provider who created/updated record"
+    },
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of provider who created/updated record"
+    },
+    "clinical_significance": {
+      "type": "string",
+      "enum": [
+        "low",
+        "moderate",
+        "high",
+        "critical"
+      ],
+      "default": "moderate",
+      "description": "Clinical significance level"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "archived",
+        "reviewed"
+      ],
+      "default": "active",
+      "description": "Record status"
+    },
+    "document_url": {
+      "type": "string",
+      "description": "URL to uploaded document or file"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "image",
+        "text",
+        "lab_report",
+        "imaging_report"
+      ],
+      "description": "Type of document attached"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Searchable tags for categorization"
+    },
+    "is_encrypted": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether record content is encrypted"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of provider who reviewed record"
+    },
+    "reviewed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date record was reviewed"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date record expires (for temporary records)"
+    },
+    "access_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_email": {
+            "type": "string"
+          },
+          "access_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "access_type": {
+            "type": "string",
+            "enum": [
+              "view",
+              "edit",
+              "download"
+            ]
+          }
+        }
+      },
+      "description": "Audit log of record access"
+    },
+    "confidential_flag": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether record contains confidential information"
+    }
+  },
+  "required": [
+    "patient_id",
+    "record_type",
+    "record_date",
+    "title"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "patient_id": "{{user.email}}"
+        },
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

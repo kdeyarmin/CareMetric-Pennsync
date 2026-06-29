@@ -259,14 +259,14 @@
       "items": {
         "type": "object"
       },
-      "description": "Regulations this course addresses — each item: { regulation, title, how_this_course_addresses_it }"
+      "description": "Regulations this course addresses \u2014 each item: { regulation, title, how_this_course_addresses_it }"
     },
     "competency_skills_json": {
       "type": "array",
       "items": {
         "type": "object"
       },
-      "description": "Observable skills the learner will demonstrate — each item: { skill, criteria }"
+      "description": "Observable skills the learner will demonstrate \u2014 each item: { skill, criteria }"
     },
     "pre_assessment_json": {
       "type": "array",

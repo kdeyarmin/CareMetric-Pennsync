@@ -1,0 +1,47 @@
+{
+  "name": "FaxNotification",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "fax_history_id": {
+      "type": "string"
+    },
+    "recipient_name": {
+      "type": "string"
+    },
+    "recipient_fax_number": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "delivered",
+        "failed"
+      ],
+      "description": "The fax status that triggered this notification"
+    },
+    "message": {
+      "type": "string"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false
+    },
+    "channels_sent": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which channels this notification was sent on (in_app, email, sms)"
+    }
+  },
+  "required": [
+    "user_email",
+    "fax_history_id",
+    "status",
+    "message"
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "name": "UserLearnedPattern",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of the user whose patterns are being learned"
+    },
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "RN",
+        "MD",
+        "NP",
+        "PT",
+        "OT",
+        "MSW",
+        "SLP"
+      ],
+      "description": "Provider type for pattern application"
+    },
+    "pattern_type": {
+      "type": "string",
+      "enum": [
+        "phrasing",
+        "structure",
+        "compliance_priority",
+        "documentation_style",
+        "suggestion_preference"
+      ],
+      "description": "Type of pattern being learned"
+    },
+    "pattern_category": {
+      "type": "string",
+      "description": "Category of the pattern (e.g., 'patient_response', 'vital_signs_notation', 'pain_description')"
+    },
+    "original_text": {
+      "type": "string",
+      "description": "Original AI-suggested or rough text"
+    },
+    "user_preferred_text": {
+      "type": "string",
+      "description": "How the user edited or preferred the text"
+    },
+    "frequency": {
+      "type": "number",
+      "default": 1,
+      "description": "How many times this pattern has been observed"
+    },
+    "visit_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Visit types where this pattern was observed"
+    },
+    "suggestions_accepted": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times user accepted similar suggestions"
+    },
+    "suggestions_rejected": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times user rejected similar suggestions"
+    },
+    "confidence_score": {
+      "type": "number",
+      "description": "Confidence level in this pattern (0-100) based on frequency and consistency"
+    },
+    "last_observed": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time this pattern was observed"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this pattern should be applied to future suggestions"
+    }
+  },
+  "required": [
+    "user_email",
+    "provider_type",
+    "pattern_type",
+    "pattern_category"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "name": "RecurringFax",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name for this recurring fax"
+    },
+    "recipient_name": {
+      "type": "string"
+    },
+    "recipient_fax_number": {
+      "type": "string"
+    },
+    "template_id": {
+      "type": "string",
+      "description": "Reference to FaxCoverTemplate"
+    },
+    "document_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URLs of documents to send"
+    },
+    "recurrence_pattern": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "biweekly",
+        "monthly",
+        "quarterly"
+      ],
+      "description": "How often to send"
+    },
+    "recurrence_day_of_week": {
+      "type": "number",
+      "description": "0-6 for weekly (0=Sunday)"
+    },
+    "recurrence_day_of_month": {
+      "type": "number",
+      "description": "1-31 for monthly"
+    },
+    "send_time": {
+      "type": "string",
+      "description": "HH:MM format"
+    },
+    "next_send_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_sent_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Optional end date"
+    },
+    "times_sent": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "user_email",
+    "name",
+    "recipient_fax_number",
+    "recurrence_pattern"
+  ],
+  "rls": {
+    "read": {
+      "user_email": "{{user.email}}"
+    },
+    "write": {
+      "user_email": "{{user.email}}"
+    }
+  }
+}

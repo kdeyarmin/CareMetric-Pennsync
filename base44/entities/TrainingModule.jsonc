@@ -2,46 +2,119 @@
   "name": "TrainingModule",
   "type": "object",
   "properties": {
-    "course_id": {
-      "type": "string",
-      "description": "Reference to TrainingCourse"
-    },
     "title": {
       "type": "string",
-      "description": "Module title"
+      "description": "Training module title"
     },
-    "type": {
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the training"
+    },
+    "category": {
       "type": "string",
       "enum": [
-        "lesson",
-        "video",
-        "policy",
-        "simulation",
-        "checklist",
-        "attestation"
+        "clinical",
+        "documentation",
+        "compliance",
+        "safety",
+        "technology",
+        "specialty",
+        "onboarding"
       ],
-      "description": "Module type"
-    },
-    "content_json": {
-      "type": "object",
-      "description": "Module content structure"
-    },
-    "order_index": {
-      "type": "number",
-      "description": "Display order"
-    },
-    "estimated_minutes": {
-      "type": "number",
-      "description": "Estimated time for this module"
-    },
-    "is_required": {
-      "type": "boolean",
-      "default": true,
-      "description": "Whether module is required"
+      "description": "Training category"
     },
     "module_type": {
       "type": "string",
-      "description": "Sub-type written by AI/quiz/lesson generators (e.g. quiz, micro_lesson, practice_exercise)"
+      "enum": [
+        "onboarding",
+        "ongoing",
+        "skill_development",
+        "recertification"
+      ],
+      "default": "ongoing",
+      "description": "Type of training module"
+    },
+    "content_type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "video",
+        "interactive",
+        "quiz",
+        "document",
+        "mixed"
+      ],
+      "default": "text",
+      "description": "Format of the learning content"
+    },
+    "content": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "video_url": {
+          "type": "string"
+        },
+        "document_url": {
+          "type": "string"
+        },
+        "interactive_elements": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "quiz_questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "question": {
+                "type": "string"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "correct_answer": {
+                "type": "number"
+              },
+              "explanation": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "description": "Module content in various formats"
+    },
+    "related_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Diagnoses this training is relevant for"
+    },
+    "related_skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Skills developed by this training"
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of modules that must be completed first"
+    },
+    "duration_minutes": {
+      "type": "number",
+      "description": "Estimated completion time in minutes"
     },
     "difficulty_level": {
       "type": "string",
@@ -50,75 +123,43 @@
         "intermediate",
         "advanced"
       ],
-      "description": "Difficulty level used by the training library filters"
+      "description": "Difficulty level"
     },
-    "category": {
-      "type": "string",
-      "description": "Library category used for grouping/filtering modules"
+    "is_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is mandatory agency training"
     },
-    "attachment_urls": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "External files attached to this lesson/module"
+    "required_for_onboarding": {
+      "type": "boolean",
+      "default": false,
+      "description": "Must be completed during onboarding"
     },
-    "attachment_names": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Display names for lesson/module attachments"
-    },
-    "video_url": {
-      "type": "string",
-      "description": "Produced presenter video for this module (e.g. HeyGen)"
-    },
-    "video_thumbnail_url": {
-      "type": "string",
-      "description": "Thumbnail/poster image for the module video"
-    },
-    "video_duration_seconds": {
+    "recertification_months": {
       "type": "number",
-      "description": "Duration of the module video in seconds"
+      "description": "Months until recertification required"
     },
-    "video_status": {
-      "type": "string",
-      "enum": [
-        "none",
-        "processing",
-        "completed",
-        "failed"
-      ],
-      "default": "none",
-      "description": "AI presenter video generation status"
+    "passing_score": {
+      "type": "number",
+      "default": 80,
+      "description": "Minimum score to pass (percentage)"
     },
-    "video_job_id": {
+    "content_url": {
       "type": "string",
-      "description": "Provider (HeyGen) video id used to poll generation status"
+      "description": "External URL to training content"
     },
-    "video_error": {
-      "type": "string",
-      "description": "Last video generation error message, if any"
+    "is_active": {
+      "type": "boolean",
+      "default": true
     },
-    "video_generated_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When the module video finished generating"
-    },
-    "video_avatar_id": {
-      "type": "string",
-      "description": "Provider avatar id used to generate the module video"
-    },
-    "video_voice_id": {
-      "type": "string",
-      "description": "Provider voice id used to generate the module video"
+    "order": {
+      "type": "number",
+      "description": "Display order within category"
     }
   },
   "required": [
-    "course_id",
     "title",
-    "type",
-    "order_index"
+    "category",
+    "module_type"
   ]
 }

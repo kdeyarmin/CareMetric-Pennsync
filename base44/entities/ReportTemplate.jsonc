@@ -1,0 +1,147 @@
+{
+  "name": "ReportTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "description": {
+      "type": "string"
+    },
+    "report_type": {
+      "type": "string",
+      "enum": [
+        "compliance",
+        "performance",
+        "analytics",
+        "user_activity",
+        "patient_outcomes",
+        "financial",
+        "custom"
+      ]
+    },
+    "layout": {
+      "type": "array",
+      "description": "Drag-and-drop layout configuration",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "position": {
+            "type": "object"
+          },
+          "size": {
+            "type": "object"
+          },
+          "config": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "description": "Report sections",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "chart",
+              "table",
+              "text",
+              "metrics",
+              "summary",
+              "custom"
+            ]
+          },
+          "data_source": {
+            "type": "string"
+          },
+          "visualization": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "object"
+          },
+          "order": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "styling": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "string"
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fonts": {
+          "type": "object"
+        },
+        "logo_url": {
+          "type": "string"
+        }
+      }
+    },
+    "is_public": {
+      "type": "boolean",
+      "default": false,
+      "description": "Available to all users"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "name",
+    "report_type",
+    "sections"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "is_public": true
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

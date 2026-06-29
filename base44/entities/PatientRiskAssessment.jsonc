@@ -6,181 +6,129 @@
       "type": "string",
       "description": "Reference to Patient entity"
     },
-    "assessment_date": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When the risk assessment was performed"
-    },
-    "overall_risk_score": {
-      "type": "number",
-      "description": "Overall risk score 0-100 (higher = more risk)"
-    },
-    "overall_risk_level": {
+    "risk_type": {
       "type": "string",
       "enum": [
-        "low",
-        "moderate",
-        "high",
-        "critical"
+        "fall",
+        "readmission",
+        "infection",
+        "deterioration",
+        "medication_complication",
+        "pressure_injury",
+        "dehydration",
+        "non_compliance"
       ],
-      "description": "Overall risk classification"
+      "description": "Type of risk identified"
     },
-    "fall_risk_score": {
-      "type": "number",
-      "description": "Fall risk score 0-100"
-    },
-    "fall_risk_level": {
+    "risk_level": {
       "type": "string",
       "enum": [
-        "low",
-        "moderate",
+        "critical",
         "high",
-        "critical"
-      ]
+        "moderate",
+        "low"
+      ],
+      "description": "Predicted risk level"
     },
-    "fall_risk_factors": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Specific factors contributing to fall risk"
-    },
-    "readmission_risk_score": {
+    "risk_score": {
       "type": "number",
-      "description": "Hospital readmission risk score 0-100"
+      "minimum": 0,
+      "maximum": 100,
+      "description": "AI-calculated risk score (0-100)"
     },
-    "readmission_risk_level": {
-      "type": "string",
-      "enum": [
-        "low",
-        "moderate",
-        "high",
-        "critical"
-      ]
-    },
-    "readmission_risk_factors": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Factors contributing to readmission risk"
-    },
-    "medication_adherence_risk_score": {
-      "type": "number",
-      "description": "Medication non-adherence risk score 0-100"
-    },
-    "medication_adherence_risk_level": {
-      "type": "string",
-      "enum": [
-        "low",
-        "moderate",
-        "high",
-        "critical"
-      ]
-    },
-    "medication_adherence_risk_factors": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Factors contributing to medication non-adherence"
-    },
-    "clinical_deterioration_risk_score": {
-      "type": "number",
-      "description": "Risk of clinical condition worsening 0-100"
-    },
-    "clinical_deterioration_risk_level": {
-      "type": "string",
-      "enum": [
-        "low",
-        "moderate",
-        "high",
-        "critical"
-      ]
-    },
-    "clinical_deterioration_risk_factors": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Clinical indicators of deterioration risk"
-    },
-    "detailed_analysis": {
-      "type": "string",
-      "description": "AI-generated detailed risk analysis narrative"
-    },
-    "recommended_interventions": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Specific interventions recommended by AI"
-    },
-    "priority_actions": {
+    "contributing_factors": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "action": {
+          "factor": {
             "type": "string"
           },
-          "urgency": {
-            "type": "string",
-            "enum": [
-              "immediate",
-              "24_hours",
-              "this_week",
-              "routine"
-            ]
+          "weight": {
+            "type": "number"
           },
-          "rationale": {
+          "evidence": {
             "type": "string"
           }
         }
       },
-      "description": "Prioritized actions with urgency levels"
+      "description": "Factors contributing to the risk"
     },
-    "flagged_for_review": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether this patient is flagged for immediate clinical review"
-    },
-    "reviewed_by": {
-      "type": "string",
-      "description": "Email of clinician who reviewed the assessment"
-    },
-    "reviewed_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When the assessment was reviewed"
-    },
-    "review_notes": {
-      "type": "string",
-      "description": "Clinician notes after reviewing assessment"
-    },
-    "data_sources_analyzed": {
-      "type": "object",
-      "properties": {
-        "referral_data": {
-          "type": "boolean"
-        },
-        "visit_count": {
-          "type": "number"
-        },
-        "incident_count": {
-          "type": "number"
-        },
-        "care_plan_count": {
-          "type": "number"
+    "intervention_suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "intervention": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "evidence_based": {
+            "type": "boolean"
+          }
         }
       },
-      "description": "What data was included in the analysis"
+      "description": "AI-recommended interventions"
+    },
+    "clinical_indicators": {
+      "type": "object",
+      "description": "Specific clinical data points that triggered the prediction"
+    },
+    "prediction_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this assessment was generated"
+    },
+    "timeframe": {
+      "type": "string",
+      "description": "Expected timeframe for risk (e.g., '24-48 hours', '7 days')"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "acknowledged",
+        "interventions_applied",
+        "risk_resolved",
+        "false_positive"
+      ],
+      "default": "active",
+      "description": "Status of this risk alert"
+    },
+    "acknowledged_by": {
+      "type": "string",
+      "description": "Email of provider who acknowledged the alert"
+    },
+    "acknowledged_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "interventions_applied": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which interventions were actually applied"
+    },
+    "outcome_notes": {
+      "type": "string",
+      "description": "Notes on what happened with this risk prediction"
+    },
+    "ai_model_version": {
+      "type": "string",
+      "description": "Version of AI model used for prediction"
     }
   },
   "required": [
     "patient_id",
-    "assessment_date",
-    "overall_risk_score",
-    "overall_risk_level"
-  ]
+    "risk_type",
+    "risk_level",
+    "risk_score"
+  ],
+  "rls": {
+    "read": {},
+    "write": {}
+  }
 }

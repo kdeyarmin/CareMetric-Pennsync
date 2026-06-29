@@ -1,0 +1,99 @@
+{
+  "name": "AIFeedback",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of user providing feedback"
+    },
+    "ai_suggestion_type": {
+      "type": "string",
+      "enum": [
+        "note_enhancement",
+        "care_plan",
+        "compliance_check",
+        "education",
+        "task_suggestion",
+        "medical_coding",
+        "clinical_decision_support",
+        "risk_assessment",
+        "other"
+      ],
+      "description": "Type of AI suggestion"
+    },
+    "suggestion_content": {
+      "type": "string",
+      "description": "The AI-generated suggestion"
+    },
+    "user_action": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "edited",
+        "rejected",
+        "ignored"
+      ],
+      "description": "What the user did with the suggestion"
+    },
+    "user_edit": {
+      "type": "string",
+      "description": "How the user edited the suggestion (if applicable)"
+    },
+    "helpful_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "User's helpfulness rating (1-5, where 5 is most helpful)"
+    },
+    "accuracy_rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "User's accuracy rating"
+    },
+    "feedback_text": {
+      "type": "string",
+      "description": "User's open-ended feedback"
+    },
+    "context_data": {
+      "type": "object",
+      "description": "Context about when/where feedback was given (patient_id, visit_type, provider_type, etc.)"
+    },
+    "is_processed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this feedback has been analyzed for model improvement"
+    }
+  },
+  "required": [
+    "user_email",
+    "ai_suggestion_type",
+    "user_action"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

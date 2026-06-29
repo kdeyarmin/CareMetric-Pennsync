@@ -2,6 +2,9 @@
   "name": "FaxPriorityRule",
   "type": "object",
   "properties": {
+    "user_email": {
+      "type": "string"
+    },
     "name": {
       "type": "string",
       "description": "Rule name"
@@ -11,41 +14,27 @@
       "enum": [
         "keyword",
         "sender",
-        "recipient",
-        "time_based"
+        "recipient"
       ],
-      "description": "Type of rule"
+      "description": "What this rule matches against"
     },
-    "keywords": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Keywords to match (case-insensitive)"
+    "pattern": {
+      "type": "string",
+      "description": "Text pattern to match"
     },
-    "sender_patterns": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Sender phone patterns or names"
-    },
-    "priority_level": {
+    "priority": {
       "type": "string",
       "enum": [
         "urgent",
         "high",
         "normal",
         "low"
-      ],
-      "description": "Priority to assign when matched"
+      ]
     },
-    "notify_users": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Email addresses to notify"
+    "notify": {
+      "type": "boolean",
+      "default": false,
+      "description": "Send notification when this rule matches"
     },
     "is_active": {
       "type": "boolean",
@@ -54,12 +43,14 @@
     "match_count": {
       "type": "number",
       "default": 0,
-      "description": "Number of times this rule has matched"
+      "description": "How many times this rule has matched"
     }
   },
   "required": [
+    "user_email",
     "name",
     "rule_type",
-    "priority_level"
+    "pattern",
+    "priority"
   ]
 }

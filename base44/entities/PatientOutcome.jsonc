@@ -1,0 +1,92 @@
+{
+  "name": "PatientOutcome",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "outcome_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of outcome measurement"
+    },
+    "outcome_type": {
+      "type": "string",
+      "enum": [
+        "readmission",
+        "fall",
+        "medication_adherence",
+        "functional_improvement",
+        "care_plan_goal_met",
+        "hospitalization_prevented",
+        "emergency_visit",
+        "infection",
+        "pressure_ulcer",
+        "weight_gain",
+        "weight_loss",
+        "pain_reduction",
+        "mobility_improvement",
+        "other"
+      ],
+      "description": "Type of outcome tracked"
+    },
+    "outcome_category": {
+      "type": "string",
+      "enum": [
+        "positive",
+        "negative",
+        "neutral"
+      ],
+      "description": "Whether outcome is positive or negative"
+    },
+    "metric_value": {
+      "type": "number",
+      "description": "Quantified value if applicable (e.g., 95 for 95% adherence)"
+    },
+    "baseline_value": {
+      "type": "number",
+      "description": "Baseline value for comparison"
+    },
+    "improvement_percentage": {
+      "type": "number",
+      "description": "Percentage improvement from baseline"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the outcome"
+    },
+    "contributing_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Factors that contributed to this outcome"
+    },
+    "interventions_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Interventions that led to this outcome"
+    },
+    "ai_analysis": {
+      "type": "object",
+      "description": "AI-generated analysis of this outcome"
+    },
+    "related_visit_id": {
+      "type": "string",
+      "description": "Visit where outcome was identified"
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Nurse email who verified this outcome"
+    }
+  },
+  "required": [
+    "patient_id",
+    "outcome_date",
+    "outcome_type",
+    "outcome_category"
+  ]
+}

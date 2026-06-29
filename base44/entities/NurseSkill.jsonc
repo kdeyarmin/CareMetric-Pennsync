@@ -55,5 +55,31 @@
     "nurse_email",
     "skill_name",
     "skill_category"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

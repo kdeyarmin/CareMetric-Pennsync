@@ -1,0 +1,82 @@
+{
+  "name": "ArchivedRecord",
+  "type": "object",
+  "properties": {
+    "original_entity_type": {
+      "type": "string",
+      "description": "Type of entity that was archived"
+    },
+    "original_entity_id": {
+      "type": "string",
+      "description": "ID of the original entity"
+    },
+    "archived_data": {
+      "type": "object",
+      "description": "JSON snapshot of archived data"
+    },
+    "archive_policy_id": {
+      "type": "string",
+      "description": "ID of policy that triggered archival"
+    },
+    "archived_by": {
+      "type": "string",
+      "description": "Email of admin who triggered archival (or 'system' for automatic)"
+    },
+    "archived_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the record was archived"
+    },
+    "original_created_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Original creation date of the entity"
+    },
+    "retention_until": {
+      "type": "string",
+      "format": "date",
+      "description": "When archived record can be permanently deleted"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "archived",
+        "restore_requested",
+        "permanently_deleted"
+      ],
+      "default": "archived",
+      "description": "Status of archived record"
+    },
+    "restore_requested_by": {
+      "type": "string",
+      "description": "Email of user requesting restoration"
+    },
+    "restore_request_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When restoration was requested"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata for search and recovery"
+    }
+  },
+  "required": [
+    "original_entity_type",
+    "original_entity_id",
+    "archived_data",
+    "archived_date"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

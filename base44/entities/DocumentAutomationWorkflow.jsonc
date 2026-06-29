@@ -1,0 +1,296 @@
+{
+  "name": "DocumentAutomationWorkflow",
+  "type": "object",
+  "properties": {
+    "workflow_name": {
+      "type": "string",
+      "description": "Name of the automation workflow"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what this workflow does"
+    },
+    "template_id": {
+      "type": "string",
+      "description": "Reference to DocumentSignatureTemplate to use"
+    },
+    "trigger_type": {
+      "type": "string",
+      "enum": [
+        "event",
+        "schedule",
+        "manual",
+        "webhook"
+      ],
+      "description": "How this workflow is triggered"
+    },
+    "trigger_event": {
+      "type": "string",
+      "enum": [
+        "patient_created",
+        "visit_completed",
+        "care_plan_updated",
+        "form_submitted",
+        "threshold_exceeded",
+        "custom_webhook"
+      ],
+      "description": "Specific event that triggers workflow"
+    },
+    "trigger_conditions": {
+      "type": "object",
+      "description": "Conditions that must be met to trigger (e.g., field values, comparisons)"
+    },
+    "data_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "entity",
+              "api",
+              "webhook",
+              "manual"
+            ]
+          },
+          "source_reference": {
+            "type": "string",
+            "description": "Entity name, API endpoint, or webhook URL"
+          },
+          "mapping": {
+            "type": "object",
+            "description": "Field mapping from source to template placeholders"
+          },
+          "auth_type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "api_key",
+              "oauth",
+              "bearer_token"
+            ]
+          }
+        }
+      },
+      "description": "External data sources to populate document"
+    },
+    "placeholder_mapping": {
+      "type": "object",
+      "description": "Map of template placeholder keys to data source values"
+    },
+    "conditional_branches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "description": "Unique identifier for this branch"
+          },
+          "branch_name": {
+            "type": "string",
+            "description": "Display name for the branch"
+          },
+          "condition": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "Field to evaluate (e.g., patient.risk_score)"
+              },
+              "operator": {
+                "type": "string",
+                "enum": [
+                  "equals",
+                  "not_equals",
+                  "greater_than",
+                  "less_than",
+                  "contains",
+                  "matches_regex"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "description": "Value to compare against"
+              }
+            },
+            "required": [
+              "field",
+              "operator",
+              "value"
+            ]
+          },
+          "template_id_override": {
+            "type": "string",
+            "description": "Use different template for this branch (optional)"
+          },
+          "action_overrides": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Override post-generation actions for this branch"
+          },
+          "extract_metadata": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to extract AI summaries and keywords for this branch"
+          }
+        },
+        "required": [
+          "branch_id",
+          "branch_name",
+          "condition"
+        ]
+      },
+      "description": "Conditional branching paths based on data inputs"
+    },
+    "ai_enrichment": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable AI document summarization and keyword extraction"
+        },
+        "extract_summary": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate AI summary of document content"
+        },
+        "extract_keywords": {
+          "type": "boolean",
+          "default": false,
+          "description": "Extract keywords from document for metadata"
+        },
+        "max_summary_length": {
+          "type": "number",
+          "default": 300,
+          "description": "Maximum length of generated summary in characters"
+        }
+      },
+      "description": "AI-powered document enrichment settings"
+    },
+    "signature_settings": {
+      "type": "object",
+      "properties": {
+        "auto_sign": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically sign the document"
+        },
+        "require_signature": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Which signature fields are required"
+        },
+        "send_to_signers": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send document to signers automatically"
+        },
+        "signer_emails": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Email addresses of signers"
+        }
+      }
+    },
+    "post_generation_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action_type": {
+            "type": "string",
+            "enum": [
+              "send_email",
+              "save_to_record",
+              "webhook",
+              "archive"
+            ]
+          },
+          "action_target": {
+            "type": "string",
+            "description": "Email, URL, entity, etc."
+          },
+          "action_config": {
+            "type": "object",
+            "description": "Additional configuration for the action"
+          }
+        }
+      },
+      "description": "Actions to perform after document generation"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this workflow is active"
+    },
+    "last_triggered": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this workflow was last triggered"
+    },
+    "trigger_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times this workflow has triggered"
+    },
+    "error_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "type": "string"
+          },
+          "trigger_data": {
+            "type": "object"
+          }
+        }
+      },
+      "description": "Log of errors encountered"
+    }
+  },
+  "required": [
+    "workflow_name",
+    "template_id",
+    "trigger_type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

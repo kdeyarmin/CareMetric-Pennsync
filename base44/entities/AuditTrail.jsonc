@@ -1,0 +1,56 @@
+{
+  "name": "AuditTrail",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the action occurred"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of user who performed the action"
+    },
+    "action": {
+      "type": "string",
+      "description": "Action performed (create, update, delete, access)"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Type of entity affected"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID of the entity affected"
+    },
+    "changes": {
+      "type": "object",
+      "description": "Before and after values for updates"
+    },
+    "details": {
+      "type": "object",
+      "description": "Additional context about the action"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address of the request"
+    }
+  },
+  "required": [
+    "timestamp",
+    "user_email",
+    "action"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

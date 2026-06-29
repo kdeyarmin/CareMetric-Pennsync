@@ -1,0 +1,116 @@
+{
+  "name": "AgencyMessage",
+  "type": "object",
+  "properties": {
+    "from_agency_code": {
+      "type": "string",
+      "description": "Sending agency code"
+    },
+    "to_agency_code": {
+      "type": "string",
+      "description": "Receiving agency code"
+    },
+    "sender_email": {
+      "type": "string",
+      "description": "Email of sender"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Name of sender"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Message subject"
+    },
+    "message_body": {
+      "type": "string",
+      "description": "Message content"
+    },
+    "related_patient_id": {
+      "type": "string",
+      "description": "Patient this message is about"
+    },
+    "related_patient_name": {
+      "type": "string",
+      "description": "Patient name for reference"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unread",
+        "read",
+        "archived"
+      ],
+      "default": "unread"
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Thread ID for grouping replies"
+    },
+    "parent_message_id": {
+      "type": "string",
+      "description": "ID of message being replied to"
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file_url": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Attached files"
+    },
+    "read_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When message was read"
+    },
+    "is_encrypted": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "from_agency_code",
+    "to_agency_code",
+    "sender_email",
+    "subject",
+    "message_body"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "from_agency_code": "{{user.agency_code}}"
+        },
+        {
+          "to_agency_code": "{{user.agency_code}}"
+        }
+      ]
+    },
+    "write": {}
+  }
+}

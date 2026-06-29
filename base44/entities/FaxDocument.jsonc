@@ -1,0 +1,81 @@
+{
+  "name": "FaxDocument",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL to the uploaded document"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Display name of the document"
+    },
+    "original_name": {
+      "type": "string",
+      "description": "Original filename before AI rename"
+    },
+    "file_size": {
+      "type": "number"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "patient_dob": {
+      "type": "string"
+    },
+    "mrn": {
+      "type": "string",
+      "description": "Medical record number"
+    },
+    "provider_name": {
+      "type": "string"
+    },
+    "document_type": {
+      "type": "string",
+      "description": "Specific type e.g. Lab Results, Referral Letter"
+    },
+    "category": {
+      "type": "string",
+      "description": "Broad category for filing"
+    },
+    "date_of_service": {
+      "type": "string"
+    },
+    "diagnosis": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Searchable keyword tags"
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-sentence AI summary"
+    },
+    "confidence": {
+      "type": "number",
+      "description": "AI analysis confidence 0-100"
+    },
+    "fax_history_id": {
+      "type": "string",
+      "description": "Linked FaxHistory record if sent via fax"
+    },
+    "recipient_name": {
+      "type": "string"
+    },
+    "recipient_fax_number": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_email",
+    "file_url",
+    "file_name"
+  ]
+}

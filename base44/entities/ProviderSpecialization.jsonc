@@ -1,0 +1,147 @@
+{
+  "name": "ProviderSpecialization",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "specialty_name": {
+      "type": "string",
+      "description": "Name of the specialty (e.g., Geriatric Care, Pediatrics, Cardiology)"
+    },
+    "specialty_code": {
+      "type": "string",
+      "description": "Standardized code for the specialty"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of this specialty area"
+    },
+    "expertise_level": {
+      "type": "string",
+      "enum": [
+        "beginner",
+        "intermediate",
+        "advanced",
+        "expert"
+      ],
+      "default": "intermediate",
+      "description": "Level of expertise in this specialty"
+    },
+    "years_of_experience": {
+      "type": "number",
+      "description": "Years of experience in this specialty"
+    },
+    "certifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "issuing_body": {
+            "type": "string"
+          },
+          "date_obtained": {
+            "type": "string",
+            "format": "date"
+          },
+          "expiration_date": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
+      "description": "Certifications related to this specialty"
+    },
+    "common_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Common diagnoses treated in this specialty"
+    },
+    "documentation_template_id": {
+      "type": "string",
+      "description": "Reference to custom documentation template for this specialty"
+    },
+    "compliance_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Specialty-specific compliance checks required"
+    },
+    "preferred_assessment_tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Preferred assessment instruments and tools"
+    },
+    "ai_prompt_customization": {
+      "type": "object",
+      "properties": {
+        "note_generation_focus": {
+          "type": "string"
+        },
+        "key_elements_to_emphasize": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "terminology_preferences": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Customized AI prompt settings for this specialty"
+    },
+    "is_primary": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is the provider's primary specialty"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this specialty is currently active"
+    }
+  },
+  "required": [
+    "provider_email",
+    "specialty_name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "name": "ProviderBadge",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "badge_type": {
+      "type": "string",
+      "enum": [
+        "first_note",
+        "smart_notes_pro",
+        "quick_learner",
+        "perfect_compliance",
+        "ai_enthusiast",
+        "training_master",
+        "consistent_performer"
+      ],
+      "description": "Type of badge earned"
+    },
+    "badge_name": {
+      "type": "string",
+      "description": "Display name of the badge"
+    },
+    "badge_description": {
+      "type": "string",
+      "description": "What was achieved to earn this badge"
+    },
+    "badge_icon_url": {
+      "type": "string",
+      "description": "URL to badge icon/image"
+    },
+    "earned_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trigger_criteria": {
+      "type": "object",
+      "properties": {
+        "criterion_type": {
+          "type": "string",
+          "enum": [
+            "milestone",
+            "achievement",
+            "streak",
+            "score"
+          ]
+        },
+        "target_value": {
+          "type": "number"
+        },
+        "metric": {
+          "type": "string"
+        }
+      },
+      "description": "What triggered this badge"
+    }
+  },
+  "required": [
+    "provider_email",
+    "badge_type",
+    "badge_name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "name": "AlertTriggerRule",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the alert rule"
+    },
+    "rule_type": {
+      "type": "string",
+      "enum": [
+        "vital_sign_threshold",
+        "lab_result_critical",
+        "missed_visit",
+        "medication_adherence",
+        "fall_detected",
+        "weight_change",
+        "pain_level",
+        "functional_decline",
+        "care_plan_stalled",
+        "overdue_task",
+        "hospitalization_risk",
+        "predictive_risk"
+      ],
+      "description": "Type of trigger rule"
+    },
+    "trigger_condition": {
+      "type": "object",
+      "properties": {
+        "parameter": {
+          "type": "string",
+          "description": "What to monitor (e.g., blood_pressure_systolic, weight, glucose)"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "greater_than",
+            "less_than",
+            "equals",
+            "not_equals",
+            "between",
+            "outside_range",
+            "change_percentage"
+          ],
+          "description": "Comparison operator"
+        },
+        "threshold_value": {
+          "type": "number",
+          "description": "Threshold value for comparison"
+        },
+        "threshold_min": {
+          "type": "number",
+          "description": "Minimum value for range comparisons"
+        },
+        "threshold_max": {
+          "type": "number",
+          "description": "Maximum value for range comparisons"
+        },
+        "timeframe_hours": {
+          "type": "number",
+          "description": "Timeframe to look back for data (hours)"
+        }
+      },
+      "description": "Conditions that trigger the alert"
+    },
+    "alert_severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "moderate",
+        "low"
+      ],
+      "default": "moderate",
+      "description": "Severity level of generated alert"
+    },
+    "alert_title_template": {
+      "type": "string",
+      "description": "Template for alert title with placeholders"
+    },
+    "alert_description_template": {
+      "type": "string",
+      "description": "Template for alert description with placeholders"
+    },
+    "recommended_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Recommended actions when alert triggers"
+    },
+    "notification_channels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "in_app",
+          "email",
+          "sms",
+          "push"
+        ]
+      },
+      "default": [
+        "in_app"
+      ],
+      "description": "How to notify when alert triggers"
+    },
+    "notify_roles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which user roles to notify"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this rule is currently active"
+    },
+    "applies_to_patients": {
+      "type": "string",
+      "enum": [
+        "all",
+        "specific_diagnoses",
+        "high_risk_only"
+      ],
+      "default": "all",
+      "description": "Which patients this rule applies to"
+    },
+    "diagnosis_filter": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Specific diagnoses this rule applies to"
+    },
+    "cooldown_hours": {
+      "type": "number",
+      "default": 24,
+      "description": "Minimum hours between repeat alerts for same condition"
+    },
+    "auto_resolve_hours": {
+      "type": "number",
+      "description": "Automatically resolve alert after this many hours if not addressed"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Email of user who created the rule"
+    },
+    "trigger_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times this rule has triggered"
+    },
+    "last_triggered": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time this rule triggered"
+    }
+  },
+  "required": [
+    "rule_name",
+    "rule_type",
+    "trigger_condition",
+    "alert_severity"
+  ]
+}

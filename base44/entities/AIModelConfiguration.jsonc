@@ -1,0 +1,139 @@
+{
+  "name": "AIModelConfiguration",
+  "type": "object",
+  "properties": {
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "RN",
+        "LPN",
+        "NP",
+        "MD",
+        "DO",
+        "PT",
+        "OT",
+        "ST",
+        "MSW",
+        "Chiropractor"
+      ],
+      "description": "Provider type this configuration applies to"
+    },
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "note_enhancement",
+        "compliance_check",
+        "clinical_decision",
+        "patient_education",
+        "care_plan",
+        "risk_analysis",
+        "documentation",
+        "general_chat"
+      ],
+      "description": "Task type this configuration applies to"
+    },
+    "version": {
+      "type": "number",
+      "description": "Configuration version number"
+    },
+    "model": {
+      "type": "string",
+      "default": "gpt-4o",
+      "description": "AI model to use"
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2,
+      "default": 0.3,
+      "description": "Model temperature (creativity level)"
+    },
+    "max_tokens": {
+      "type": "number",
+      "default": 2500,
+      "description": "Maximum tokens for response"
+    },
+    "system_prompt": {
+      "type": "string",
+      "description": "Custom system prompt for this configuration"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this configuration is currently active"
+    },
+    "is_ab_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is part of an A/B test"
+    },
+    "ab_test_group": {
+      "type": "string",
+      "enum": [
+        "A",
+        "B"
+      ],
+      "description": "A/B test group (A or B)"
+    },
+    "ab_test_weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 50,
+      "description": "Percentage of traffic for this variant"
+    },
+    "test_hypothesis": {
+      "type": "string",
+      "description": "What this configuration is testing"
+    },
+    "test_start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When A/B test started"
+    },
+    "test_end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When A/B test ends"
+    },
+    "performance_metrics": {
+      "type": "object",
+      "properties": {
+        "total_uses": {
+          "type": "number",
+          "default": 0
+        },
+        "avg_quality_score": {
+          "type": "number"
+        },
+        "avg_compliance_score": {
+          "type": "number"
+        },
+        "avg_processing_time_ms": {
+          "type": "number"
+        },
+        "success_rate": {
+          "type": "number"
+        }
+      },
+      "description": "Performance tracking for this configuration"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Admin notes about this configuration"
+    }
+  },
+  "required": [
+    "provider_type",
+    "task_type",
+    "version"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

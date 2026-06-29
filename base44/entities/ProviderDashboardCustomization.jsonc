@@ -1,0 +1,147 @@
+{
+  "name": "ProviderDashboardCustomization",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the provider"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider role"
+    },
+    "dashboard_layout": {
+      "type": "string",
+      "enum": [
+        "default",
+        "compact",
+        "detailed",
+        "custom"
+      ],
+      "default": "default",
+      "description": "Dashboard layout preference"
+    },
+    "widget_visibility": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "description": "Widget visibility settings (widgetName: true/false)"
+    },
+    "widget_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Custom order for dashboard widgets"
+    },
+    "widget_preferences": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "size": {
+            "type": "string",
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ]
+          },
+          "refresh_interval": {
+            "type": "number"
+          },
+          "filters": {
+            "type": "object"
+          }
+        }
+      },
+      "description": "Per-widget preferences (size, refresh rate, filters)"
+    },
+    "quick_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Custom quick action buttons"
+    },
+    "default_view": {
+      "type": "string",
+      "enum": [
+        "my_patients",
+        "all_patients",
+        "by_facility",
+        "by_priority"
+      ],
+      "default": "my_patients",
+      "description": "Default patient list view"
+    },
+    "alert_preferences": {
+      "type": "object",
+      "properties": {
+        "show_critical_only": {
+          "type": "boolean"
+        },
+        "alert_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Alert display preferences"
+    },
+    "report_favorites": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Frequently accessed reports"
+    },
+    "theme": {
+      "type": "string",
+      "enum": [
+        "light",
+        "dark"
+      ],
+      "default": "light",
+      "description": "UI theme preference"
+    },
+    "last_modified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last customization update"
+    }
+  },
+  "required": [
+    "provider_email",
+    "provider_type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

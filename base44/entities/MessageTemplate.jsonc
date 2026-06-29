@@ -1,0 +1,91 @@
+{
+  "name": "MessageTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "template_type": {
+      "type": "string",
+      "enum": [
+        "appointment_reminder",
+        "follow_up",
+        "educational",
+        "general_inquiry"
+      ],
+      "description": "Type of message template"
+    },
+    "trigger_event": {
+      "type": "string",
+      "enum": [
+        "appointment_scheduled",
+        "appointment_24h_before",
+        "visit_completed",
+        "diagnosis_given",
+        "manual"
+      ],
+      "description": "When this template is triggered"
+    },
+    "applicable_visit_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Visit types this template applies to"
+    },
+    "applicable_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Diagnoses this template applies to (empty = all)"
+    },
+    "subject_line": {
+      "type": "string",
+      "description": "Email subject line"
+    },
+    "message_body": {
+      "type": "string",
+      "description": "Template message with placeholders like {{patient_name}}, {{appointment_date}}, {{provider_name}}"
+    },
+    "sms_body": {
+      "type": "string",
+      "description": "SMS version of the message (shorter)"
+    },
+    "delivery_method": {
+      "type": "string",
+      "enum": [
+        "email",
+        "sms",
+        "both"
+      ],
+      "description": "How to deliver this message"
+    },
+    "delay_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "Hours to delay sending after trigger event"
+    },
+    "include_attachments": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to include educational materials"
+    },
+    "personalize_with_ai": {
+      "type": "boolean",
+      "default": false,
+      "description": "Use AI to personalize the message"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "template_type",
+    "message_body",
+    "delivery_method"
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "name": "NotificationPreferences",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "format": "email",
+      "description": "User's email address"
+    },
+    "onboarding_emails": {
+      "type": "boolean",
+      "default": true,
+      "description": "Receive onboarding and welcome emails"
+    },
+    "feature_announcements": {
+      "type": "boolean",
+      "default": true,
+      "description": "Receive new feature announcements"
+    },
+    "subscription_reminders": {
+      "type": "boolean",
+      "default": true,
+      "description": "Receive subscription renewal reminders"
+    },
+    "abandoned_cart_recovery": {
+      "type": "boolean",
+      "default": true,
+      "description": "Receive reminders about incomplete purchases"
+    },
+    "marketing_emails": {
+      "type": "boolean",
+      "default": true,
+      "description": "Receive marketing and promotional emails"
+    },
+    "product_updates": {
+      "type": "boolean",
+      "default": true,
+      "description": "Receive product updates and tips"
+    },
+    "weekly_digest": {
+      "type": "boolean",
+      "default": false,
+      "description": "Receive weekly summary emails"
+    },
+    "email_frequency": {
+      "type": "string",
+      "enum": [
+        "immediate",
+        "daily",
+        "weekly"
+      ],
+      "default": "immediate",
+      "description": "How often to send non-urgent emails"
+    }
+  },
+  "required": [
+    "user_email"
+  ],
+  "rls": {
+    "read": {
+      "user_email": "{{user.email}}"
+    },
+    "write": {
+      "user_email": "{{user.email}}"
+    }
+  }
+}

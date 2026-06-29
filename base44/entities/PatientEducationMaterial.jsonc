@@ -1,0 +1,104 @@
+{
+  "name": "PatientEducationMaterial",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the educational material"
+    },
+    "topic": {
+      "type": "string",
+      "description": "Main topic of the material"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "chronic_disease",
+        "medication_management",
+        "safety",
+        "nutrition",
+        "lifestyle",
+        "wound_care",
+        "symptom_management",
+        "general"
+      ],
+      "description": "Category of educational content"
+    },
+    "content": {
+      "type": "string",
+      "description": "Full content (can be markdown, HTML, or JSON structure)"
+    },
+    "content_type": {
+      "type": "string",
+      "enum": [
+        "structured",
+        "markdown",
+        "html",
+        "pdf_url",
+        "video_url"
+      ],
+      "default": "structured"
+    },
+    "language": {
+      "type": "string",
+      "default": "en",
+      "description": "Language code (en, es, zh, ar, fr, de)"
+    },
+    "reading_level": {
+      "type": "string",
+      "enum": [
+        "simple",
+        "intermediate",
+        "advanced"
+      ],
+      "default": "simple"
+    },
+    "key_points": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warning_signs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "estimated_reading_time_minutes": {
+      "type": "number"
+    },
+    "patient_specific": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this was generated for a specific patient"
+    },
+    "target_patient_id": {
+      "type": "string",
+      "description": "Patient this was specifically generated for"
+    },
+    "diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Related diagnoses or conditions"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Email of creator"
+    },
+    "is_approved": {
+      "type": "boolean",
+      "default": true
+    },
+    "view_count": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "title",
+    "content"
+  ]
+}

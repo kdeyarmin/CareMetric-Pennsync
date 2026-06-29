@@ -1,0 +1,165 @@
+{
+  "name": "PatientDocument",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of the user who uploaded"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL to the uploaded file"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Display name of the document"
+    },
+    "original_name": {
+      "type": "string",
+      "description": "Original filename before processing"
+    },
+    "file_size": {
+      "type": "number",
+      "description": "File size in bytes"
+    },
+    "file_type": {
+      "type": "string",
+      "description": "MIME type of the file"
+    },
+    "document_category": {
+      "type": "string",
+      "enum": [
+        "lab_result",
+        "consultation_note",
+        "imaging_report",
+        "discharge_summary",
+        "referral_letter",
+        "insurance_document",
+        "consent_form",
+        "prescription",
+        "progress_note",
+        "surgical_report",
+        "pathology_report",
+        "therapy_note",
+        "oasis_assessment",
+        "care_plan",
+        "other"
+      ],
+      "description": "AI-detected or manually set document category"
+    },
+    "ai_summary": {
+      "type": "string",
+      "description": "AI-generated summary of the document"
+    },
+    "extracted_text": {
+      "type": "string",
+      "description": "OCR / extracted text content from the document"
+    },
+    "extracted_data": {
+      "type": "object",
+      "properties": {
+        "patient_name": {
+          "type": "string"
+        },
+        "patient_dob": {
+          "type": "string"
+        },
+        "mrn": {
+          "type": "string"
+        },
+        "provider_name": {
+          "type": "string"
+        },
+        "date_of_service": {
+          "type": "string"
+        },
+        "diagnoses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "medications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "key_findings": {
+          "type": "string"
+        },
+        "follow_up_actions": {
+          "type": "string"
+        }
+      },
+      "description": "AI-extracted structured data from document"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Searchable keyword tags"
+    },
+    "ai_confidence": {
+      "type": "number",
+      "description": "AI analysis confidence 0-100"
+    },
+    "processing_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Status of AI processing"
+    },
+    "is_reviewed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether a clinician has reviewed the AI analysis"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Manual notes added by clinician"
+    }
+  },
+  "required": [
+    "patient_id",
+    "user_email",
+    "file_url",
+    "file_name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "name": "TeamMessage",
+  "type": "object",
+  "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Agency this message belongs to"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "general",
+        "urgent",
+        "patient_care",
+        "scheduling",
+        "compliance"
+      ],
+      "default": "general",
+      "description": "Message channel"
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Groups messages into threads"
+    },
+    "sender_email": {
+      "type": "string"
+    },
+    "sender_name": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal"
+    },
+    "mentions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Emails of mentioned team members"
+    },
+    "read_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Emails of users who have read"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Optional patient reference"
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "file_url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "is_pinned": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "agency_id",
+    "sender_email",
+    "body",
+    "channel"
+  ]
+}

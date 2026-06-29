@@ -1,0 +1,122 @@
+{
+  "name": "SkillGap",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of the user"
+    },
+    "skill_area": {
+      "type": "string",
+      "description": "Area where improvement is needed"
+    },
+    "gap_type": {
+      "type": "string",
+      "enum": [
+        "documentation",
+        "compliance",
+        "clinical_knowledge",
+        "oasis",
+        "terminology",
+        "assessment"
+      ],
+      "description": "Category of skill gap"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium",
+      "description": "How urgently this gap needs to be addressed"
+    },
+    "ai_reasoning": {
+      "type": "string",
+      "description": "AI-generated explanation of why this gap was identified"
+    },
+    "source_records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entity_type": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "relevance": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "References to notes/audits that revealed this gap"
+    },
+    "recommended_modules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of recommended TrainingModule entities"
+    },
+    "frequency_count": {
+      "type": "number",
+      "default": 1,
+      "description": "How many times this gap has been detected"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "identified",
+        "in_progress",
+        "addressed",
+        "dismissed"
+      ],
+      "default": "identified",
+      "description": "Current status of addressing this gap"
+    },
+    "identified_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this gap was first identified"
+    },
+    "last_detected": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Most recent detection of this gap"
+    },
+    "addressed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the user completed recommended training"
+    }
+  },
+  "required": [
+    "user_email",
+    "skill_area",
+    "gap_type",
+    "ai_reasoning"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

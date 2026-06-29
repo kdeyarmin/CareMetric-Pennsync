@@ -19,14 +19,6 @@
       "type": "string",
       "description": "Agency office address"
     },
-    "office_phone": {
-      "type": "string",
-      "description": "Agency office phone number shown to patients/families on communications"
-    },
-    "office_email": {
-      "type": "string",
-      "description": "Agency office contact email shown to patients/families on communications"
-    },
     "avg_staff_hourly_rate": {
       "type": "number",
       "default": 45,
@@ -52,144 +44,74 @@
       "default": 50,
       "description": "Average similar episodes per year"
     },
-    "tcpa_quiet_hours_enabled": {
+    "is_enterprise": {
       "type": "boolean",
-      "description": "Whether TCPA quiet-hours gating is enforced on outbound SMS"
+      "default": false,
+      "description": "Whether this agency has enterprise features enabled"
     },
-    "tcpa_quiet_start_hour": {
-      "type": "number",
-      "default": 8,
-      "description": "Earliest allowed contact hour (local, inclusive). The code treats [start, end) as the ALLOWED outbound window, not the blocked window — default 8 = 8:00am."
+    "agency_code": {
+      "type": "string",
+      "description": "Unique agency code for providers to join"
     },
-    "tcpa_quiet_end_hour": {
-      "type": "number",
-      "default": 21,
-      "description": "Latest allowed contact hour (local, exclusive). End of the ALLOWED outbound window — default 21 = up to 9:00pm; outside [start, end) is blocked."
+    "agency_manager_email": {
+      "type": "string",
+      "description": "Email of the agency manager/admin"
     },
-    "monthly_sms_cap": {
-      "type": "number",
-      "description": "Maximum outbound SMS messages allowed per billing period"
-    },
-    "sms_messaging_enabled": {
+    "ai_learning_enabled": {
       "type": "boolean",
       "default": true,
-      "description": "Whether outbound SMS messaging is enabled for the agency"
+      "description": "Whether AI learning is enabled for the agency"
     },
-    "blocked_area_codes": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "NANP area codes blocked from outbound calls/texts/faxes"
-    },
-    "business_hours_enabled": {
+    "agency_wide_learning": {
       "type": "boolean",
-      "description": "Whether agency business-hours gating is enabled"
+      "default": false,
+      "description": "Share learned patterns across all providers"
     },
-    "business_hours_timezone": {
+    "custom_compliance_rules": {
       "type": "string",
-      "description": "IANA timezone used to evaluate business hours"
+      "description": "Agency-specific compliance requirements"
     },
-    "business_hours_holidays": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Holiday date keys (YYYY-MM-DD) treated as closed"
-    },
-    "after_hours_call_action": {
+    "custom_documentation_style": {
       "type": "string",
-      "description": "Action for inbound calls after hours (e.g. transfer, voicemail)"
+      "description": "Preferred documentation style for the agency"
     },
-    "after_hours_call_greeting": {
-      "type": "string",
-      "description": "Greeting played to callers after hours"
-    },
-    "after_hours_sms_auto_reply": {
-      "type": "string",
-      "description": "Auto-reply text sent for inbound SMS after hours"
-    },
-    "after_hours_sms_auto_reply_enabled": {
-      "type": "boolean",
-      "default": true,
-      "description": "Whether the after-hours SMS auto-reply is sent"
-    },
-    "after_hours_transfer_number_e164": {
-      "type": "string",
-      "description": "E.164 number to transfer after-hours calls to"
-    },
-    "duty_timezone": {
-      "type": "string",
-      "description": "IANA timezone used for on-call/duty scheduling"
-    },
-    "ringdown_max": {
-      "type": "number",
-      "description": "Maximum number of ringdown targets to attempt for on-call routing"
-    },
-    "office_fax_number_e164": {
-      "type": "string",
-      "description": "E.164 office fax number used as the outbound fax sender"
-    },
-    "fax_receiving_enabled": {
-      "type": "boolean",
-      "default": true,
-      "description": "Whether inbound fax receiving is enabled"
-    },
-    "a2p_10dlc_status": {
+    "ai_model_preference": {
       "type": "string",
       "enum": [
-        "not_registered",
-        "pending",
-        "registered"
+        "fast",
+        "balanced",
+        "accurate"
       ],
-      "default": "not_registered",
-      "description": "A2P 10DLC SMS brand/campaign registration status"
+      "default": "balanced",
+      "description": "AI model preference"
     },
-    "a2p_brand_id": {
-      "type": "string",
-      "description": "A2P 10DLC brand id from the messaging provider"
+    "min_confidence_threshold": {
+      "type": "number",
+      "default": 70,
+      "description": "Minimum confidence threshold for AI suggestions"
     },
-    "a2p_campaign_id": {
-      "type": "string",
-      "description": "A2P 10DLC campaign id from the messaging provider"
-    },
-    "main_office_number_e164": {
-      "type": "string",
-      "description": "E.164 main office phone number used for office transfers"
-    },
-    "default_off_duty_template": {
-      "type": "string",
-      "description": "Default auto-reply template used when staff are off duty"
-    },
-    "sms_quick_replies": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      },
-      "description": "Configured SMS quick-reply options (label/text)"
-    },
-    "sms_templates": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      },
-      "description": "Configured reusable SMS message templates"
-    },
-    "voicemail_enabled": {
+    "share_learnings_across_providers": {
       "type": "boolean",
-      "description": "Whether voicemail capture is enabled for unanswered calls"
+      "default": true,
+      "description": "Share best practices across providers"
     },
-    "voicemail_greeting": {
+    "agency_specific_prompts": {
       "type": "string",
-      "description": "Greeting played before recording a voicemail"
+      "description": "Additional AI instructions specific to agency"
     },
-    "allow_international": {
+    "auto_apply_best_practices": {
       "type": "boolean",
-      "description": "Whether outbound SMS/voice to international numbers is allowed"
+      "default": false,
+      "description": "Auto-apply proven patterns to new notes"
     },
-    "business_hours": {
-      "type": "object",
-      "description": "Per-day business-hours schedule (keyed by weekday, each with start/end/enabled) used by calling-hours routing"
+    "custom_terminology": {
+      "type": "string",
+      "description": "Agency-specific terms or abbreviations"
+    },
+    "custom_templates_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of custom templates created"
     }
   },
   "rls": {

@@ -1,0 +1,87 @@
+{
+  "name": "ProviderPracticeInfo",
+  "type": "object",
+  "properties": {
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Provider's email"
+    },
+    "practice_name": {
+      "type": "string",
+      "description": "Practice or clinic name"
+    },
+    "provider_name": {
+      "type": "string",
+      "description": "Full legal name with credentials"
+    },
+    "license_number": {
+      "type": "string",
+      "description": "Professional license number"
+    },
+    "license_state": {
+      "type": "string",
+      "description": "State of licensure"
+    },
+    "npi_number": {
+      "type": "string",
+      "description": "National Provider Identifier"
+    },
+    "specialty": {
+      "type": "string",
+      "description": "Medical specialty"
+    },
+    "practice_address": {
+      "type": "string",
+      "description": "Full practice address"
+    },
+    "practice_phone": {
+      "type": "string",
+      "description": "Practice phone number"
+    },
+    "practice_fax": {
+      "type": "string",
+      "description": "Practice fax number"
+    },
+    "practice_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Practice email"
+    },
+    "signature_type": {
+      "type": "string",
+      "enum": [
+        "typed",
+        "drawn",
+        "uploaded"
+      ],
+      "description": "Type of signature"
+    },
+    "signature_data": {
+      "type": "string",
+      "description": "Signature image data URL or typed text"
+    },
+    "include_header": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include header on notes"
+    },
+    "include_signature": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include signature on notes"
+    }
+  },
+  "required": [
+    "provider_email",
+    "provider_name"
+  ],
+  "rls": {
+    "read": {
+      "provider_email": "{{user.email}}"
+    },
+    "write": {
+      "provider_email": "{{user.email}}"
+    }
+  }
+}

@@ -2,44 +2,58 @@
   "name": "FaxDraft",
   "type": "object",
   "properties": {
-    "name": {
+    "user_email": {
       "type": "string",
-      "description": "Draft name"
+      "description": "Email of the user who created the draft"
     },
-    "from_number": {
+    "recipient_name": {
       "type": "string"
     },
-    "to_numbers": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "List of recipient numbers"
+    "recipient_fax_number": {
+      "type": "string"
     },
-    "document_url": {
-      "type": "string",
-      "description": "Attached document URL"
+    "subject": {
+      "type": "string"
     },
-    "captured_images": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Base64 captured images"
-    },
-    "cover_page_data": {
+    "cover_data": {
       "type": "object",
-      "description": "Cover page details"
+      "description": "Saved cover sheet configuration"
     },
-    "include_cover_page": {
+    "document_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URLs of attached documents"
+    },
+    "document_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Display names of attached documents"
+    },
+    "include_cover": {
       "type": "boolean",
-      "default": false
+      "default": true
     },
     "patient_id": {
       "type": "string"
+    },
+    "notes": {
+      "type": "string",
+      "description": "User notes about this draft"
     }
   },
   "required": [
-    "name"
-  ]
+    "user_email"
+  ],
+  "rls": {
+    "read": {
+      "user_email": "{{user.email}}"
+    },
+    "write": {
+      "user_email": "{{user.email}}"
+    }
+  }
 }

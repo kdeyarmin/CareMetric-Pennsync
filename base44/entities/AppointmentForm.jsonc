@@ -1,0 +1,106 @@
+{
+  "name": "AppointmentForm",
+  "type": "object",
+  "properties": {
+    "appointment_id": {
+      "type": "string",
+      "description": "Reference to Appointment"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "form_template_id": {
+      "type": "string",
+      "description": "Reference to FormTemplate"
+    },
+    "form_name": {
+      "type": "string",
+      "description": "Name of the form"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "in_progress",
+        "completed",
+        "incomplete"
+      ],
+      "default": "sent",
+      "description": "Form completion status"
+    },
+    "sent_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When form was sent to patient"
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When patient completed the form"
+    },
+    "form_data": {
+      "type": "object",
+      "description": "Patient's submitted form data"
+    },
+    "ai_completeness_score": {
+      "type": "number",
+      "description": "AI-calculated completeness score 0-100"
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Fields flagged as missing or incomplete"
+    },
+    "ai_analysis": {
+      "type": "object",
+      "description": "AI analysis of submitted data"
+    },
+    "reminder_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of reminders sent"
+    },
+    "last_reminder_sent": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "appointment_id",
+    "patient_id",
+    "form_template_id",
+    "form_name",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "patient_id": "{{user.patient_id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {}
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "patient_id": "{{user.patient_id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {}
+      ]
+    }
+  }
+}

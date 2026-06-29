@@ -1,0 +1,113 @@
+{
+  "name": "WorkflowDefinition",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the workflow"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this workflow does"
+    },
+    "workflow_type": {
+      "type": "string",
+      "enum": [
+        "user_approval",
+        "data_access_request",
+        "patient_update",
+        "compliance_review",
+        "custom"
+      ],
+      "description": "Type of workflow"
+    },
+    "trigger_event": {
+      "type": "string",
+      "enum": [
+        "user_invite",
+        "role_change",
+        "patient_create",
+        "patient_update",
+        "data_export",
+        "manual"
+      ],
+      "description": "Event that triggers this workflow"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step_name": {
+            "type": "string"
+          },
+          "step_type": {
+            "type": "string",
+            "enum": [
+              "approval",
+              "notification",
+              "data_validation",
+              "automated_action"
+            ]
+          },
+          "approver_role": {
+            "type": "string"
+          },
+          "approver_email": {
+            "type": "string"
+          },
+          "notification_template": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "timeout_hours": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "Ordered list of workflow steps"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "auto_approve_conditions": {
+      "type": "object",
+      "description": "Conditions for automatic approval"
+    },
+    "escalation_rules": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "escalate_after_hours": {
+          "type": "number"
+        },
+        "escalate_to_role": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "name",
+    "workflow_type",
+    "trigger_event",
+    "steps"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

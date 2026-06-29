@@ -39,5 +39,6 @@
         "role": "__service_role_only__"
       }
     }
-  }
+  },
+  "required": []
 }

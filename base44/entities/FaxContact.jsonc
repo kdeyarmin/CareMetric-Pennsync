@@ -6,21 +6,44 @@
       "type": "string",
       "description": "Contact name"
     },
-    "organization": {
-      "type": "string",
-      "description": "Organization or facility name"
-    },
     "fax_number": {
       "type": "string",
-      "description": "Fax number with country code (e.g., +1234567890)"
+      "description": "Fax number with country code"
+    },
+    "company": {
+      "type": "string",
+      "description": "Company or organization name"
+    },
+    "department": {
+      "type": "string",
+      "description": "Department name"
     },
     "notes": {
       "type": "string",
-      "description": "Additional notes about this contact"
+      "description": "Notes about this contact"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Owner of this contact"
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Agency ID for shared contacts in enterprise mode"
+    },
+    "is_shared": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this contact is shared with the agency"
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is a favorite contact"
     }
   },
   "required": [
     "name",
-    "fax_number"
+    "fax_number",
+    "user_email"
   ]
 }

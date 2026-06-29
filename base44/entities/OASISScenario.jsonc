@@ -33,50 +33,10 @@
     "notes": {
       "type": "string",
       "description": "Additional notes about this scenario"
-    },
-    "analysis_id": {
-      "type": "string",
-      "description": "Reference to the OASIS analysis this scenario was modeled from"
-    },
-    "patient_name": {
-      "type": "string",
-      "description": "Patient name snapshot for display"
-    },
-    "description": {
-      "type": "string",
-      "description": "Free-text description of the scenario"
-    },
-    "original_pdgm_data": {
-      "type": "object",
-      "description": "Baseline PDGM data before scenario changes"
-    },
-    "modified_pdgm_data": {
-      "type": "object",
-      "description": "PDGM data after the scenario's modifications"
-    },
-    "changes_made": {
-      "type": "array",
-      "description": "List of changes applied in this scenario"
-    },
-    "original_payment": {
-      "type": "number",
-      "description": "Baseline payment before scenario changes"
-    },
-    "scenario_payment": {
-      "type": "number",
-      "description": "Projected payment with scenario changes"
-    },
-    "status": {
-      "type": "string",
-      "enum": [
-        "draft",
-        "saved"
-      ],
-      "default": "saved",
-      "description": "Lifecycle state of the saved scenario"
     }
   },
   "required": [
-    "scenario_name"
+    "scenario_name",
+    "scenario_data"
   ]
 }

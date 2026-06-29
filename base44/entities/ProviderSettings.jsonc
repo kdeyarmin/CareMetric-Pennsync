@@ -1,0 +1,116 @@
+{
+  "name": "ProviderSettings",
+  "type": "object",
+  "properties": {
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "RN",
+        "LPN",
+        "NP",
+        "Physician",
+        "PT",
+        "OT",
+        "ST",
+        "MSW",
+        "Chiropractor"
+      ],
+      "description": "Type of healthcare provider"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Display name for this provider type"
+    },
+    "ai_note_prompt": {
+      "type": "string",
+      "description": "Custom AI prompt for note generation specific to this provider type"
+    },
+    "compliance_prompt": {
+      "type": "string",
+      "description": "Custom AI prompt for compliance checking specific to this provider type"
+    },
+    "regulatory_references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Regulatory references specific to this provider type"
+    },
+    "documentation_checklist": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Documentation requirements checklist"
+    },
+    "visit_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Applicable visit types for this provider"
+    },
+    "common_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Common diagnoses for this provider type"
+    },
+    "terminology_preferences": {
+      "type": "object",
+      "description": "Preferred clinical terminology and phrasing"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this provider type is active"
+    }
+  },
+  "required": [
+    "provider_type",
+    "display_name"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

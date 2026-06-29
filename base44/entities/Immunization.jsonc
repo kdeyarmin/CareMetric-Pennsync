@@ -1,0 +1,130 @@
+{
+  "name": "Immunization",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "vaccine_name": {
+      "type": "string",
+      "description": "Name of vaccine administered"
+    },
+    "vaccine_code": {
+      "type": "string",
+      "description": "CVX code for vaccine"
+    },
+    "date_administered": {
+      "type": "string",
+      "format": "date",
+      "description": "Date vaccine was given"
+    },
+    "provider_name": {
+      "type": "string",
+      "description": "Name of provider who administered vaccine"
+    },
+    "provider_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of provider who administered vaccine"
+    },
+    "lot_number": {
+      "type": "string",
+      "description": "Vaccine lot number"
+    },
+    "site_of_administration": {
+      "type": "string",
+      "enum": [
+        "left_arm",
+        "right_arm",
+        "left_thigh",
+        "right_thigh",
+        "other"
+      ],
+      "description": "Where vaccine was administered"
+    },
+    "route": {
+      "type": "string",
+      "enum": [
+        "intradermal",
+        "intramuscular",
+        "intranasal",
+        "oral",
+        "other"
+      ],
+      "description": "Route of administration"
+    },
+    "dose_number": {
+      "type": "integer",
+      "description": "Dose number in series (e.g., 1st, 2nd dose)"
+    },
+    "next_dose_due": {
+      "type": "string",
+      "format": "date",
+      "description": "Date when next dose is due"
+    },
+    "reaction_or_notes": {
+      "type": "string",
+      "description": "Any adverse reactions or clinical notes"
+    },
+    "side_effects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Documented side effects"
+    },
+    "contraindications": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Any documented contraindications"
+    },
+    "is_complete": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this immunization series is complete"
+    }
+  },
+  "required": [
+    "patient_id",
+    "vaccine_name",
+    "date_administered"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "patient_id": "{{user.email}}"
+        },
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "provider_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

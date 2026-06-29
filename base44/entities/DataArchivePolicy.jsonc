@@ -1,0 +1,100 @@
+{
+  "name": "DataArchivePolicy",
+  "type": "object",
+  "properties": {
+    "policy_name": {
+      "type": "string",
+      "description": "Name of the archival policy"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Entity type to archive (e.g., 'Visit', 'Note', 'PatientEducationAssignment')"
+    },
+    "retention_days": {
+      "type": "number",
+      "description": "Number of days to retain active data before archiving"
+    },
+    "archive_conditions": {
+      "type": "object",
+      "properties": {
+        "completed": {
+          "type": "boolean",
+          "description": "Only archive completed records"
+        },
+        "status": {
+          "type": "string",
+          "description": "Specific status to match for archival"
+        },
+        "min_age_days": {
+          "type": "number",
+          "description": "Minimum age before archival"
+        }
+      },
+      "description": "Conditions for automatic archival"
+    },
+    "is_automatic": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to automatically archive matching records"
+    },
+    "schedule": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly"
+      ],
+      "description": "Schedule for automatic archival"
+    },
+    "schedule_time": {
+      "type": "string",
+      "description": "Time to run automatic archival (HH:MM format)"
+    },
+    "last_run": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time this policy was executed"
+    },
+    "records_archived": {
+      "type": "number",
+      "default": 0,
+      "description": "Total records archived by this policy"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this policy is active"
+    },
+    "storage_location": {
+      "type": "string",
+      "enum": [
+        "cold_storage",
+        "archive_bucket",
+        "backup_database"
+      ],
+      "default": "cold_storage",
+      "description": "Where archived data is stored"
+    },
+    "compliance_notes": {
+      "type": "string",
+      "description": "Notes on regulatory compliance (HIPAA, etc.)"
+    }
+  },
+  "required": [
+    "policy_name",
+    "entity_type",
+    "retention_days"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

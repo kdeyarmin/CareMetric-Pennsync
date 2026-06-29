@@ -1,0 +1,80 @@
+{
+  "name": "MaterialInteraction",
+  "type": "object",
+  "properties": {
+    "material_id": {
+      "type": "string",
+      "description": "ID of the education material"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of user interacting with material"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Patient ID if applicable"
+    },
+    "interaction_type": {
+      "type": "string",
+      "enum": [
+        "view",
+        "read",
+        "download",
+        "share"
+      ],
+      "description": "Type of interaction"
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "User rating (1-5 stars) if rating interaction"
+    },
+    "rating_comment": {
+      "type": "string",
+      "description": "Optional comment with the rating"
+    },
+    "time_spent_seconds": {
+      "type": "number",
+      "description": "Time spent viewing/reading material in seconds"
+    },
+    "completion_percentage": {
+      "type": "number",
+      "description": "Percentage of material completed (0-100)"
+    },
+    "interaction_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the interaction occurred"
+    },
+    "device_type": {
+      "type": "string",
+      "enum": [
+        "desktop",
+        "mobile",
+        "tablet"
+      ],
+      "description": "Device used to access material"
+    }
+  },
+  "required": [
+    "material_id",
+    "user_email",
+    "interaction_type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_email": "{{user.email}}"
+        }
+      ]
+    },
+    "write": {}
+  }
+}
