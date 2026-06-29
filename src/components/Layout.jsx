@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "sonner";
-import { buildNavCategories, buildAdminItems, NAV_MANIFEST } from "@/lib/nav.manifest";
+import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
 import { getRoleView } from "@/lib/roles";
 
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
@@ -22,10 +22,22 @@ import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
 import CommandPalette from "@/components/navigation/CommandPalette";
 
+const SIDEBAR_COLLAPSED_KEY = "caremetric_sidebar_collapsed";
+
 export default function Layout({ children, currentPageName }) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Persist the desktop sidebar collapse choice so daily users don't have to
+  // re-collapse it every session (read lazily so the first paint matches).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true"; }
+    catch { return false; }
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed)); }
+    catch { /* private mode / storage disabled — non-fatal */ }
+  }, [sidebarCollapsed]);
 
   // CareMetric AI ships a single, fully-designed light theme: every page and
   // component uses explicit light styles and none provide `dark:` variants.
@@ -236,7 +248,10 @@ export default function Layout({ children, currentPageName }) {
 
   }, [currentUser?.email, currentUser?.full_name, currentUser?.role]);
 
-  const isActive = useCallback((pageName) => currentPageName === pageName, [currentPageName]);
+  // Highlight the active sidebar/bottom-nav item, including when the user is on a
+  // sub-page (e.g. PatientDetails highlights "Patients") so the nav never loses
+  // its "you are here" anchor. See isNavItemActive in nav.manifest.js.
+  const isActive = useCallback((pageName) => isNavItemActive(currentPageName, pageName), [currentPageName]);
 
   if (currentUser && !isApproved) {
     return (
