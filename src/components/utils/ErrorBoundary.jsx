@@ -28,11 +28,14 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, errorInfo) {
     if (this.state.isStaleChunk) {
       const key = `vite-chunk-reloaded:${window.location.pathname}`;
-      if (!sessionStorage.getItem(key)) {
-        sessionStorage.setItem(key, '1');
-        window.location.reload();
+      const attempts = parseInt(sessionStorage.getItem(key) || '0', 10);
+      if (attempts < 3) {
+        sessionStorage.setItem(key, String(attempts + 1));
+        // Hard reload (bypasses cache) to ensure fresh module URLs are fetched.
+        window.location.href = window.location.href.split('?')[0] + '?_r=' + Date.now();
         return;
       }
+      // Exhausted retries — clear key so a future navigation can try again.
       sessionStorage.removeItem(key);
     }
     logger.error('Error caught by boundary:', error, errorInfo);
