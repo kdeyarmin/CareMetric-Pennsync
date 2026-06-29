@@ -60,7 +60,6 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
     ageMin: activeFilters.ageMin || "",
     ageMax: activeFilters.ageMax || "",
     hasVisits: activeFilters.hasVisits || "all",
-    hasCarePlans: activeFilters.hasCarePlans || "all",
     createdAfter: activeFilters.createdAfter || "",
     createdBefore: activeFilters.createdBefore || "",
   });
@@ -79,7 +78,6 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
       ageMin: "",
       ageMax: "",
       hasVisits: "all",
-      hasCarePlans: "all",
       createdAfter: "",
       createdBefore: "",
     };
@@ -205,23 +203,6 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
                       <SelectItem value="all">All Patients</SelectItem>
                       <SelectItem value="yes">With Visits</SelectItem>
                       <SelectItem value="no">No Visits</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="text-xs">Has Care Plans</Label>
-                  <Select
-                    value={filters.hasCarePlans}
-                    onValueChange={(val) => handleFilterChange("hasCarePlans", val)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Patients</SelectItem>
-                      <SelectItem value="yes">With Care Plans</SelectItem>
-                      <SelectItem value="no">No Care Plans</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Plus, User, ArrowUpDown, Users, UserCheck, Target, CalendarPlus } from "lucide-react";
+import { Plus, User, ArrowUpDown, Users, UserCheck, CalendarPlus } from "lucide-react";
 import { secureDelete, handleSecureError } from "../components/utils/security";
 
 import PatientForm from "../components/patient/PatientForm";
@@ -92,13 +92,6 @@ export default function Patients() {
     staleTime: 300000,
   });
 
-  const { data: allCarePlans = [] } = useQuery({
-    queryKey: ['allCarePlans'],
-    queryFn: () => base44.entities.CarePlan.list('-updated_date', 300),
-    initialData: [],
-    staleTime: 300000,
-  });
-
   // Handle query errors gracefully
   if (patientsError) {
     console.error('Error loading patients:', patientsError);
@@ -176,15 +169,7 @@ export default function Patients() {
     return map;
   }, [allVisits]);
 
-  const carePlanCountByPatientId = useMemo(() => {
-    const map = {};
-    for (const cp of allCarePlans) {
-      map[cp.patient_id] = (map[cp.patient_id] || 0) + 1;
-    }
-    return map;
-  }, [allCarePlans]);
-
-  // Roster summary stats — memoized so the four StatCards don't re-scan the full
+  // Roster summary stats — memoized so the StatCards don't re-scan the full
   // patient list on every unrelated re-render (search typing, dialog open, etc.).
   const rosterStats = useMemo(() => {
     const list = patients || [];
@@ -192,10 +177,9 @@ export default function Patients() {
     return {
       total: list.length,
       active: list.filter(p => p.status === 'active').length,
-      withCarePlans: list.filter(p => (carePlanCountByPatientId[p.id] || 0) > 0).length,
       recent: list.filter(p => p.created_date && new Date(p.created_date).getTime() >= cutoff).length,
     };
-  }, [patients, carePlanCountByPatientId]);
+  }, [patients]);
 
   const filteredPatients = useMemo(() => (patients || []).filter(patient => {
     if (!patient) return false;
@@ -221,12 +205,6 @@ export default function Patients() {
       (filters.hasVisits === 'yes' && patientVisitCount > 0) ||
       (filters.hasVisits === 'no' && patientVisitCount === 0);
 
-    // Care plan filter — use pre-built index instead of filtering allCarePlans per patient
-    const patientCarePlanCount = carePlanCountByPatientId[patient.id] || 0;
-    const matchesCarePlans = !filters.hasCarePlans || filters.hasCarePlans === 'all' ||
-      (filters.hasCarePlans === 'yes' && patientCarePlanCount > 0) ||
-      (filters.hasCarePlans === 'no' && patientCarePlanCount === 0);
-
     // Date range filter
     const createdDate = new Date(patient.created_date);
     const matchesAfter = !filters.createdAfter || createdDate >= new Date(filters.createdAfter);
@@ -234,7 +212,7 @@ export default function Patients() {
 
     return matchesSearch && matchesStatus && matchesDiagnosis &&
            matchesAgeMin && matchesAgeMax && matchesVisits &&
-           matchesCarePlans && matchesAfter && matchesBefore;
+           matchesAfter && matchesBefore;
   }).sort((a, b) => {
     switch (sortBy) {
       case 'name-asc':
@@ -258,7 +236,7 @@ export default function Patients() {
       default:
         return 0;
     }
-  }), [patients, filters, debouncedSearch, sortBy, visitCountByPatientId, lastVisitDateByPatientId, carePlanCountByPatientId]);
+  }), [patients, filters, debouncedSearch, sortBy, visitCountByPatientId, lastVisitDateByPatientId]);
 
   const togglePatientSelection = (patient) => {
     setSelectedPatients(prev => {
@@ -297,10 +275,9 @@ export default function Patients() {
       />
 
       {/* Roster summary — shared StatCard treatment, matching the Dashboard. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <StatCard label="Total Patients" value={rosterStats.total} icon={Users} tone="navy" />
         <StatCard label="Active" value={rosterStats.active} icon={UserCheck} tone="emerald" />
-        <StatCard label="With Care Plans" value={rosterStats.withCarePlans} icon={Target} tone="gold" />
         <StatCard
           label="New (30 days)"
           value={rosterStats.recent}

@@ -2,8 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
  * getDashboardData — returns the Dashboard's core datasets (active patients,
- * today's visits, active care plans, recent incidents) scoped to the caller so
- * a non-admin's browser never receives agency-wide PHI it isn't authorized for.
+ * today's visits, recent incidents) scoped to the caller so a non-admin's
+ * browser never receives agency-wide PHI it isn't authorized for.
  *   - admins: agency-wide (unchanged from the previous client queries)
  *   - everyone else: only their assigned patients' data (Patient.assigned_nurses)
  *
@@ -40,27 +40,25 @@ Deno.serve(async (req) => {
       user.account_type === 'super_admin';
 
     if (isAdmin) {
-      const [patients, visits, carePlans, incidents] = await Promise.all([
+      const [patients, visits, incidents] = await Promise.all([
         sr.Patient.filter({ status: 'active' }, '-updated_date', 100),
         sr.Visit.filter({ visit_date: today }, '-visit_time'),
-        sr.CarePlan.filter({ status: 'active' }, '-updated_date', 50),
         sr.Incident.list('-incident_date', 20),
       ]);
-      return Response.json({ patients, visits, carePlans, incidents });
+      return Response.json({ patients, visits, incidents });
     }
 
     // Non-admin: restrict everything to the caller's assigned patients.
     const patients = await sr.Patient.filter({ assigned_nurses: user.email, status: 'active' }, '-updated_date', 100);
     const ids = (patients || []).map((p) => p.id).filter(Boolean);
     if (ids.length === 0) {
-      return Response.json({ patients: [], visits: [], carePlans: [], incidents: [] });
+      return Response.json({ patients: [], visits: [], incidents: [] });
     }
-    const [visits, carePlans, incidents] = await Promise.all([
+    const [visits, incidents] = await Promise.all([
       sr.Visit.filter({ patient_id: { $in: ids }, visit_date: today }, '-visit_time'),
-      sr.CarePlan.filter({ patient_id: { $in: ids }, status: 'active' }, '-updated_date', 50),
       sr.Incident.filter({ patient_id: { $in: ids } }, '-incident_date', 20),
     ]);
-    return Response.json({ patients, visits, carePlans, incidents });
+    return Response.json({ patients, visits, incidents });
   } catch (error) {
     console.error('getDashboardData error:', error?.message);
     return Response.json({ error: 'Failed to load dashboard data' }, { status: 500 });
