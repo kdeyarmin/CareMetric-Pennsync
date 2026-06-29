@@ -38,7 +38,7 @@ export default function UserGuides() {
     {
       type: 'all_features',
       title: 'Complete User Guide - All Features',
-      description: 'Comprehensive guide covering every feature of Penn Sync Healthcare platform',
+      description: 'Comprehensive guide covering every feature of the CareMetric AI platform',
       icon: BookOpen,
       color: 'purple',
       audience: 'All Users',
