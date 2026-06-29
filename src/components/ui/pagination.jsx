@@ -35,7 +35,6 @@ const PaginationLink = ({
   size = "icon",
   ...props
 }) => (
-  // eslint-disable-next-line jsx-a11y/anchor-has-content -- link content is supplied via {...props}.children at every call site
   <a
     aria-current={isActive ? "page" : undefined}
     className={cn(buttonVariants({

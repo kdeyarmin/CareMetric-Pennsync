@@ -1,6 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import '@fontsource-variable/inter'
 import App from '@/App.jsx'
 import '@/index.css'
 import { installAlertToToastShim } from '@/lib/alert-shim'
@@ -22,6 +21,3 @@ if (import.meta.hot) {
     window.parent?.postMessage({ type: 'sandbox:afterUpdate' }, '*');
   });
 }
-
-
-
