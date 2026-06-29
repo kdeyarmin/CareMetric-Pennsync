@@ -20,6 +20,10 @@
       "type": "string",
       "description": "Patient date of birth as read from the referral document"
     },
+    "diagnosis": {
+      "type": "string",
+      "description": "Primary diagnosis read from the referral document (top-level convenience copy of extracted_data.diagnoses.primary_diagnosis)"
+    },
     "referral_source": {
       "type": "string",
       "description": "Referring facility, physician, or organization"
@@ -52,6 +56,7 @@
       "enum": [
         "new",
         "pending",
+        "awaiting_info",
         "active",
         "declined",
         "ready_for_admission"
