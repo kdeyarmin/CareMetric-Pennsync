@@ -123,6 +123,10 @@
     "outcome_summary": {
       "type": "string",
       "description": "Summary of what was accomplished"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Identifier of the automation run that produced this execution"
     }
   },
   "required": [

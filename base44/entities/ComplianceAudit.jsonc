@@ -81,6 +81,28 @@
     "review_notes": {
       "type": "string",
       "description": "Notes from manual review"
+    },
+    "acknowledgment": {
+      "type": "object",
+      "properties": {
+        "acknowledged_by": {
+          "type": "string"
+        },
+        "acknowledged_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "justification": {
+          "type": "string"
+        },
+        "finding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Override trail recorded when a critical chart conflict was knowingly accepted"
     }
   },
   "required": [

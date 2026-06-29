@@ -1,60 +1,167 @@
 {
   "name": "Referral",
   "type": "object",
+  // Clinical patient-referral intake entity. Created and processed by the
+  // referral intake workflow (src/pages/ReferralIntake.jsx, ReferralTriage,
+  // src/components/referral/*). Earlier revisions of this file mistakenly
+  // described an unrelated referral-rewards program; no such program exists in
+  // the codebase. The fields below mirror every key the intake/triage code
+  // writes, so the Base44 platform persists them instead of silently dropping.
   "properties": {
-    "referrer_id": {
+    "patient_name": {
       "type": "string",
-      "description": "User ID of the person who made the referral"
+      "description": "Patient name as read from the referral document"
     },
-    "referrer_email": {
+    "patient_id": {
       "type": "string",
-      "description": "Email of the person who made the referral"
+      "description": "Linked Patient entity id once the referral is matched/admitted"
     },
-    "referred_user_id": {
+    "patient_dob": {
       "type": "string",
-      "description": "User ID of the person who was referred"
+      "description": "Patient date of birth as read from the referral document"
     },
-    "referred_user_email": {
+    "diagnosis": {
       "type": "string",
-      "description": "Email of the person who was referred"
+      "description": "Primary diagnosis read from the referral document (top-level convenience copy of extracted_data.diagnoses.primary_diagnosis)"
     },
-    "referral_code_used": {
+    "referral_source": {
       "type": "string",
-      "description": "The referral code that was used"
+      "description": "Referring facility, physician, or organization"
+    },
+    "referral_date": {
+      "type": "string",
+      "description": "Date the referral was received"
+    },
+    "estimated_start_date": {
+      "type": "string",
+      "description": "Estimated start-of-care date"
+    },
+    "document_type": {
+      "type": "string",
+      "description": "Source document format (e.g. pdf, fax, image, manual)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal",
+      "description": "Intake priority"
     },
     "status": {
       "type": "string",
       "enum": [
+        "new",
         "pending",
-        "trial_started",
-        "converted_to_paid",
-        "reward_issued"
+        "processing",
+        "awaiting_info",
+        "active",
+        "declined",
+        "ready_for_admission"
       ],
-      "default": "pending",
-      "description": "Current status of the referral"
+      "default": "new",
+      "description": "Intake workflow status"
     },
-    "reward_amount": {
+    "document_url": {
+      "type": "string",
+      "description": "URL of the uploaded referral document"
+    },
+    "processed_document_url": {
+      "type": "string",
+      "description": "URL of the generated/processed referral PDF"
+    },
+    "page_range": {
+      "type": "string",
+      "description": "Page range within a multi-document PDF this referral was split from"
+    },
+    "detection_confidence": {
       "type": "number",
-      "default": 0,
-      "description": "Amount of credit issued for this referral (in dollars)"
+      "description": "Confidence of the multi-document split detection"
     },
-    "reward_issued_date": {
+    "manually_confirmed": {
+      "type": "boolean",
+      "description": "True once a user manually confirmed the patient match"
+    },
+    "requires_manual_review": {
+      "type": "boolean",
+      "description": "True when the automated patient match needs human review"
+    },
+    "rejection_date": {
       "type": "string",
       "format": "date-time",
-      "description": "When the reward was issued to the referrer"
+      "description": "When the referral was declined"
     },
-    "converted_to_paid_date": {
+    "rejected_by": {
       "type": "string",
-      "format": "date-time",
-      "description": "When the referred user converted to a paid subscription"
+      "description": "Email of the user who declined the referral"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Email of the nurse the referral is assigned to"
+    },
+    "match_confidence": {
+      "type": "number",
+      "description": "Confidence score of the automated patient match"
+    },
+    "match_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Factors that contributed to the patient match"
+    },
+    "match_suggestions": {
+      "type": "array",
+      "description": "Candidate patient matches surfaced for review"
+    },
+    "match_analysis": {
+      "type": "object",
+      "description": "Structured output of the patient-match analysis"
+    },
+    "analysis_results": {
+      "type": "object",
+      "description": "Structured AI intake-analysis output (priority, care needs, etc.)"
+    },
+    "missing_information": {
+      "type": "array",
+      "description": "Items the intake analysis flagged as missing from the referral"
+    },
+    "discrepancies": {
+      "type": "array",
+      "description": "Discrepancies found between the referral and matched patient"
+    },
+    "ai_generated_tasks": {
+      "type": "array",
+      "description": "Suggested initial tasks extracted from the referral"
+    },
+    "extracted_data": {
+      "type": "object",
+      "description": "Structured data extracted from the referral document (demographics, diagnoses, urgency, care needs)"
+    },
+    "follow_up_notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Chronological intake/processing notes"
     }
   },
-  "required": [
-    "referrer_id",
-    "referrer_email",
-    "referred_user_id",
-    "referred_user_email",
-    "referral_code_used",
-    "status"
-  ]
+  // Referrals are created from several flows with no single universal field
+  // (e.g. DocumentToTriageMapper creates by patient_id without patient_name),
+  // so nothing is marked required to avoid rejecting a valid create shape.
+  "required": []
 }

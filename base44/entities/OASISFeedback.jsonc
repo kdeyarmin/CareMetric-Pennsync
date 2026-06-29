@@ -49,10 +49,55 @@
         "type": "string"
       },
       "description": "Factors that led to the match"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Visit the AI suggestion relates to (AI-suggestion feedback path)"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Patient the AI suggestion relates to"
+    },
+    "suggestion_type": {
+      "type": "string",
+      "description": "Category of AI suggestion being rated"
+    },
+    "oasis_item": {
+      "type": "string",
+      "description": "OASIS M-item the suggestion targets"
+    },
+    "original_suggestion": {
+      "type": "string",
+      "description": "Serialized original AI suggestion payload"
+    },
+    "user_action": {
+      "type": "string",
+      "description": "What the user did with the suggestion (accepted/modified/rejected)"
+    },
+    "modified_text": {
+      "type": "string",
+      "description": "User-edited text when the suggestion was modified"
+    },
+    "feedback_reason": {
+      "type": "string",
+      "description": "User-provided reason for rejecting/modifying the suggestion"
+    },
+    "reimbursement_impact_accuracy": {
+      "type": "number",
+      "description": "User rating of the suggestion's reimbursement-impact accuracy"
+    },
+    "clinical_accuracy": {
+      "type": "number",
+      "description": "User rating of the suggestion's clinical accuracy"
+    },
+    "helpfulness_rating": {
+      "type": "number",
+      "description": "User rating of how helpful the suggestion was"
     }
   },
-  "required": [
-    "feedback_type",
-    "extracted_name"
-  ]
+  // The entity is written by two disjoint paths: the patient-match writer
+  // (feedback_type + extracted_name + match fields) and the AI-suggestion panel
+  // (visit_id/suggestion_type/... above). They share no common required field,
+  // so nothing is marked required to keep both create shapes valid.
+  "required": []
 }

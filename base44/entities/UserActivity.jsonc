@@ -35,6 +35,14 @@
     },
     "user_agent": {
       "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "description": "Outcome of the action (e.g. 'success')"
+    },
+    "device_type": {
+      "type": "string",
+      "description": "Device category the action came from (mobile/tablet/desktop)"
     }
   },
   "required": [

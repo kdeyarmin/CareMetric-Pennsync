@@ -79,14 +79,73 @@
     "personalization_data": {
       "type": "object",
       "description": "Data used for personalizing the message"
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Conversation thread identifier grouping related messages"
+    },
+    "message_text": {
+      "type": "string",
+      "description": "Care-team message body text (in-app messaging)"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Display name of the message sender"
+    },
+    "sender_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the message sender"
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of recipient email addresses"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal",
+      "description": "Message priority"
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of attachment URLs"
+    },
+    "related_event_id": {
+      "type": "string",
+      "description": "ID of a related entity/event (e.g. referral)"
+    },
+    "related_event_type": {
+      "type": "string",
+      "description": "Type of the related entity/event (e.g. 'referral')"
+    },
+    "is_read": {
+      "type": "boolean",
+      "description": "Whether the message has been read"
+    },
+    "read_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Email addresses of users who have read the message"
     }
   },
-  "required": [
-    "patient_id",
-    "body",
-    "delivery_method",
-    "status"
-  ],
+  // Message backs two disjoint shapes: outbound delivery (patient_id/body/
+  // delivery_method/status) and in-app care-team messages (message_text/
+  // recipients/sender_email, e.g. Messages.jsx + referral assignment). They
+  // share no universal field, so nothing is required to avoid rejecting either.
+  "required": [],
   "rls": {
     "read": {
       "$or": [

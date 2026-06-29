@@ -14,6 +14,10 @@
       "type": "string",
       "description": "The specific diagnosis or medication name that triggers this care plan"
     },
+    "care_type": {
+      "type": "string",
+      "description": "Care type this trigger applies to (e.g. 'both', or a specific discipline)"
+    },
     "problem": {
       "type": "string",
       "description": "The nursing diagnosis/problem"

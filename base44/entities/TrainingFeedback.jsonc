@@ -101,6 +101,26 @@
     "user_name": {
       "type": "string",
       "description": "Name of user providing feedback"
+    },
+    "course_id": {
+      "type": "string",
+      "description": "ID of the course this feedback is about; written and read (filter/aggregate) by submitCourseFeedback/getCourseFeedbackSummary"
+    },
+    "course_title": {
+      "type": "string",
+      "description": "Title of the course for reference (distinct from module_title)"
+    },
+    "comment": {
+      "type": "string",
+      "description": "Free-text feedback comment (distinct from feedback_text)"
+    },
+    "difficulty": {
+      "type": "string",
+      "description": "Difficulty assessment as submitted (distinct from difficulty_rating enum)"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Email of the user submitting course feedback; written and read by submitCourseFeedback/getCourseFeedbackSummary"
     }
   },
   "required": [

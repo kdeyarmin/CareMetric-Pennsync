@@ -15,7 +15,10 @@
       "enum": [
         "compliant",
         "flagged",
-        "critical"
+        "critical",
+        "pending_review",
+        "in_review",
+        "reviewed"
       ],
       "description": "Overall status of OASIS assessment"
     },
@@ -126,6 +129,104 @@
     "predicted_los": {
       "type": "number",
       "description": "Predicted length of service in days"
+    },
+    "oasis_upload_id": {
+      "type": "string",
+      "description": "Reference to the OASISUpload this audit was generated from"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Patient name from the audited OASIS"
+    },
+    "flag_reason": {
+      "type": "string",
+      "description": "Reason the OASIS was flagged for audit (e.g. manual_flag)"
+    },
+    "compliance_score": {
+      "type": "number",
+      "description": "OASIS compliance score (0-100)"
+    },
+    "revenue_score": {
+      "type": "number",
+      "description": "Revenue optimization score (0-100)"
+    },
+    "overall_score": {
+      "type": "number",
+      "description": "Overall audit score (0-100)"
+    },
+    "key_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "issue": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Key issues identified during the audit"
+    },
+    "rescore_opportunities": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Opportunities to rescore for improved reimbursement"
+    },
+    "estimated_revenue_impact": {
+      "type": "number",
+      "description": "Estimated revenue impact of identified issues"
+    },
+    "priority": {
+      "type": "string",
+      "description": "Audit priority level"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Email of the reviewer the audit is assigned to"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of the user who reviewed the audit"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the audit was reviewed"
+    },
+    "auditor_findings": {
+      "type": "string",
+      "description": "Reviewer findings/notes (may be free text or JSON string)"
+    },
+    "auditor_recommendations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Reviewer recommendations"
+    },
+    "corrections_made": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Corrections applied during the audit"
+    },
+    "report_generated": {
+      "type": "boolean",
+      "description": "Whether an audit report has been generated"
     }
   },
   "required": [

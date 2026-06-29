@@ -94,6 +94,84 @@
     },
     "created_by": {
       "type": "string"
+    },
+    "trigger_conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Conditions (diagnosis code/keyword) that trigger this pathway"
+    },
+    "pdgm_clinical_group": {
+      "type": "string",
+      "description": "Target PDGM clinical grouping (e.g. MMTA_Cardiac_Circulatory)"
+    },
+    "priority_level": {
+      "type": "string",
+      "description": "Priority level of this pathway (e.g. high, medium, low)"
+    },
+    "documentation_prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "m_items_affected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "priority": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Documentation prompts to surface for this pathway"
+    },
+    "rescore_opportunities": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Opportunities to improve PDGM scoring"
+    },
+    "recommended_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Recommended tasks for this pathway"
+    },
+    "comorbidity_checklist": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Comorbidity items to check for this pathway"
+    },
+    "functional_focus_areas": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Functional focus areas for this pathway"
     }
   },
   "required": [

@@ -2,10 +2,6 @@
   "name": "OCRTrainingSession",
   "type": "object",
   "properties": {
-    "admin_email": {
-      "type": "string",
-      "description": "Admin who triggered the training"
-    },
     "feedback_count": {
       "type": "number",
       "description": "Number of feedback items processed"
@@ -41,14 +37,47 @@
       "type": "string",
       "enum": [
         "processing",
+        "in_progress",
         "completed",
         "failed"
       ],
       "default": "processing"
+    },
+    "session_name": {
+      "type": "string",
+      "description": "Human-readable name of the training session; read by OCRTrainingMonitor"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the training session started (ISO timestamp)"
+    },
+    "document_types_trained": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Distinct document types covered by the corrections in this session"
+    },
+    "training_metrics": {
+      "type": "object",
+      "description": "Aggregate correction metrics (minor/moderate/major counts, avg_correction_length)"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the training session completed (ISO timestamp)"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if the training session failed"
+    },
+    "initiated_by": {
+      "type": "string",
+      "description": "Email of the admin who initiated the session as written by retrainOCRModel (distinct from admin_email)"
     }
   },
   "required": [
-    "admin_email",
     "status"
   ],
   "rls": {
