@@ -1,4 +1,4 @@
-// AdminOperations — admin command center. Tabs: overview, activity,
+// AdminOperations — admin command center [2026-06-29]. Tabs: overview, activity,
 // data-quality, system-health, settings. Deep-linkable via ?tab=<key>.
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
