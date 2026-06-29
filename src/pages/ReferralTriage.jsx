@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 /**
  * AI-Powered Referral Triage Workflow
- * Parse incoming unstructured clinical data and auto-generate care plans
+ * Parse incoming unstructured clinical data to triage and onboard referrals.
  */
 export default function ReferralTriage() {
   const [lastAnalysis, setLastAnalysis] = useState(null);
@@ -51,22 +51,7 @@ export default function ReferralTriage() {
         clinical_notes: lastAnalysis.clinical_summary,
       };
 
-      const patient = await base44.entities.Patient.create(patientData);
-
-      // Create initial care plans from preliminary care plan
-      if (lastAnalysis.preliminary_care_plan?.initial_focus_areas?.length > 0) {
-        const carePlans = lastAnalysis.preliminary_care_plan.initial_focus_areas.map((area, _index) => ({
-          patient_id: patient.id,
-          problem: area,
-          goal: `Address ${area.toLowerCase()} during care delivery`,
-          interventions: [area],
-          status: 'active',
-          frequency: lastAnalysis.preliminary_care_plan.skilled_nursing_frequency,
-          baseline_measurement: 'Initial assessment pending',
-        }));
-
-        await Promise.all(carePlans.map(plan => base44.entities.CarePlan.create(plan)));
-      }
+      await base44.entities.Patient.create(patientData);
 
       // Create a referral intake task
       const dueTimeframe = lastAnalysis.urgency_level === 'CRITICAL' ? '24_hours' : 'this_week';
@@ -98,7 +83,7 @@ export default function ReferralTriage() {
         icon={Filter}
         eyebrow="Documentation"
         title="Referral Triage"
-        description="AI-powered analysis of incoming referrals with automatic urgency assessment and care plan generation"
+        description="AI-powered analysis of incoming referrals with automatic urgency and risk assessment"
         favoritePage="ReferralTriage"
       />
 
@@ -158,7 +143,7 @@ export default function ReferralTriage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-slate-700">
-              Triage analysis complete! Create a patient record and preliminary care plans from this analysis?
+              Triage analysis complete! Create a patient record from this analysis?
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
@@ -166,7 +151,7 @@ export default function ReferralTriage() {
                 className="gap-2 bg-indigo-600 hover:bg-indigo-700"
               >
                 <ArrowRight className="w-4 h-4" />
-                Create Patient & Care Plans
+                Create Patient
               </Button>
               <Button
                 onClick={() => setShowCreatePatient(false)}
@@ -190,7 +175,7 @@ export default function ReferralTriage() {
               { number: '1', title: 'Upload', desc: 'Paste referral or upload fax text' },
               { number: '2', title: 'Analyze', desc: 'AI parses and structures data' },
               { number: '3', title: 'Assess', desc: 'Urgency level and risk assigned' },
-              { number: '4', title: 'Plan', desc: 'Care plan generated automatically' },
+              { number: '4', title: 'Onboard', desc: 'Patient record and intake task created' },
             ].map((step, i) => (
               <div key={i} className="p-4 border border-slate-200 rounded-lg">
                 <div className="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold text-sm mb-2">

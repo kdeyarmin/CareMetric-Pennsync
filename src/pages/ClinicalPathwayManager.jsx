@@ -46,7 +46,6 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AIAssessmentDrafter from "../components/clinical/AIAssessmentDrafter";
 import AIICD10Suggester from "../components/clinical/AIICD10Suggester";
-import AICarePlanGenerator from "../components/clinical/AICarePlanGenerator";
 import AIPathwayGenerator from "../components/clinical/AIPathwayGenerator";
 import AIPathwayUpdater from "../components/clinical/AIPathwayUpdater";
 import OASISUploadWidget from "../components/oasis/OASISUploadWidget";
@@ -426,7 +425,7 @@ export default function ClinicalPathwayManager() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 mb-4 sm:mb-6">
-            <TabsList className="inline-flex md:grid md:w-full md:grid-cols-5 gap-1 min-w-max h-auto">
+            <TabsList className="inline-flex md:grid md:w-full md:grid-cols-4 gap-1 min-w-max h-auto">
               <TabsTrigger value="pathways" className="flex items-center gap-1 sm:gap-2 py-2 sm:py-3 text-xs sm:text-sm whitespace-nowrap">
                 <Route className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>Pathways</span>
@@ -443,11 +442,6 @@ export default function ClinicalPathwayManager() {
               <TabsTrigger value="icd10" className="flex items-center gap-1 sm:gap-2 py-2 sm:py-3 text-xs sm:text-sm whitespace-nowrap">
                 <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>ICD-10</span>
-              </TabsTrigger>
-              <TabsTrigger value="careplan" className="flex items-center gap-1 sm:gap-2 py-2 sm:py-3 text-xs sm:text-sm whitespace-nowrap">
-                <ClipboardList className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden md:inline">Care Plan</span>
-                <span className="md:hidden">Plan</span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -613,12 +607,6 @@ export default function ClinicalPathwayManager() {
           <TabsContent value="icd10">
             <AIICD10Suggester
               onCodesSelected={() => {}}
-            />
-          </TabsContent>
-
-          <TabsContent value="careplan">
-            <AICarePlanGenerator
-              onCarePlanGenerated={() => {}}
             />
           </TabsContent>
         </Tabs>

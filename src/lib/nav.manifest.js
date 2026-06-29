@@ -25,7 +25,7 @@
 
 import {
   Home, Users, FileText, ClipboardList, Shield, GraduationCap,
-  BarChart3, Settings, Brain, Target, Bell, BookOpen, WifiOff,
+  BarChart3, Settings, Brain, Bell, BookOpen, WifiOff,
   Mail, BookUser, Video, HelpCircle, AlertTriangle,
   Phone, Send, Heart, Database, Lock, Award,
   Clipboard, Filter, Globe,
@@ -95,33 +95,6 @@ export const NAV_MANIFEST = [
     adminOnly: true,
     breadcrumbParent: "Patients",
     keywords: ["duplicate", "merge", "deduplicate"],
-  },
-  {
-    page: "CarePlanManagement",
-    label: "Care Plans",
-    icon: Target,
-    category: "Patient Care",
-    adminOnly: false,
-    breadcrumbParent: null,
-    keywords: ["care plan", "goals", "treatment plan"],
-  },
-  {
-    page: "CarePlanBuilder",
-    label: "Care Plan Builder",
-    icon: Target,
-    category: null,
-    adminOnly: false,
-    breadcrumbParent: "CarePlanManagement",
-    keywords: ["care plan", "builder", "create"],
-  },
-  {
-    page: "AutomaticCarePlans",
-    label: "Automatic Care Plans",
-    icon: Zap,
-    category: null,
-    adminOnly: false,
-    breadcrumbParent: "CarePlanManagement",
-    keywords: ["auto care plan", "ai care plan"],
   },
   {
     // Hub combining OASIS assessment entry (SmartOASISAssessment, the default

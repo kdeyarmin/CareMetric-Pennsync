@@ -4,9 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/testUtils';
 
 // Spies for the entity writes the triage→patient flow performs.
-const { patientCreate, carePlanCreate, taskCreate, toastSuccess, toastError } = vi.hoisted(() => ({
+const { patientCreate, taskCreate, toastSuccess, toastError } = vi.hoisted(() => ({
   patientCreate: vi.fn(async () => ({ id: 'patient-1' })),
-  carePlanCreate: vi.fn(async () => ({ id: 'cp-1' })),
   taskCreate: vi.fn(async () => ({ id: 'task-1' })),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -18,7 +17,6 @@ vi.mock('@/api/base44Client', () => {
   const entities = new Proxy({}, {
     get: (_t, name) => {
       if (name === 'Patient') return { create: patientCreate };
-      if (name === 'CarePlan') return { create: carePlanCreate };
       if (name === 'Task') return { create: taskCreate };
       return { create: vi.fn(async () => ({})), filter: vi.fn(async () => []), list: vi.fn(async () => []) };
     },
@@ -36,10 +34,6 @@ const ANALYSIS = {
   secondary_diagnoses: ['COPD'],
   clinical_summary: 'Referred for skilled nursing.',
   urgency_level: 'CRITICAL',
-  preliminary_care_plan: {
-    initial_focus_areas: ['Wound care', 'Medication management'],
-    skilled_nursing_frequency: '3x/week',
-  },
 };
 vi.mock('@/components/referral/ReferralTriageAnalyzer', () => ({
   default: ({ onTriageComplete }) => (
@@ -51,22 +45,21 @@ import ReferralTriage from '@/pages/ReferralTriage';
 
 beforeEach(() => {
   patientCreate.mockClear();
-  carePlanCreate.mockClear();
   taskCreate.mockClear();
   toastSuccess.mockClear();
   toastError.mockClear();
 });
 
 describe('ReferralTriage — create patient from triage', () => {
-  it('maps analysis to a Patient (with required-field placeholders), care plans, and a task', async () => {
+  it('maps analysis to a Patient (with required-field placeholders) and a task', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ReferralTriage />);
 
     // 1. Complete triage → the "Next Steps" action card appears.
     await user.click(screen.getByText('run-triage'));
-    const createBtn = await screen.findByRole('button', { name: /Create Patient & Care Plans/i });
+    const createBtn = await screen.findByRole('button', { name: /Create Patient/i });
 
-    // 2. Create patient + care plans + task.
+    // 2. Create patient + task.
     await user.click(createBtn);
 
     await waitFor(() => expect(patientCreate).toHaveBeenCalledTimes(1));
@@ -84,10 +77,6 @@ describe('ReferralTriage — create patient from triage', () => {
       emergency_contact_name: 'Not provided on referral',
       emergency_contact_phone: 'Not provided on referral',
     });
-
-    // One care plan per focus area, linked to the new patient.
-    await waitFor(() => expect(carePlanCreate).toHaveBeenCalledTimes(2));
-    expect(carePlanCreate.mock.calls[0][0]).toMatchObject({ patient_id: 'patient-1', problem: 'Wound care' });
 
     // A CRITICAL referral creates a high-priority admission task.
     await waitFor(() => expect(taskCreate).toHaveBeenCalledTimes(1));

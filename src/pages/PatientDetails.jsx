@@ -24,7 +24,6 @@ import { logActivity, ActivityActions } from "@/components/utils/activityLogger"
 
 import ProactiveClinicalTaskGenerator from "../components/tasks/ProactiveClinicalTaskGenerator";
 import AIPatientHistorySummary from "../components/patient/AIPatientHistorySummary";
-import AICarePlanSuggestions from "../components/carePlan/AICarePlanSuggestions";
 import PatientRiskStratification from "../components/patient/PatientRiskStratification";
 import DischargeSummaryGenerator from "../components/discharge/DischargeSummaryGenerator";
 import AIPatientDashboardSummary from "../components/patient/AIPatientDashboardSummary";
@@ -34,7 +33,6 @@ import PredictiveRiskAnalyzer from "../components/analytics/PredictiveRiskAnalyz
 import RiskAlertWidget from "../components/alerts/RiskAlertWidget";
 import ReferralLetterGenerator from "../components/documents/ReferralLetterGenerator";
 import PatientDeteriorationPredictor from "../components/predictive/PatientDeteriorationPredictor";
-import CarePlanGapAnalyzer from "../components/carePlan/CarePlanGapAnalyzer";
 import InterdisciplinaryTeamCoordinator from "../components/coordination/InterdisciplinaryTeamCoordinator";
 import OptimalCommunicationAdvisor from "../components/coordination/OptimalCommunicationAdvisor";
 import ProgressReportGenerator from "../components/documents/ProgressReportGenerator";
@@ -49,7 +47,6 @@ import ClinicalEventsTimeline from "../components/patient/ClinicalEventsTimeline
 import DocumentUploader from "../components/documents/DocumentUploader";
 import DocumentList from "../components/documents/DocumentList";
 import VitalSignsTrendDashboard from "../components/patient/VitalSignsTrendDashboard";
-import CarePlanProposalReviewer from "../components/carePlan/CarePlanProposalReviewer";
 import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPanel";
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
 import PatientContactActions from "../components/voice/PatientContactActions";
@@ -120,28 +117,8 @@ export default function PatientDetails() {
   const tasks = ctx.tasks ?? [];
   const activeAlerts = ctx.activeAlerts ?? [];
 
-  const [_detectedCarePlanGaps, _setDetectedCarePlanGaps] = useState(null);
-
   // Critical alerts drive the banner styling below the header.
   const hasCriticalAlerts = activeAlerts.some(a => a.severity === 'critical');
-
-  const createCarePlanMutation = useMutation({
-    mutationFn: (carePlanData) => base44.entities.CarePlan.create({ ...carePlanData, patient_id: patientId }),
-    onSuccess: (newPlan) => {
-      // Refetch the consolidated context (re-seeds the care-plan mirror the page
-      // renders from); also invalidate the per-key cache for any mounted child.
-      queryClient.invalidateQueries({ queryKey: ['patientContext', patientId] });
-      queryClient.invalidateQueries({ queryKey: ['patientCarePlans', patientId] });
-      logActivity(ActivityActions.CARE_PLAN_CREATE, {
-        entity_type: 'CarePlan',
-        entity_id: newPlan.id,
-        patient_id: patientId,
-        problem: newPlan.problem,
-        page: 'PatientDetails'
-      });
-    },
-    onError: () => toast.error('Failed to create care plan. Please try again.'),
-  });
 
   const createVisitMutation = useMutation({
     mutationFn: (visitData) => base44.entities.Visit.create({ ...visitData, patient_id: patientId }),
@@ -261,7 +238,6 @@ export default function PatientDetails() {
               { value: "clinical",      label: "Clinical"  },
               { value: "events",        label: "Events"    },
               { value: "ai-tools",      label: "AI Tools"  },
-              { value: "care",          label: "Care Plans"},
               { value: "telehealth",    label: "Telehealth"},
               { value: "documents",     label: "Docs"      },
               { value: "messaging",     label: "Messaging" },
@@ -308,7 +284,6 @@ export default function PatientDetails() {
                 patient={patient}
                 recentVisits={visits.filter(v => v.status === 'completed').slice(0, 5)}
                 upcomingVisits={visits.filter(v => v.status === 'scheduled')}
-                activeCarePlans={carePlans.filter(cp => cp.status === 'active')}
                 pendingTasks={tasks.filter(t => t.status === 'pending')}
               />
             </div>
@@ -639,71 +614,6 @@ export default function PatientDetails() {
               />
             </TabsContent>
           </Tabs>
-        </TabsContent>
-
-        {/* Care Plans Tab */}
-        <TabsContent value="care" className="space-y-6">
-          <CarePlanProposalReviewer patientId={patientId} />
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <AICarePlanSuggestions 
-              patient={patient} 
-              existingCarePlans={carePlans}
-              onAddCarePlan={(data) => createCarePlanMutation.mutate(data)}
-            />
-            <div className="space-y-6">
-              <CarePlanGapAnalyzer
-                patientId={patientId}
-                diagnosis={patient?.primary_diagnosis}
-                carePlans={carePlans}
-                recentVisits={visits?.filter(v => v.status === 'completed').slice(0, 5)}
-                patientData={patient}
-                autoAnalyze={false}
-              />
-            </div>
-          </div>
-
-          {carePlans.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Active Care Plans</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="max-h-[500px]">
-                  <div className="space-y-3">
-                    {carePlans.map((plan) => (
-                      <Card key={plan.id} className={`border-l-4 ${
-                        plan.status === 'met' ? 'border-l-emerald-500' :
-                        plan.status === 'not_met' ? 'border-l-red-500' :
-                        plan.status === 'revised' ? 'border-l-amber-500' :
-                        'border-l-navy-500'
-                      }`}>
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <p className="font-semibold text-slate-900">{sanitizeInput(plan.problem)}</p>
-                            <Badge className={
-                              plan.status === 'met' ? 'bg-emerald-500' :
-                              plan.status === 'not_met' ? 'bg-red-500' :
-                              plan.status === 'revised' ? 'bg-amber-500' :
-                              'bg-navy-500'
-                            }>
-                              {(plan.status || '').replace('_', ' ')}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-slate-600">{sanitizeInput(plan.goal)}</p>
-                          {plan.target_date && (
-                            <p className="text-xs text-slate-500 mt-2">
-                              Target: {format(new Date(plan.target_date), 'MMM d, yyyy')}
-                            </p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
 
         <TabsContent value="telehealth" className="space-y-6">

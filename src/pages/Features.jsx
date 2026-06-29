@@ -486,24 +486,6 @@ export default function FeaturesPage() {
       color: "pink",
       items: [
         {
-          name: "Care Plan Auto-Generation",
-          icon: Target,
-          description: "AI generates evidence-based care plans based on diagnosis and patient data",
-          timeSaved: "8-12 min/admission",
-          impact: "critical",
-          details: "Problem, goal, intervention generation, measurable outcomes, evidence-based",
-          howToUse: "Navigate to patient, click 'Generate Care Plan', review and create suggested plans."
-        },
-        {
-          name: "Automatic Care Plan Triggers",
-          icon: Layers,
-          description: "Admin-configured automatic care plan creation based on diagnosis or medication",
-          timeSaved: "8-12 min/admission",
-          impact: "critical",
-          details: "Standardized evidence-based care, ensures consistency across agency",
-          howToUse: "Admins: Configure triggers in Automatic Care Plans. Staff: Plans auto-generate on admission."
-        },
-        {
           name: "Incident Reporting",
           icon: AlertTriangle,
           description: "Guided incident reporting with AI-generated comprehensive reports",
@@ -903,7 +885,7 @@ export default function FeaturesPage() {
 
   <div class="section">
     <h2>4. Patient Care Management</h2>
-    <p><span class="role-badge nurse-badge">NURSE</span>Managing patient records, care plans, and tasks</p>
+    <p><span class="role-badge nurse-badge">NURSE</span>Managing patient records and tasks</p>
 
     <h3>4.1 Viewing Patient Records</h3>
     <div class="step">
@@ -916,21 +898,7 @@ export default function FeaturesPage() {
       <span class="step-number">3</span>Click patient name to view details
     </div>
 
-    <h3>4.2 Care Plan Management</h3>
-    <div class="step">
-      <span class="step-number">1</span>On patient details page, scroll to <strong>"Care Plans"</strong> section
-    </div>
-    <div class="step">
-      <span class="step-number">2</span>View active care plans with goals and interventions
-    </div>
-    <div class="step">
-      <span class="step-number">3</span>Click <strong>"Update Progress"</strong> to document goal achievement
-    </div>
-    <div class="step">
-      <span class="step-number">4</span>Mark goals as "Met", "In Progress", or "Not Met"
-    </div>
-
-    <h3>4.3 Task Management</h3>
+    <h3>4.2 Task Management</h3>
     <div class="step">
       <span class="step-number">1</span>View your assigned tasks on the Dashboard
     </div>

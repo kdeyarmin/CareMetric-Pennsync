@@ -25,12 +25,7 @@ export const AuditActions = {
   VISIT_UPDATED: 'visit_updated',
   VISIT_COMPLETED: 'visit_completed',
   VISIT_CANCELLED: 'visit_cancelled',
-  
-  // Care Plan Actions
-  CARE_PLAN_CREATED: 'care_plan_created',
-  CARE_PLAN_UPDATED: 'care_plan_updated',
-  CARE_PLAN_COMPLETED: 'care_plan_completed',
-  
+
   // Task Actions
   TASK_CREATED: 'task_created',
   TASK_COMPLETED: 'task_completed',

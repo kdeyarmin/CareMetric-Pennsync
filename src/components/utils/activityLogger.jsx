@@ -39,8 +39,6 @@ export const ActivityActions = {
   VISIT_DOCUMENT: 'visit_document',
   VISIT_START: 'visit_start',
   VISIT_COMPLETE: 'visit_complete',
-  CARE_PLAN_CREATE: 'care_plan_create',
-  CARE_PLAN_UPDATE: 'care_plan_update',
   TASK_CREATE: 'task_create',
   TASK_COMPLETE: 'task_complete',
   INCIDENT_REPORT: 'incident_report',

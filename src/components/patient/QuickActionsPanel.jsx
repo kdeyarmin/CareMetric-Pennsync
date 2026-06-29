@@ -8,19 +8,17 @@ import {
   ClipboardList,
   Phone,
   Mail,
-  Clock,
-  Target
+  Clock
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format, isValid } from "date-fns";
 import { toast } from 'sonner';
 
-export default function QuickActionsPanel({ 
-  patient, 
-  recentVisits = [], 
+export default function QuickActionsPanel({
+  patient,
+  recentVisits = [],
   upcomingVisits = [],
-  activeCarePlans = [],
   pendingTasks = []
 }) {
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -42,13 +40,6 @@ export default function QuickActionsPanel({
       color: "bg-green-500 hover:bg-green-600",
       link: todayVisit ? `${createPageUrl("VisitScribe")}?visitId=${todayVisit.id}` : null,
       badge: todayVisit ? "Today" : null
-    },
-    {
-      icon: Target,
-      label: "Care Plan",
-      description: `${activeCarePlans.length} active`,
-      color: "bg-navy-500 hover:bg-navy-600",
-      link: createPageUrl("CarePlanManagement")
     },
     {
       icon: MessageSquare,

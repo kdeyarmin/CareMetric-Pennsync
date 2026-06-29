@@ -39,7 +39,6 @@ import {
 } from "lucide-react";
 import AISmartOASISAssistant from "../oasis/AISmartOASISAssistant";
 import AIAdmissionNoteGenerator from "./AIAdmissionNoteGenerator";
-import AICarePlanSuggestionEngine from "./AICarePlanSuggestionEngine";
 import AdmissionPacketCustomizer from "./AdmissionPacketCustomizer";
 import {
   Accordion,
@@ -60,7 +59,6 @@ const processingStages = [
 export default function ReferralPDFSummarizer({
   onDataExtracted,
   onUseForAdmission,
-  patientId = null,
   fileUrl: externalFileUrl = null,
   onExtractionComplete = null
 }) {
@@ -74,7 +72,9 @@ export default function ReferralPDFSummarizer({
   const [isDragging, setIsDragging] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState(null);
-  const [oasisResults, setOasisResults] = useState(null);
+  // OASIS suggestions applied via the assistant below; retained as state so the
+  // assistant's onApplySuggestion has a sink and resets cleanly between documents.
+  const [_oasisResults, setOasisResults] = useState(null);
   const [showPreview, setShowPreview] = useState(true);
   const fileInputRef = useRef(null);
   const progressIntervalRef = useRef(null);
@@ -1298,15 +1298,6 @@ export default function ReferralPDFSummarizer({
               />
             </CardContent>
           </Card>
-
-          {/* AI Care Plan Suggestions */}
-          <AICarePlanSuggestionEngine
-            referralData={extractedData}
-            oasisData={oasisResults || extractedData.oasis_assessment}
-            patientId={patientId}
-            autoGenerate={true}
-            onCarePlansGenerated={() => {}}
-          />
 
           {/* Admission Packet Customizer */}
           <AdmissionPacketCustomizer 

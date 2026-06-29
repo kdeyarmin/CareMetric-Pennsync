@@ -161,11 +161,6 @@ export default function SmartNoteVoiceListener({
       onAction && onAction('clear_note');
       return;
     }
-    if (/generate\s*(?:care\s*)?plan/i.test(transcript)) {
-      setLastCommand({ type: 'action', value: 'Generate Care Plan' });
-      onAction && onAction('generate_care_plan');
-      return;
-    }
     if (/report\s*(?:an\s*)?incident/i.test(transcript)) {
       setLastCommand({ type: 'action', value: 'Report Incident' });
       onAction && onAction('report_incident');

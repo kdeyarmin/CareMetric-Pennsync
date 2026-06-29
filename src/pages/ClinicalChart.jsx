@@ -6,7 +6,6 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { Input } from "@/components/ui/input";
 import VitalsChart from "@/components/clinical/VitalsChart";
-import CarePlanInteractive from "@/components/clinical/CarePlanInteractive";
 import OASISQuickUpdate from "@/components/clinical/OASISQuickUpdate";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -42,7 +41,7 @@ export default function ClinicalChart() {
         icon={Activity}
         eyebrow="Patient Care"
         title="Clinical Chart"
-        description="Interactive care plans, OASIS updates, and historical vitals at a glance."
+        description="OASIS updates and historical vitals at a glance."
         favoritePage="ClinicalChart"
       />
 
@@ -98,16 +97,11 @@ export default function ClinicalChart() {
             <Tabs defaultValue="vitals" className="space-y-4">
               <TabsList>
                 <TabsTrigger value="vitals">Vitals History</TabsTrigger>
-                <TabsTrigger value="careplan">Care Plan</TabsTrigger>
                 <TabsTrigger value="oasis">OASIS Update</TabsTrigger>
               </TabsList>
 
               <TabsContent value="vitals">
                 <VitalsChart patientId={selectedPatient.id} />
-              </TabsContent>
-
-              <TabsContent value="careplan">
-                <CarePlanInteractive patientId={selectedPatient.id} currentUser={currentUser} />
               </TabsContent>
 
               <TabsContent value="oasis">

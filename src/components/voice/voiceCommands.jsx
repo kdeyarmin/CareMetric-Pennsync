@@ -230,13 +230,6 @@ export const smartNoteCommands = [
     description: "Clear current note content"
   },
   {
-    name: "Generate Care Plan",
-    category: "Actions",
-    triggers: ["generate care plan", "create care plan", "ai care plan"],
-    action: "action_generate_care_plan",
-    description: "Generate AI care plans"
-  },
-  {
     name: "Report Incident",
     category: "Actions",
     triggers: ["report incident", "incident report", "document incident"],
@@ -402,16 +395,6 @@ export const documentationCommands = [
     action: "report_hospitalization",
     description: "Open hospitalization incident report",
     example: "Say 'patient hospitalized' for hospitalization report"
-  },
-
-  // Care Plan commands
-  {
-    name: "Generate Care Plans",
-    category: "Care Planning",
-    triggers: ["generate care plans", "create care plans", "ai care plan"],
-    action: "generate_care_plans",
-    description: "Launch AI care plan generator",
-    example: "Say 'generate care plans' to create AI-suggested care plans"
   }
 ];
 
