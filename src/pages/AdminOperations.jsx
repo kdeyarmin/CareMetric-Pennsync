@@ -19,6 +19,7 @@ import PageContainer from "@/components/ui/PageContainer";
 // Console tab keys, kept in sync with the TabsTrigger values below. Used to
 // validate the ?tab= deep-link so the retired standalone pages (System Health,
 // Data Quality) can redirect straight to the right tab.
+// [Re-deploy trigger: 2026-06-29 12:00:00 UTC]
 const TAB_KEYS = ["overview", "activity", "data-quality", "system-health", "settings"];
 
 export default function AdminOperations() {
