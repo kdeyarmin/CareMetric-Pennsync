@@ -1,10 +1,9 @@
-@import "tailwindcss";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Tailwind v4 consumes the existing v3 theme/plugins via the legacy JS config
-   (colors, keyframes, darkMode class strategy, tailwindcss-animate). */
+/* Tailwind v3 consumes the JS config (colors, keyframes, darkMode class
+   strategy, tailwindcss-animate) via the @config directive below. */
 @config "../tailwind.config.js";
 
 @layer base {
