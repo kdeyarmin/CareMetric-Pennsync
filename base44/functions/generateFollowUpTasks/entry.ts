@@ -6,7 +6,7 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { noteText, patientId, visitId, visitType, diagnosis } = await req.json();
+    const { noteText, patientId, visitId, visitType, diagnosis } = await req.json(); // v2
     if (!noteText) return Response.json({ error: 'noteText is required' }, { status: 400 });
 
     let patientContext = '';

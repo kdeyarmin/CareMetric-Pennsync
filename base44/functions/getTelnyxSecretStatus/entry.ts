@@ -14,6 +14,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * }
  */
 
+// v2
 const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase() || null;
 
 const sameEmail = (a, b) =>
