@@ -88,9 +88,11 @@
       "description": "Date the education was completed"
     }
   },
+  // AI-generated education (AIEducationRecommender, CarePlanManagement) creates
+  // by topic/content without a material library id, so material_id is not
+  // required; patient_id + assigned_by are common to both shapes.
   "required": [
     "patient_id",
-    "material_id",
     "assigned_by"
   ]
 }

@@ -141,12 +141,11 @@
       "description": "Email addresses of users who have read the message"
     }
   },
-  "required": [
-    "patient_id",
-    "body",
-    "delivery_method",
-    "status"
-  ],
+  // Message backs two disjoint shapes: outbound delivery (patient_id/body/
+  // delivery_method/status) and in-app care-team messages (message_text/
+  // recipients/sender_email, e.g. Messages.jsx + referral assignment). They
+  // share no universal field, so nothing is required to avoid rejecting either.
+  "required": [],
   "rls": {
     "read": {
       "$or": [

@@ -160,7 +160,8 @@
       "description": "Chronological intake/processing notes"
     }
   },
-  "required": [
-    "patient_name"
-  ]
+  // Referrals are created from several flows with no single universal field
+  // (e.g. DocumentToTriageMapper creates by patient_id without patient_name),
+  // so nothing is marked required to avoid rejecting a valid create shape.
+  "required": []
 }
