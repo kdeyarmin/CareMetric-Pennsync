@@ -1,4 +1,4 @@
-// AdminOperations — the agency admin command center. Tabs: overview, activity,
+// AdminOperations — agency admin command center. Tabs: overview, activity,
 // data-quality, system-health, settings. Deep-linkable via ?tab=<key>.
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
