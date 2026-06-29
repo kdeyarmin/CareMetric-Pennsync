@@ -26,12 +26,15 @@ const handleStaleChunk = (err) => {
     /dynamically imported module/i.test(err?.message || '');
   if (!isStaleChunk) return false;
   const key = `${VITE_CHUNK_KEY}:${window.location.pathname}`;
-  if (sessionStorage.getItem(key)) {
-    sessionStorage.removeItem(key); // already retried — let the error surface
+  const attempts = parseInt(sessionStorage.getItem(key) || '0', 10);
+  if (attempts >= 3) {
+    sessionStorage.removeItem(key); // exhausted — let the error surface
     return false;
   }
-  sessionStorage.setItem(key, '1');
-  window.location.reload();
+  sessionStorage.setItem(key, String(attempts + 1));
+  // Hard navigation with cache-buster so the browser fetches fresh chunk URLs
+  // instead of serving the stale cached response that caused the error.
+  window.location.href = window.location.href.split('?')[0] + '?_r=' + Date.now();
   return true;
 };
 window.addEventListener('error', (e) => handleStaleChunk(e.error));
