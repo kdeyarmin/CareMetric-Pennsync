@@ -16,8 +16,10 @@ export default function MobileHeader({ currentPageName, totalNotificationCount, 
           </Button>
         )}
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
-          <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png" alt="Penn Sync Logo" className="w-8 h-8 rounded-lg" />
-          <span className="font-bold text-base text-navy-900 tracking-tight">Penn<span className="text-gold-600">Sync</span></span>
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-navy-600 to-navy-800 flex items-center justify-center">
+            <span className="text-white text-xs font-bold">CM</span>
+          </div>
+          <span className="font-bold text-base text-navy-900 tracking-tight">CareMetric<span className="text-gold-600"> AI</span></span>
         </Link>
         <div className="hidden sm:flex items-center gap-1 text-emerald-600 text-xs font-medium ml-2">
           <Shield className="w-3 h-3" /> Secure

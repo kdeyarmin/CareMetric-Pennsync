@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
  * ensureSuperAdmin — promotes the designated platform owner
- * (kdeyarmin@comcast.net) to the super administrator account so the rest of the
+ * (configured via SUPER_ADMIN_EMAIL env var) to the super administrator account so the rest of the
  * app recognizes them: account_type = 'super_admin', role = 'admin', approved.
  *
  * This is self-bootstrapping and safe to call repeatedly (idempotent). It is
@@ -15,13 +15,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * hand-edit the database.
  */
 
-// This is the ONE place that keeps an owner-email fallback: it is the bootstrap
-// target (who to PROMOTE to account_type 'super_admin'), not a runtime privilege
-// gate. Prefer SUPER_ADMIN_EMAIL; the literal fallback ensures the platform owner
-// can always self-promote even before the env var is configured, so the account
-// is never locked out of super-admin. All the actual privilege CHECKS elsewhere
-// only honor the email override when SUPER_ADMIN_EMAIL is explicitly set.
-const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || 'kdeyarmin@comcast.net').trim().toLowerCase();
+// SUPER_ADMIN_EMAIL is read from the env var set in the Base44 dashboard.
+// When unset, ensureSuperAdmin can still be called by an existing admin to
+// repair their account, but the email-based bootstrap path is disabled.
+const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
 
 const sameEmail = (a, b) =>
   String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();

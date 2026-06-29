@@ -243,13 +243,11 @@ export default function Layout({ children, currentPageName }) {
       <div className="min-h-screen bg-gradient-to-br from-navy-50 via-white to-navy-100 flex items-center justify-center p-4">
         <div className="max-w-md w-full">
           <div className="mb-6 flex items-center justify-center gap-2">
-            <img
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png"
-              alt="PennSync"
-              className="h-9 w-9 rounded-lg"
-            />
+            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-navy-600 to-navy-800 flex items-center justify-center">
+              <span className="text-white text-sm font-bold">CM</span>
+            </div>
             <span className="text-xl font-bold tracking-tight text-navy-900">
-              Penn<span className="text-gold-600">Sync</span>
+              CareMetric<span className="text-gold-600"> AI</span>
             </span>
           </div>
           <Card className="relative overflow-hidden border-slate-200 shadow-xl">

@@ -29,14 +29,12 @@ export default function DesktopSidebar({
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-3 border-b border-navy-900 flex-shrink-0">
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0">
-          <img
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png"
-            alt="Penn Sync Logo"
-            className="w-8 h-8 rounded-lg flex-shrink-0"
-          />
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-navy-500 to-navy-700 flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-xs font-bold">CM</span>
+          </div>
           {!collapsed && (
             <span className="font-bold text-base text-white truncate tracking-tight">
-              Penn<span className="text-gold-400">Sync</span>
+              CareMetric<span className="text-gold-400"> AI</span>
             </span>
           )}
         </Link>

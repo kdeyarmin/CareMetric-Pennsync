@@ -17,12 +17,16 @@ const buildCertificatePdf = async ({ userName, moduleName, completionDate, score
   [[10, 10], [287, 10], [10, 200], [287, 200]].forEach(([x, y]) => doc.circle(x, y, 3, 'F'));
 
   try {
-    const logoUrl = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/52cac091f_20170AA9-BB95-4BA4-B4E7-793615312CC4.png';
-    const logoResponse = await fetch(logoUrl);
-    const logoBlob = await logoResponse.blob();
-    const logoArrayBuffer = await logoBlob.arrayBuffer();
-    const logoBase64 = btoa(String.fromCharCode(...new Uint8Array(logoArrayBuffer)));
-    doc.addImage(`data:image/png;base64,${logoBase64}`, 'PNG', 128.5, 25, 40, 40);
+    // Logo omitted — no app-specific logo URL configured for this deployment.
+    // Agencies can customize by setting APP_LOGO_URL env var.
+    const logoUrl = Deno.env.get('APP_LOGO_URL') || '';
+    if (logoUrl) {
+      const logoResponse = await fetch(logoUrl);
+      const logoBlob = await logoResponse.blob();
+      const logoArrayBuffer = await logoBlob.arrayBuffer();
+      const logoBase64 = btoa(String.fromCharCode(...new Uint8Array(logoArrayBuffer)));
+      doc.addImage(`data:image/png;base64,${logoBase64}`, 'PNG', 128.5, 25, 40, 40);
+    }
   } catch (_error) {}
 
   doc.setFontSize(36);
@@ -78,14 +82,14 @@ const buildCertificatePdf = async ({ userName, moduleName, completionDate, score
   doc.line(177, 175, 247, 175);
 
   doc.setFontSize(9);
-  doc.text(safeText(agencyName, 'Penn Sync Training Platform'), 85, 182, { align: 'center' });
+  doc.text(safeText(agencyName, 'CareMetric AI Training Platform'), 85, 182, { align: 'center' });
   doc.text(`Certificate ID: ${certificateId}`, 212, 182, { align: 'center' });
 
   doc.setFillColor(79, 70, 229);
   doc.rect(0, 195, 297, 15, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(8);
-  doc.text('Penn Sync - AI-Powered Healthcare Training & Documentation', 148.5, 203, { align: 'center' });
+  doc.text('CareMetric AI - AI-Powered Healthcare Training & Documentation', 148.5, 203, { align: 'center' });
 
   return doc.output('arraybuffer');
 };
@@ -136,7 +140,7 @@ Deno.serve(async (req) => {
       completionDate: certificate.completion_date || certificate.issued_at,
       score: certificate.score,
       certificateId: certificate.certificate_id,
-      agencyName: employee?.agency_name || 'Penn Sync Training Platform'
+      agencyName: employee?.agency_name || 'CareMetric AI Training Platform'
     });
 
     const pdfFile = new File(
@@ -167,7 +171,7 @@ Certificate ID: ${certificate.certificate_id}`;
       to: certificate.user_id,
       subject: `Your training certificate: ${certificate.course_title}`,
       body: employeeBody,
-      from_name: 'Penn Sync Training'
+      from_name: 'CareMetric AI Training'
     });
 
     await Promise.all(agencyAdmins.map((manager) =>
@@ -180,7 +184,7 @@ Download the PDF certificate here:
 ${certificateUrl}
 
 Certificate ID: ${certificate.certificate_id}`,
-        from_name: 'Penn Sync Training'
+        from_name: 'CareMetric AI Training'
       })
     ));
 

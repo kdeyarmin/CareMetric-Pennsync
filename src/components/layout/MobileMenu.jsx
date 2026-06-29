@@ -36,12 +36,10 @@ export default function MobileMenu({ open, onClose, navCategories, adminItems, i
         {/* Header */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <img
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png"
-              alt="Penn Sync"
-              className="w-7 h-7 rounded-md"
-            />
-            <span className="font-bold text-base text-navy-900 tracking-tight">Penn<span className="text-gold-600">Sync</span></span>
+            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-navy-600 to-navy-800 flex items-center justify-center">
+              <span className="text-white text-[10px] font-bold">CM</span>
+            </div>
+            <span className="font-bold text-base text-navy-900 tracking-tight">CareMetric<span className="text-gold-600"> AI</span></span>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400 hover:text-navy-700 hover:bg-slate-100" aria-label="Close menu">
             <X className="w-5 h-5" />

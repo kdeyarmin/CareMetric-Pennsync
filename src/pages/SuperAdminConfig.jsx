@@ -18,7 +18,7 @@ import { isSuperAdmin, isSuperAdminEmail, SUPER_ADMIN_EMAIL } from "@/lib/superA
 
 /**
  * SuperAdminConfig — the single, easy-to-use control panel for the platform
- * super admin (kdeyarmin@comcast.net). It does three things:
+ * super admin. It does three things:
  *   1. Confirms / self-heals the super admin account (ensureSuperAdmin).
  *   2. Manages the Telnyx credentials (TelnyxSecretPanel).
  *   3. Surfaces the full Telnyx provisioning + health surface (PhoneProvisioningPanel),
