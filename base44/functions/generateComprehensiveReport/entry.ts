@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     // Title Page
     doc.setFontSize(24);
     doc.setFont(undefined, 'bold');
-    doc.text('Penn Sync', 105, 40, { align: 'center' });
+    doc.text('CareMetric AI', 105, 40, { align: 'center' });
     doc.setFontSize(18);
     doc.text('Comprehensive Report', 105, 55, { align: 'center' });
     
@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
     });
 
     // AI UTILIZATION & ROI
-    addSection('PENN SYNC AI IMPACT');
+    addSection('CAREMETRIC AI IMPACT');
     
     const avgQualityScore = filteredNoteConversions.length > 0
       ? Math.round(filteredNoteConversions.reduce((sum, n) => sum + (n.quality_score || 0), 0) / filteredNoteConversions.length)
@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
     yPosition = 280;
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
-    doc.text('Penn Sync - AI-Powered Home Health Documentation System', 105, yPosition, { align: 'center' });
+    doc.text('CareMetric AI - AI-Powered Home Health Documentation System', 105, yPosition, { align: 'center' });
     doc.text(`Report generated on ${new Date().toLocaleString()}`, 105, yPosition + 5, { align: 'center' });
 
     const pdfBytes = doc.output('arraybuffer');
@@ -298,7 +298,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="penn-sync-${reportType}-report-${endDateStr}.pdf"`
+        'Content-Disposition': `attachment; filename="caremetric-ai-${reportType}-report-${endDateStr}.pdf"`
       }
     });
   } catch (error) {

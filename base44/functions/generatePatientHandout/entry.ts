@@ -6,7 +6,7 @@ import { jsPDF } from 'npm:jspdf@2.5.1';
 const DEBUG = !!Deno.env.get('FUNCTIONS_DEBUG');
 const debugLog = (...args) => { if (DEBUG) console.log(...args); };
 
-const LOGO_URL = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/c39653ba3_PennHomeHealthInc.png';
+const LOGO_URL = Deno.env.get('APP_LOGO_URL') || '';
 
 // Interactive elements for handouts
 const interactiveResources = {
@@ -332,8 +332,8 @@ Deno.serve(async (req) => {
       layout: styleOptions?.layout || 'standard',
       customHeader: styleOptions?.customHeader || '',
       customFooter: styleOptions?.customFooter || '',
-      agencyName: styleOptions?.agencyName || 'Penn Home Health Inc.',
-      agencyPhone: styleOptions?.agencyPhone || '724-465-0440'
+      agencyName: styleOptions?.agencyName || 'CareMetric AI',
+      agencyPhone: styleOptions?.agencyPhone || ''
     };
 
     if (!condition) return Response.json({ error: 'Condition is required' }, { status: 400 });
@@ -343,7 +343,7 @@ Deno.serve(async (req) => {
     diagnostics.totalSections = template.sections?.length || 0;
 
     doc = new jsPDF();
-    doc.setProperties({ title: template.title, subject: 'Patient Education Material', author: style.agencyName, keywords: 'patient education, healthcare, ' + condition, creator: 'Penn Sync Documentation System', language: 'en-US' });
+    doc.setProperties({ title: template.title, subject: 'Patient Education Material', author: style.agencyName, keywords: 'patient education, healthcare, ' + condition, creator: 'CareMetric AI Documentation System', language: 'en-US' });
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -412,7 +412,7 @@ Deno.serve(async (req) => {
       }
       doc.setFont(fontFamily, 'normal'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
       doc.text(clean(style.agencyPhone), pageWidth - margin, 11, { align: 'right' });
-      doc.text('www.pennhh.com', pageWidth - margin, 16, { align: 'right' });
+      doc.text('caremetric.ai', pageWidth - margin, 16, { align: 'right' });
       doc.text('Patient Education', pageWidth - margin, 21, { align: 'right' });
     };
 
@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
       doc.setFont(fontFamily, 'bold'); setColor(COLORS.primary);
       doc.text(clean(style.agencyName), margin, fy + 11);
       doc.setFont(fontFamily, 'normal'); setColor(COLORS.textLight);
-      doc.text(`${clean(style.agencyPhone)}  |  www.pennhh.com`, pageWidth - margin, fy + 11, { align: 'right' });
+      doc.text(style.agencyPhone ? `${clean(style.agencyPhone)}  |  caremetric.ai` : 'caremetric.ai', pageWidth - margin, fy + 11, { align: 'right' });
       doc.text(`Page ${pageNumber}`, pageWidth - margin, fy + 6, { align: 'right' });
     };
 
@@ -720,7 +720,7 @@ Deno.serve(async (req) => {
                 <p style="margin-bottom:0;">Warm regards,<br><strong>${clean(style.agencyName)}</strong></p>
               </div>
               <div style="background:#f1f5f9; padding:14px; text-align:center; color:#64748b; font-size:12px;">
-                ${clean(style.agencyName)} &nbsp;|&nbsp; ${clean(style.agencyPhone)} &nbsp;|&nbsp; www.pennhh.com
+                ${clean(style.agencyName)}${style.agencyPhone ? ` &nbsp;|&nbsp; ${clean(style.agencyPhone)}` : ''} &nbsp;|&nbsp; caremetric.ai
               </div>
             </div>`
         });
@@ -766,11 +766,11 @@ Deno.serve(async (req) => {
       fb.setFillColor(33, 58, 118); fb.rect(0, 0, fb.internal.pageSize.getWidth(), 26, 'F');
       fb.setFillColor(200, 145, 30); fb.rect(0, 26, fb.internal.pageSize.getWidth(), 1.4, 'F');
       fb.setTextColor(255, 255, 255); fb.setFontSize(14); fb.setFont('helvetica', 'bold');
-      fb.text('Penn Home Health Inc.', fb.internal.pageSize.getWidth() / 2, 16, { align: 'center' });
+      fb.text('CareMetric AI', fb.internal.pageSize.getWidth() / 2, 16, { align: 'center' });
       fb.setTextColor(30, 41, 59); fb.setFontSize(13); fb.setFont('helvetica', 'normal');
       fb.text('We could not generate the full guide right now.', fb.internal.pageSize.getWidth() / 2, 60, { align: 'center' });
       fb.text('Please contact your nurse for this information.', fb.internal.pageSize.getWidth() / 2, 70, { align: 'center' });
-      fb.setFontSize(10); fb.text('Phone: 724-465-0440', 20, 95);
+      fb.setFontSize(10);       fb.text('caremetric.ai', 20, 95);
       const fbBytes = new Uint8Array(fb.output('arraybuffer'));
       let fbBin = '';
       for (let i = 0; i < fbBytes.length; i += 8192) fbBin += String.fromCharCode.apply(null, fbBytes.subarray(i, Math.min(i + 8192, fbBytes.length)));
