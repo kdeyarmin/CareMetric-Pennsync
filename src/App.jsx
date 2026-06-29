@@ -22,8 +22,26 @@ import ErrorBoundary from '@/components/utils/ErrorBoundary';
 import { ROUTES, REDIRECTS, MAIN_PAGE } from '@/routes';
 import { getRoleView } from '@/lib/roles';
 
-// Public (no-login) patient telehealth join page.
-const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
+// Public (no-login) patient telehealth join page. Wrapped with the same
+// stale-chunk retry as the manifest routes (see routes.jsx) so a dev-server
+// restart doesn't dead-end the public telehealth join page in an error boundary.
+const staleChunkSafeImport = (factory) =>
+  factory().catch((err) => {
+    const isStaleChunk = err?.name === 'TypeError' &&
+      /Failed to fetch dynamically imported module/.test(err?.message || '');
+    if (isStaleChunk) {
+      const key = `vite-chunk-reloaded:${window.location.pathname}`;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        window.location.reload();
+        return new Promise(() => {});
+      }
+      sessionStorage.removeItem(key);
+    }
+    throw err;
+  });
+
+const JoinTelehealth = lazy(() => staleChunkSafeImport(() => import('@/pages/JoinTelehealth')));
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
