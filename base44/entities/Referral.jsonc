@@ -56,6 +56,7 @@
       "enum": [
         "new",
         "pending",
+        "processing",
         "awaiting_info",
         "active",
         "declined",
