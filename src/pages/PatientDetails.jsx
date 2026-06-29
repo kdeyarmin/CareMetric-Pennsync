@@ -54,7 +54,7 @@ import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPa
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
 import PatientContactActions from "../components/voice/PatientContactActions";
 
-// [Force recompile: 2026-06-29 12:10:00 UTC]
+// [Force recompile: 2026-06-29 12:15:00 UTC]
 export default function PatientDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
