@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,9 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Sparkles,
   Loader2,
-  CheckCircle2,
   Copy,
-  ArrowRight,
   FileText
 } from "lucide-react";
 
@@ -21,26 +20,12 @@ export default function ClinicalNoteToOASISMapper({
   extractedNarrative 
 }) {
   const [clinicalNotes, setClinicalNotes] = useState("");
-  const [isMapping, setIsMapping] = useState(false);
+  const ai = useAICall();
   const [mappedFields, setMappedFields] = useState(null);
 
-  // Auto-populate with extracted narrative from OASIS
-  useEffect(() => {
-    if (extractedNarrative && !clinicalNotes) {
-      setClinicalNotes(extractedNarrative);
-    }
-  }, [extractedNarrative]);
-
-  useEffect(() => {
-    if (autoMap && clinicalNotes.length > 100) {
-      performMapping();
-    }
-  }, [autoMap, clinicalNotes]);
-
-  const performMapping = async () => {
+  const performMapping = useCallback(async () => {
     if (!clinicalNotes || clinicalNotes.length < 50) return;
 
-    setIsMapping(true);
     try {
       const prompt = `You are an expert OASIS clinician. Map clinical notes to specific OASIS M-items.
 
@@ -64,7 +49,8 @@ Focus on:
 - Diagnoses and comorbidities
 - Episode timing indicators`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -123,16 +109,30 @@ Focus on:
       }
     } catch (error) {
       console.error('Mapping error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsMapping(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [clinicalNotes, existingOASISData, onMappingComplete]);
+
+  // Auto-populate with extracted narrative from OASIS
+  useEffect(() => {
+    if (extractedNarrative && !clinicalNotes) {
+      setClinicalNotes(extractedNarrative);
+    }
+  }, [extractedNarrative, clinicalNotes]);
+
+  useEffect(() => {
+    if (autoMap && clinicalNotes.length > 100) {
+      performMapping();
+    }
+  }, [autoMap, clinicalNotes, performMapping]);
 
   const handleCopyValue = (value) => {
     navigator.clipboard.writeText(value);
   };
 
   return (
-    <Card className="border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-cyan-50">
+    <Card className="border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-navy-50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-blue-600" />
@@ -157,7 +157,7 @@ Focus on:
             rows={6}
             className="font-mono text-sm"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             {clinicalNotes.length} characters
             {extractedNarrative && ' • Narrative extracted from uploaded OASIS'}
           </p>
@@ -165,10 +165,10 @@ Focus on:
 
         <Button
           onClick={performMapping}
-          disabled={isMapping || clinicalNotes.length < 50}
+          disabled={ai.loading || clinicalNotes.length < 50}
           className="w-full bg-blue-600 hover:bg-blue-700"
         >
-          {isMapping ? (
+          {ai.loading ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Mapping to OASIS...
@@ -270,7 +270,7 @@ Focus on:
                           <p className="text-blue-900 italic">"{field.supporting_quote}"</p>
                         </div>
 
-                        <p className="text-xs text-gray-700 mb-2">{field.rationale}</p>
+                        <p className="text-xs text-slate-700 mb-2">{field.rationale}</p>
 
                         {field.additional_documentation_needed && (
                           <div className="bg-yellow-50 p-2 rounded text-xs border border-yellow-200">
@@ -297,7 +297,7 @@ Focus on:
                       <p className="font-medium text-orange-800">
                         {item.m_item_code}: {item.m_item_name}
                       </p>
-                      <p className="text-xs text-gray-700 mt-1">{item.why_important}</p>
+                      <p className="text-xs text-slate-700 mt-1">{item.why_important}</p>
                       <p className="text-xs text-blue-700 mt-1 italic">
                         Ask: "{item.suggested_assessment_question}"
                       </p>
@@ -316,7 +316,7 @@ Focus on:
                   {mappedFields.documentation_gaps.map((gap, idx) => (
                     <div key={idx} className="bg-white p-2 rounded text-sm">
                       <p className="font-medium text-red-800">{gap.area}</p>
-                      <p className="text-xs text-gray-700 mt-1">Missing: {gap.what_is_missing}</p>
+                      <p className="text-xs text-slate-700 mt-1">Missing: {gap.what_is_missing}</p>
                       <div className="bg-green-50 p-2 rounded mt-2 text-xs">
                         <p className="text-green-700">
                           <strong>Add:</strong> {gap.suggested_addition}

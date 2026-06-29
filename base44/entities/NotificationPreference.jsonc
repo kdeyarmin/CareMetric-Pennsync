@@ -1,0 +1,272 @@
+{
+  "name": "NotificationPreference",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "User's email"
+    },
+    "email_notifications_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Master switch for email notifications"
+    },
+    "in_app_notifications_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Master switch for in-app notifications"
+    },
+    "push_notifications_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Master switch for browser push notifications"
+    },
+    "preferences": {
+      "type": "object",
+      "properties": {
+        "report_ready": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "compliance_alert": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "critical_alert": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "patient_alert": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "task_assigned": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "task_due_soon": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "new_referral": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "referral_urgent": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "training_due": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "system_update": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": false
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "message_received": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": true
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "info": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "boolean",
+              "default": false
+            },
+            "in_app": {
+              "type": "boolean",
+              "default": true
+            },
+            "push": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      },
+      "description": "Notification preferences by type and channel"
+    },
+    "quiet_hours": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "start_time": {
+          "type": "string",
+          "default": "22:00"
+        },
+        "end_time": {
+          "type": "string",
+          "default": "08:00"
+        }
+      },
+      "description": "Quiet hours settings (applies to email and push only)"
+    },
+    "digest_mode": {
+      "type": "string",
+      "enum": [
+        "instant",
+        "hourly",
+        "daily",
+        "weekly"
+      ],
+      "default": "instant",
+      "description": "Email digest frequency"
+    },
+    "sound_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Play sound for in-app notifications"
+    }
+  },
+  "required": [
+    "user_email"
+  ]
+}

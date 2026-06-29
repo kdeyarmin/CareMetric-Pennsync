@@ -1,14 +1,16 @@
-import React from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bell, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { Bell, CheckCircle2, XCircle } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
 
 export default function PatientAlertsWidget({ alerts, patientId, expanded = false }) {
   const queryClient = useQueryClient();
+  const [showAll, setShowAll] = useState(false);
+  const isExpanded = expanded || showAll;
 
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (alertId) => {
@@ -32,7 +34,7 @@ export default function PatientAlertsWidget({ alerts, patientId, expanded = fals
   });
 
   const activeAlerts = alerts.filter(a => a.status === 'active' || a.status === 'acknowledged');
-  const displayAlerts = expanded ? activeAlerts : activeAlerts.slice(0, 3);
+  const displayAlerts = isExpanded ? activeAlerts : activeAlerts.slice(0, 3);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -67,8 +69,8 @@ export default function PatientAlertsWidget({ alerts, patientId, expanded = fals
         {displayAlerts.length === 0 ? (
           <div className="text-center py-8">
             <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
-            <p className="text-gray-600 text-sm">No active alerts</p>
-            <p className="text-gray-500 text-xs">Patient is stable</p>
+            <p className="text-slate-600 text-sm">No active alerts</p>
+            <p className="text-slate-500 text-xs">Patient is stable</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -84,15 +86,15 @@ export default function PatientAlertsWidget({ alerts, patientId, expanded = fals
                         <Badge variant="outline" className="text-xs">Acknowledged</Badge>
                       )}
                     </div>
-                    <p className="font-semibold text-sm text-gray-900 mb-1">{alert.title}</p>
-                    <p className="text-xs text-gray-700 mb-2">{alert.message}</p>
+                    <p className="font-semibold text-sm text-slate-900 mb-1">{alert.title}</p>
+                    <p className="text-xs text-slate-700 mb-2">{alert.message}</p>
                     
                     {alert.recommended_actions?.length > 0 && (
                       <div className="bg-white p-2 rounded border mt-2">
                         <p className="text-xs font-semibold mb-1">Recommended Actions:</p>
                         <ul className="space-y-0.5">
                           {alert.recommended_actions.slice(0, 2).map((action, idx) => (
-                            <li key={idx} className="text-xs text-gray-600">• {action}</li>
+                            <li key={idx} className="text-xs text-slate-600">• {action}</li>
                           ))}
                         </ul>
                       </div>
@@ -114,21 +116,21 @@ export default function PatientAlertsWidget({ alerts, patientId, expanded = fals
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 text-xs text-gray-600"
+                    className="h-7 text-xs text-slate-600"
                     onClick={() => dismissAlertMutation.mutate(alert.id)}
                   >
                     <XCircle className="w-3 h-3 mr-1" />
                     Dismiss
                   </Button>
-                  <span className="text-xs text-gray-500 ml-auto">
+                  <span className="text-xs text-slate-500 ml-auto">
                     {formatEastern(alert.created_date, 'MMM d')}
                   </span>
                 </div>
               </div>
             ))}
             
-            {!expanded && activeAlerts.length > 3 && (
-              <Button variant="outline" size="sm" className="w-full">
+            {!isExpanded && activeAlerts.length > 3 && (
+              <Button variant="outline" size="sm" className="w-full" onClick={() => setShowAll(true)}>
                 View All {activeAlerts.length} Alerts
               </Button>
             )}

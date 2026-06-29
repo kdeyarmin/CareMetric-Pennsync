@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,14 +17,15 @@ import {
   Brain,
   ChevronRight
 } from "lucide-react";
-import { LineChart, Line, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from "recharts";
+import { toast } from 'sonner';
 
 export default function AdvancedComplianceRiskScoring({ 
   timeRange = 30,
   audits = [],
   autoAnalyze = false 
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [riskAnalysis, setRiskAnalysis] = useState(null);
 
   const { data: alerts = [] } = useQuery({
@@ -44,14 +46,7 @@ export default function AdvancedComplianceRiskScoring({
     initialData: [],
   });
 
-  useEffect(() => {
-    if (autoAnalyze && audits.length > 0 && !riskAnalysis) {
-      analyzeRisk();
-    }
-  }, [autoAnalyze, audits]);
-
-  const analyzeRisk = async () => {
-    setIsAnalyzing(true);
+  const analyzeRisk = useCallback(async () => {
     try {
       // Aggregate data for analysis
       const issuesByCategory = {};
@@ -79,7 +74,8 @@ export default function AdvancedComplianceRiskScoring({
       const criticalAlertsCount = alerts.filter(a => a.severity === 'critical').length;
       const trainingGapsCount = trainingRecommendations.filter(t => !t.addressed).length;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an AI Medicare compliance risk analyst for Pennsylvania home health agencies. Perform advanced risk scoring and predictive analysis.
 
 CURRENT COMPLIANCE DATA (Last ${timeRange} days):
@@ -234,10 +230,16 @@ Return detailed JSON analysis suitable for executive dashboard.`,
       setRiskAnalysis(result);
     } catch (error) {
       console.error('Error analyzing risk:', error);
-      alert('Failed to analyze compliance risk. Please try again.');
+      toast.error('Failed to analyze compliance risk. Please try again.');
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [alerts, audits, medicareRules, timeRange, trainingRecommendations]);
+
+  useEffect(() => {
+    if (autoAnalyze && audits.length > 0 && !riskAnalysis) {
+      analyzeRisk();
+    }
+  }, [autoAnalyze, audits, riskAnalysis, analyzeRisk]);
 
   const getRiskColor = (score) => {
     if (score >= 80) return { bg: 'bg-green-500', text: 'text-green-600', border: 'border-green-500' };
@@ -249,16 +251,16 @@ Return detailed JSON analysis suitable for executive dashboard.`,
   const getTrendIcon = (trend) => {
     if (trend === 'decreasing') return <TrendingDown className="w-4 h-4 text-green-600" />;
     if (trend === 'increasing') return <TrendingUp className="w-4 h-4 text-red-600" />;
-    return <ChevronRight className="w-4 h-4 text-gray-600" />;
+    return <ChevronRight className="w-4 h-4 text-slate-600" />;
   };
 
-  if (isAnalyzing) {
+  if (ai.loading) {
     return (
-      <Card className="border-2 border-purple-300">
+      <Card className="border-2 border-navy-300">
         <CardContent className="p-8 text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-4" />
-          <p className="text-lg font-medium text-gray-900 mb-2">AI Risk Analysis in Progress</p>
-          <p className="text-sm text-gray-600">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-navy-600 mx-auto mb-4" />
+          <p className="text-lg font-medium text-slate-900 mb-2">AI Risk Analysis in Progress</p>
+          <p className="text-sm text-slate-600">
             Analyzing {audits.length} audits, {alerts.length} alerts, and compliance patterns...
           </p>
         </CardContent>
@@ -268,18 +270,18 @@ Return detailed JSON analysis suitable for executive dashboard.`,
 
   if (!riskAnalysis && !autoAnalyze) {
     return (
-      <Card className="border-2 border-purple-300">
+      <Card className="border-2 border-navy-300">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-600" />
+            <Brain className="w-5 h-5 text-navy-600" />
             Advanced Compliance Risk Scoring
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-slate-600 mb-4">
             AI-powered predictive risk analysis with mitigation strategies and resource allocation recommendations.
           </p>
-          <Button onClick={analyzeRisk} className="w-full bg-purple-600 hover:bg-purple-700">
+          <Button onClick={analyzeRisk} className="w-full bg-navy-600 hover:bg-navy-700">
             <Brain className="w-4 h-4 mr-2" />
             Analyze Risk & Generate Predictions
           </Button>
@@ -292,7 +294,7 @@ Return detailed JSON analysis suitable for executive dashboard.`,
 
   const riskColors = getRiskColor(riskAnalysis.overall_risk_score);
   const radarData = riskAnalysis.category_risk_scores?.map(cat => ({
-    category: cat.category.split(' ').slice(0, 2).join(' '),
+    category: (cat.category || '').split(' ').slice(0, 2).join(' '),
     score: cat.risk_score,
     fullMark: 100
   }));
@@ -300,11 +302,11 @@ Return detailed JSON analysis suitable for executive dashboard.`,
   return (
     <div className="space-y-6">
       {/* Overall Risk Score */}
-      <Card className={`border-4 ${riskColors.border} bg-gradient-to-r from-purple-50 to-pink-50`}>
+      <Card className={`border-4 ${riskColors.border} bg-gradient-to-r from-navy-50 to-gold-50`}>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <Shield className="w-6 h-6 text-purple-600" />
+              <Shield className="w-6 h-6 text-navy-600" />
               Agency Compliance Risk Score
             </span>
             <Badge className={`${riskColors.bg} text-white text-xl px-4 py-2`}>
@@ -317,7 +319,7 @@ Return detailed JSON analysis suitable for executive dashboard.`,
           <Alert className={`${riskColors.bg.replace('bg-', 'bg-').replace('-500', '-50')} border-2 ${riskColors.border}`}>
             <Shield className={`w-4 h-4 ${riskColors.text}`} />
             <AlertDescription>
-              <p className="font-bold mb-1">Risk Level: {riskAnalysis.risk_level.toUpperCase()}</p>
+              <p className="font-bold mb-1">Risk Level: {(riskAnalysis.risk_level || '').toUpperCase()}</p>
               <p className="text-sm">{riskAnalysis.executive_summary}</p>
             </AlertDescription>
           </Alert>
@@ -351,7 +353,7 @@ Return detailed JSON analysis suitable for executive dashboard.`,
             {riskAnalysis.category_risk_scores?.map((cat, idx) => {
               const catColors = getRiskColor(cat.risk_score);
               return (
-                <div key={idx} className="p-3 bg-gray-50 rounded border">
+                <div key={idx} className="p-3 bg-slate-50 rounded border">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{cat.category}</span>
@@ -359,7 +361,7 @@ Return detailed JSON analysis suitable for executive dashboard.`,
                     </div>
                     <Badge className={catColors.bg}>{cat.risk_score}</Badge>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-600">
+                  <div className="flex items-center justify-between text-xs text-slate-600">
                     <span>{cat.issue_count} issues</span>
                     <span>{cat.cop_reference}</span>
                   </div>
@@ -389,15 +391,15 @@ Return detailed JSON analysis suitable for executive dashboard.`,
               const forecastColors = getRiskColor(forecast.data?.predicted_score || 0);
               return (
                 <div key={idx} className="bg-white p-4 rounded-lg border-2 border-blue-200">
-                  <p className="text-sm font-semibold text-gray-700 mb-2">{forecast.label}</p>
+                  <p className="text-sm font-semibold text-slate-700 mb-2">{forecast.label}</p>
                   <p className={`text-3xl font-bold ${forecastColors.text} mb-1`}>
                     {forecast.data?.predicted_score || 0}
                   </p>
                   <Badge variant="outline" className="mb-3">{forecast.data?.confidence}</Badge>
                   {forecast.data?.risk_areas?.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">Risk Areas:</p>
-                      <ul className="text-xs text-gray-700 space-y-0.5">
+                      <p className="text-xs font-semibold text-slate-600 mb-1">Risk Areas:</p>
+                      <ul className="text-xs text-slate-700 space-y-0.5">
                         {forecast.data.risk_areas.slice(0, 3).map((area, i) => (
                           <li key={i}>• {area}</li>
                         ))}
@@ -425,7 +427,7 @@ Return detailed JSON analysis suitable for executive dashboard.`,
               {riskAnalysis.root_causes.map((cause, idx) => (
                 <li key={idx} className="flex items-start gap-2 bg-white p-3 rounded border">
                   <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                  <span className="text-sm text-gray-900">{cause}</span>
+                  <span className="text-sm text-slate-900">{cause}</span>
                 </li>
               ))}
             </ul>
@@ -443,9 +445,9 @@ Return detailed JSON analysis suitable for executive dashboard.`,
           <CardContent className="pt-4 space-y-2">
             {riskAnalysis.immediate_actions?.map((action, idx) => (
               <div key={idx} className="bg-white p-2 rounded border">
-                <p className="text-sm font-medium text-gray-900">{action.action}</p>
+                <p className="text-sm font-medium text-slate-900">{action.action}</p>
                 <Badge variant="outline" className="text-xs mt-1">{action.category}</Badge>
-                <p className="text-xs text-gray-600 mt-1">{action.impact}</p>
+                <p className="text-xs text-slate-600 mt-1">{action.impact}</p>
               </div>
             ))}
           </CardContent>
@@ -481,21 +483,21 @@ Return detailed JSON analysis suitable for executive dashboard.`,
       </div>
 
       {/* Resource Allocation */}
-      <Card className="border-2 border-purple-300 bg-purple-50">
+      <Card className="border-2 border-navy-300 bg-navy-50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-purple-600" />
+            <Users className="w-5 h-5 text-navy-600" />
             Resource Allocation & Targeted Support
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
             <div className="bg-white p-4 rounded border">
-              <p className="font-semibold text-gray-900 mb-2">🎯 QA Audit Focus Areas</p>
+              <p className="font-semibold text-slate-900 mb-2">🎯 QA Audit Focus Areas</p>
               <ul className="space-y-1">
                 {riskAnalysis.resource_allocation?.qa_audit_focus?.map((focus, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
-                    <span className="text-purple-600">•</span>
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
+                    <span className="text-navy-600">•</span>
                     {focus}
                   </li>
                 ))}
@@ -503,10 +505,10 @@ Return detailed JSON analysis suitable for executive dashboard.`,
             </div>
 
             <div className="bg-white p-4 rounded border">
-              <p className="font-semibold text-gray-900 mb-2">📚 Priority Training Topics</p>
+              <p className="font-semibold text-slate-900 mb-2">📚 Priority Training Topics</p>
               <ul className="space-y-1">
                 {riskAnalysis.resource_allocation?.priority_training_topics?.map((topic, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                     <span className="text-blue-600">•</span>
                     {topic}
                   </li>
@@ -515,10 +517,10 @@ Return detailed JSON analysis suitable for executive dashboard.`,
             </div>
 
             <div className="bg-white p-4 rounded border">
-              <p className="font-semibold text-gray-900 mb-2">👥 High-Risk Nurses (1-on-1 Coaching)</p>
+              <p className="font-semibold text-slate-900 mb-2">👥 High-Risk Nurses (1-on-1 Coaching)</p>
               <ul className="space-y-1">
                 {riskAnalysis.resource_allocation?.high_risk_nurses?.map((nurse, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                     <span className="text-red-600">•</span>
                     {nurse}
                   </li>
@@ -527,10 +529,10 @@ Return detailed JSON analysis suitable for executive dashboard.`,
             </div>
 
             <div className="bg-white p-4 rounded border">
-              <p className="font-semibold text-gray-900 mb-2">🤝 Staff Support Interventions</p>
+              <p className="font-semibold text-slate-900 mb-2">🤝 Staff Support Interventions</p>
               <ul className="space-y-1">
                 {riskAnalysis.resource_allocation?.staff_support_interventions?.map((intervention, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                     <span className="text-green-600">•</span>
                     {intervention}
                   </li>
@@ -554,10 +556,10 @@ Return detailed JSON analysis suitable for executive dashboard.`,
             {riskAnalysis.early_warning_indicators?.map((indicator, idx) => (
               <div key={idx} className="bg-white p-3 rounded border-l-4 border-l-red-500">
                 <div className="flex items-start justify-between mb-1">
-                  <p className="font-medium text-sm text-gray-900">{indicator.indicator}</p>
+                  <p className="font-medium text-sm text-slate-900">{indicator.indicator}</p>
                   <Badge variant="outline" className="text-xs">Monitor</Badge>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-2">
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 mb-2">
                   <span><strong>Current:</strong> {indicator.current_value}</span>
                   <span><strong>Threshold:</strong> {indicator.threshold}</span>
                 </div>

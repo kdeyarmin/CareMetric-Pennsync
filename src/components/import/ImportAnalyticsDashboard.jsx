@@ -100,14 +100,14 @@ export default function ImportAnalyticsDashboard({ importHistory = [] }) {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-none">
+        <Card className="bg-gradient-to-br from-navy-500 to-navy-600 text-white border-none">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-xs mb-1">Records Processed</p>
+                <p className="text-navy-100 text-xs mb-1">Records Processed</p>
                 <p className="text-2xl font-bold">{analytics.totalRecordsProcessed}</p>
               </div>
-              <TrendingUp className="w-8 h-8 text-purple-200" />
+              <TrendingUp className="w-8 h-8 text-navy-200" />
             </div>
           </CardContent>
         </Card>
@@ -138,7 +138,7 @@ export default function ImportAnalyticsDashboard({ importHistory = [] }) {
           <CardContent className="space-y-4">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Successful Records</span>
+                <span className="text-sm font-medium text-slate-700">Successful Records</span>
                 <Badge className="bg-green-100 text-green-800">
                   {analytics.totalSuccessful}
                 </Badge>
@@ -154,7 +154,7 @@ export default function ImportAnalyticsDashboard({ importHistory = [] }) {
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Failed Records</span>
+                <span className="text-sm font-medium text-slate-700">Failed Records</span>
                 <Badge className="bg-red-100 text-red-800">
                   {analytics.totalFailed}
                 </Badge>
@@ -197,7 +197,7 @@ export default function ImportAnalyticsDashboard({ importHistory = [] }) {
                   {analytics.commonErrors.map((error, idx) => (
                     <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-lg">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm text-gray-900 flex-1 font-medium line-clamp-2">
+                        <p className="text-sm text-slate-900 flex-1 font-medium line-clamp-2">
                           {error.error}
                         </p>
                         <Badge variant="outline" className="bg-red-100 text-red-800 flex-shrink-0">
@@ -209,8 +209,8 @@ export default function ImportAnalyticsDashboard({ importHistory = [] }) {
                 </div>
               </ScrollArea>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <CheckCircle2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <div className="text-center py-8 text-slate-500">
+                <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm">No errors recorded yet</p>
               </div>
             )}
@@ -233,13 +233,13 @@ export default function ImportAnalyticsDashboard({ importHistory = [] }) {
                 <p className="text-2xl font-bold text-green-600">
                   {analytics.mostRecentImport.success || 0}
                 </p>
-                <p className="text-xs text-gray-600">Successful</p>
+                <p className="text-xs text-slate-600">Successful</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-red-600">
                   {analytics.mostRecentImport.failed || 0}
                 </p>
-                <p className="text-xs text-gray-600">Failed</p>
+                <p className="text-xs text-slate-600">Failed</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-blue-600">
@@ -248,7 +248,7 @@ export default function ImportAnalyticsDashboard({ importHistory = [] }) {
                     : 'N/A'
                   }
                 </p>
-                <p className="text-xs text-gray-600">Date</p>
+                <p className="text-xs text-slate-600">Date</p>
               </div>
             </div>
           </CardContent>

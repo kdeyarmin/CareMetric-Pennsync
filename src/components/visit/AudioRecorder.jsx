@@ -1,8 +1,9 @@
-import React, { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mic, MicOff, Trash2, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from 'sonner';
 
 export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -11,6 +12,16 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
+
+  // Cleanup interval and media stream on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
 
   const startRecording = async () => {
     try {
@@ -42,7 +53,7 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
 
     } catch (error) {
       console.error("Error accessing microphone:", error);
-      alert("Could not access microphone. Please check your browser permissions.");
+      toast.error("Could not access microphone. Please check your browser permissions.");
     }
   };
 
@@ -75,17 +86,17 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   };
 
   return (
-    <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+    <Card className="bg-gradient-to-r from-navy-50 to-gold-50 border-navy-200">
       <CardContent className="p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-gradient-to-br from-navy-500 to-gold-500 rounded-full flex items-center justify-center flex-shrink-0">
             <Mic className="w-6 h-6 text-white" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 mb-2">Voice Dictation - Penn Sync AI</h3>
+            <h3 className="font-semibold text-slate-900 mb-2">Voice Dictation - Penn Sync AI</h3>
             
-            <Alert className="bg-white border-purple-200 mb-4">
-              <AlertDescription className="text-sm text-gray-700">
+            <Alert className="bg-white border-navy-200 mb-4">
+              <AlertDescription className="text-sm text-slate-700">
                 <strong>🎤 How Penn Sync Voice Works:</strong>
                 <ul className="list-disc ml-5 mt-2 space-y-1">
                   <li>Click "Start Recording" and speak naturally about your patient visit</li>
@@ -100,7 +111,7 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
               {!isRecording && !audioBlob && (
                 <Button
                   onClick={startRecording}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                  className="bg-gradient-to-r from-navy-600 to-gold-600 hover:from-navy-700 hover:to-gold-700"
                 >
                   <Mic className="w-4 h-4 mr-2" />
                   Start Recording
@@ -119,7 +130,7 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
                   </Button>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-slate-700">
                       {formatTime(recordingTime)}
                     </span>
                   </div>
@@ -142,7 +153,7 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
                     <Trash2 className="w-4 h-4 mr-2" />
                     Discard
                   </Button>
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-slate-600">
                     Recorded: {formatTime(recordingTime)}
                   </span>
                 </>
@@ -150,7 +161,7 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
             </div>
 
             {isProcessing && (
-              <p className="text-sm text-purple-600 mt-3 font-medium">
+              <p className="text-sm text-navy-600 mt-3 font-medium">
                 ⚡ Penn Sync AI is processing your dictation...
               </p>
             )}

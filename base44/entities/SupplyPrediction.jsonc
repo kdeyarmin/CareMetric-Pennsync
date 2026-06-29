@@ -1,0 +1,70 @@
+{
+  "name": "SupplyPrediction",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "supply_id": {
+      "type": "string",
+      "description": "Reference to SupplyItem"
+    },
+    "supply_name": {
+      "type": "string",
+      "description": "Supply name for quick reference"
+    },
+    "predicted_monthly_usage": {
+      "type": "number",
+      "description": "Predicted average monthly usage based on 6-month history"
+    },
+    "confidence_score": {
+      "type": "number",
+      "description": "AI confidence 0-100 for the prediction"
+    },
+    "usage_trend": {
+      "type": "string",
+      "enum": [
+        "increasing",
+        "stable",
+        "decreasing"
+      ],
+      "description": "Direction of usage trend"
+    },
+    "predicted_next_order_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Recommended date to place next order"
+    },
+    "recommended_quantity": {
+      "type": "number",
+      "description": "Recommended order quantity to cover 3-month supply"
+    },
+    "current_inventory": {
+      "type": "number",
+      "description": "Current stock level when prediction was made"
+    },
+    "estimated_days_until_reorder_needed": {
+      "type": "number",
+      "description": "Days until supply should be reordered at current usage rate"
+    },
+    "analysis_data": {
+      "type": "object",
+      "description": "Raw analysis including monthly breakdown and trend analysis"
+    },
+    "generated_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "patient_id",
+    "supply_id",
+    "predicted_monthly_usage",
+    "confidence_score"
+  ]
+}

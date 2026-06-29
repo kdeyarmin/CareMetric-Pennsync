@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,21 +19,17 @@ import {
   TrendingUp, 
   TrendingDown,
   Activity,
-  Users,
-  FileText,
   AlertTriangle,
   CheckCircle2,
-  Download,
   Loader2,
   Brain,
   Lightbulb
 } from "lucide-react";
-import { formatEastern } from "../utils/timezone";
 
 export default function AIKPIReportGenerator() {
   const [timeframe, setTimeframe] = useState("30");
   const [report, setReport] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
 
   const { data: visits = [] } = useQuery({
     queryKey: ['visitsForKPI'],
@@ -41,7 +39,7 @@ export default function AIKPIReportGenerator() {
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patientsForKPI'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: [],
   });
 
@@ -58,10 +56,9 @@ export default function AIKPIReportGenerator() {
   });
 
   const generateReport = async () => {
-    setIsGenerating(true);
     
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - parseInt(timeframe));
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(timeframe, 10));
     
     const recentVisits = visits.filter(v => new Date(v.created_date) >= cutoffDate);
     const recentAudits = complianceAudits.filter(a => new Date(a.created_date) >= cutoffDate);
@@ -161,7 +158,8 @@ Return as JSON:
   ]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -227,15 +225,15 @@ Return as JSON:
       setReport(result);
     } catch (error) {
       console.error("Error generating KPI report:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
     
-    setIsGenerating(false);
   };
 
   const getTrendIcon = (trend) => {
     if (trend === 'improving') return <TrendingUp className="w-4 h-4 text-green-600" />;
     if (trend === 'declining' || trend === 'concerning') return <TrendingDown className="w-4 h-4 text-red-600" />;
-    return <Activity className="w-4 h-4 text-gray-600" />;
+    return <Activity className="w-4 h-4 text-slate-600" />;
   };
 
   const getScoreColor = (score) => {
@@ -275,10 +273,10 @@ Return as JSON:
 
           <Button
             onClick={generateReport}
-            disabled={isGenerating}
+            disabled={ai.loading}
             className="flex-1 bg-blue-600 hover:bg-blue-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Generating Report...
@@ -308,30 +306,30 @@ Return as JSON:
               </TabsList>
 
               <TabsContent value="compliance" className="space-y-3">
-                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="bg-white rounded-lg p-4 border border-slate-200">
                   <div className="flex items-center justify-between mb-3">
                     <p className="font-semibold">Overall Compliance Rate</p>
                     <div className="flex items-center gap-2">
-                      <span className={`text-2xl font-bold ${getScoreColor(report.documentation_compliance.overall_rate)}`}>
-                        {report.documentation_compliance.overall_rate}%
+                      <span className={`text-2xl font-bold ${getScoreColor(report.documentation_compliance?.overall_rate)}`}>
+                        {report.documentation_compliance?.overall_rate}%
                       </span>
-                      {getTrendIcon(report.documentation_compliance.trend)}
+                      {getTrendIcon(report.documentation_compliance?.trend)}
                     </div>
                   </div>
                   <Badge className={`${
-                    report.documentation_compliance.trend === 'improving' ? 'bg-green-100 text-green-800' :
-                    report.documentation_compliance.trend === 'declining' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
+                    report.documentation_compliance?.trend === 'improving' ? 'bg-green-100 text-green-800' :
+                    report.documentation_compliance?.trend === 'declining' ? 'bg-red-100 text-red-800' :
+                    'bg-slate-100 text-slate-800'
                   }`}>
-                    {report.documentation_compliance.trend}
+                    {report.documentation_compliance?.trend}
                   </Badge>
                 </div>
 
-                {report.documentation_compliance.common_gaps?.length > 0 && (
+                {report.documentation_compliance?.common_gaps?.length > 0 && (
                   <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
                     <p className="font-semibold text-sm mb-2">Common Documentation Gaps</p>
                     <ul className="space-y-1">
-                      {report.documentation_compliance.common_gaps.map((gap, idx) => (
+                      {report.documentation_compliance?.common_gaps.map((gap, idx) => (
                         <li key={idx} className="text-sm text-yellow-900 flex items-start gap-2">
                           <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                           {gap}
@@ -341,11 +339,11 @@ Return as JSON:
                   </div>
                 )}
 
-                {report.documentation_compliance.top_performers?.length > 0 && (
+                {report.documentation_compliance?.top_performers?.length > 0 && (
                   <div className="bg-green-50 rounded-lg p-4 border border-green-200">
                     <p className="font-semibold text-sm mb-2">Top Performers</p>
                     <ul className="space-y-1">
-                      {report.documentation_compliance.top_performers.map((performer, idx) => (
+                      {report.documentation_compliance?.top_performers.map((performer, idx) => (
                         <li key={idx} className="text-sm text-green-900 flex items-start gap-2">
                           <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />
                           {performer}
@@ -358,67 +356,67 @@ Return as JSON:
 
               <TabsContent value="outcomes" className="space-y-3">
                 {report.patient_outcomes?.map((outcome, idx) => (
-                  <div key={idx} className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div key={idx} className="bg-white rounded-lg p-4 border border-slate-200">
                     <div className="flex items-center justify-between mb-2">
                       <p className="font-semibold">{outcome.diagnosis}</p>
                       {getTrendIcon(outcome.trend)}
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div className="text-sm">
-                        <span className="text-gray-500">Visits:</span>{' '}
+                        <span className="text-slate-500">Visits:</span>{' '}
                         <span className="font-medium">{outcome.visit_count}</span>
                       </div>
                       <div className="text-sm">
-                        <span className="text-gray-500">Incidents:</span>{' '}
+                        <span className="text-slate-500">Incidents:</span>{' '}
                         <span className="font-medium">{outcome.incident_count}</span>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-600">{outcome.insights}</p>
+                    <p className="text-xs text-slate-600">{outcome.insights}</p>
                   </div>
                 ))}
               </TabsContent>
 
               <TabsContent value="operations" className="space-y-3">
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
+                  <div className="bg-white rounded-lg p-4 border border-slate-200 text-center">
                     <p className="text-2xl font-bold text-blue-600">
-                      {report.operational_metrics.visit_completion_rate}%
+                      {report.operational_metrics?.visit_completion_rate}%
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">Completion Rate</p>
+                    <p className="text-xs text-slate-600 mt-1">Completion Rate</p>
                   </div>
-                  <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
-                    <p className="text-2xl font-bold text-purple-600">
-                      {report.operational_metrics.avg_visits_per_patient?.toFixed(1)}
+                  <div className="bg-white rounded-lg p-4 border border-slate-200 text-center">
+                    <p className="text-2xl font-bold text-navy-600">
+                      {report.operational_metrics?.avg_visits_per_patient?.toFixed(1)}
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">Avg Visits/Patient</p>
+                    <p className="text-xs text-slate-600 mt-1">Avg Visits/Patient</p>
                   </div>
-                  <div className="bg-white rounded-lg p-4 border border-gray-200 text-center">
-                    <p className={`text-2xl font-bold ${getScoreColor(report.operational_metrics.efficiency_score)}`}>
-                      {report.operational_metrics.efficiency_score}%
+                  <div className="bg-white rounded-lg p-4 border border-slate-200 text-center">
+                    <p className={`text-2xl font-bold ${getScoreColor(report.operational_metrics?.efficiency_score)}`}>
+                      {report.operational_metrics?.efficiency_score}%
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">Efficiency Score</p>
+                    <p className="text-xs text-slate-600 mt-1">Efficiency Score</p>
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <p className="text-sm text-gray-700">{report.operational_metrics.insights}</p>
+                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                  <p className="text-sm text-slate-700">{report.operational_metrics?.insights}</p>
                 </div>
               </TabsContent>
 
               <TabsContent value="risks" className="space-y-3">
-                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="bg-white rounded-lg p-4 border border-slate-200">
                   <div className="flex items-center justify-between mb-3">
                     <p className="font-semibold">Safety Score</p>
-                    <span className={`text-2xl font-bold ${getScoreColor(report.risk_analysis.safety_score)}`}>
-                      {report.risk_analysis.safety_score}%
+                    <span className={`text-2xl font-bold ${getScoreColor(report.risk_analysis?.safety_score)}`}>
+                      {report.risk_analysis?.safety_score}%
                     </span>
                   </div>
                 </div>
 
-                {report.risk_analysis.high_risk_patterns?.length > 0 && (
+                {report.risk_analysis?.high_risk_patterns?.length > 0 && (
                   <div className="bg-red-50 rounded-lg p-4 border border-red-200">
                     <p className="font-semibold text-sm mb-2 text-red-900">High-Risk Patterns</p>
                     <ul className="space-y-1">
-                      {report.risk_analysis.high_risk_patterns.map((pattern, idx) => (
+                      {report.risk_analysis?.high_risk_patterns.map((pattern, idx) => (
                         <li key={idx} className="text-sm text-red-800 flex items-start gap-2">
                           <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                           {pattern}
@@ -428,9 +426,9 @@ Return as JSON:
                   </div>
                 )}
 
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                   <p className="font-semibold text-sm mb-2">Incident Trends</p>
-                  <p className="text-sm text-gray-700">{report.risk_analysis.incident_trends}</p>
+                  <p className="text-sm text-slate-700">{report.risk_analysis?.incident_trends}</p>
                 </div>
               </TabsContent>
             </Tabs>
@@ -452,10 +450,10 @@ Return as JSON:
                       } text-white text-xs`}>
                         {rec.priority}
                       </Badge>
-                      <span className="text-xs text-gray-600">{rec.category}</span>
+                      <span className="text-xs text-slate-600">{rec.category}</span>
                     </div>
-                    <p className="text-sm font-medium text-gray-900 mb-1">{rec.recommendation}</p>
-                    <p className="text-xs text-gray-600">Expected Impact: {rec.expected_impact}</p>
+                    <p className="text-sm font-medium text-slate-900 mb-1">{rec.recommendation}</p>
+                    <p className="text-xs text-slate-600">Expected Impact: {rec.expected_impact}</p>
                   </div>
                 ))}
               </div>

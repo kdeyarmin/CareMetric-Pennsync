@@ -1,0 +1,65 @@
+{
+  "name": "FaxPriorityRule",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Rule name"
+    },
+    "rule_type": {
+      "type": "string",
+      "enum": [
+        "keyword",
+        "sender",
+        "recipient",
+        "time_based"
+      ],
+      "description": "Type of rule"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Keywords to match (case-insensitive)"
+    },
+    "sender_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Sender phone patterns or names"
+    },
+    "priority_level": {
+      "type": "string",
+      "enum": [
+        "urgent",
+        "high",
+        "normal",
+        "low"
+      ],
+      "description": "Priority to assign when matched"
+    },
+    "notify_users": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Email addresses to notify"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "match_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times this rule has matched"
+    }
+  },
+  "required": [
+    "name",
+    "rule_type",
+    "priority_level"
+  ]
+}

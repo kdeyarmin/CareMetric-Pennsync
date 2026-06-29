@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,9 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  Play,
   CheckCircle2,
-  XCircle,
   RefreshCw,
   ChevronRight,
   Brain,
@@ -20,6 +18,7 @@ import {
   Lightbulb,
   Award
 } from "lucide-react";
+import { toast } from 'sonner';
 
 const SCENARIO_TYPES = [
   { id: 'chf_admission', name: 'CHF Admission', icon: Heart, difficulty: 'intermediate' },
@@ -33,15 +32,17 @@ const SCENARIO_TYPES = [
 export default function TrainingScenarioSimulator({ onComplete }) {
   const [selectedScenario, setSelectedScenario] = useState(null);
   const [scenario, setScenario] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const genAi = useAICall();
   const [currentStep, setCurrentStep] = useState(0);
   const [userResponses, setUserResponses] = useState({});
   const [feedback, setFeedback] = useState(null);
-  const [isEvaluating, setIsEvaluating] = useState(false);
+  // Per-step AI scores, keyed by step index, so the final average reflects each
+  // step rather than repeating the last step's score.
+  const [stepScores, setStepScores] = useState({});
+  const evalAi = useAICall();
   const [finalScore, setFinalScore] = useState(null);
 
   const generateScenario = async (type) => {
-    setIsGenerating(true);
     setSelectedScenario(type);
     
     try {
@@ -95,7 +96,8 @@ Return JSON:
   "quality_measures": ["Relevant quality measures"]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await genAi.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -142,12 +144,12 @@ Return JSON:
       setScenario(result);
       setCurrentStep(0);
       setUserResponses({});
+      setStepScores({});
       setFeedback(null);
       setFinalScore(null);
     } catch (error) {
       console.error('Error generating scenario:', error);
     }
-    setIsGenerating(false);
   };
 
   const submitResponse = async () => {
@@ -155,11 +157,10 @@ Return JSON:
     const response = userResponses[currentStep];
     
     if (!response || response.trim().length < 10) {
-      alert("Please provide a more detailed response.");
+      toast.error("Please provide a more detailed response.");
       return;
     }
 
-    setIsEvaluating(true);
     try {
       const evalPrompt = `Evaluate this nurse's response to a clinical training scenario.
 
@@ -193,7 +194,8 @@ Evaluate the response and provide feedback:
   "encouragement": "Positive, constructive message"
 }`;
 
-      const evalResult = await base44.integrations.Core.InvokeLLM({
+      const evalResult = await evalAi.run({
+        model: "claude_opus_4_8",
         prompt: evalPrompt,
         response_json_schema: {
           type: "object",
@@ -210,10 +212,10 @@ Evaluate the response and provide feedback:
       });
 
       setFeedback(evalResult);
+      setStepScores(prev => ({ ...prev, [currentStep]: evalResult?.score ?? 70 }));
     } catch (error) {
       console.error('Error evaluating response:', error);
     }
-    setIsEvaluating(false);
   };
 
   const nextStep = () => {
@@ -226,10 +228,10 @@ Evaluate the response and provide feedback:
   };
 
   const calculateFinalScore = () => {
-    const scores = Object.values(userResponses).map((_, idx) => {
-      return feedback?.score || 70;
-    });
-    const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    const scores = Object.values(stepScores);
+    const avgScore = scores.length
+      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+      : 0;
     setFinalScore({
       score: avgScore,
       completed: true,
@@ -249,17 +251,17 @@ Evaluate the response and provide feedback:
       case 'beginner': return 'bg-green-100 text-green-800';
       case 'intermediate': return 'bg-yellow-100 text-yellow-800';
       case 'advanced': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
   // Scenario Selection
-  if (!scenario && !isGenerating) {
+  if (!scenario && !genAi.loading) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-600" />
+            <Brain className="w-5 h-5 text-navy-600" />
             Select Training Scenario
           </CardTitle>
         </CardHeader>
@@ -268,13 +270,13 @@ Evaluate the response and provide feedback:
             {SCENARIO_TYPES.map((type) => (
               <Card 
                 key={type.id} 
-                className="cursor-pointer hover:shadow-lg transition-all hover:border-purple-300"
+                className="cursor-pointer hover:shadow-lg transition-all hover:border-navy-300"
                 onClick={() => generateScenario(type)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <type.icon className="w-5 h-5 text-purple-600" />
+                    <div className="w-10 h-10 bg-navy-100 rounded-lg flex items-center justify-center">
+                      <type.icon className="w-5 h-5 text-navy-600" />
                     </div>
                     <div>
                       <h3 className="font-semibold">{type.name}</h3>
@@ -293,13 +295,13 @@ Evaluate the response and provide feedback:
   }
 
   // Loading
-  if (isGenerating) {
+  if (genAi.loading) {
     return (
       <Card>
         <CardContent className="p-12 text-center">
-          <RefreshCw className="w-12 h-12 text-purple-600 mx-auto mb-4 animate-spin" />
+          <RefreshCw className="w-12 h-12 text-navy-600 mx-auto mb-4 animate-spin" />
           <h3 className="text-xl font-semibold mb-2">Generating Training Scenario</h3>
-          <p className="text-gray-500">Creating a realistic clinical situation...</p>
+          <p className="text-slate-500">Creating a realistic clinical situation...</p>
         </CardContent>
       </Card>
     );
@@ -308,7 +310,7 @@ Evaluate the response and provide feedback:
   // Final Score
   if (finalScore) {
     return (
-      <Card className="bg-gradient-to-br from-purple-50 to-indigo-50">
+      <Card className="bg-gradient-to-br from-navy-50 to-indigo-50">
         <CardContent className="p-8 text-center">
           <Award className={`w-16 h-16 mx-auto mb-4 ${
             finalScore.score >= 80 ? 'text-green-500' : 
@@ -321,7 +323,7 @@ Evaluate the response and provide feedback:
           }}>
             {finalScore.score}%
           </p>
-          <p className="text-gray-600 mb-6">
+          <p className="text-slate-600 mb-6">
             {finalScore.score >= 80 ? 'Excellent work! You demonstrated strong clinical skills.' :
              finalScore.score >= 60 ? 'Good effort! Review the feedback to strengthen weak areas.' :
              'Keep practicing! Focus on the areas highlighted for improvement.'}
@@ -376,11 +378,11 @@ Evaluate the response and provide feedback:
           <CardTitle className="text-lg">Current Situation</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-gray-700 mb-4">{step.situation}</p>
+          <p className="text-slate-700 mb-4">{step.situation}</p>
           
-          <Alert className="bg-purple-50 border-purple-200 mb-4">
-            <Lightbulb className="w-4 h-4 text-purple-600" />
-            <AlertDescription className="text-purple-900 font-medium">
+          <Alert className="bg-navy-50 border-navy-200 mb-4">
+            <Lightbulb className="w-4 h-4 text-navy-600" />
+            <AlertDescription className="text-navy-900 font-medium">
               {step.question}
             </AlertDescription>
           </Alert>
@@ -399,10 +401,10 @@ Evaluate the response and provide feedback:
           {!feedback && (
             <Button 
               onClick={submitResponse} 
-              disabled={isEvaluating}
+              disabled={evalAi.loading}
               className="w-full"
             >
-              {isEvaluating ? (
+              {evalAi.loading ? (
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Evaluating...</>
               ) : (
                 'Submit Response'
@@ -414,7 +416,7 @@ Evaluate the response and provide feedback:
 
       {/* Feedback */}
       {feedback && (
-        <Card className="border-2 border-purple-300">
+        <Card className="border-2 border-navy-300">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>AI Feedback</span>
@@ -458,14 +460,14 @@ Evaluate the response and provide feedback:
               </div>
             )}
 
-            <Alert className="bg-purple-50 border-purple-200">
-              <Lightbulb className="w-4 h-4 text-purple-600" />
-              <AlertDescription className="text-purple-900">
+            <Alert className="bg-navy-50 border-navy-200">
+              <Lightbulb className="w-4 h-4 text-navy-600" />
+              <AlertDescription className="text-navy-900">
                 <strong>Teaching Point:</strong> {feedback.teaching_point}
               </AlertDescription>
             </Alert>
 
-            <p className="text-center text-gray-600 italic">{feedback.encouragement}</p>
+            <p className="text-center text-slate-600 italic">{feedback.encouragement}</p>
 
             <Button onClick={nextStep} className="w-full">
               {currentStep < scenario.steps.length - 1 ? (

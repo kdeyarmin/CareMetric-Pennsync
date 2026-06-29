@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +26,7 @@ export default function AIInteractiveQuiz({
   questionCount = 5,
   onComplete 
 }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [quiz, setQuiz] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
@@ -35,7 +36,6 @@ export default function AIInteractiveQuiz({
   const [score, setScore] = useState(0);
 
   const generateQuiz = async () => {
-    setIsGenerating(true);
     setQuiz(null);
     setCurrentQuestion(0);
     setAnswers([]);
@@ -43,7 +43,8 @@ export default function AIInteractiveQuiz({
     setScore(0);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate an interactive quiz for home health nurses on the topic: "${topic}"
 
 Difficulty Level: ${difficulty}
@@ -91,11 +92,15 @@ Focus on real-world application, not just memorization.`,
         }
       });
 
+      if (!Array.isArray(result?.questions) || result.questions.length === 0) {
+        toast.error("The quiz couldn't be generated. Please try again.");
+        return;
+      }
       setQuiz(result);
     } catch (error) {
       console.error("Error generating quiz:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleAnswer = () => {
@@ -139,20 +144,20 @@ Focus on real-world application, not just memorization.`,
     setScore(0);
   };
 
-  if (!quiz && !isGenerating) {
+  if (!quiz && !ai.loading) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-6 text-center">
-          <Brain className="w-12 h-12 text-purple-600 mx-auto mb-3" />
+          <Brain className="w-12 h-12 text-navy-600 mx-auto mb-3" />
           <h3 className="font-semibold text-lg mb-2">AI-Generated Quiz</h3>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-slate-600 mb-4">
             Test your knowledge on: <strong>{topic}</strong>
           </p>
           <div className="flex justify-center gap-2 mb-4">
             <Badge variant="outline">{difficulty}</Badge>
             <Badge variant="outline">{questionCount} questions</Badge>
           </div>
-          <Button onClick={generateQuiz} className="bg-purple-600 hover:bg-purple-700">
+          <Button onClick={generateQuiz} className="bg-navy-600 hover:bg-navy-700">
             <Sparkles className="w-4 h-4 mr-2" /> Generate Quiz
           </Button>
         </CardContent>
@@ -160,12 +165,12 @@ Focus on real-world application, not just memorization.`,
     );
   }
 
-  if (isGenerating) {
+  if (ai.loading) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-8 text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-purple-600 mx-auto mb-3" />
-          <p className="text-sm text-gray-600">Creating your personalized quiz...</p>
+          <Loader2 className="w-10 h-10 animate-spin text-navy-600 mx-auto mb-3" />
+          <p className="text-sm text-slate-600">Creating your personalized quiz...</p>
         </CardContent>
       </Card>
     );
@@ -174,16 +179,16 @@ Focus on real-world application, not just memorization.`,
   if (quizComplete) {
     const percentage = Math.round((score / quiz.questions.length) * 100);
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-6">
           <div className="text-center mb-6">
-            <Trophy className={`w-16 h-16 mx-auto mb-3 ${percentage >= 80 ? 'text-yellow-500' : percentage >= 60 ? 'text-gray-400' : 'text-orange-400'}`} />
+            <Trophy className={`w-16 h-16 mx-auto mb-3 ${percentage >= 80 ? 'text-yellow-500' : percentage >= 60 ? 'text-slate-400' : 'text-orange-400'}`} />
             <h3 className="text-2xl font-bold mb-1">Quiz Complete!</h3>
-            <p className="text-gray-600">You scored</p>
+            <p className="text-slate-600">You scored</p>
             <p className={`text-4xl font-bold ${percentage >= 80 ? 'text-green-600' : percentage >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
               {score}/{quiz.questions.length}
             </p>
-            <p className="text-lg text-gray-500">{percentage}%</p>
+            <p className="text-lg text-slate-500">{percentage}%</p>
           </div>
 
           <div className="space-y-2 mb-6">
@@ -196,7 +201,7 @@ Focus on real-world application, not just memorization.`,
                 )}
                 <span className="text-sm">Question {idx + 1}</span>
                 {!ans.isCorrect && (
-                  <span className="text-xs text-gray-500 ml-auto">
+                  <span className="text-xs text-slate-500 ml-auto">
                     Correct: {ans.correct}
                   </span>
                 )}
@@ -208,7 +213,7 @@ Focus on real-world application, not just memorization.`,
             <Button onClick={resetQuiz} variant="outline" className="flex-1">
               <RotateCcw className="w-4 h-4 mr-2" /> Retry
             </Button>
-            <Button onClick={generateQuiz} className="flex-1 bg-purple-600 hover:bg-purple-700">
+            <Button onClick={generateQuiz} className="flex-1 bg-navy-600 hover:bg-navy-700">
               <Sparkles className="w-4 h-4 mr-2" /> New Quiz
             </Button>
           </div>
@@ -220,11 +225,11 @@ Focus on real-world application, not just memorization.`,
   const question = quiz.questions[currentQuestion];
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50 py-3">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-indigo-50 py-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Brain className="w-4 h-4 text-purple-600" />
+            <Brain className="w-4 h-4 text-navy-600" />
             {quiz.title}
           </CardTitle>
           <Badge variant="outline">
@@ -245,7 +250,7 @@ Focus on real-world application, not just memorization.`,
 
         {/* Question */}
         <div>
-          <p className="font-medium text-gray-900 mb-4">{question.question}</p>
+          <p className="font-medium text-slate-900 mb-4">{question.question}</p>
 
           <RadioGroup value={selectedAnswer} onValueChange={setSelectedAnswer} disabled={showExplanation}>
             <div className="space-y-2">
@@ -258,10 +263,10 @@ Focus on real-world application, not just memorization.`,
                         ? 'bg-green-50 border-green-300'
                         : selectedAnswer === option.letter
                         ? 'bg-red-50 border-red-300'
-                        : 'bg-gray-50 border-gray-200'
+                        : 'bg-slate-50 border-slate-200'
                       : selectedAnswer === option.letter
-                      ? 'bg-purple-50 border-purple-300'
-                      : 'hover:bg-gray-50 border-gray-200'
+                      ? 'bg-navy-50 border-navy-300'
+                      : 'hover:bg-slate-50 border-slate-200'
                   }`}
                 >
                   <RadioGroupItem value={option.letter} id={option.letter} />
@@ -305,12 +310,12 @@ Focus on real-world application, not just memorization.`,
             <Button
               onClick={handleAnswer}
               disabled={!selectedAnswer}
-              className="w-full bg-purple-600 hover:bg-purple-700"
+              className="w-full bg-navy-600 hover:bg-navy-700"
             >
               <Target className="w-4 h-4 mr-2" /> Submit Answer
             </Button>
           ) : (
-            <Button onClick={nextQuestion} className="w-full bg-purple-600 hover:bg-purple-700">
+            <Button onClick={nextQuestion} className="w-full bg-navy-600 hover:bg-navy-700">
               {currentQuestion < quiz.questions.length - 1 ? (
                 <>Next Question <ChevronRight className="w-4 h-4 ml-2" /></>
               ) : (

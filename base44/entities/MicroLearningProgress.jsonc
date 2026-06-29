@@ -1,0 +1,80 @@
+{
+  "name": "MicroLearningProgress",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse"
+    },
+    "skill_gap_id": {
+      "type": "string",
+      "description": "Identifier for the skill gap being addressed"
+    },
+    "skill_area": {
+      "type": "string",
+      "description": "Name of the skill area"
+    },
+    "module_type": {
+      "type": "string",
+      "enum": [
+        "micro_lesson",
+        "quiz",
+        "scenario",
+        "practice_exercise"
+      ],
+      "description": "Type of learning module"
+    },
+    "content": {
+      "type": "object",
+      "description": "The AI-generated learning content"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "in_progress",
+        "completed",
+        "needs_review"
+      ],
+      "default": "not_started"
+    },
+    "score": {
+      "type": "number",
+      "description": "Score achieved (0-100)"
+    },
+    "attempts": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of attempts"
+    },
+    "time_spent_minutes": {
+      "type": "number",
+      "default": 0,
+      "description": "Total time spent on this module"
+    },
+    "notes": {
+      "type": "string",
+      "description": "User notes or reflections"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "note_review",
+        "compliance_check",
+        "manual",
+        "ai_recommendation"
+      ],
+      "description": "How this learning was triggered"
+    },
+    "related_patient_id": {
+      "type": "string",
+      "description": "Patient ID if triggered from specific documentation"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "skill_area",
+    "module_type",
+    "status"
+  ]
+}

@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, UserPlus, FileText, Calendar, Stethoscope } from "lucide-react";
+import { UserPlus, Calendar, Stethoscope } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -47,8 +47,8 @@ export default function PatientQuickActions({ onActionComplete }) {
         care_type: 'home_health',
         status: 'active'
       });
-      queryClient.invalidateQueries(['all-patients']);
-      queryClient.invalidateQueries(['patients-quick-action']);
+      queryClient.invalidateQueries({ queryKey: ['all-patients'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-quick-action'] });
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {
@@ -75,7 +75,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         visit_type: 'routine_visit',
         status: 'scheduled'
       });
-      queryClient.invalidateQueries(['all-visits']);
+      queryClient.invalidateQueries({ queryKey: ['all-visits'] });
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {
@@ -100,7 +100,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         diagnosis: '',
         notes: ''
       });
-      queryClient.invalidateQueries(['all-patients']);
+      queryClient.invalidateQueries({ queryKey: ['all-patients'] });
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {

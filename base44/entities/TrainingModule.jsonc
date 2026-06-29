@@ -1,0 +1,124 @@
+{
+  "name": "TrainingModule",
+  "type": "object",
+  "properties": {
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "title": {
+      "type": "string",
+      "description": "Module title"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "lesson",
+        "video",
+        "policy",
+        "simulation",
+        "checklist",
+        "attestation"
+      ],
+      "description": "Module type"
+    },
+    "content_json": {
+      "type": "object",
+      "description": "Module content structure"
+    },
+    "order_index": {
+      "type": "number",
+      "description": "Display order"
+    },
+    "estimated_minutes": {
+      "type": "number",
+      "description": "Estimated time for this module"
+    },
+    "is_required": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether module is required"
+    },
+    "module_type": {
+      "type": "string",
+      "description": "Sub-type written by AI/quiz/lesson generators (e.g. quiz, micro_lesson, practice_exercise)"
+    },
+    "difficulty_level": {
+      "type": "string",
+      "enum": [
+        "beginner",
+        "intermediate",
+        "advanced"
+      ],
+      "description": "Difficulty level used by the training library filters"
+    },
+    "category": {
+      "type": "string",
+      "description": "Library category used for grouping/filtering modules"
+    },
+    "attachment_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "External files attached to this lesson/module"
+    },
+    "attachment_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Display names for lesson/module attachments"
+    },
+    "video_url": {
+      "type": "string",
+      "description": "Produced presenter video for this module (e.g. HeyGen)"
+    },
+    "video_thumbnail_url": {
+      "type": "string",
+      "description": "Thumbnail/poster image for the module video"
+    },
+    "video_duration_seconds": {
+      "type": "number",
+      "description": "Duration of the module video in seconds"
+    },
+    "video_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "none",
+      "description": "AI presenter video generation status"
+    },
+    "video_job_id": {
+      "type": "string",
+      "description": "Provider (HeyGen) video id used to poll generation status"
+    },
+    "video_error": {
+      "type": "string",
+      "description": "Last video generation error message, if any"
+    },
+    "video_generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the module video finished generating"
+    },
+    "video_avatar_id": {
+      "type": "string",
+      "description": "Provider avatar id used to generate the module video"
+    },
+    "video_voice_id": {
+      "type": "string",
+      "description": "Provider voice id used to generate the module video"
+    }
+  },
+  "required": [
+    "course_id",
+    "title",
+    "type",
+    "order_index"
+  ]
+}

@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   AlertTriangle, 
-  Brain, 
-  Calendar,
+  Brain,
   FileText,
-  TrendingDown,
   CheckCircle2,
-  Clock,
-  Target,
   Sparkles,
   ChevronDown,
   ChevronUp
@@ -21,28 +18,69 @@ import {
 export default function GranularComplianceGapAnalyzer({ 
   visits, 
   patients, 
-  carePlans, 
+  _carePlans, 
   complianceAudits,
   dateRange = 30 
 }) {
   const [gapAnalysis, setGapAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [expandedGaps, setExpandedGaps] = useState({});
 
-  useEffect(() => {
-    if (visits?.length > 0 && patients?.length > 0) {
-      analyzeComplianceGaps();
-    }
-  }, [visits, patients, dateRange]);
+  const analyzeVisitTypeGaps = useCallback(() => {
+    const gaps = {};
+    const visitTypes = ['admission', 'recertification', 'routine_visit', 'discharge'];
 
-  const analyzeComplianceGaps = async () => {
-    setIsAnalyzing(true);
+    visitTypes.forEach(type => {
+      const typeVisits = visits.filter(v => v.visit_type === type);
+      const issues = [];
+      // A single visit can fail several checks below, so count DISTINCT
+      // incomplete visits for the rate — using issues.length let one visit
+      // contribute multiple "incomplete" counts and drove completion_rate
+      // negative (e.g. 2 visits with 3 issues each => 1 - 6/2 = -200%).
+      const incompleteVisitIds = new Set();
+
+      typeVisits.forEach(visit => {
+        const before = issues.length;
+        // Check for missing critical documentation elements
+        if (!visit.nurse_notes || visit.nurse_notes.length < 100) {
+          issues.push({ visit_id: visit.id, issue: 'Insufficient documentation', patient_id: visit.patient_id });
+        }
+        if (!visit.vital_signs || Object.keys(visit.vital_signs).length === 0) {
+          issues.push({ visit_id: visit.id, issue: 'Missing vital signs', patient_id: visit.patient_id });
+        }
+        if (type === 'admission' && !visit.nurse_notes?.toLowerCase().includes('homebound')) {
+          issues.push({ visit_id: visit.id, issue: 'Missing homebound status documentation', patient_id: visit.patient_id });
+        }
+        if (type === 'recertification' && !visit.nurse_notes?.toLowerCase().includes('progress')) {
+          issues.push({ visit_id: visit.id, issue: 'Missing progress documentation', patient_id: visit.patient_id });
+        }
+        if (issues.length > before) incompleteVisitIds.add(visit.id);
+      });
+
+      if (issues.length > 0) {
+        const incompleteCount = incompleteVisitIds.size;
+        gaps[type] = {
+          total_visits: typeVisits.length,
+          incomplete_visits: incompleteCount,
+          completion_rate: typeVisits.length > 0
+            ? Math.round((1 - incompleteCount / typeVisits.length) * 100)
+            : 100,
+          issues: issues
+        };
+      }
+    });
+
+    return gaps;
+  }, [visits]);
+
+  const analyzeComplianceGaps = useCallback(async () => {
     try {
       // Analyze visit types and missing documentation
       const visitTypeGaps = analyzeVisitTypeGaps();
 
       // AI-driven recommendations
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a compliance analytics AI for home health agencies. Analyze these compliance gaps and provide actionable recommendations.
 
 IDENTIFIED GAPS:
@@ -114,48 +152,16 @@ Provide detailed analysis with:
       });
     } catch (error) {
       console.error("Error analyzing compliance gaps:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [analyzeVisitTypeGaps, complianceAudits]);
 
-  const analyzeVisitTypeGaps = () => {
-    const gaps = {};
-    const visitTypes = ['admission', 'recertification', 'routine_visit', 'discharge'];
-
-    visitTypes.forEach(type => {
-      const typeVisits = visits.filter(v => v.visit_type === type);
-      const issues = [];
-
-      typeVisits.forEach(visit => {
-        // Check for missing critical documentation elements
-        if (!visit.nurse_notes || visit.nurse_notes.length < 100) {
-          issues.push({ visit_id: visit.id, issue: 'Insufficient documentation', patient_id: visit.patient_id });
-        }
-        if (!visit.vital_signs || Object.keys(visit.vital_signs).length === 0) {
-          issues.push({ visit_id: visit.id, issue: 'Missing vital signs', patient_id: visit.patient_id });
-        }
-        if (type === 'admission' && !visit.nurse_notes?.toLowerCase().includes('homebound')) {
-          issues.push({ visit_id: visit.id, issue: 'Missing homebound status documentation', patient_id: visit.patient_id });
-        }
-        if (type === 'recertification' && !visit.nurse_notes?.toLowerCase().includes('progress')) {
-          issues.push({ visit_id: visit.id, issue: 'Missing progress documentation', patient_id: visit.patient_id });
-        }
-      });
-
-      if (issues.length > 0) {
-        gaps[type] = {
-          total_visits: typeVisits.length,
-          incomplete_visits: issues.length,
-          completion_rate: Math.round((1 - issues.length / typeVisits.length) * 100),
-          issues: issues
-        };
-      }
-    });
-
-    return gaps;
-  };
-
-
+  useEffect(() => {
+    if (visits?.length > 0 && patients?.length > 0) {
+      analyzeComplianceGaps();
+    }
+  }, [visits, patients, dateRange, analyzeComplianceGaps]);
 
 
 
@@ -170,15 +176,15 @@ Provide detailed analysis with:
       medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       low: 'bg-blue-100 text-blue-800 border-blue-300'
     };
-    return colors[severity] || 'bg-gray-100 text-gray-800';
+    return colors[severity] || 'bg-slate-100 text-slate-800';
   };
 
-  if (isAnalyzing) {
+  if (ai.loading) {
     return (
       <Card className="border-2 border-orange-200">
         <CardContent className="p-8 text-center">
           <Brain className="w-12 h-12 text-orange-600 mx-auto mb-4 animate-pulse" />
-          <p className="text-gray-600">Analyzing compliance gaps across all documentation...</p>
+          <p className="text-slate-600">Analyzing compliance gaps across all documentation...</p>
         </CardContent>
       </Card>
     );
@@ -226,11 +232,11 @@ Provide detailed analysis with:
         </CardHeader>
         <CardContent className="space-y-4">
           {Object.entries(visitTypeGaps).map(([type, data]) => (
-            <div key={type} className="border rounded-lg p-4 bg-gray-50">
+            <div key={type} className="border rounded-lg p-4 bg-slate-50">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h4 className="font-semibold text-gray-900 capitalize">{type.replace(/_/g, ' ')}</h4>
-                  <p className="text-sm text-gray-600">
+                  <h4 className="font-semibold text-slate-900 capitalize">{type.replace(/_/g, ' ')}</h4>
+                  <p className="text-sm text-slate-600">
                     {data.incomplete_visits} of {data.total_visits} visits incomplete ({data.completion_rate}% complete)
                   </p>
                 </div>
@@ -253,14 +259,14 @@ Provide detailed analysis with:
                 <div className="mt-3 space-y-2">
                   {data.issues.slice(0, 5).map((issue, idx) => (
                     <div key={idx} className="text-sm bg-white p-2 rounded border">
-                      <p className="text-gray-700">
+                      <p className="text-slate-700">
                         <strong>Issue:</strong> {issue.issue}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">Visit ID: {issue.visit_id}</p>
+                      <p className="text-xs text-slate-500 mt-1">Visit ID: {issue.visit_id}</p>
                     </div>
                   ))}
                   {data.issues.length > 5 && (
-                    <p className="text-xs text-gray-500 text-center">+ {data.issues.length - 5} more issues</p>
+                    <p className="text-xs text-slate-500 text-center">+ {data.issues.length - 5} more issues</p>
                   )}
                 </div>
               )}
@@ -271,12 +277,12 @@ Provide detailed analysis with:
 
       {/* AI-Driven Recommendations */}
       {aiRecommendations && (
-        <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-white">
+        <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-white">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Brain className="w-6 h-6 text-purple-600" />
+              <Brain className="w-6 h-6 text-navy-600" />
               AI-Driven Recommendations
-              <Badge className="ml-2 bg-purple-600 text-white">
+              <Badge className="ml-2 bg-navy-600 text-white">
                 <Sparkles className="w-3 h-3 mr-1" />
                 Powered by AI
               </Badge>
@@ -286,7 +292,7 @@ Provide detailed analysis with:
             {/* Gap Priorities */}
             {aiRecommendations.gap_priorities?.length > 0 && (
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Priority Gap Analysis</h3>
+                <h3 className="font-semibold text-slate-900 mb-3">Priority Gap Analysis</h3>
                 <div className="space-y-3">
                   {aiRecommendations.gap_priorities.map((gap, idx) => (
                     <div key={idx} className="bg-white p-3 rounded-lg border">
@@ -294,10 +300,10 @@ Provide detailed analysis with:
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <Badge className={getSeverityColor(gap.priority)}>{gap.priority}</Badge>
-                            <p className="font-semibold text-gray-900">{gap.gap_type}</p>
+                            <p className="font-semibold text-slate-900">{gap.gap_type}</p>
                           </div>
-                          <p className="text-sm text-gray-600 mb-2">{gap.root_cause}</p>
-                          <p className="text-xs text-gray-500"><strong>Impact:</strong> {gap.business_impact}</p>
+                          <p className="text-sm text-slate-600 mb-2">{gap.root_cause}</p>
+                          <p className="text-xs text-slate-500"><strong>Impact:</strong> {gap.business_impact}</p>
                         </div>
                         <Badge variant="outline">{gap.affected_count} affected</Badge>
                       </div>
@@ -310,12 +316,12 @@ Provide detailed analysis with:
             {/* Actionable Recommendations */}
             {aiRecommendations.actionable_recommendations?.length > 0 && (
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Actionable Recommendations</h3>
+                <h3 className="font-semibold text-slate-900 mb-3">Actionable Recommendations</h3>
                 <div className="space-y-3">
                   {aiRecommendations.actionable_recommendations.map((rec, idx) => (
                     <div key={idx} className="bg-white p-4 rounded-lg border border-blue-200">
                       <div className="flex items-start justify-between mb-2">
-                        <p className="font-semibold text-gray-900 flex-1">{rec.recommendation}</p>
+                        <p className="font-semibold text-slate-900 flex-1">{rec.recommendation}</p>
                         {rec.quick_win && (
                           <Badge className="bg-green-600 text-white flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" />
@@ -323,7 +329,7 @@ Provide detailed analysis with:
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">
+                      <p className="text-sm text-slate-600 mb-2">
                         <strong>Addresses:</strong> {rec.gap_addressed}
                       </p>
                       <div className="bg-blue-50 p-2 rounded mb-2">
@@ -335,7 +341,7 @@ Provide detailed analysis with:
                         </ol>
                       </div>
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500">
+                        <span className="text-slate-500">
                           <strong>Effort:</strong> {rec.estimated_effort}
                         </span>
                         <span className="text-green-600">
@@ -351,18 +357,18 @@ Provide detailed analysis with:
             {/* Training Recommendations */}
             {aiRecommendations.training_recommendations?.length > 0 && (
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Recommended Training</h3>
+                <h3 className="font-semibold text-slate-900 mb-3">Recommended Training</h3>
                 <div className="grid md:grid-cols-2 gap-3">
                   {aiRecommendations.training_recommendations.map((training, idx) => (
-                    <div key={idx} className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                    <div key={idx} className="bg-navy-50 p-3 rounded-lg border border-navy-200">
                       <div className="flex items-center justify-between mb-2">
-                        <p className="font-semibold text-gray-900">{training.topic}</p>
+                        <p className="font-semibold text-slate-900">{training.topic}</p>
                         <Badge className={getSeverityColor(training.priority)}>{training.priority}</Badge>
                       </div>
-                      <p className="text-sm text-gray-600 mb-1">
+                      <p className="text-sm text-slate-600 mb-1">
                         <strong>For:</strong> {training.target_audience}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-slate-500">
                         <strong>Delivery:</strong> {training.delivery_method}
                       </p>
                     </div>
@@ -374,11 +380,11 @@ Provide detailed analysis with:
             {/* Workflow Improvements */}
             {aiRecommendations.workflow_improvements?.length > 0 && (
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">System & Workflow Improvements</h3>
+                <h3 className="font-semibold text-slate-900 mb-3">System & Workflow Improvements</h3>
                 <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200">
                   <ul className="space-y-2">
                     {aiRecommendations.workflow_improvements.map((improvement, idx) => (
-                      <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                      <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                         <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
                         <span>{improvement}</span>
                       </li>

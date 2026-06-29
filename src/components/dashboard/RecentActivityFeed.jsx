@@ -1,10 +1,8 @@
-import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import {
   Calendar,
   AlertTriangle,
-  FileText,
   Activity,
   Clock
 } from "lucide-react";
@@ -37,7 +35,7 @@ export default function RecentActivityFeed({ visits, alerts, patients }) {
       case 'alert':
         return <AlertTriangle className="w-4 h-4 text-orange-500" />;
       default:
-        return <Activity className="w-4 h-4 text-gray-500" />;
+        return <Activity className="w-4 h-4 text-slate-500" />;
     }
   };
 
@@ -54,8 +52,8 @@ export default function RecentActivityFeed({ visits, alerts, patients }) {
 
   if (activities.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Activity className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+      <div className="text-center py-8 text-slate-500">
+        <Activity className="w-12 h-12 text-slate-300 mx-auto mb-2" />
         <p className="text-sm">No recent activity</p>
       </div>
     );
@@ -66,7 +64,7 @@ export default function RecentActivityFeed({ visits, alerts, patients }) {
       <div className="space-y-3">
         {activities.map((activity, idx) => (
           <div
-            key={idx}
+            key={`${activity.type}-${activity.data?.id ?? idx}`}
             className={`p-3 rounded-lg border ${getActivityColor(activity.type, activity.data)}`}
           >
             <div className="flex items-start gap-3">
@@ -75,7 +73,7 @@ export default function RecentActivityFeed({ visits, alerts, patients }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
-                  <p className="font-medium text-sm text-gray-900">
+                  <p className="font-medium text-sm text-slate-900">
                     {activity.type === 'visit' ? 'Visit Scheduled' : 'Alert Triggered'}
                   </p>
                   <Badge variant="outline" className="text-xs whitespace-nowrap">
@@ -84,12 +82,12 @@ export default function RecentActivityFeed({ visits, alerts, patients }) {
                   </Badge>
                 </div>
                 
-                <p className="text-sm text-gray-700 mb-1">
+                <p className="text-sm text-slate-700 mb-1">
                   {getPatientName(activity.data.patient_id)}
                 </p>
 
                 {activity.type === 'visit' && (
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-slate-600">
                     {activity.data.visit_type?.replace('_', ' ')} - {
                       activity.data.visit_date ? new Date(activity.data.visit_date).toLocaleDateString() : 'Date not set'
                     }
@@ -98,7 +96,7 @@ export default function RecentActivityFeed({ visits, alerts, patients }) {
 
                 {activity.type === 'alert' && (
                   <>
-                    <p className="text-xs text-gray-600 mb-1">{activity.data.title}</p>
+                    <p className="text-xs text-slate-600 mb-1">{activity.data.title}</p>
                     <Badge 
                       className={
                         activity.data.severity === 'critical' ? 'bg-red-100 text-red-800' :

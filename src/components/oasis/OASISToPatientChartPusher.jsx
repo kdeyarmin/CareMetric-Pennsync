@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { ArrowRight, Send, CheckCircle2, Loader2 } from "lucide-react";
 
 export default function OASISToPatientChartPusher({ 
   analysisResults, 
-  pdgmData, 
+  _pdgmData, 
   patientId,
   oasisUploadId,
   predictions 
@@ -18,6 +18,8 @@ export default function OASISToPatientChartPusher({
   const [selectedRecs, setSelectedRecs] = useState([]);
   const [isPushing, setIsPushing] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
+  const [pushedCount, setPushedCount] = useState(0);
+  const [pushError, setPushError] = useState(null);
   const queryClient = useQueryClient();
 
   const createRecommendationMutation = useMutation({
@@ -122,11 +124,15 @@ export default function OASISToPatientChartPusher({
     if (!patientId || selectedRecs.length === 0) return;
 
     setIsPushing(true);
-    try {
-      const recsToCreate = recommendations.filter(rec => selectedRecs.includes(rec.id));
+    setPushError(null);
 
-      // Create recommendations in bulk
-      for (const rec of recsToCreate) {
+    const recsToCreate = recommendations.filter(rec => selectedRecs.includes(rec.id));
+    const failedTitles = [];
+
+    // Create each recommendation independently so one failure doesn't abort the
+    // rest, and so a partial push is reported instead of silently swallowed.
+    for (const rec of recsToCreate) {
+      try {
         await createRecommendationMutation.mutateAsync({
           patient_id: patientId,
           source_type: 'oasis_analysis',
@@ -141,13 +147,27 @@ export default function OASISToPatientChartPusher({
           suggested_by_user: 'AI Assistant',
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
         });
+      } catch (error) {
+        console.error("Error pushing recommendation:", error);
+        failedTitles.push(rec.title);
       }
+    }
 
-      setPushSuccess(true);
+    const succeeded = recsToCreate.length - failedTitles.length;
+    setPushedCount(succeeded);
+
+    if (failedTitles.length > 0) {
+      setPushError(`${succeeded} of ${recsToCreate.length} added. ${failedTitles.length} failed — please retry the remaining items.`);
+      // Keep only the failed items selected so the user can retry just those.
+      const failedIds = recommendations.filter(r => failedTitles.includes(r.title)).map(r => r.id);
+      setSelectedRecs(failedIds);
+    } else {
       setSelectedRecs([]);
+    }
+
+    if (succeeded > 0) {
+      setPushSuccess(true);
       setTimeout(() => setPushSuccess(false), 3000);
-    } catch (error) {
-      console.error("Error pushing recommendations:", error);
     }
     setIsPushing(false);
   };
@@ -156,7 +176,7 @@ export default function OASISToPatientChartPusher({
 
   return (
     <Card className="border-2 border-blue-300">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50">
+      <CardHeader className="bg-gradient-to-r from-blue-50 to-navy-50">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <ArrowRight className="w-5 h-5 text-blue-600" />
@@ -168,7 +188,7 @@ export default function OASISToPatientChartPusher({
         </div>
       </CardHeader>
       <CardContent className="pt-4">
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-slate-600 mb-4">
           Select AI-generated recommendations to add to the patient's chart as suggested actions
         </p>
 
@@ -179,7 +199,7 @@ export default function OASISToPatientChartPusher({
               className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                 selectedRecs.includes(rec.id)
                   ? 'bg-blue-50 border-blue-300'
-                  : 'bg-white border-gray-200 hover:border-blue-200'
+                  : 'bg-white border-slate-200 hover:border-blue-200'
               }`}
               onClick={() => toggleRecommendation(rec.id)}
             >
@@ -191,7 +211,7 @@ export default function OASISToPatientChartPusher({
                 />
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="font-semibold text-gray-900 text-sm">{rec.title}</p>
+                    <p className="font-semibold text-slate-900 text-sm">{rec.title}</p>
                     <Badge className={
                       rec.priority === 'critical' ? 'bg-red-600' :
                       rec.priority === 'high' ? 'bg-orange-500' :
@@ -201,8 +221,8 @@ export default function OASISToPatientChartPusher({
                       {rec.priority}
                     </Badge>
                   </div>
-                  <p className="text-xs text-gray-600 mb-1">{rec.description}</p>
-                  <Badge variant="outline" className="text-xs">{rec.type.replace(/_/g, ' ')}</Badge>
+                  <p className="text-xs text-slate-600 mb-1">{rec.description}</p>
+                  <Badge variant="outline" className="text-xs">{(rec.type || '').replace(/_/g, ' ')}</Badge>
                 </div>
               </div>
             </div>
@@ -236,8 +256,14 @@ export default function OASISToPatientChartPusher({
           <Alert className="bg-green-50 border-green-200 mt-3">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
             <AlertDescription className="text-green-800">
-              Successfully pushed {selectedRecs.length} recommendations to patient chart
+              Successfully pushed {pushedCount} recommendation{pushedCount === 1 ? '' : 's'} to patient chart
             </AlertDescription>
+          </Alert>
+        )}
+
+        {pushError && (
+          <Alert variant="destructive" className="mt-3">
+            <AlertDescription>{pushError}</AlertDescription>
           </Alert>
         )}
       </CardContent>

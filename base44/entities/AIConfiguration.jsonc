@@ -1,0 +1,45 @@
+{
+  "name": "AIConfiguration",
+  "type": "object",
+  "properties": {
+    "setting_name": {
+      "type": "string",
+      "description": "Name of the AI setting"
+    },
+    "setting_category": {
+      "type": "string",
+      "enum": [
+        "compliance",
+        "documentation",
+        "analysis",
+        "general"
+      ],
+      "description": "Category of setting"
+    },
+    "value": {
+      "type": "object",
+      "description": "Setting value (flexible structure)"
+    },
+    "description": {
+      "type": "string",
+      "description": "What this setting controls"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "setting_name",
+    "setting_category",
+    "value"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

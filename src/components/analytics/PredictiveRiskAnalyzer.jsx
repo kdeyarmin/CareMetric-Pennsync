@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,24 +12,17 @@ import {
   TrendingUp,
   Activity,
   Heart,
-  Users,
   ClipboardList,
   CheckCircle2,
   XCircle
 } from "lucide-react";
 
-export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlertsCreated, autoAnalyze = false }) {
+export default function PredictiveRiskAnalyzer({ patientId, _patientName, onAlertsCreated, autoAnalyze = false }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState(null);
 
-  React.useEffect(() => {
-    if (autoAnalyze && patientId && !analysis) {
-      runAnalysis();
-    }
-  }, [autoAnalyze, patientId]);
-
-  const runAnalysis = async () => {
+  const runAnalysis = useCallback(async () => {
     if (!patientId) return;
 
     setIsAnalyzing(true);
@@ -39,14 +32,16 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
       const result = await base44.functions.invoke('predictiveRiskAnalysis', {
         patient_id: patientId
       });
+      // functions.invoke returns the axios response; the body is on .data.
+      const data = result.data;
 
-      if (result.success) {
-        setAnalysis(result);
-        if (onAlertsCreated && result.alerts_created > 0) {
-          onAlertsCreated(result.alerts_created);
+      if (data.success) {
+        setAnalysis(data);
+        if (onAlertsCreated && data.alerts_created > 0) {
+          onAlertsCreated(data.alerts_created);
         }
       } else {
-        setError(result.error || 'Analysis failed');
+        setError(data.error || 'Analysis failed');
       }
     } catch (err) {
       console.error('Risk analysis error:', err);
@@ -54,7 +49,13 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
     }
 
     setIsAnalyzing(false);
-  };
+  }, [patientId, onAlertsCreated]);
+
+  React.useEffect(() => {
+    if (autoAnalyze && patientId && !analysis) {
+      runAnalysis();
+    }
+  }, [autoAnalyze, patientId, analysis, runAnalysis]);
 
   const getRiskColor = (score) => {
     if (score >= 75) return 'bg-red-500';
@@ -87,13 +88,13 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-r from-purple-50 to-pink-50">
-      <CardHeader className="py-4 bg-gradient-to-r from-purple-100 to-pink-100">
+    <Card className="border-2 border-navy-300 bg-gradient-to-r from-navy-50 to-gold-50">
+      <CardHeader className="py-4 bg-gradient-to-r from-navy-100 to-gold-100">
         <CardTitle className="text-base flex items-center gap-2">
-          <Brain className="w-5 h-5 text-purple-600" />
+          <Brain className="w-5 h-5 text-navy-600" />
           AI Predictive Risk Analysis
           {analysis && (
-            <Badge className="bg-purple-600 text-white ml-auto">
+            <Badge className="bg-navy-600 text-white ml-auto">
               {analysis.overall_risk_level}
             </Badge>
           )}
@@ -102,13 +103,13 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
       <CardContent className="p-4 space-y-4">
         {!analysis && !isAnalyzing && (
           <div className="text-center py-6">
-            <Brain className="w-12 h-12 mx-auto mb-3 text-purple-400" />
-            <p className="text-sm text-gray-600 mb-3">
+            <Brain className="w-12 h-12 mx-auto mb-3 text-navy-400" />
+            <p className="text-sm text-slate-600 mb-3">
               Analyze patient data to predict risk of adverse events
             </p>
             <Button
               onClick={runAnalysis}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-navy-600 hover:bg-navy-700"
             >
               <Brain className="w-4 h-4 mr-2" />
               Run Risk Analysis
@@ -118,9 +119,9 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
 
         {isAnalyzing && (
           <div className="text-center py-6">
-            <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3 text-purple-600" />
-            <p className="text-sm text-gray-600">Analyzing patient data...</p>
-            <p className="text-xs text-gray-500 mt-1">
+            <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3 text-navy-600" />
+            <p className="text-sm text-slate-600">Analyzing patient data...</p>
+            <p className="text-xs text-slate-500 mt-1">
               Evaluating vitals, diagnoses, social factors, and visit history
             </p>
           </div>
@@ -146,7 +147,7 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
 
             {/* Risk Scores */}
             <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-gray-900">Risk Scores</h4>
+              <h4 className="text-sm font-semibold text-slate-900">Risk Scores</h4>
               {Object.entries(analysis.risk_scores || {}).map(([key, score]) => (
                 <div key={key} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
@@ -172,7 +173,7 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
             {analysis.high_risk_alerts?.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-gray-900">High Risk Alerts</h4>
+                  <h4 className="text-sm font-semibold text-slate-900">High Risk Alerts</h4>
                   <Badge className="bg-red-100 text-red-800">
                     {analysis.high_risk_alerts.length} Alert{analysis.high_risk_alerts.length !== 1 ? 's' : ''}
                   </Badge>
@@ -191,12 +192,12 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
                         </Badge>
                       </div>
 
-                      <p className="text-xs text-gray-700">{alert.message}</p>
+                      <p className="text-xs text-slate-700">{alert.message}</p>
 
                       {alert.contributing_factors?.length > 0 && (
                         <div className="bg-white/50 p-2 rounded">
-                          <p className="text-xs font-semibold text-gray-900 mb-1">Contributing Factors:</p>
-                          <ul className="text-xs text-gray-700 space-y-0.5">
+                          <p className="text-xs font-semibold text-slate-900 mb-1">Contributing Factors:</p>
+                          <ul className="text-xs text-slate-700 space-y-0.5">
                             {alert.contributing_factors.map((factor, i) => (
                               <li key={i}>• {factor}</li>
                             ))}
@@ -227,7 +228,7 @@ export default function PredictiveRiskAnalyzer({ patientId, patientName, onAlert
                       )}
 
                       {alert.reassessment_timeframe && (
-                        <p className="text-xs text-gray-500 italic">
+                        <p className="text-xs text-slate-500 italic">
                           Reassess: {alert.reassessment_timeframe}
                         </p>
                       )}

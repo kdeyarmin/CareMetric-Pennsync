@@ -1,0 +1,95 @@
+name: Workflow Quality Checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/components/oasis/**'
+      - 'src/components/fax/**'
+      - 'src/components/voice/**'
+      - 'src/components/messaging/**'
+      - 'src/components/medication/**'
+      - 'src/components/timeoff/**'
+      - 'base44/functions/processPatientFileUpdate/**'
+      - 'base44/functions/deduplicatePatients/**'
+      - 'base44/entities/**'
+      - 'base44/schemaContract.test.js'
+      - 'base44/securityGuardrails.test.js'
+      - 'base44/functions/getApprovedTimeOff/**'
+      - 'src/components/hub-tabs/ReferralAdmissionNote.jsx'
+      - 'src/components/admin/ReportsCenter.jsx'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/workflow-quality.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/components/oasis/**'
+      - 'src/components/fax/**'
+      - 'src/components/voice/**'
+      - 'src/components/messaging/**'
+      - 'src/components/medication/**'
+      - 'src/components/timeoff/**'
+      - 'base44/functions/processPatientFileUpdate/**'
+      - 'base44/functions/deduplicatePatients/**'
+      - 'base44/entities/**'
+      - 'base44/schemaContract.test.js'
+      - 'base44/securityGuardrails.test.js'
+      - 'base44/functions/getApprovedTimeOff/**'
+      - 'src/components/hub-tabs/ReferralAdmissionNote.jsx'
+      - 'src/components/admin/ReportsCenter.jsx'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/workflow-quality.yml'
+
+concurrency:
+  group: workflow-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint workflow target files
+        run: npm run lint:workflow-targets
+
+      - name: Typecheck utility modules
+        run: npm run typecheck:utils
+
+      - name: Run utility unit tests
+        run: npm run test:utils
+
+      - name: Run schema-contract tests
+        run: npm run test:contracts
+
+      - name: Run security guardrail tests
+        run: npm run test:security
+
+      - name: Run component tests
+        run: npm run test:components
+
+      - name: Typecheck (informational baseline)
+        run: npm run typecheck
+        continue-on-error: true
+
+      - name: Build app
+        run: npm run build
+
+      - name: Production audit (informational baseline)
+        run: npm run audit:prod
+        continue-on-error: true

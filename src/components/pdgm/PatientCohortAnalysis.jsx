@@ -1,8 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -14,12 +13,9 @@ import {
   Users,
   TrendingUp,
   TrendingDown,
-  DollarSign,
-  AlertTriangle,
   Target,
   Filter,
-  BarChart3,
-  PieChart as PieChartIcon
+  BarChart3
 } from "lucide-react";
 import {
   BarChart,
@@ -30,20 +26,12 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-  ZAxis,
   Cell,
   PieChart,
-  Pie,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar
+  Pie
 } from "recharts";
 
-const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
+const COLORS = ['#3557b0', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#0d9488', '#14b8a6'];
 
 export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
   const [segmentBy, setSegmentBy] = useState("clinical_group");
@@ -56,13 +44,13 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
   const getVarianceColor = (variance) => {
     if (variance > 5) return 'text-green-600';
     if (variance < -5) return 'text-red-600';
-    return 'text-gray-600';
+    return 'text-slate-600';
   };
 
   const getVarianceBg = (variance) => {
     if (variance > 5) return 'bg-green-50 border-green-200';
     if (variance < -5) return 'bg-red-50 border-red-200';
-    return 'bg-gray-50 border-gray-200';
+    return 'bg-slate-50 border-slate-200';
   };
 
   return (
@@ -70,7 +58,7 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
       {/* Segmentation Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-gray-500" />
+          <Filter className="w-4 h-4 text-slate-500" />
           <span className="text-sm font-medium">Segment by:</span>
           <Select value={segmentBy} onValueChange={setSegmentBy}>
             <SelectTrigger className="w-40 h-8 text-xs">
@@ -109,14 +97,14 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
                   {cohort.patient_count} pts
                 </Badge>
               </div>
-              <p className="font-semibold text-sm text-gray-900 mb-1">{cohort.name}</p>
+              <p className="font-semibold text-sm text-slate-900 mb-1">{cohort.name}</p>
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Avg Revenue</span>
+                  <span className="text-slate-500">Avg Revenue</span>
                   <span className="font-medium">{formatCurrency(cohort.avg_revenue)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Case-Mix</span>
+                  <span className="text-slate-500">Case-Mix</span>
                   <span className="font-medium">{cohort.avg_case_mix?.toFixed(3)}</span>
                 </div>
                 <div className={`flex justify-between text-xs ${getVarianceColor(cohort.variance_pct)}`}>
@@ -149,7 +137,7 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                 <Tooltip formatter={(value) => formatCurrency(value)} />
                 <Legend />
-                <Bar dataKey="predicted_revenue" name="Predicted" fill="#6366f1" />
+                <Bar dataKey="predicted_revenue" name="Predicted" fill="#264491" />
                 <Bar dataKey="actual_revenue" name="Actual" fill="#22c55e" />
               </BarChart>
             </ResponsiveContainer>
@@ -171,8 +159,8 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
               <div key={idx} className={`p-3 rounded-lg border ${getVarianceBg(driver.impact_pct)}`}>
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="font-semibold text-sm text-gray-900">{driver.driver}</p>
-                    <p className="text-xs text-gray-600">{driver.description}</p>
+                    <p className="font-semibold text-sm text-slate-900">{driver.driver}</p>
+                    <p className="text-xs text-slate-600">{driver.description}</p>
                   </div>
                   <div className="text-right">
                     <p className={`text-lg font-bold ${getVarianceColor(driver.impact_pct)}`}>
@@ -197,7 +185,7 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
                   )}
                 </div>
                 {driver.recommendation && (
-                  <p className="text-xs text-gray-700 mt-2 bg-white p-2 rounded border">
+                  <p className="text-xs text-slate-700 mt-2 bg-white p-2 rounded border">
                     <strong>Action:</strong> {driver.recommendation}
                   </p>
                 )}
@@ -229,9 +217,9 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
                 <p className="text-xs text-green-600">Total Revenue</p>
                 <p className="text-xl font-bold text-green-900">{formatCurrency(cohorts[selectedCohort].total_revenue)}</p>
               </div>
-              <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-center">
-                <p className="text-xs text-purple-600">Optimization Potential</p>
-                <p className="text-xl font-bold text-purple-900">+{formatCurrency(cohorts[selectedCohort].optimization_potential)}</p>
+              <div className="bg-navy-50 p-3 rounded-lg border border-navy-200 text-center">
+                <p className="text-xs text-navy-600">Optimization Potential</p>
+                <p className="text-xl font-bold text-navy-900">+{formatCurrency(cohorts[selectedCohort].optimization_potential)}</p>
               </div>
             </div>
 
@@ -239,7 +227,7 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
             {cohorts[selectedCohort].risk_breakdown && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Risk Distribution</p>
+                  <p className="text-xs font-semibold text-slate-600 mb-2">Risk Distribution</p>
                   <div className="h-32">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -266,7 +254,7 @@ export default function PatientCohortAnalysis({ cohortData, formatCurrency }) {
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Key Characteristics</p>
+                  <p className="text-xs font-semibold text-slate-600 mb-2">Key Characteristics</p>
                   <ul className="space-y-1 text-xs">
                     {cohorts[selectedCohort].characteristics?.map((char, i) => (
                       <li key={i} className="flex items-center gap-2">

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Users, Play, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { Users, Play, CheckCircle2, ArrowRight } from "lucide-react";
 
 const SCENARIOS = [
   {
@@ -119,11 +119,11 @@ export default function ScenarioSimulator({ userEmail, onComplete }) {
                     <h3 className="text-lg font-semibold">{scenario.title}</h3>
                     <Badge>{scenario.difficulty}</Badge>
                   </div>
-                  <p className="text-sm text-gray-600 mb-4">{scenario.description}</p>
-                  <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                    <p className="text-xs font-medium text-gray-700 mb-1">Patient:</p>
-                    <p className="text-sm text-gray-900">{scenario.patient.name}, {scenario.patient.age}yo</p>
-                    <p className="text-xs text-gray-600">{scenario.patient.diagnosis}</p>
+                  <p className="text-sm text-slate-600 mb-4">{scenario.description}</p>
+                  <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                    <p className="text-xs font-medium text-slate-700 mb-1">Patient:</p>
+                    <p className="text-sm text-slate-900">{scenario.patient.name}, {scenario.patient.age}yo</p>
+                    <p className="text-xs text-slate-600">{scenario.patient.diagnosis}</p>
                   </div>
                 </div>
                 <Button onClick={() => setSelectedScenario(scenario)} className="flex-shrink-0">
@@ -194,7 +194,7 @@ export default function ScenarioSimulator({ userEmail, onComplete }) {
               <Users className="w-5 h-5 text-indigo-600" />
               {selectedScenario.title}
             </CardTitle>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-slate-600 mt-1">
               Step {currentStep + 1} of {selectedScenario.steps.length}
             </p>
           </div>
@@ -213,17 +213,17 @@ export default function ScenarioSimulator({ userEmail, onComplete }) {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Patient Info */}
-        <Card className="bg-gray-50 border-gray-200">
+        <Card className="bg-slate-50 border-slate-200">
           <CardContent className="p-4">
-            <p className="text-sm font-medium text-gray-700 mb-1">Patient: {selectedScenario.patient.name}</p>
-            <p className="text-xs text-gray-600">{selectedScenario.patient.diagnosis}</p>
-            <p className="text-xs text-gray-600">Baseline: {selectedScenario.patient.baseline}</p>
+            <p className="text-sm font-medium text-slate-700 mb-1">Patient: {selectedScenario.patient.name}</p>
+            <p className="text-xs text-slate-600">{selectedScenario.patient.diagnosis}</p>
+            <p className="text-xs text-slate-600">Baseline: {selectedScenario.patient.baseline}</p>
           </CardContent>
         </Card>
 
         {/* Situation */}
         <div>
-          <p className="text-sm font-medium text-gray-700 mb-2">Situation:</p>
+          <p className="text-sm font-medium text-slate-700 mb-2">Situation:</p>
           <Alert>
             <AlertDescription>{step.situation}</AlertDescription>
           </Alert>
@@ -231,7 +231,7 @@ export default function ScenarioSimulator({ userEmail, onComplete }) {
 
         {/* Question */}
         <div>
-          <p className="text-sm font-medium text-gray-900 mb-3">{step.question}</p>
+          <p className="text-sm font-medium text-slate-900 mb-3">{step.question}</p>
           <div className="space-y-2">
             {step.options.map((option, idx) => (
               <div
@@ -242,10 +242,10 @@ export default function ScenarioSimulator({ userEmail, onComplete }) {
                       ? 'border-green-500 bg-green-50'
                       : answers[currentStep] === idx
                       ? 'border-red-500 bg-red-50'
-                      : 'border-gray-200 bg-white'
+                      : 'border-slate-200 bg-white'
                     : answers[currentStep] === idx
                     ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-200 bg-white hover:border-indigo-300'
+                    : 'border-slate-200 bg-white hover:border-indigo-300'
                 }`}
                 onClick={() => !showFeedback && handleSelectAnswer(idx)}
               >

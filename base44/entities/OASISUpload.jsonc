@@ -1,0 +1,114 @@
+{
+  "name": "OASISUpload",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Patient name from OASIS document"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL of the uploaded OASIS PDF"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Original filename"
+    },
+    "assessment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of OASIS assessment"
+    },
+    "assessment_type": {
+      "type": "string",
+      "enum": [
+        "SOC",
+        "ROC",
+        "Recertification",
+        "Follow-up",
+        "Transfer",
+        "Discharge",
+        "Other"
+      ],
+      "description": "Type of OASIS assessment"
+    },
+    "analysis_id": {
+      "type": "string",
+      "description": "Unique identifier for this analysis session"
+    },
+    "pdgm_data": {
+      "type": "object",
+      "description": "Extracted PDGM-relevant data from OASIS"
+    },
+    "analysis_results": {
+      "type": "object",
+      "description": "Full AI analysis results"
+    },
+    "scores": {
+      "type": "object",
+      "properties": {
+        "overall": {
+          "type": "number"
+        },
+        "accuracy": {
+          "type": "number"
+        },
+        "compliance": {
+          "type": "number"
+        },
+        "revenue_optimization": {
+          "type": "number"
+        }
+      },
+      "description": "Analysis scores"
+    },
+    "estimated_payment": {
+      "type": "number",
+      "description": "Estimated PDGM payment amount"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "uploaded",
+        "analyzed",
+        "reviewed",
+        "archived"
+      ],
+      "default": "uploaded"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about this OASIS"
+    },
+    "extracted_data": {
+      "type": "object",
+      "description": "Structured data extracted from the OASIS document"
+    },
+    "supervisor_review_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending",
+      "description": "Supervisor review decision for this OASIS"
+    },
+    "supervisor_reviewed_by": {
+      "type": "string",
+      "description": "Email of the supervisor who reviewed this OASIS"
+    },
+    "supervisor_reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the supervisor reviewed this OASIS"
+    }
+  },
+  "required": [
+    "file_url"
+  ]
+}

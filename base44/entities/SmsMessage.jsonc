@@ -1,0 +1,118 @@
+{
+  "name": "SmsMessage",
+  "type": "object",
+  "properties": {
+    "direction": {
+      "type": "string",
+      "enum": [
+        "inbound",
+        "outbound"
+      ],
+      "description": "Whether the message was sent to or received from the patient"
+    },
+    "from_number": {
+      "type": "string",
+      "description": "Sender phone number (E.164)"
+    },
+    "to_number": {
+      "type": "string",
+      "description": "Recipient phone number (E.164)"
+    },
+    "body": {
+      "type": "string",
+      "description": "Message text"
+    },
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse who owns this conversation thread"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Associated patient if resolved"
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Conversation thread id (sorted pair of E.164 numbers)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "sent",
+        "delivered",
+        "failed",
+        "received"
+      ],
+      "default": "queued",
+      "description": "Delivery status"
+    },
+    "client_message_id": {
+      "type": "string",
+      "description": "Our own idempotency/tracking id (Telnyx has no client idempotency key)"
+    },
+    "provider_message_id": {
+      "type": "string",
+      "description": "Telnyx/Twilio message id for tracking"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the nurse has read this message"
+    },
+    "sent_by": {
+      "type": "string",
+      "description": "User who sent the message"
+    },
+    "consent_checked": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the recipient was confirmed opted-in at send time"
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Reason for failure if applicable"
+    },
+    "failure_notified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the sending nurse was notified of a delivery failure"
+    },
+    "retry_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of redrive attempts made"
+    },
+    "last_retry_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the last redrive attempt was made"
+    },
+    "redrive_claimed_by": {
+      "type": "string",
+      "description": "Per-run token claiming this row for redrive (concurrency guard)"
+    }
+  },
+  "required": [
+    "direction",
+    "from_number",
+    "to_number"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "nurse_email": "{{user.email}}" },
+        { "sent_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "nurse_email": "{{user.email}}" },
+        { "sent_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

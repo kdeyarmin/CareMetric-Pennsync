@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,8 +31,7 @@ import {
   Edit,
   Zap,
   CheckCircle2,
-  AlertTriangle,
-  Sparkles
+  AlertTriangle
 } from "lucide-react";
 
 export default function OASISAutomationSettings() {
@@ -59,7 +59,7 @@ export default function OASISAutomationSettings() {
   });
 
   // Fetch automation rules
-  const { data: rules = [], isLoading } = useQuery({
+  const { data: rules = [] } = useQuery({
     queryKey: ['automationRules'],
     queryFn: () => base44.entities.OASISAutomationRule.list('-priority'),
   });
@@ -75,6 +75,9 @@ export default function OASISAutomationSettings() {
       resetForm();
       setIsDialogOpen(false);
     },
+    onError: () => {
+      toast.error("Couldn't save the rule. Please try again.");
+    },
   });
 
   // Delete rule
@@ -82,6 +85,9 @@ export default function OASISAutomationSettings() {
     mutationFn: (id) => base44.entities.OASISAutomationRule.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['automationRules'] });
+    },
+    onError: () => {
+      toast.error("Couldn't delete the rule. Please try again.");
     },
   });
 
@@ -91,6 +97,9 @@ export default function OASISAutomationSettings() {
       base44.entities.OASISAutomationRule.update(id, { is_active }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['automationRules'] });
+    },
+    onError: () => {
+      toast.error("Couldn't update the rule. Please try again.");
     },
   });
 
@@ -132,9 +141,9 @@ export default function OASISAutomationSettings() {
       revenue_opportunity: "bg-green-100 text-green-800",
       accuracy_concern: "bg-yellow-100 text-yellow-800",
       score_threshold: "bg-blue-100 text-blue-800",
-      clinical_concern: "bg-purple-100 text-purple-800"
+      clinical_concern: "bg-navy-100 text-navy-800"
     };
-    return colors[type] || "bg-gray-100 text-gray-800";
+    return colors[type] || "bg-slate-100 text-slate-800";
   };
 
   return (
@@ -221,7 +230,7 @@ export default function OASISAutomationSettings() {
                   </div>
                 </div>
 
-                <div className="border rounded-lg p-4 bg-gray-50">
+                <div className="border rounded-lg p-4 bg-slate-50">
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
                     <Zap className="w-4 h-4" />
                     Trigger Conditions
@@ -263,7 +272,7 @@ export default function OASISAutomationSettings() {
                   </div>
                 </div>
 
-                <div className="border rounded-lg p-4 bg-gray-50">
+                <div className="border rounded-lg p-4 bg-slate-50">
                   <h4 className="font-semibold mb-3">Action Configuration</h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -338,13 +347,13 @@ export default function OASISAutomationSettings() {
               <div
                 key={rule.id}
                 className={`border rounded-lg p-4 ${
-                  rule.is_active ? 'bg-white border-blue-200' : 'bg-gray-50 border-gray-300 opacity-60'
+                  rule.is_active ? 'bg-white border-blue-200' : 'bg-slate-50 border-slate-300 opacity-60'
                 }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h4 className="font-semibold text-gray-900">{rule.rule_name}</h4>
+                      <h4 className="font-semibold text-slate-900">{rule.rule_name}</h4>
                       <Badge className={getTriggerBadge(rule.trigger_type)}>
                         {rule.trigger_type.replace(/_/g, ' ')}
                       </Badge>
@@ -355,8 +364,8 @@ export default function OASISAutomationSettings() {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{rule.description}</p>
-                    <div className="flex gap-4 text-xs text-gray-500">
+                    <p className="text-sm text-slate-600 mb-2">{rule.description}</p>
+                    <div className="flex gap-4 text-xs text-slate-500">
                       <span>Action: {rule.action_type.replace(/_/g, ' ')}</span>
                       <span>Priority: {rule.action_config?.task_priority || 'medium'}</span>
                       <span>Due: {rule.action_config?.due_in_days || 7} days</span>

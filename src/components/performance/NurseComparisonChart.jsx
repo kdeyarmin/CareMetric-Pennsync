@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart,
@@ -40,7 +39,7 @@ export default function NurseComparisonChart({ performanceData }) {
             <YAxis />
             <Tooltip />
             <Legend />
-            <Bar dataKey="compliance" fill="#3B82F6" name="Compliance %" />
+            <Bar dataKey="compliance" fill="#3557b0" name="Compliance %" />
             <Bar dataKey="visits" fill="#10B981" name="Visits" />
             <Bar dataKey="aiAdoption" fill="#8B5CF6" name="AI Adoption %" />
           </BarChart>

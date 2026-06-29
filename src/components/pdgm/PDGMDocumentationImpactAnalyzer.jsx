@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DollarSign,
@@ -16,7 +17,7 @@ import {
   Calculator,
   Loader2
 } from "lucide-react";
-import debounce from "lodash/debounce";
+import { debounce } from "@/lib/debounce";
 
 export default function PDGMDocumentationImpactAnalyzer({
   noteContent,
@@ -25,10 +26,10 @@ export default function PDGMDocumentationImpactAnalyzer({
   vitalSigns,
   carePlans = [],
   onApplySuggestion,
-  onWarningsDetected
+  _onWarningsDetected
 }) {
   const [analysis, setAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [showOptimizations, setShowOptimizations] = useState(true);
 
   const { data: currentUser } = useQuery({
@@ -38,16 +39,10 @@ export default function PDGMDocumentationImpactAnalyzer({
 
   const isAdmin = currentUser?.role === 'admin';
 
-  useEffect(() => {
-    if (noteContent && noteContent.length > 100) {
-      analyzeImpact();
-    }
-  }, [noteContent, diagnosis]);
-
-  const analyzeImpact = debounce(async () => {
-    setIsAnalyzing(true);
+  const analyzeImpact = useMemo(() => debounce(async () => {
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a Medicare home health PDGM reimbursement optimization expert. Analyze this clinical documentation for PDGM case-mix impact.
 
 CURRENT DOCUMENTATION:
@@ -186,9 +181,17 @@ Return JSON with detailed analysis and actionable recommendations.
       setAnalysis(result);
     } catch (error) {
       console.error("Error analyzing PDGM impact:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
-  }, 2000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, 2000), [noteContent, diagnosis, patientData, vitalSigns, carePlans]);
+
+  useEffect(() => {
+    if (noteContent && noteContent.length > 100) {
+      analyzeImpact();
+    }
+    return () => analyzeImpact.cancel();
+  }, [noteContent, diagnosis, analyzeImpact]);
 
   const handleApplyOptimization = (action) => {
     if (onApplySuggestion && action.text_to_add) {
@@ -205,7 +208,7 @@ Return JSON with detailed analysis and actionable recommendations.
       <Card className="border-green-200 bg-green-50">
         <CardContent className="p-4 text-center text-sm">
           <Calculator className="w-8 h-8 text-green-600 mx-auto mb-2" />
-          <p className="text-gray-600">Start documenting to enable PDGM impact analysis</p>
+          <p className="text-slate-600">Start documenting to enable PDGM impact analysis</p>
         </CardContent>
       </Card>
     );
@@ -218,7 +221,7 @@ Return JSON with detailed analysis and actionable recommendations.
           <div className="flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-green-600" />
             <span>PDGM Payment Optimization</span>
-            {isAnalyzing && <Loader2 className="w-3 h-3 animate-spin" />}
+            {ai.loading && <Loader2 className="w-3 h-3 animate-spin" />}
           </div>
           {analysis && (
             <Button
@@ -235,10 +238,10 @@ Return JSON with detailed analysis and actionable recommendations.
 
       {showOptimizations && (
         <CardContent className="p-3 space-y-3 max-h-[600px] overflow-y-auto">
-          {isAnalyzing && !analysis ? (
+          {ai.loading && !analysis ? (
             <div className="text-center py-6">
               <Loader2 className="w-6 h-6 animate-spin mx-auto text-green-600 mb-2" />
-              <p className="text-xs text-gray-500">Analyzing PDGM impact...</p>
+              <p className="text-xs text-slate-500">Analyzing PDGM impact...</p>
             </div>
           ) : analysis ? (
             <>
@@ -287,7 +290,7 @@ Return JSON with detailed analysis and actionable recommendations.
               {/* Priority Actions */}
               {analysis.overall_optimization_strategy?.priority_actions?.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                  <p className="text-xs font-semibold text-slate-700 flex items-center gap-1">
                     <Lightbulb className="w-3 h-3 text-yellow-600" />
                     Priority Optimization Actions
                   </p>
@@ -298,7 +301,7 @@ Return JSON with detailed analysis and actionable recommendations.
                       'bg-blue-50 border-blue-300'
                     }`}>
                       <div className="flex items-start justify-between gap-2 mb-1">
-                        <p className="text-xs font-medium text-gray-900">{action.action}</p>
+                        <p className="text-xs font-medium text-slate-900">{action.action}</p>
                         <div className="flex gap-1 flex-shrink-0">
                           <Badge className={`text-[10px] py-0 ${
                             action.impact === 'high' ? 'bg-green-600 text-white' :
@@ -319,7 +322,7 @@ Return JSON with detailed analysis and actionable recommendations.
                       </Badge>
                       {action.text_to_add && (
                         <div className="bg-white p-2 rounded border mt-1">
-                          <p className="text-[10px] text-gray-700 italic mb-1">
+                          <p className="text-[10px] text-slate-700 italic mb-1">
                             "{action.text_to_add.substring(0, 150)}..."
                           </p>
                           <Button
@@ -339,19 +342,19 @@ Return JSON with detailed analysis and actionable recommendations.
               {/* Functional Impairment Opportunities */}
               {analysis.functional_impairment_analysis?.optimization_opportunities?.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-gray-700">Functional Impairment Opportunities</p>
+                  <p className="text-xs font-semibold text-slate-700">Functional Impairment Opportunities</p>
                   {analysis.functional_impairment_analysis.optimization_opportunities.map((opp, idx) => (
-                    <div key={idx} className="bg-purple-50 p-2 rounded border border-purple-200">
+                    <div key={idx} className="bg-navy-50 p-2 rounded border border-navy-200">
                       <div className="flex items-center justify-between mb-1">
-                        <p className="text-xs font-medium text-purple-900">{opp.area}</p>
-                        <Badge className="text-[10px] bg-purple-600 text-white">
+                        <p className="text-xs font-medium text-navy-900">{opp.area}</p>
+                        <Badge className="text-[10px] bg-navy-600 text-white">
                           {opp.payment_impact}
                         </Badge>
                       </div>
-                      <p className="text-[10px] text-gray-600 mb-1">
+                      <p className="text-[10px] text-slate-600 mb-1">
                         OASIS: {opp.oasis_items_affected?.join(', ')}
                       </p>
-                      <div className="bg-white p-1.5 rounded text-[10px] text-gray-700">
+                      <div className="bg-white p-1.5 rounded text-[10px] text-slate-700">
                         <strong>Add:</strong> {opp.suggested_enhancement}
                       </div>
                       {opp.compliance_aligned && (
@@ -367,7 +370,7 @@ Return JSON with detailed analysis and actionable recommendations.
               {/* Comorbidity Additions */}
               {analysis.comorbidity_analysis?.potential_additions?.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-gray-700">Comorbidity Documentation Opportunities</p>
+                  <p className="text-xs font-semibold text-slate-700">Comorbidity Documentation Opportunities</p>
                   {analysis.comorbidity_analysis.potential_additions.map((comorb, idx) => (
                     <div key={idx} className="bg-orange-50 p-2 rounded border border-orange-200">
                       <div className="flex items-center justify-between mb-1">
@@ -376,7 +379,7 @@ Return JSON with detailed analysis and actionable recommendations.
                           {comorb.payment_impact}
                         </Badge>
                       </div>
-                      <p className="text-[10px] text-gray-600 mb-1">
+                      <p className="text-[10px] text-slate-600 mb-1">
                         ICD-10: {comorb.icd10_code}
                       </p>
                       <div className="bg-white p-1.5 rounded text-[10px]">
@@ -409,7 +412,7 @@ Return JSON with detailed analysis and actionable recommendations.
 
               {/* Summary */}
               {analysis.summary && (
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-3 rounded border border-indigo-200">
+                <div className="bg-gradient-to-r from-indigo-50 to-navy-50 p-3 rounded border border-indigo-200">
                   <p className="text-xs text-indigo-900">{analysis.summary}</p>
                 </div>
               )}

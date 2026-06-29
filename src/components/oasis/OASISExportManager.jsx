@@ -1,18 +1,15 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+
+
 import { Download, FileDown, FileSpreadsheet, Loader2, CheckCircle2 } from "lucide-react";
 import { generateOASISReportPDF } from "@/functions/generateOASISReportPDF";
 
 export default function OASISExportManager({ 
   analysisResults, 
-  pdgmData, 
+  _pdgmData, 
   revenueData,
   navigationData,
   qualityScore,
@@ -162,17 +159,8 @@ export default function OASISExportManager({
         csvData.push([]);
       }
 
-      // Convert to CSV string
-      const csvString = csvData.map(row => 
-        row.map(cell => {
-          const cellStr = String(cell || '');
-          // Escape quotes and wrap in quotes if contains comma, quote, or newline
-          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-            return `"${cellStr.replace(/"/g, '""')}"`;
-          }
-          return cellStr;
-        }).join(',')
-      ).join('\n');
+      // Convert to CSV string (escaping + formula-injection neutralization)
+      const csvString = toCsvRows(csvData);
 
       // Download
       const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
@@ -236,7 +224,7 @@ export default function OASISExportManager({
       </CardHeader>
       <CardContent className="pt-4">
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-600">
             Download a comprehensive report including OASIS analysis, PDGM grouping, quality scores, and recommendations.
           </p>
 
@@ -270,7 +258,7 @@ export default function OASISExportManager({
             </Button>
           </div>
 
-          <div className="bg-gray-50 p-3 rounded border text-xs text-gray-600">
+          <div className="bg-slate-50 p-3 rounded border text-xs text-slate-600">
             <p className="font-medium mb-1">Export includes:</p>
             <ul className="space-y-0.5">
               <li>✓ Overall analysis scores</li>

@@ -1,0 +1,143 @@
+{
+  "name": "OASISAutomationRule",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the automation rule"
+    },
+    "description": {
+      "type": "string",
+      "description": "What this rule does"
+    },
+    "trigger_type": {
+      "type": "string",
+      "enum": [
+        "compliance_issue",
+        "revenue_opportunity",
+        "accuracy_concern",
+        "missing_documentation",
+        "score_threshold",
+        "specific_m_item",
+        "clinical_concern",
+        "pdgm_discrepancy"
+      ],
+      "description": "What triggers this automation"
+    },
+    "trigger_conditions": {
+      "type": "object",
+      "properties": {
+        "score_operator": {
+          "type": "string",
+          "enum": [
+            "less_than",
+            "greater_than",
+            "equals"
+          ]
+        },
+        "score_value": {
+          "type": "number"
+        },
+        "severity_levels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          }
+        },
+        "m_item_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Specific conditions that must be met"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "create_task",
+        "create_alert",
+        "notify_clinician",
+        "suggest_documentation",
+        "schedule_reassessment",
+        "flag_for_review"
+      ],
+      "description": "What action to take when triggered"
+    },
+    "action_config": {
+      "type": "object",
+      "properties": {
+        "task_title_template": {
+          "type": "string"
+        },
+        "task_description_template": {
+          "type": "string"
+        },
+        "task_priority": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "task_type": {
+          "type": "string"
+        },
+        "assign_to_role": {
+          "type": "string"
+        },
+        "due_in_days": {
+          "type": "number"
+        },
+        "notification_message": {
+          "type": "string"
+        }
+      },
+      "description": "Configuration for the action"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this rule is currently active"
+    },
+    "priority": {
+      "type": "number",
+      "default": 0,
+      "description": "Execution priority (higher runs first)"
+    },
+    "apply_to_patient_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Only apply to certain patient types or all"
+    }
+  },
+  "required": [
+    "rule_name",
+    "trigger_type",
+    "action_type"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

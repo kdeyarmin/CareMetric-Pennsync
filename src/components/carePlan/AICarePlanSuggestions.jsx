@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,11 @@ import {
   AlertTriangle,
   Lightbulb
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function AICarePlanSuggestions({ patient, existingCarePlans, onAddCarePlan }) {
   const [suggestions, setSuggestions] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [addedSuggestions, setAddedSuggestions] = useState([]);
 
   const { data: visits } = useQuery({
@@ -38,7 +40,6 @@ export default function AICarePlanSuggestions({ patient, existingCarePlans, onAd
   const generateSuggestions = async () => {
     if (!patient) return;
     
-    setIsGenerating(true);
     try {
       const recentVisits = visits.slice(0, 5);
       const recentNotes = recentVisits
@@ -92,7 +93,8 @@ Return JSON:
   "quality_measure_opportunities": ["Specific quality improvements possible"]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -121,21 +123,23 @@ Return JSON:
       setSuggestions(result);
     } catch (error) {
       console.error('Error generating suggestions:', error);
-      alert('Failed to generate suggestions. Please try again.');
+      toast.error('Failed to generate suggestions. Please try again.');
     }
-    setIsGenerating(false);
   };
 
   const handleAddSuggestion = (suggestion, index) => {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + (suggestion.estimated_days_to_achieve || 60));
+    // Format from local date parts, not toISOString (which is UTC and rolls the date
+    // back a day for evening US-timezone creation).
+    const target_date = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
 
     onAddCarePlan({
       problem: suggestion.problem,
       goal: suggestion.goal,
       interventions: suggestion.interventions,
       frequency: 'Each visit',
-      target_date: targetDate.toISOString().split('T')[0],
+      target_date,
       status: 'active'
     });
 
@@ -147,27 +151,27 @@ Return JSON:
       case 'high': return 'bg-red-500 text-white';
       case 'medium': return 'bg-yellow-500 text-black';
       case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
   if (!patient) return null;
 
   return (
-    <Card className="border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             AI Care Plan Suggestions
           </CardTitle>
           <Button
             onClick={generateSuggestions}
-            disabled={isGenerating}
+            disabled={ai.loading}
             size="sm"
-            className="bg-purple-600 hover:bg-purple-700"
+            className="bg-navy-600 hover:bg-navy-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <>
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                 Analyzing...
@@ -182,9 +186,9 @@ Return JSON:
         </div>
       </CardHeader>
       <CardContent className="pt-4">
-        {!suggestions && !isGenerating && (
-          <div className="text-center py-6 text-gray-500">
-            <Target className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+        {!suggestions && !ai.loading && (
+          <div className="text-center py-6 text-slate-500">
+            <Target className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <p className="text-sm">Click to analyze patient data and generate care plan suggestions</p>
           </div>
         )}
@@ -209,7 +213,7 @@ Return JSON:
             {/* Suggestions */}
             <div className="space-y-3">
               {suggestions.suggestions?.map((suggestion, idx) => (
-                <Card key={idx} className={`border ${addedSuggestions.includes(idx) ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
+                <Card key={idx} className={`border ${addedSuggestions.includes(idx) ? 'border-green-300 bg-green-50' : 'border-slate-200'}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -232,7 +236,7 @@ Return JSON:
                         <Button
                           size="sm"
                           onClick={() => handleAddSuggestion(suggestion, idx)}
-                          className="bg-purple-600 hover:bg-purple-700"
+                          className="bg-navy-600 hover:bg-navy-700"
                         >
                           <Plus className="w-4 h-4 mr-1" />
                           Add
@@ -240,22 +244,22 @@ Return JSON:
                       )}
                     </div>
 
-                    <h4 className="font-semibold text-gray-900 mb-1">{suggestion.problem}</h4>
-                    <p className="text-sm text-gray-700 mb-2"><strong>Goal:</strong> {suggestion.goal}</p>
+                    <h4 className="font-semibold text-slate-900 mb-1">{suggestion.problem}</h4>
+                    <p className="text-sm text-slate-700 mb-2"><strong>Goal:</strong> {suggestion.goal}</p>
                     
                     <div className="mb-2">
-                      <p className="text-xs font-medium text-gray-600 mb-1">Interventions:</p>
-                      <ul className="list-disc ml-5 text-xs text-gray-600">
+                      <p className="text-xs font-medium text-slate-600 mb-1">Interventions:</p>
+                      <ul className="list-disc ml-5 text-xs text-slate-600">
                         {suggestion.interventions?.slice(0, 3).map((int, i) => (
                           <li key={i}>{int}</li>
                         ))}
                       </ul>
                     </div>
 
-                    <p className="text-xs text-gray-500 italic">{suggestion.rationale}</p>
+                    <p className="text-xs text-slate-500 italic">{suggestion.rationale}</p>
                     
                     {suggestion.estimated_days_to_achieve && (
-                      <p className="text-xs text-purple-600 mt-2">
+                      <p className="text-xs text-navy-600 mt-2">
                         ⏱ Estimated achievement: ~{suggestion.estimated_days_to_achieve} days
                       </p>
                     )}

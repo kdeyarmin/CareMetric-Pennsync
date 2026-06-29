@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -17,24 +17,108 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
   const [transcript, setTranscript] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [error, setError] = useState(null);
-  const mediaRecorderRef = useRef(null);
-  const wsRef = useRef(null);
-  const audioChunksRef = useRef([]);
+  const recognitionRef = useRef(null);
+  // "User wants to listen" intent (distinct from the recognizer's transient
+  // active state). onend restarts only while this is true.
+  const isListeningRef = useRef(false);
+  // Latest commands/handler via refs so the recognizer (created ONCE below) can
+  // match against current props without being torn down and rebuilt on every
+  // `commands` identity change (which churned the recognizer and spawned
+  // overlapping recognizers).
+  const commandsRef = useRef(commands);
+  const onCommandRef = useRef(onCommand);
+  useEffect(() => { commandsRef.current = commands; }, [commands]);
+  useEffect(() => { onCommandRef.current = onCommand; }, [onCommand]);
+
+  useEffect(() => {
+    // Check if browser supports speech recognition
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      setError("Voice commands not supported in this browser. Please use Chrome, Edge, or Safari.");
+      return;
+    }
+
+    // Initialize speech recognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setError(null);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      // Restart only while the user still intends to listen (continuous mode).
+      if (isListeningRef.current) {
+        try {
+          recognition.start();
+        } catch {
+          // Already started
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'no-speech') {
+        // Ignore no-speech errors
+        return;
+      }
+      setError(`Voice recognition error: ${event.error}`);
+    };
+
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      const fullTranscript = finalTranscript || interimTranscript;
+      setTranscript(fullTranscript);
+
+      // Check if transcript matches any commands
+      if (finalTranscript) {
+        processCommand(finalTranscript.toLowerCase().trim());
+      }
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      // Stop intending to listen so the final onend doesn't auto-restart.
+      isListeningRef.current = false;
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+    // Create the recognizer once; commands/handler are read via refs.
+  }, []);
 
   const processCommand = (spokenText) => {
-    // Find matching command
-    for (const cmd of commands) {
+    // Find matching command (read the latest commands via ref).
+    for (const cmd of commandsRef.current) {
       // Check if any trigger phrase matches
-      const matched = cmd.triggers.some(trigger => 
+      const matched = cmd.triggers.some(trigger =>
         spokenText.includes(trigger.toLowerCase())
       );
 
       if (matched) {
         setRecognizedCommand(cmd);
-        
-        // Execute command
-        if (onCommand) {
-          onCommand(cmd.action, spokenText);
+
+        // Execute command (latest handler via ref)
+        if (onCommandRef.current) {
+          onCommandRef.current(cmd.action, spokenText);
         }
 
         // Show feedback
@@ -48,98 +132,25 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
     }
   };
 
-  const startListening = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      // Initialize Deepgram WebSocket for real-time transcription
-      const deepgramApiKey = import.meta.env.VITE_DEEPGRAM_API_KEY;
-      if (!deepgramApiKey) {
-        setError('Deepgram API key not configured');
-        return;
-      }
-
-      const ws = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', [
-        'token',
-        deepgramApiKey
-      ]);
-
-      ws.onopen = () => {
-        console.log('Deepgram WebSocket connected for voice commands');
-        setIsListening(true);
-        setError(null);
-      };
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        const transcriptText = data.channel?.alternatives?.[0]?.transcript;
-        
-        if (transcriptText) {
-          setTranscript(transcriptText);
-          
-          if (data.is_final) {
-            processCommand(transcriptText.toLowerCase().trim());
-          }
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setError('Voice recognition error. Please try again.');
-      };
-
-      ws.onclose = () => {
-        console.log('Deepgram WebSocket closed');
-        setIsListening(false);
-      };
-
-      wsRef.current = ws;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(event.data);
-        }
-      };
-
-      mediaRecorder.start(250); // Send data every 250ms
-    } catch (err) {
-      console.error('Error starting voice commands:', err);
-      setError('Could not access microphone. Please check permissions.');
-    }
-  };
-
-  const stopListening = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      mediaRecorderRef.current = null;
-    }
-
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    setIsListening(false);
-    setTranscript("");
-  };
-
   const toggleListening = () => {
+    if (!recognitionRef.current) return;
+
     if (isListening) {
-      stopListening();
+      // Clear intent FIRST so onend doesn't auto-restart. Keep the recognizer
+      // instance (don't null it) so the user can start again.
+      isListeningRef.current = false;
+      recognitionRef.current.stop();
+      setIsListening(false);
     } else {
-      startListening();
+      try {
+        isListeningRef.current = true;
+        recognitionRef.current.start();
+      } catch (error) {
+        isListeningRef.current = false;
+        console.error('Error starting recognition:', error);
+      }
     }
   };
-
-  useEffect(() => {
-    return () => {
-      stopListening();
-    };
-  }, []);
 
   return (
     <>
@@ -152,11 +163,11 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
                 <Mic className="w-5 h-5 text-blue-600" />
                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
               </div>
-              <span className="text-sm font-semibold text-gray-900">Listening...</span>
+              <span className="text-sm font-semibold text-slate-900">Listening...</span>
             </div>
             
             {transcript && (
-              <p className="text-sm text-gray-600 italic">"{transcript}"</p>
+              <p className="text-sm text-slate-600 italic">"{transcript}"</p>
             )}
             
             {recognizedCommand && (
@@ -229,26 +240,26 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
 
           <div className="space-y-4 py-4">
             {commands.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
+              <p className="text-slate-500 text-center py-8">
                 No voice commands available in this context.
               </p>
             ) : (
               commands.map((cmd, index) => (
                 <div 
                   key={index} 
-                  className="p-4 bg-gray-50 rounded-lg border border-gray-200"
+                  className="p-4 bg-slate-50 rounded-lg border border-slate-200"
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900">{cmd.name}</h4>
+                    <h4 className="font-semibold text-slate-900">{cmd.name}</h4>
                     <Badge variant="outline" className="text-xs">
                       {cmd.category}
                     </Badge>
                   </div>
                   
-                  <p className="text-sm text-gray-600 mb-3">{cmd.description}</p>
+                  <p className="text-sm text-slate-600 mb-3">{cmd.description}</p>
                   
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-gray-700">Say any of these:</p>
+                    <p className="text-xs font-medium text-slate-700">Say any of these:</p>
                     <div className="flex flex-wrap gap-2">
                       {cmd.triggers.map((trigger, idx) => (
                         <Badge key={idx} variant="secondary" className="font-mono text-xs">
@@ -278,7 +289,7 @@ export default function VoiceCommandListener({ onCommand, commands = [], context
                   <li>Speak clearly and at normal pace</li>
                   <li>Wait for visual confirmation before next command</li>
                   <li>Commands work best in quiet environments</li>
-                  <li>Powered by Deepgram for accurate voice recognition</li>
+                  <li>Use Chrome, Edge, or Safari for best results</li>
                 </ul>
               </AlertDescription>
             </Alert>

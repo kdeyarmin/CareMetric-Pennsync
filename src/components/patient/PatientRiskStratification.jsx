@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,20 +43,23 @@ export default function PatientRiskStratification({
   autoCalculate = true
 }) {
   const [riskData, setRiskData] = useState(null);
-  const [isCalculating, setIsCalculating] = useState(false);
+  const ai = useAICall();
   const [isExpanded, setIsExpanded] = useState(!compact);
   const [lastCalculated, setLastCalculated] = useState(null);
 
-  useEffect(() => {
-    if (autoCalculate && patient && !riskData) {
-      calculateRisk();
-    }
-  }, [patient?.id]);
+  const calculateAge = useCallback((dob) => {
+    if (!dob) return 'Unknown';
+    const today = new Date();
+    const birthDate = new Date(dob);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+    return age;
+  }, []);
 
-  const calculateRisk = async () => {
+  const calculateRisk = useCallback(async () => {
     if (!patient) return;
 
-    setIsCalculating(true);
     try {
       // Gather comprehensive patient data
       const recentVisits = visits.slice(0, 10);
@@ -155,7 +159,8 @@ Return JSON:
   ]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -177,19 +182,16 @@ Return JSON:
       }
     } catch (error) {
       console.error("Error calculating risk:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsCalculating(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [patient, visits, carePlans, incidents, onRiskCalculated, calculateAge]);
 
-  const calculateAge = (dob) => {
-    if (!dob) return 'Unknown';
-    const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-    return age;
-  };
+  useEffect(() => {
+    if (autoCalculate && patient && !riskData) {
+      calculateRisk();
+    }
+  }, [patient?.id, autoCalculate, patient, riskData, calculateRisk]);
 
   const getRiskColor = (level) => {
     const colors = {
@@ -198,7 +200,7 @@ Return JSON:
       moderate: 'bg-yellow-500 text-white',
       low: 'bg-green-500 text-white'
     };
-    return colors[level] || 'bg-gray-500 text-white';
+    return colors[level] || 'bg-slate-500 text-white';
   };
 
   const getRiskBorderColor = (level) => {
@@ -208,7 +210,7 @@ Return JSON:
       moderate: 'border-yellow-400',
       low: 'border-green-400'
     };
-    return colors[level] || 'border-gray-400';
+    return colors[level] || 'border-slate-400';
   };
 
   const getRiskBgColor = (level) => {
@@ -218,24 +220,24 @@ Return JSON:
       moderate: 'bg-yellow-50',
       low: 'bg-green-50'
     };
-    return colors[level] || 'bg-gray-50';
+    return colors[level] || 'bg-slate-50';
   };
 
-  const getProgressColor = (level) => {
+  const _getProgressColor = (level) => {
     const colors = {
       critical: 'bg-red-600',
       high: 'bg-orange-500',
       moderate: 'bg-yellow-500',
       low: 'bg-green-500'
     };
-    return colors[level] || 'bg-gray-500';
+    return colors[level] || 'bg-slate-500';
   };
 
   const getTrendIcon = (trend) => {
     switch (trend) {
       case 'increasing': return <TrendingUp className="w-3 h-3 text-red-600" />;
       case 'decreasing': return <TrendingDown className="w-3 h-3 text-green-600" />;
-      default: return <Minus className="w-3 h-3 text-gray-500" />;
+      default: return <Minus className="w-3 h-3 text-slate-500" />;
     }
   };
 
@@ -270,7 +272,7 @@ Return JSON:
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <Info className="w-4 h-4 text-gray-400" />
+                  <Info className="w-4 h-4 text-slate-400" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
                   <p className="text-xs">{riskData.overall_risk?.summary}</p>
@@ -299,9 +301,9 @@ Return JSON:
   }
 
   return (
-    <Card className={`border-2 ${riskData ? getRiskBorderColor(riskData.overall_risk?.level) : 'border-gray-200'}`}>
+    <Card className={`border-2 ${riskData ? getRiskBorderColor(riskData.overall_risk?.level) : 'border-slate-200'}`}>
       <CardHeader 
-        className={`py-3 cursor-pointer ${riskData ? getRiskBgColor(riskData.overall_risk?.level) : 'bg-gray-50'}`}
+        className={`py-3 cursor-pointer ${riskData ? getRiskBgColor(riskData.overall_risk?.level) : 'bg-slate-50'}`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <CardTitle className="text-sm flex items-center justify-between">
@@ -313,17 +315,17 @@ Return JSON:
                 {riskData.overall_risk?.score}/100 - {riskData.overall_risk?.level}
               </Badge>
             )}
-            {isCalculating && <Loader2 className="w-4 h-4 animate-spin" />}
+            {ai.loading && <Loader2 className="w-4 h-4 animate-spin" />}
           </div>
           <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="ghost"
               onClick={(e) => { e.stopPropagation(); calculateRisk(); }}
-              disabled={isCalculating}
+              disabled={ai.loading}
               className="h-7 px-2"
             >
-              <RefreshCw className={`w-3 h-3 ${isCalculating ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3 h-3 ${ai.loading ? 'animate-spin' : ''}`} />
             </Button>
             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
@@ -332,10 +334,10 @@ Return JSON:
 
       {isExpanded && (
         <CardContent className="p-4">
-          {!riskData && !isCalculating && (
+          {!riskData && !ai.loading && (
             <div className="text-center py-6">
-              <Brain className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 mb-3">Analyze patient history to calculate risk scores</p>
+              <Brain className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm text-slate-500 mb-3">Analyze patient history to calculate risk scores</p>
               <Button onClick={calculateRisk} className="bg-indigo-600 hover:bg-indigo-700">
                 <Shield className="w-4 h-4 mr-2" />
                 Calculate Risk Scores
@@ -343,10 +345,10 @@ Return JSON:
             </div>
           )}
 
-          {isCalculating && !riskData && (
+          {ai.loading && !riskData && (
             <div className="flex flex-col items-center justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
-              <p className="text-sm text-gray-600">Analyzing patient history...</p>
+              <p className="text-sm text-slate-600">Analyzing patient history...</p>
             </div>
           )}
 
@@ -379,7 +381,7 @@ Return JSON:
                       <Badge className={`${getRiskColor(cat.level)} text-xs`}>{cat.level}</Badge>
                     </div>
                     <Progress value={cat.score} className="h-1.5 mt-2" />
-                    <p className="text-xs text-gray-600 mt-2 line-clamp-2">{cat.primary_driver}</p>
+                    <p className="text-xs text-slate-600 mt-2 line-clamp-2">{cat.primary_driver}</p>
                   </div>
                 ))}
               </div>
@@ -387,7 +389,7 @@ Return JSON:
               {/* Priority Interventions */}
               {riskData.priority_interventions?.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
                     <AlertTriangle className="w-4 h-4 text-orange-500" />
                     Priority Interventions
                   </h4>
@@ -406,7 +408,7 @@ Return JSON:
                         </Badge>
                         <div>
                           <p className="text-sm font-medium">{int.intervention}</p>
-                          <p className="text-xs text-gray-600">{int.rationale}</p>
+                          <p className="text-xs text-slate-600">{int.rationale}</p>
                         </div>
                       </div>
                     ))}
@@ -421,7 +423,7 @@ Return JSON:
                   <div className="flex items-center gap-2 mb-2">
                     <Badge className="bg-blue-600">Visit {riskData.monitoring_recommendation.frequency}</Badge>
                   </div>
-                  <p className="text-xs text-gray-700 mb-1">
+                  <p className="text-xs text-slate-700 mb-1">
                     <strong>Focus:</strong> {riskData.monitoring_recommendation.focus_areas?.join(', ')}
                   </p>
                   <p className="text-xs text-red-700">
@@ -433,17 +435,17 @@ Return JSON:
               {/* Predictive Insights */}
               {riskData.predictive_insights?.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                    <Brain className="w-4 h-4 text-purple-500" />
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                    <Brain className="w-4 h-4 text-navy-500" />
                     Predictive Insights
                   </h4>
                   <div className="space-y-1">
                     {riskData.predictive_insights.map((insight, idx) => (
-                      <div key={idx} className="flex items-start gap-2 text-xs p-2 bg-purple-50 rounded border border-purple-200">
+                      <div key={idx} className="flex items-start gap-2 text-xs p-2 bg-navy-50 rounded border border-navy-200">
                         <Badge variant="outline" className="text-xs flex-shrink-0">{insight.confidence}</Badge>
                         <div>
                           <span>{insight.insight}</span>
-                          <span className="text-gray-500 ml-1">({insight.timeframe})</span>
+                          <span className="text-slate-500 ml-1">({insight.timeframe})</span>
                         </div>
                       </div>
                     ))}
@@ -453,7 +455,7 @@ Return JSON:
 
               {/* Last Calculated */}
               {lastCalculated && (
-                <p className="text-xs text-gray-400 text-center">
+                <p className="text-xs text-slate-400 text-center">
                   Last calculated: {lastCalculated.toLocaleTimeString()}
                 </p>
               )}

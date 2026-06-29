@@ -1,0 +1,116 @@
+{
+  "name": "MedicareComplianceRule",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the Medicare compliance rule"
+    },
+    "cop_reference": {
+      "type": "string",
+      "description": "42 CFR reference (e.g., 484.55(a), 484.60)"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "homebound_status",
+        "skilled_need",
+        "patient_response",
+        "coordination_of_care",
+        "safety_assessment",
+        "functional_status",
+        "patient_education",
+        "plan_of_care",
+        "physician_orders",
+        "infection_control"
+      ],
+      "description": "Category of Medicare requirement"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the requirement"
+    },
+    "required_elements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Specific documentation elements required"
+    },
+    "applies_to_visit_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which visit types this rule applies to"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium"
+      ],
+      "default": "high",
+      "description": "Severity if rule is violated"
+    },
+    "validation_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "How to validate this requirement is met"
+    },
+    "examples_compliant": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Examples of compliant documentation"
+    },
+    "examples_non_compliant": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Examples of non-compliant documentation"
+    },
+    "pennsylvania_specific": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is a Pennsylvania-specific requirement"
+    },
+    "remediation_guidance": {
+      "type": "string",
+      "description": "How to fix non-compliance"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Keywords to look for in documentation"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When this rule became effective"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date",
+      "description": "Last update to this rule"
+    }
+  },
+  "required": [
+    "rule_name",
+    "cop_reference",
+    "category",
+    "description",
+    "severity"
+  ]
+}

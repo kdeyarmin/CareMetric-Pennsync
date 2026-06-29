@@ -1,126 +1,109 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import OpenAI from 'npm:openai';
 
 Deno.serve(async (req) => {
-  try {
-    const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    try {
+        const base44 = createClientFromRequest(req);
+        const user = await base44.auth.me();
+
+        if (!user) {
+            return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Construct the OpenAI client inside the handler — module-level init
+        // crashes boot if the secret is missing (no try/catch reached, no logs).
+        const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") });
+
+        const payload = await req.json();
+        const { audio_base64, mime_type } = payload;
+        
+        if (!audio_base64) {
+             return Response.json({ error: 'No audio provided' }, { status: 400 });
+        }
+
+        // Convert base64 to File object for OpenAI
+        const binaryString = atob(audio_base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // determine extension
+        let ext = "webm";
+        if (mime_type && mime_type.includes("mp4")) ext = "mp4";
+        if (mime_type && mime_type.includes("wav")) ext = "wav";
+
+        const file = new File([bytes], `audio.${ext}`, { type: mime_type || "audio/webm" });
+
+        // 1. Transcribe audio using gpt-4o-transcribe
+        const transcriptionResponse = await openai.audio.transcriptions.create({
+            file: file,
+            model: "gpt-4o-transcribe",
+            response_format: "text",
+        });
+
+        const transcript = transcriptionResponse;
+
+        // 2. Generate the SOAP note using Claude (claude-opus-4-8) — the most
+        // capable model, the best fit for clinical reasoning over the transcript.
+        // Transcription stays on OpenAI's gpt-4o-transcribe above; only this
+        // reasoning step uses Anthropic (same direct-API pattern as
+        // generateFaxCoverPage). claude-opus-4-8 rejects temperature/top_p and
+        // does not take an OpenAI-style response_format, so the JSON contract is
+        // expressed in the prompt and extracted from the response text.
+        const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+        if (!anthropicKey) {
+            return Response.json({ error: 'Anthropic API key not configured' }, { status: 500 });
+        }
+
+        const soapApiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': anthropicKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-opus-4-8',
+                max_tokens: 2048,
+                system: "You are an expert clinical documentation assistant. Extract information from the provided transcript and generate a structured SOAP note (Subjective, Objective, Assessment, Plan). Return ONLY a JSON object with keys: subjective, objective, assessment, plan.",
+                messages: [
+                    {
+                        role: "user",
+                        content: `Please generate a SOAP note from the following transcript:\n\n${transcript}`
+                    }
+                ]
+            })
+        });
+
+        if (!soapApiResponse.ok) {
+            const err = await soapApiResponse.text();
+            console.error("Claude API error:", err);
+            return Response.json({ error: 'AI generation failed' }, { status: 500 });
+        }
+
+        const claudeData = await soapApiResponse.json();
+        // Anthropic returns an array of content blocks; concatenate every text
+        // block (not just the first) so JSON extraction can't drop later output.
+        const soapText = (Array.isArray(claudeData.content) ? claudeData.content : [])
+            .filter((block) => block?.type === 'text')
+            .map((block) => block.text)
+            .join('') || '{}';
+
+        let soapNote;
+        try {
+           const jsonMatch = soapText.match(/\{[\s\S]*\}/);
+           soapNote = JSON.parse(jsonMatch ? jsonMatch[0] : soapText);
+        } catch (e) {
+           soapNote = { subjective: "Error parsing response.", objective: "", assessment: "", plan: "" };
+        }
+
+        soapNote.raw_transcript = transcript;
+
+        return Response.json({ success: true, data: soapNote });
+
+    } catch (error) {
+        console.error("Error in transcribeAndGenerateSOAPNote:", error);
+        return Response.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
     }
-
-    const body = await req.json();
-    const {
-      audio_file_url,
-      patient_id,
-      visit_type,
-      diagnosis,
-      context_data = {},
-      nurse_type = 'RN'
-    } = body;
-
-    if (!audio_file_url) {
-      return Response.json({ error: 'Audio file URL is required' }, { status: 400 });
-    }
-
-    const deepgramApiKey = Deno.env.get('DEEPGRAM_API_KEY');
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-
-    if (!deepgramApiKey || !anthropicApiKey) {
-      console.error('[transcribeAndGenerateSOAPNote] Missing API keys');
-      throw new Error('Required API keys not configured');
-    }
-
-    console.log('[transcribeAndGenerateSOAPNote] Transcribing audio:', audio_file_url);
-
-    // Fetch audio file
-    const audioResponse = await fetch(audio_file_url);
-    if (!audioResponse.ok) {
-      throw new Error('Failed to fetch audio file');
-    }
-    const audioBuffer = await audioResponse.arrayBuffer();
-
-    // Transcribe with Deepgram
-    const transcriptResponse = await fetch('https://api.deepgram.com/v1/listen', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${deepgramApiKey}`,
-        'Content-Type': 'audio/wav'
-      },
-      body: audioBuffer
-    });
-
-    if (!transcriptResponse.ok) {
-      const error = await transcriptResponse.text();
-      console.error('[transcribeAndGenerateSOAPNote] Deepgram error:', error);
-      throw new Error(`Transcription failed: ${transcriptResponse.status}`);
-    }
-
-    const transcriptData = await transcriptResponse.json();
-    const transcribedText = transcriptData.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
-
-    if (!transcribedText) {
-      throw new Error('No speech detected in audio');
-    }
-
-    console.log('[transcribeAndGenerateSOAPNote] Transcription complete, generating SOAP note');
-
-    // Generate SOAP note from transcription
-    const soapPrompt = `You are an expert medical documentation assistant. Convert this voice transcription into a properly formatted SOAP note.
-
-VISIT DETAILS:
-- Visit Type: ${visit_type}
-- Primary Diagnosis: ${diagnosis}
-- Provider Type: ${nurse_type}
-${context_data?.patient_name ? `- Patient: ${context_data.patient_name}` : ''}
-
-VOICE TRANSCRIPTION:
-${transcribedText}
-
-Create a professional SOAP note with:
-1. SUBJECTIVE - Patient's reported symptoms, concerns, history
-2. OBJECTIVE - Vital signs, assessments, measurements, observations
-3. ASSESSMENT - Clinical interpretation, diagnoses, problem list
-4. PLAN - Treatment recommendations, medications, follow-up, patient education
-
-Format it professionally with proper medical terminology and Medicare compliance.`;
-
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: soapPrompt }]
-      })
-    });
-
-    if (!claudeResponse.ok) {
-      const errorText = await claudeResponse.text();
-      console.error('[transcribeAndGenerateSOAPNote] Claude error:', errorText);
-      throw new Error(`SOAP generation failed: ${claudeResponse.status}`);
-    }
-
-    const claudeResult = await claudeResponse.json();
-    const soapNote = claudeResult.content?.[0]?.text || '';
-
-    return Response.json({
-      success: true,
-      transcription: transcribedText,
-      soap_note: soapNote,
-      visit_type,
-      diagnosis,
-      confidence: transcriptData.results?.channels?.[0]?.alternatives?.[0]?.confidence || 0
-    });
-
-  } catch (error) {
-    console.error('[transcribeAndGenerateSOAPNote] Error:', error.message);
-    return Response.json({
-      success: false,
-      error: error.message
-    }, { status: 500 });
-  }
 });

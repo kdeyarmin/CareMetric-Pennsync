@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -17,18 +17,15 @@ import {
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
   AlertTriangle,
   Users,
   Activity,
   Target,
   Loader2,
   ArrowUpRight,
-  ArrowDownRight,
   BarChart3,
   LineChart as LineChartIcon,
   RefreshCw,
-  PieChart as PieChartIcon,
   Calculator,
   Layers
 } from "lucide-react";
@@ -39,8 +36,6 @@ import {
   Line,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -53,17 +48,17 @@ import {
   ComposedChart
 } from "recharts";
 
-const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+const COLORS = ['#3557b0', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 export default function PDGMPredictiveAnalytics({ compact = false }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [predictions, setPredictions] = useState(null);
   const [timeRange, setTimeRange] = useState("6months");
   const [error, setError] = useState(null);
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 
   const { data: visits = [] } = useQuery({
@@ -71,8 +66,7 @@ export default function PDGMPredictiveAnalytics({ compact = false }) {
     queryFn: () => base44.entities.Visit.list('-visit_date', 100),
   });
 
-  const generatePredictions = async () => {
-    setIsAnalyzing(true);
+  const generatePredictions = useCallback(async () => {
     setError(null);
 
     try {
@@ -89,7 +83,8 @@ export default function PDGMPredictiveAnalytics({ compact = false }) {
         status: v.status
       }));
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a PDGM financial analyst. Based on this home health agency data, generate predictive analytics with detailed cohort analysis.
 
 PATIENT DATA (${activePatients.length} active):
@@ -323,14 +318,14 @@ Return JSON:
       setError("Failed to generate predictions. Please try again.");
     }
 
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [patients, visits, timeRange]);
 
   useEffect(() => {
-    if (patients.length > 0 && !predictions && !isAnalyzing) {
+    if (patients.length > 0 && !predictions && !ai.loading) {
       generatePredictions();
     }
-  }, [patients]);
+  }, [patients, predictions, ai.loading, generatePredictions]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -351,7 +346,7 @@ Return JSON:
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isAnalyzing ? (
+          {ai.loading ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
             </div>
@@ -359,13 +354,13 @@ Return JSON:
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-gray-500">Projected Revenue</p>
-                  <p className="text-xl font-bold text-gray-900">
+                  <p className="text-xs text-slate-500">Projected Revenue</p>
+                  <p className="text-xl font-bold text-slate-900">
                     {formatCurrency(predictions.revenue_forecast?.total_projected || 0)}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-500">Optimization Potential</p>
+                  <p className="text-xs text-slate-500">Optimization Potential</p>
                   <p className="text-lg font-bold text-green-600 flex items-center gap-1">
                     <TrendingUp className="w-4 h-4" />
                     +{formatCurrency(predictions.revenue_forecast?.improvement_potential || 0)}
@@ -375,7 +370,7 @@ Return JSON:
               <div className="h-24">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={predictions.revenue_forecast?.projected_monthly?.slice(0, 4) || []}>
-                    <Area type="monotone" dataKey="projected" stroke="#6366f1" fill="#c7d2fe" />
+                    <Area type="monotone" dataKey="projected" stroke="#264491" fill="#b6c9ee" />
                     <Area type="monotone" dataKey="optimized" stroke="#22c55e" fill="#bbf7d0" fillOpacity={0.5} />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -396,7 +391,7 @@ Return JSON:
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-indigo-600" />
@@ -416,19 +411,19 @@ Return JSON:
             <Button 
               size="sm" 
               onClick={generatePredictions} 
-              disabled={isAnalyzing}
+              disabled={ai.loading}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
-              {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              {ai.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="pt-4">
-        {isAnalyzing ? (
+        {ai.loading ? (
           <div className="flex flex-col items-center justify-center py-12">
             <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-4" />
-            <p className="text-sm text-gray-600">Analyzing patient data and generating predictions...</p>
+            <p className="text-sm text-slate-600">Analyzing patient data and generating predictions...</p>
           </div>
         ) : error ? (
           <Alert className="bg-red-50 border-red-200">
@@ -494,7 +489,7 @@ Return JSON:
                       <Tooltip formatter={(value) => formatCurrency(value)} />
                       <Legend />
                       <Area type="monotone" dataKey="baseline" fill="#e5e7eb" stroke="#9ca3af" name="Baseline" />
-                      <Line type="monotone" dataKey="projected" stroke="#6366f1" strokeWidth={2} name="Projected" dot={{ fill: '#6366f1' }} />
+                      <Line type="monotone" dataKey="projected" stroke="#264491" strokeWidth={2} name="Projected" dot={{ fill: '#264491' }} />
                       <Line type="monotone" dataKey="optimized" stroke="#22c55e" strokeWidth={2} strokeDasharray="5 5" name="Optimized" dot={{ fill: '#22c55e' }} />
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -506,9 +501,9 @@ Return JSON:
                 <h4 className="text-sm font-semibold mb-3">Quarterly Projections</h4>
                 <div className="grid grid-cols-4 gap-3">
                   {predictions.quarterly_projections?.map((q, idx) => (
-                    <div key={idx} className="bg-gray-50 p-3 rounded-lg border text-center">
-                      <p className="text-xs text-gray-500 mb-1">{q.quarter}</p>
-                      <p className="text-lg font-bold text-gray-900">{formatCurrency(q.revenue)}</p>
+                    <div key={idx} className="bg-slate-50 p-3 rounded-lg border text-center">
+                      <p className="text-xs text-slate-500 mb-1">{q.quarter}</p>
+                      <p className="text-lg font-bold text-slate-900">{formatCurrency(q.revenue)}</p>
                       <div className="flex items-center justify-center gap-2 mt-1">
                         <Badge variant="outline" className="text-xs">{q.episodes} episodes</Badge>
                         <Badge className="bg-indigo-100 text-indigo-700 text-xs">CMW: {q.case_mix}</Badge>
@@ -567,7 +562,7 @@ Return JSON:
                       <YAxis domain={[0.8, 1.2]} tick={{ fontSize: 11 }} />
                       <Tooltip />
                       <Legend />
-                      <Line type="monotone" dataKey="weight" stroke="#6366f1" strokeWidth={2} name="Total Weight" />
+                      <Line type="monotone" dataKey="weight" stroke="#264491" strokeWidth={2} name="Total Weight" />
                       <Line type="monotone" dataKey="functional" stroke="#22c55e" strokeWidth={2} name="Functional" />
                       <Line type="monotone" dataKey="clinical" stroke="#f59e0b" strokeWidth={2} name="Clinical" />
                     </LineChart>
@@ -602,17 +597,17 @@ Return JSON:
                   </div>
                   <div className="space-y-2">
                     {predictions.clinical_group_distribution?.map((group, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
                           <span className="text-sm font-medium">{group.group}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-600">{formatCurrency(group.avg_payment)}</span>
+                          <span className="text-sm text-slate-600">{formatCurrency(group.avg_payment)}</span>
                           <Badge className={`text-xs ${
                             group.trend === 'increasing' ? 'bg-green-100 text-green-700' :
                             group.trend === 'decreasing' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-700'
+                            'bg-slate-100 text-slate-700'
                           }`}>
                             {group.trend}
                           </Badge>
@@ -643,7 +638,7 @@ Return JSON:
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <h4 className="font-semibold text-slate-900 flex items-center gap-2">
                             {risk.risk_type}
                             <Badge className={`${
                               risk.priority === 'high' ? 'bg-red-600' :
@@ -652,22 +647,22 @@ Return JSON:
                               {risk.priority}
                             </Badge>
                           </h4>
-                          <p className="text-sm text-gray-600 mt-1">{risk.description}</p>
+                          <p className="text-sm text-slate-600 mt-1">{risk.description}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-gray-500">Revenue at Risk</p>
+                          <p className="text-xs text-slate-500">Revenue at Risk</p>
                           <p className="text-xl font-bold text-red-600">{formatCurrency(risk.revenue_at_risk)}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4 mb-3">
                         <div className="flex items-center gap-1 text-sm">
-                          <Users className="w-4 h-4 text-gray-500" />
+                          <Users className="w-4 h-4 text-slate-500" />
                           <span>{risk.patient_count} patients affected</span>
                         </div>
                       </div>
-                      <Alert className="bg-white border-gray-200">
+                      <Alert className="bg-white border-slate-200">
                         <Target className="w-4 h-4 text-blue-600" />
-                        <AlertDescription className="text-gray-800 text-sm">
+                        <AlertDescription className="text-slate-800 text-sm">
                           <strong>Intervention:</strong> {risk.intervention}
                         </AlertDescription>
                       </Alert>
@@ -690,7 +685,7 @@ Return JSON:
                   <Card key={idx} className="border-green-200">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
-                        <h4 className="font-semibold text-gray-900">{sim.scenario}</h4>
+                        <h4 className="font-semibold text-slate-900">{sim.scenario}</h4>
                         <div className="text-right">
                           <p className="text-xs text-green-600">Potential Impact</p>
                           <p className="text-xl font-bold text-green-700">+{formatCurrency(sim.revenue_impact)}</p>
@@ -761,25 +756,25 @@ Return JSON:
 
               {/* Recommended Actions */}
               <div className="space-y-2">
-                <h4 className="font-semibold text-gray-900">Recommended Actions</h4>
+                <h4 className="font-semibold text-slate-900">Recommended Actions</h4>
                 {predictions.recommended_actions?.map((action, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 bg-white rounded-lg border hover:border-indigo-300 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                         action.impact === 'high' ? 'bg-green-100 text-green-700' :
                         action.impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-700'
+                        'bg-slate-100 text-slate-700'
                       }`}>
                         {idx + 1}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{action.action}</p>
-                        <p className="text-xs text-gray-500">Timeline: {action.timeline}</p>
+                        <p className="text-sm font-medium text-slate-900">{action.action}</p>
+                        <p className="text-xs text-slate-500">Timeline: {action.timeline}</p>
                       </div>
                     </div>
                     <Badge className={`${
                       action.impact === 'high' ? 'bg-green-600' :
-                      action.impact === 'medium' ? 'bg-yellow-500' : 'bg-gray-500'
+                      action.impact === 'medium' ? 'bg-yellow-500' : 'bg-slate-500'
                     }`}>
                       {action.impact} impact
                     </Badge>
@@ -790,8 +785,8 @@ Return JSON:
           </Tabs>
         ) : (
           <div className="text-center py-8">
-            <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">Generate predictive analytics based on your patient data</p>
+            <BarChart3 className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+            <p className="text-slate-600 mb-4">Generate predictive analytics based on your patient data</p>
             <Button onClick={generatePredictions} className="bg-indigo-600 hover:bg-indigo-700">
               <BarChart3 className="w-4 h-4 mr-2" />
               Generate Predictions

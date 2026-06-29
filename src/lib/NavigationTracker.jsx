@@ -2,13 +2,12 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { base44 } from '@/api/base44Client';
-import { pagesConfig } from '@/pages.config';
+import { PAGE_NAMES, MAIN_PAGE } from '@/routes';
 
 export default function NavigationTracker() {
     const location = useLocation();
     const { isAuthenticated } = useAuth();
-    const { Pages, mainPage } = pagesConfig;
-    const mainPageKey = mainPage ?? Object.keys(Pages)[0];
+    const mainPageKey = MAIN_PAGE ?? PAGE_NAMES[0];
 
     // Post navigation changes to parent window
     useEffect(() => {
@@ -29,13 +28,12 @@ export default function NavigationTracker() {
         } else {
             // Remove leading slash and get the first segment
             const pathSegment = pathname.replace(/^\//, '').split('/')[0];
-            
-            // Try case-insensitive lookup in Pages config
-            const pageKeys = Object.keys(Pages);
-            const matchedKey = pageKeys.find(
+
+            // Try case-insensitive lookup against the known route names
+            const matchedKey = PAGE_NAMES.find(
                 key => key.toLowerCase() === pathSegment.toLowerCase()
             );
-            
+
             pageName = matchedKey || null;
         }
 
@@ -44,7 +42,7 @@ export default function NavigationTracker() {
                 // Silently fail - logging shouldn't break the app
             });
         }
-    }, [location, isAuthenticated, Pages, mainPageKey]);
+    }, [location, isAuthenticated, mainPageKey]);
 
     return null;
 }

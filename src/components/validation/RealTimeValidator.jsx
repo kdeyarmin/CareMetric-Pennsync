@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle2, AlertCircle, AlertTriangle, Info } from "lucide-react";
+import { CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
 import { 
   validateEmail, 
   validatePhone, 
@@ -30,7 +30,10 @@ export default function RealTimeValidator({
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (!touched || !value) {
+    // Only suppress validation until the field is touched. An empty value must
+    // still fall through so the `required` check below can flag it — short-
+    // circuiting on `!value` previously reported blank required fields as valid.
+    if (!touched) {
       setErrors([]);
       setWarnings([]);
       if (onValidationChange) onValidationChange({ valid: true, errors: [], warnings: [] });
@@ -52,35 +55,27 @@ export default function RealTimeValidator({
     if (value?.trim()) {
       switch (type) {
         case 'email':
+          // validateEmail/Phone/Date return a bare message string (or null), not
+          // an object — so `.severity` was always undefined and an invalid value
+          // fell through to a warning (form reported valid:true) with a blank
+          // message. Treat a returned message as an ERROR with a real message.
           const emailError = validateEmail(value);
           if (emailError) {
-            if (emailError.severity === SEVERITY.ERROR) {
-              newErrors.push(emailError);
-            } else {
-              newWarnings.push(emailError);
-            }
+            newErrors.push({ severity: SEVERITY.ERROR, message: emailError });
           }
           break;
 
         case 'phone':
           const phoneError = validatePhone(value);
           if (phoneError) {
-            if (phoneError.severity === SEVERITY.ERROR) {
-              newErrors.push(phoneError);
-            } else {
-              newWarnings.push(phoneError);
-            }
+            newErrors.push({ severity: SEVERITY.ERROR, message: phoneError });
           }
           break;
 
         case 'date':
           const dateError = validateDate(value, fieldName);
           if (dateError) {
-            if (dateError.severity === SEVERITY.ERROR) {
-              newErrors.push(dateError);
-            } else {
-              newWarnings.push(dateError);
-            }
+            newErrors.push({ severity: SEVERITY.ERROR, message: dateError });
           }
           break;
       }

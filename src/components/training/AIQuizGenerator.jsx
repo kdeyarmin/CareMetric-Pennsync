@@ -1,16 +1,17 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { safePercent } from "@/lib/safePercent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sparkles, CheckCircle2, XCircle, HelpCircle, ArrowRight, RotateCcw, Trophy } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function AIQuizGenerator({ trainingContent, moduleTitle, onComplete }) {
-  const [generating, setGenerating] = useState(false);
+  const ai = useAICall();
   const [quiz, setQuiz] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -18,9 +19,9 @@ export default function AIQuizGenerator({ trainingContent, moduleTitle, onComple
   const [quizResults, setQuizResults] = useState(null);
 
   const generateQuiz = async () => {
-    setGenerating(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a comprehensive nursing quiz based on the following training content.
 
 TRAINING CONTENT:
@@ -74,15 +75,18 @@ Return JSON with:
         }
       });
 
+      if (!Array.isArray(result?.questions) || result.questions.length === 0) {
+        toast.error("The quiz couldn't be generated. Please try again.");
+        return;
+      }
       setQuiz(result);
       setCurrentQuestion(0);
       setSelectedAnswers({});
       setShowResults(false);
     } catch (error) {
       console.error('Quiz generation error:', error);
-      alert('Failed to generate quiz. Please try again.');
+      toast.error('Failed to generate quiz. Please try again.');
     }
-    setGenerating(false);
   };
 
   const handleAnswerSelect = (questionIndex, answerIndex) => {
@@ -97,7 +101,7 @@ Return JSON with:
       selectedAnswers[idx] === q.correct_answer
     ).length;
     
-    const score = Math.round((correctCount / quiz.questions.length) * 100);
+    const score = safePercent(correctCount, quiz.questions.length);
     const passed = score >= (quiz.passing_score || 80);
 
     setQuizResults({
@@ -120,20 +124,20 @@ Return JSON with:
 
   if (!quiz) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-8 text-center">
-          <Sparkles className="w-16 h-16 text-purple-500 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-gray-900 mb-2">AI Quiz Generator</h3>
-          <p className="text-gray-600 mb-6">
+          <Sparkles className="w-16 h-16 text-navy-500 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-slate-900 mb-2">AI Quiz Generator</h3>
+          <p className="text-slate-600 mb-6">
             Generate an interactive quiz based on the training material to assess understanding
           </p>
           <Button
             onClick={generateQuiz}
-            disabled={generating || !trainingContent}
-            className="bg-purple-600 hover:bg-purple-700"
+            disabled={ai.loading || !trainingContent}
+            className="bg-navy-600 hover:bg-navy-700"
             size="lg"
           >
-            {generating ? (
+            {ai.loading ? (
               <>
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
                 Generating Quiz...
@@ -168,7 +172,7 @@ Return JSON with:
             <div className={`text-6xl font-bold mb-2 ${quizResults.passed ? 'text-green-600' : 'text-orange-600'}`}>
               {quizResults.score}%
             </div>
-            <p className="text-lg text-gray-700 mb-1">
+            <p className="text-lg text-slate-700 mb-1">
               {quizResults.correctCount} of {quizResults.totalQuestions} correct
             </p>
             <Badge className={`text-sm ${quizResults.passed ? 'bg-green-600' : 'bg-orange-500'}`}>
@@ -178,7 +182,7 @@ Return JSON with:
 
           {/* Question Review */}
           <div className="space-y-3">
-            <h4 className="font-semibold text-gray-900">Review Your Answers</h4>
+            <h4 className="font-semibold text-slate-900">Review Your Answers</h4>
             {quiz.questions.map((q, idx) => {
               const isCorrect = selectedAnswers[idx] === q.correct_answer;
               return (
@@ -191,7 +195,7 @@ Return JSON with:
                         <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                       )}
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900 mb-2">{q.question}</p>
+                        <p className="text-sm font-medium text-slate-900 mb-2">{q.question}</p>
                         <div className="space-y-1 text-sm">
                           <p className={isCorrect ? 'text-green-700' : 'text-red-700'}>
                             Your answer: {q.options[selectedAnswers[idx]]}
@@ -232,7 +236,7 @@ Return JSON with:
   const allAnswered = Object.keys(selectedAnswers).length === quiz.questions.length;
 
   return (
-    <Card className="border-2 border-purple-200">
+    <Card className="border-2 border-navy-200">
       <CardHeader>
         <div className="flex items-center justify-between mb-2">
           <CardTitle className="text-lg">{quiz.quiz_title}</CardTitle>
@@ -252,7 +256,7 @@ Return JSON with:
             }`}>
               {question.difficulty}
             </Badge>
-            <h3 className="text-lg font-medium text-gray-900 flex-1">{question.question}</h3>
+            <h3 className="text-lg font-medium text-slate-900 flex-1">{question.question}</h3>
           </div>
 
           <RadioGroup
@@ -260,7 +264,7 @@ Return JSON with:
             onValueChange={(value) => handleAnswerSelect(currentQuestion, parseInt(value))}
           >
             {question.options.map((option, idx) => (
-              <div key={idx} className="flex items-center space-x-3 p-3 rounded-lg border-2 border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors">
+              <div key={idx} className="flex items-center space-x-3 p-3 rounded-lg border-2 border-slate-200 hover:border-navy-300 hover:bg-navy-50 transition-colors">
                 <RadioGroupItem value={idx.toString()} id={`option-${idx}`} />
                 <Label htmlFor={`option-${idx}`} className="flex-1 cursor-pointer text-sm">
                   {option}
@@ -280,7 +284,7 @@ Return JSON with:
             Previous
           </Button>
 
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-slate-600">
             {selectedAnswers[currentQuestion] !== undefined ? (
               <span className="text-green-600 font-medium flex items-center gap-1">
                 <CheckCircle2 className="w-4 h-4" /> Answered
@@ -294,7 +298,7 @@ Return JSON with:
             <Button
               onClick={() => setCurrentQuestion(currentQuestion + 1)}
               disabled={selectedAnswers[currentQuestion] === undefined}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-navy-600 hover:bg-navy-700"
             >
               Next <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
@@ -311,7 +315,7 @@ Return JSON with:
         </div>
 
         {/* Progress Indicator */}
-        <div className="text-center text-sm text-gray-500">
+        <div className="text-center text-sm text-slate-500">
           {Object.keys(selectedAnswers).length} of {quiz.questions.length} questions answered
         </div>
       </CardContent>

@@ -1,0 +1,82 @@
+{
+  "name": "DocumentPackageToken",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Reference to DocumentPackage"
+    },
+    "token": {
+      "type": "string",
+      "description": "Secure token for public access"
+    },
+    "signer_email": {
+      "type": "string",
+      "description": "Email of authorized signer"
+    },
+    "signer_name": {
+      "type": "string",
+      "description": "Name of signer for personalization"
+    },
+    "token_created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When token was generated"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Token expiration timestamp"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether token is still valid"
+    },
+    "access_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times token was used to access"
+    },
+    "last_accessed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time token was used"
+    },
+    "ip_addresses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IP addresses used to access with this token"
+    },
+    "user_agents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User agents used to access with this token"
+    }
+  },
+  "required": [
+    "package_id",
+    "token",
+    "signer_email",
+    "expires_at"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "signer_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "signer_email": "{{user.email}}" },
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

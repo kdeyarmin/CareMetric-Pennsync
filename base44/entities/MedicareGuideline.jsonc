@@ -1,0 +1,105 @@
+{
+  "name": "MedicareGuideline",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the Medicare guideline or document"
+    },
+    "url": {
+      "type": "string",
+      "description": "Original URL on cms.gov"
+    },
+    "content_markdown": {
+      "type": "string",
+      "description": "Extracted content of the guideline in markdown format"
+    },
+    "summary": {
+      "type": "string",
+      "description": "AI-generated summary of key points"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "oasis",
+        "medicare_cop",
+        "billing_reimbursement",
+        "clinical_documentation",
+        "home_health_regulations",
+        "hospice_regulations",
+        "quality_measures",
+        "compliance_audit",
+        "pdgm",
+        "other"
+      ],
+      "description": "Category of the guideline"
+    },
+    "subcategory": {
+      "type": "string",
+      "description": "More specific subcategory (e.g., 'Skilled Nursing', 'Homebound Status')"
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the guideline became effective"
+    },
+    "last_updated_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last date the guideline was updated by CMS"
+    },
+    "last_fetched_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of when the guideline was last fetched from cms.gov"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Keywords for search and AI context retrieval"
+    },
+    "related_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Medical conditions or diagnoses this guideline relates to"
+    },
+    "applies_to_visit_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which visit types this guideline applies to (admission, routine, discharge, etc.)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this guideline is currently active"
+    },
+    "cms_manual_chapter": {
+      "type": "string",
+      "description": "CMS manual chapter reference (e.g., 'Chapter 7 - Home Health Services')"
+    },
+    "regulatory_citation": {
+      "type": "string",
+      "description": "Official regulatory citation (e.g., '42 CFR 484.55')"
+    }
+  },
+  "required": [
+    "title",
+    "url",
+    "content_markdown",
+    "category"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

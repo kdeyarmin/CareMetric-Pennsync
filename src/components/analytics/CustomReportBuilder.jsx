@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CHART_COLORS_6 } from "@/constants/chartColors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Download, Plus, Trash2, BarChart3, FileText, Calendar } from "lucide-react";
+import { Download, BarChart3, Calendar } from "lucide-react";
 import { format } from "date-fns";
+import { escapeCsvField } from "@/components/admin/csvExport";
 
 export default function CustomReportBuilder({ patients, visits, incidents, users }) {
   const [reportName, setReportName] = useState("");
@@ -100,7 +102,7 @@ export default function CustomReportBuilder({ patients, visits, incidents, users
   const exportReport = () => {
     if (!generatedReport) return;
 
-    const csvContent = `${generatedReport.name}\nGenerated: ${format(new Date(generatedReport.date), 'PPpp')}\nDate Range: Last ${dateRange} days\n\nMetric,Value\n${generatedReport.data.map(d => `${d.name},${d.value}`).join('\n')}`;
+    const csvContent = `${escapeCsvField(generatedReport.name)}\nGenerated: ${format(new Date(generatedReport.date), 'PPpp')}\nDate Range: Last ${dateRange} days\n\nMetric,Value\n${generatedReport.data.map(d => `${escapeCsvField(d.name)},${escapeCsvField(d.value)}`).join('\n')}`;
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -113,7 +115,7 @@ export default function CustomReportBuilder({ patients, visits, incidents, users
     a.remove();
   };
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+  const COLORS = CHART_COLORS_6;
 
   const groupedMetrics = availableMetrics.reduce((acc, metric) => {
     if (!acc[metric.category]) acc[metric.category] = [];
@@ -163,7 +165,7 @@ export default function CustomReportBuilder({ patients, visits, incidents, users
             <div className="space-y-4">
               {Object.entries(groupedMetrics).map(([category, metrics]) => (
                 <div key={category}>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2 capitalize">{category}</h4>
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2 capitalize">{category}</h4>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {metrics.map(metric => (
                       <div key={metric.id} className="flex items-center space-x-2">
@@ -242,7 +244,7 @@ export default function CustomReportBuilder({ patients, visits, incidents, users
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="value" fill="#3b82f6" />
+                  <Bar dataKey="value" fill="#3557b0" />
                 </BarChart>
               )}
               {chartType === "line" && (
@@ -252,7 +254,7 @@ export default function CustomReportBuilder({ patients, visits, incidents, users
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} />
+                  <Line type="monotone" dataKey="value" stroke="#3557b0" strokeWidth={2} />
                 </LineChart>
               )}
               {chartType === "pie" && (
@@ -283,7 +285,7 @@ export default function CustomReportBuilder({ patients, visits, incidents, users
                 {generatedReport.data.map((item, idx) => (
                   <Card key={idx}>
                     <CardContent className="p-4">
-                      <p className="text-sm text-gray-600">{item.name}</p>
+                      <p className="text-sm text-slate-600">{item.name}</p>
                       <p className="text-2xl font-bold mt-1">{item.value}</p>
                     </CardContent>
                   </Card>

@@ -1,0 +1,279 @@
+{
+  "name": "DischargeSummary",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "admission_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "discharge_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "primary_diagnosis": {
+      "type": "string"
+    },
+    "secondary_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reason_for_admission": {
+      "type": "string",
+      "description": "Why patient was admitted to home health"
+    },
+    "summary_of_care": {
+      "type": "string",
+      "description": "AI-generated comprehensive narrative"
+    },
+    "visit_summary": {
+      "type": "object",
+      "properties": {
+        "total_visits": {
+          "type": "number"
+        },
+        "skilled_nursing_visits": {
+          "type": "number"
+        },
+        "therapy_visits": {
+          "type": "number"
+        },
+        "visit_highlights": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "care_plan_outcomes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "problem": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "met",
+              "partially_met",
+              "not_met",
+              "ongoing"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "medication_summary": {
+      "type": "object",
+      "properties": {
+        "medications_at_admission": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "medications_at_discharge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "medication_changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "change_type": {
+                "type": "string",
+                "enum": [
+                  "added",
+                  "discontinued",
+                  "dose_changed"
+                ]
+              },
+              "medication": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "functional_status": {
+      "type": "object",
+      "properties": {
+        "at_admission": {
+          "type": "string"
+        },
+        "at_discharge": {
+          "type": "string"
+        },
+        "improvement_areas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "patient_education_provided": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "materials_provided": {
+            "type": "string"
+          },
+          "patient_understanding": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "discharge_disposition": {
+      "type": "string",
+      "enum": [
+        "home_independent",
+        "home_with_support",
+        "continuing_home_health",
+        "transferred_to_facility",
+        "expired",
+        "other"
+      ]
+    },
+    "discharge_instructions": {
+      "type": "string",
+      "description": "Patient instructions at discharge"
+    },
+    "follow_up_recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "recommendation": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "timeframe": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "physician_notified": {
+      "type": "boolean",
+      "default": false
+    },
+    "physician_notification_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "pending_review",
+        "reviewed",
+        "signed",
+        "sent"
+      ],
+      "default": "draft"
+    },
+    "generated_by": {
+      "type": "string",
+      "description": "Email of user who generated the summary"
+    },
+    "generated_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of nurse who reviewed"
+    },
+    "reviewed_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_notes": {
+      "type": "string",
+      "description": "Nurse notes during review"
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "signature_data": {
+          "type": "string",
+          "description": "Base64 signature image"
+        },
+        "signed_by": {
+          "type": "string"
+        },
+        "signed_by_name": {
+          "type": "string"
+        },
+        "signed_by_credentials": {
+          "type": "string"
+        },
+        "signed_date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ip_address": {
+          "type": "string"
+        }
+      }
+    },
+    "pdf_url": {
+      "type": "string",
+      "description": "URL to generated PDF after signing"
+    },
+    "ai_generation_metadata": {
+      "type": "object",
+      "properties": {
+        "visits_analyzed": {
+          "type": "number"
+        },
+        "care_plans_analyzed": {
+          "type": "number"
+        },
+        "medications_tracked": {
+          "type": "number"
+        },
+        "generation_confidence": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "required": [
+    "patient_id",
+    "discharge_date",
+    "status"
+  ]
+}

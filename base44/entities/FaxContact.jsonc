@@ -1,0 +1,26 @@
+{
+  "name": "FaxContact",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Contact name"
+    },
+    "organization": {
+      "type": "string",
+      "description": "Organization or facility name"
+    },
+    "fax_number": {
+      "type": "string",
+      "description": "Fax number with country code (e.g., +1234567890)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about this contact"
+    }
+  },
+  "required": [
+    "name",
+    "fax_number"
+  ]
+}

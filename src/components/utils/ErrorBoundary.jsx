@@ -1,8 +1,10 @@
-import React from 'react';
-import { AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import React from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
-export class ErrorBoundary extends React.Component {
+class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -13,33 +15,30 @@ export class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary caught:', error, errorInfo);
+    logger.error('Error caught by boundary:', error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
-      // Use custom fallback if provided
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
-      
       return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
-          <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-lg shadow-lg p-8 text-center">
-            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-              Something went wrong
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 mb-6 text-sm">
-              {this.state.error?.message || 'An unexpected error occurred. Please try again.'}
-            </p>
-            <Button
-              onClick={() => window.location.reload()}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Reload Page
-            </Button>
-          </div>
+        <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+          <Card className="max-w-md border-red-300">
+            <CardContent className="p-8 text-center">
+              <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-slate-900 mb-2">Something went wrong</h2>
+              <p className="text-sm text-slate-600 mb-4">
+                An unexpected error occurred. Please reload the page; if it keeps
+                happening, contact your administrator.
+              </p>
+              {import.meta.env?.DEV && this.state.error?.message && (
+                <p className="text-xs text-slate-400 mb-4 break-words">{this.state.error.message}</p>
+              )}
+              <Button onClick={() => window.location.reload()} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Reload Page
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       );
     }
@@ -47,3 +46,5 @@ export class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+export default ErrorBoundary;

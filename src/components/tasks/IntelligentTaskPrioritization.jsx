@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,13 +17,12 @@ import {
   RefreshCw,
   Zap,
   Target,
-  ArrowUp,
-  ArrowDown,
   UserPlus,
   ChevronDown,
   ChevronUp
 } from "lucide-react";
-import { format, isToday, isTomorrow, isPast } from "date-fns";
+import { format } from "date-fns";
+import { toast } from "sonner";
 
 export default function IntelligentTaskPrioritization({ 
   nurseEmail,
@@ -30,7 +30,7 @@ export default function IntelligentTaskPrioritization({
   onTaskCompleted 
 }) {
   const queryClient = useQueryClient();
-  const [isPrioritizing, setIsPrioritizing] = useState(false);
+  const ai = useAICall();
   const [prioritizedTasks, setPrioritizedTasks] = useState(null);
   const [expanded, setExpanded] = useState(true);
 
@@ -50,16 +50,25 @@ export default function IntelligentTaskPrioritization({
 
   const updateTaskMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Task.update(id, data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nurseTasks'] });
+      // Only drop the task from the local prioritized list once the server
+      // confirms — otherwise a failed update made it look completed.
+      setPrioritizedTasks((prev) =>
+        prev
+          ? { ...prev, prioritized_tasks: (prev.prioritized_tasks || []).filter((t) => t.task_id !== variables.id) }
+          : prev
+      );
       onTaskCompleted && onTaskCompleted();
+    },
+    onError: () => {
+      toast.error('Could not complete the task. Please try again.');
     }
   });
 
   const prioritizeTasks = async () => {
     if (tasks.length === 0) return;
 
-    setIsPrioritizing(true);
 
     try {
       // Enrich tasks with patient context
@@ -84,7 +93,8 @@ export default function IntelligentTaskPrioritization({
         };
       });
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an intelligent task prioritization AI for home health nurses. Analyze these tasks and prioritize them for maximum patient safety and compliance.
 
 TASKS TO PRIORITIZE:
@@ -169,7 +179,6 @@ Return JSON:
       console.error("Error prioritizing tasks:", error);
     }
 
-    setIsPrioritizing(false);
   };
 
   const completeTask = (taskId) => {
@@ -177,14 +186,6 @@ Return JSON:
       id: taskId,
       data: { status: 'completed', completion_notes: 'Completed via Smart Task Manager' }
     });
-    
-    // Update local state
-    if (prioritizedTasks) {
-      setPrioritizedTasks({
-        ...prioritizedTasks,
-        prioritized_tasks: prioritizedTasks.prioritized_tasks.filter(t => t.task_id !== taskId)
-      });
-    }
   };
 
   const getPriorityColor = (level) => {
@@ -193,7 +194,7 @@ Return JSON:
       case 'high': return 'bg-orange-500 text-white';
       case 'medium': return 'bg-yellow-500 text-white';
       case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
@@ -202,7 +203,7 @@ Return JSON:
       case 'overdue': return <AlertTriangle className="w-3 h-3 text-red-600" />;
       case 'urgent': return <Zap className="w-3 h-3 text-orange-600" />;
       case 'today': return <Clock className="w-3 h-3 text-yellow-600" />;
-      default: return <Clock className="w-3 h-3 text-gray-400" />;
+      default: return <Clock className="w-3 h-3 text-slate-400" />;
     }
   };
 
@@ -211,21 +212,21 @@ Return JSON:
       <Card className="border-green-200">
         <CardContent className="p-4 text-center">
           <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
-          <p className="text-sm text-gray-600">No pending tasks - great job!</p>
+          <p className="text-sm text-slate-600">No pending tasks - great job!</p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card className="border-purple-200">
+    <Card className="border-navy-200">
       <CardHeader 
-        className="py-3 bg-gradient-to-r from-purple-50 to-indigo-50 cursor-pointer"
+        className="py-3 bg-gradient-to-r from-navy-50 to-indigo-50 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Brain className="w-4 h-4 text-purple-600" />
+            <Brain className="w-4 h-4 text-navy-600" />
             Smart Task Prioritization
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -239,16 +240,16 @@ Return JSON:
         <CardContent className="p-4 space-y-4">
           {!prioritizedTasks ? (
             <div className="text-center py-4">
-              <ListTodo className="w-12 h-12 mx-auto mb-3 text-purple-300" />
-              <p className="text-sm text-gray-600 mb-3">
+              <ListTodo className="w-12 h-12 mx-auto mb-3 text-navy-300" />
+              <p className="text-sm text-slate-600 mb-3">
                 Let AI prioritize your {tasks.length} tasks for maximum efficiency
               </p>
               <Button
                 onClick={prioritizeTasks}
-                disabled={isPrioritizing}
-                className="bg-purple-600 hover:bg-purple-700"
+                disabled={ai.loading}
+                className="bg-navy-600 hover:bg-navy-700"
               >
-                {isPrioritizing ? (
+                {ai.loading ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                     Analyzing Tasks...
@@ -267,27 +268,27 @@ Return JSON:
               <div className="grid grid-cols-4 gap-2">
                 <div className="text-center p-2 bg-red-50 rounded">
                   <p className="text-xl font-bold text-red-600">{prioritizedTasks.summary?.critical_count || 0}</p>
-                  <p className="text-xs text-gray-600">Critical</p>
+                  <p className="text-xs text-slate-600">Critical</p>
                 </div>
                 <div className="text-center p-2 bg-orange-50 rounded">
                   <p className="text-xl font-bold text-orange-600">{prioritizedTasks.summary?.high_count || 0}</p>
-                  <p className="text-xs text-gray-600">High</p>
+                  <p className="text-xs text-slate-600">High</p>
                 </div>
                 <div className="text-center p-2 bg-yellow-50 rounded">
                   <p className="text-xl font-bold text-yellow-600">{prioritizedTasks.summary?.overdue_count || 0}</p>
-                  <p className="text-xs text-gray-600">Overdue</p>
+                  <p className="text-xs text-slate-600">Overdue</p>
                 </div>
                 <div className="text-center p-2 bg-blue-50 rounded">
                   <p className="text-xl font-bold text-blue-600">{prioritizedTasks.summary?.delegatable_count || 0}</p>
-                  <p className="text-xs text-gray-600">Delegatable</p>
+                  <p className="text-xs text-slate-600">Delegatable</p>
                 </div>
               </div>
 
               {/* Immediate Actions */}
               {prioritizedTasks.immediate_actions?.length > 0 && (
-                <Alert className="bg-purple-50 border-purple-200">
-                  <Target className="w-4 h-4 text-purple-600" />
-                  <AlertDescription className="text-purple-900">
+                <Alert className="bg-navy-50 border-navy-200">
+                  <Target className="w-4 h-4 text-navy-600" />
+                  <AlertDescription className="text-navy-900">
                     <p className="font-semibold text-sm mb-1">Do These First:</p>
                     <ol className="text-xs space-y-1 list-decimal list-inside">
                       {prioritizedTasks.immediate_actions.map((action, idx) => (
@@ -306,7 +307,7 @@ Return JSON:
                     className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
                       task.ai_priority_level === 'critical' ? 'bg-red-50 border-red-200' :
                       task.ai_priority_level === 'high' ? 'bg-orange-50 border-orange-200' :
-                      'bg-white border-gray-200'
+                      'bg-white border-slate-200'
                     }`}
                   >
                     <Checkbox
@@ -315,7 +316,7 @@ Return JSON:
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-gray-500 font-mono">#{idx + 1}</span>
+                        <span className="text-xs text-slate-500 font-mono">#{idx + 1}</span>
                         <Badge className={getPriorityColor(task.ai_priority_level)}>
                           {task.ai_priority_level}
                         </Badge>
@@ -329,13 +330,13 @@ Return JSON:
                       </div>
                       <p className="font-medium text-sm mt-1">{task.title}</p>
                       {task.patient_name && (
-                        <p className="text-xs text-gray-600 flex items-center gap-1 mt-0.5">
+                        <p className="text-xs text-slate-600 flex items-center gap-1 mt-0.5">
                           <User className="w-3 h-3" />
                           {task.patient_name}
                         </p>
                       )}
-                      <p className="text-xs text-gray-500 mt-1 italic">{task.priority_reason}</p>
-                      <p className="text-xs text-purple-700 mt-1">
+                      <p className="text-xs text-slate-500 mt-1 italic">{task.priority_reason}</p>
+                      <p className="text-xs text-navy-700 mt-1">
                         💡 {task.suggested_action}
                       </p>
                     </div>
@@ -363,10 +364,10 @@ Return JSON:
                 variant="outline"
                 size="sm"
                 onClick={prioritizeTasks}
-                disabled={isPrioritizing}
+                disabled={ai.loading}
                 className="w-full"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isPrioritizing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 mr-2 ${ai.loading ? 'animate-spin' : ''}`} />
                 Re-prioritize Tasks
               </Button>
             </>

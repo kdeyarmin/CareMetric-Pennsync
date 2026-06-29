@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.1';
 
 Deno.serve(async (req) => {
@@ -18,9 +18,19 @@ Deno.serve(async (req) => {
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 20;
     const contentWidth = pageWidth - (margin * 2);
     let y = 20;
+
+    // Page-break helper: start a new page when `needed` mm wouldn't fit, so long
+    // payloads don't clip below the page bottom.
+    const ensureSpace = (needed = 12) => {
+      if (y + needed > pageHeight - margin) {
+        doc.addPage();
+        y = 20;
+      }
+    };
 
     const formatCurrency = (amount) => {
       return new Intl.NumberFormat('en-US', {
@@ -187,6 +197,7 @@ Deno.serve(async (req) => {
 
     doc.setFontSize(9);
     components.forEach((comp, idx) => {
+      ensureSpace(10);
       if (idx % 2 === 0) {
         doc.setFillColor(249, 250, 251);
         doc.rect(margin, y - 1, contentWidth, 10, 'F');
@@ -218,6 +229,7 @@ Deno.serve(async (req) => {
 
     // Documentation Recommendations
     if (analysisResults?.revenue_tips?.length > 0) {
+      ensureSpace(20);
       doc.setFontSize(14);
       doc.setTextColor(0, 0, 0);
       doc.text('Revenue Optimization Recommendations', margin, y);

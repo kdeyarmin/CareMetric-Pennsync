@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -43,31 +42,31 @@ export default function AdaptiveDifficultyIndicator({ performanceData }) {
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <h4 className="font-bold text-gray-900">Adaptive Learning Active</h4>
-              <Badge className="bg-purple-500">
+              <h4 className="font-bold text-slate-900">Adaptive Learning Active</h4>
+              <Badge className="bg-navy-500">
                 <Brain className="w-3 h-3 mr-1" />
                 AI-Powered
               </Badge>
             </div>
             
-            <p className="text-sm text-gray-700 mb-3">{motivation_message}</p>
+            <p className="text-sm text-slate-700 mb-3">{motivation_message}</p>
 
             <div className="grid md:grid-cols-2 gap-4 mb-3">
               <div>
-                <p className="text-xs text-gray-600 mb-1">Current Accuracy</p>
+                <p className="text-xs text-slate-600 mb-1">Current Accuracy</p>
                 <div className="flex items-center gap-2">
                   <Progress value={accuracy_rate} className="flex-1 h-2" />
                   <span className="text-sm font-bold">{accuracy_rate?.toFixed(0)}%</span>
                 </div>
               </div>
               <div>
-                <p className="text-xs text-gray-600 mb-1">Recommended Level</p>
+                <p className="text-xs text-slate-600 mb-1">Recommended Level</p>
                 <Badge className="text-sm capitalize">{suggested_difficulty}</Badge>
               </div>
             </div>
 
             {improvement_areas && improvement_areas.length > 0 && (
-              <Alert className="bg-white border-gray-200">
+              <Alert className="bg-white border-slate-200">
                 <Zap className="w-4 h-4" />
                 <AlertDescription>
                   <p className="text-xs font-semibold mb-1">Focus Areas:</p>

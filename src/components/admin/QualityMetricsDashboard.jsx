@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,25 +23,21 @@ import {
 } from "@/components/ui/table";
 import {
   TrendingUp,
-  TrendingDown,
   Activity,
   Users,
   AlertTriangle,
   CheckCircle2,
-  Clock,
   Target,
   BarChart3,
-  FileText,
   Heart,
   Ambulance,
-  Shield,
-  Award,
   Calendar,
   Download,
   Sparkles, // Added for AI Insights
   RefreshCw // Added for AI Insights loading
 } from "lucide-react";
-import { format, subDays, subMonths, differenceInMinutes, startOfMonth, endOfMonth } from "date-fns";
+import { format, subDays, differenceInMinutes } from "date-fns";
+import { escapeCsvField } from "@/components/admin/csvExport";
 
 export default function QualityMetricsDashboard() {
   const [timeRange, setTimeRange] = useState("30");
@@ -52,7 +48,7 @@ export default function QualityMetricsDashboard() {
   // Calculate date range
   const getDateRange = () => {
     const today = new Date();
-    const daysAgo = parseInt(timeRange);
+    const daysAgo = parseInt(timeRange, 10);
     return {
       start: format(subDays(today, daysAgo), 'yyyy-MM-dd'),
       end: format(today, 'yyyy-MM-dd')
@@ -73,7 +69,9 @@ export default function QualityMetricsDashboard() {
 
   const { data: allPatients } = useQuery({
     queryKey: ['allPatientsMetrics'],
-    queryFn: () => base44.entities.Patient.list(),
+    // The sibling Visit/Incident/SecurityLog queries here pass limits; this one
+    // didn't, so patient-derived metrics were capped at Base44's default 50.
+    queryFn: () => base44.entities.Patient.list('-updated_date', 5000),
     initialData: [],
   });
 
@@ -105,6 +103,19 @@ export default function QualityMetricsDashboard() {
     initialData: [],
   });
 
+  const { data: noteConversions = [] } = useQuery({
+    queryKey: ['noteConversionsMetrics', timeRange],
+    queryFn: async () => {
+      const conversions = await base44.entities.NoteConversion.list('-created_date', 10000);
+      return conversions.filter(nc => {
+        if (!nc.created_date) return false;
+        const conversionDate = format(new Date(nc.created_date), 'yyyy-MM-dd');
+        return conversionDate >= dateRange.start && conversionDate <= dateRange.end;
+      });
+    },
+    initialData: [],
+  });
+
   // Filter visits by selected nurse
   const filteredVisits = useMemo(() => {
     if (selectedNurse === "all") return allVisits;
@@ -128,16 +139,19 @@ export default function QualityMetricsDashboard() {
     
     let avgDocTime = 0;
     if (visitsWithTime.length > 0) {
+      // `new Date("2000-01-01 <bad>")` yields an Invalid Date and
+      // differenceInMinutes then returns NaN WITHOUT throwing (so the old
+      // try/catch never caught it) — one bad row turned the whole average into
+      // "NaN min". Skip non-finite diffs and divide by the count that was valid.
+      let validCount = 0;
       const totalMinutes = visitsWithTime.reduce((sum, visit) => {
-        try {
-          const start = new Date(`2000-01-01 ${visit.start_time}`);
-          const end = new Date(`2000-01-01 ${visit.end_time}`);
-          return sum + differenceInMinutes(end, start);
-        } catch {
-          return sum;
-        }
+        const start = new Date(`2000-01-01 ${visit.start_time}`);
+        const end = new Date(`2000-01-01 ${visit.end_time}`);
+        const mins = differenceInMinutes(end, start);
+        if (Number.isFinite(mins)) { validCount++; return sum + mins; }
+        return sum;
       }, 0);
-      avgDocTime = Math.round(totalMinutes / visitsWithTime.length);
+      avgDocTime = validCount > 0 ? Math.round(totalMinutes / validCount) : 0;
     }
 
     // Incidents
@@ -188,21 +202,23 @@ export default function QualityMetricsDashboard() {
       // Calculate avg doc time for this nurse
       const nurseVisitsWithTime = nurseVisits.filter(v => v.start_time && v.end_time);
       if (nurseVisitsWithTime.length > 0) {
+        // Same NaN guard as the agency-wide avg: differenceInMinutes returns NaN
+        // (without throwing) on a malformed time, so skip non-finite diffs and
+        // divide by the valid count — otherwise one bad row showed "NaN min".
+        let validCount = 0;
         const totalMins = nurseVisitsWithTime.reduce((sum, v) => {
-          try {
-            const start = new Date(`2000-01-01 ${v.start_time}`);
-            const end = new Date(`2000-01-01 ${v.end_time}`);
-            return sum + differenceInMinutes(end, start);
-          } catch {
-            return sum;
-          }
+          const start = new Date(`2000-01-01 ${v.start_time}`);
+          const end = new Date(`2000-01-01 ${v.end_time}`);
+          const mins = differenceInMinutes(end, start);
+          if (Number.isFinite(mins)) { validCount++; return sum + mins; }
+          return sum;
         }, 0);
-        nurseStats[nurse.email].avgDocTime = Math.round(totalMins / nurseVisitsWithTime.length);
+        nurseStats[nurse.email].avgDocTime = validCount > 0 ? Math.round(totalMins / validCount) : 0;
       }
     });
 
-    // Time saved by AI
-    const totalTimeSavedMinutes = completedVisits * 95; // Average 95 min saved per visit
+    // Time saved by AI (using note enhancements)
+    const totalTimeSavedMinutes = noteConversions.length * 20; // 20 minutes saved per enhanced note
     const totalTimeSavedHours = Math.round(totalTimeSavedMinutes / 60);
 
     return {
@@ -223,7 +239,7 @@ export default function QualityMetricsDashboard() {
       activePatients,
       totalTimeSavedHours
     };
-  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers, securityLogs]);
+  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers, securityLogs, noteConversions]);
 
   const getMetricStatus = (value, thresholds) => {
     if (value >= thresholds.excellent) return { color: 'text-green-600', bg: 'bg-green-50', label: 'Excellent' };
@@ -260,8 +276,8 @@ Total Time Saved,${metrics.totalTimeSavedHours} hours
 
 === NURSE PRODUCTIVITY ===
 Nurse,Total Visits,Completed,Completion Rate,Avg Doc Time
-${Object.entries(metrics.nurseStats).map(([email, stats]) => 
-  `${stats.name},${stats.totalVisits},${stats.completedVisits},${stats.completionRate}%,${stats.avgDocTime} min`
+${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
+  `${escapeCsvField(stats.name)},${stats.totalVisits},${stats.completedVisits},${stats.completionRate}%,${stats.avgDocTime} min`
 ).join('\n')}`;
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -347,29 +363,29 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
   if (visitsLoading) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-gray-500">
+        <CardContent className="p-12 text-center text-slate-500">
           Loading quality metrics...
         </CardContent>
       </Card>
     );
   }
 
-  const completionStatus = getMetricStatus(metrics.completionRate, { excellent: 95, good: 85, fair: 75 });
-  const qualityStatus = getMetricStatus(metrics.avgQualityScore, { excellent: 90, good: 80, fair: 70 });
+  const _completionStatus = getMetricStatus(metrics.completionRate, { excellent: 95, good: 85, fair: 75 });
+  const _qualityStatus = getMetricStatus(metrics.avgQualityScore, { excellent: 90, good: 80, fair: 70 });
 
   return (
     <div className="space-y-6">
       {/* Penn Sync Branded Header */}
-      <Card className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-none">
+      <Card className="bg-gradient-to-r from-navy-600 to-indigo-600 text-white border-none">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold mb-2">Penn Sync Quality Metrics Dashboard</h2>
-              <p className="text-purple-100">
+              <p className="text-navy-100">
                 Comprehensive quality tracking and performance analytics powered by Penn Sync AI
               </p>
             </div>
-            <TrendingUp className="w-12 h-12 text-purple-200" />
+            <TrendingUp className="w-12 h-12 text-navy-200" />
           </div>
         </CardContent>
       </Card>
@@ -378,7 +394,7 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
       <Card>
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-slate-600">
               Data for: {dateRange.start} to {dateRange.end} ({timeRange} days)
             </div>
 
@@ -436,14 +452,14 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
           <div className="grid md:grid-cols-4 gap-6">
             <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
               <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{metrics.activePatients}</p>
-              <p className="text-sm text-gray-600">Active Patients</p>
+              <p className="text-2xl font-bold text-slate-900">{metrics.activePatients}</p>
+              <p className="text-sm text-slate-600">Active Patients</p>
             </div>
 
             <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
               <Calendar className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{metrics.avgVisitsPerPatient}</p>
-              <p className="text-sm text-gray-600">Avg Visits/Patient</p>
+              <p className="text-2xl font-bold text-slate-900">{metrics.avgVisitsPerPatient}</p>
+              <p className="text-sm text-slate-600">Avg Visits/Patient</p>
             </div>
 
             <div className={`text-center p-4 rounded-lg border ${
@@ -456,9 +472,9 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
                 metrics.hospitalizationRate < 20 ? 'text-yellow-600' : 
                 'text-red-600'
               }`} />
-              <p className="text-2xl font-bold text-gray-900">{metrics.hospitalizationRate}</p>
-              <p className="text-sm text-gray-600">Hospitalization Rate</p>
-              <p className="text-xs text-gray-500 mt-1">per 100 patients</p>
+              <p className="text-2xl font-bold text-slate-900">{metrics.hospitalizationRate}</p>
+              <p className="text-sm text-slate-600">Hospitalization Rate</p>
+              <p className="text-xs text-slate-500 mt-1">per 100 patients</p>
             </div>
 
             <div className={`text-center p-4 rounded-lg border ${
@@ -471,9 +487,9 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
                 metrics.fallRate < 10 ? 'text-yellow-600' : 
                 'text-red-600'
               }`} />
-              <p className="text-2xl font-bold text-gray-900">{metrics.fallRate}</p>
-              <p className="text-sm text-gray-600">Fall Rate</p>
-              <p className="text-xs text-gray-500 mt-1">per 1000 visits</p>
+              <p className="text-2xl font-bold text-slate-900">{metrics.fallRate}</p>
+              <p className="text-sm text-slate-600">Fall Rate</p>
+              <p className="text-xs text-slate-500 mt-1">per 1000 visits</p>
             </div>
           </div>
         </CardContent>
@@ -494,10 +510,12 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
                 <AlertTriangle className="w-6 h-6 text-red-600" />
                 <Badge variant="destructive">{metrics.falls} Total</Badge>
               </div>
-              <p className="font-semibold text-gray-900">Patient Falls</p>
-              <p className="text-sm text-gray-600 mt-1">
-                {metrics.falls > 0 
-                  ? `Rate: ${Math.round((metrics.falls / metrics.totalVisits) * 1000)} per 1000 visits`
+              <p className="font-semibold text-slate-900">Patient Falls</p>
+              <p className="text-sm text-slate-600 mt-1">
+                {metrics.falls > 0
+                  ? (metrics.totalVisits > 0
+                      ? `Rate: ${Math.round((metrics.falls / metrics.totalVisits) * 1000)} per 1000 visits`
+                      : `${metrics.falls} reported`)
                   : 'No falls reported'}
               </p>
             </div>
@@ -507,23 +525,25 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
                 <Ambulance className="w-6 h-6 text-orange-600" />
                 <Badge className="bg-orange-500">{metrics.hospitalizations} Total</Badge>
               </div>
-              <p className="font-semibold text-gray-900">Hospitalizations</p>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="font-semibold text-slate-900">Hospitalizations</p>
+              <p className="text-sm text-slate-600 mt-1">
                 {metrics.hospitalizations > 0 
                   ? `Rate: ${metrics.hospitalizationRate} per 100 patients`
                   : 'No hospitalizations reported'}
               </p>
             </div>
 
-            <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+            <div className="p-4 bg-navy-50 rounded-lg border border-navy-200">
               <div className="flex items-center justify-between mb-2">
-                <Activity className="w-6 h-6 text-purple-600" />
-                <Badge className="bg-purple-500">{metrics.medErrors} Total</Badge>
+                <Activity className="w-6 h-6 text-navy-600" />
+                <Badge className="bg-navy-500">{metrics.medErrors} Total</Badge>
               </div>
-              <p className="font-semibold text-gray-900">Medication Errors</p>
-              <p className="text-sm text-gray-600 mt-1">
-                {metrics.medErrors > 0 
-                  ? `Rate: ${Math.round((metrics.medErrors / metrics.totalVisits) * 1000)} per 1000 visits`
+              <p className="font-semibold text-slate-900">Medication Errors</p>
+              <p className="text-sm text-slate-600 mt-1">
+                {metrics.medErrors > 0
+                  ? (metrics.totalVisits > 0
+                      ? `Rate: ${Math.round((metrics.medErrors / metrics.totalVisits) * 1000)} per 1000 visits`
+                      : `${metrics.medErrors} reported`)
                   : 'No med errors reported'}
               </p>
             </div>
@@ -576,7 +596,7 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className={stats.avgDocTime <= 45 ? 'text-green-600 font-semibold' : 'text-gray-900'}>
+                          <span className={stats.avgDocTime <= 45 ? 'text-green-600 font-semibold' : 'text-slate-900'}>
                             {stats.avgDocTime} min
                           </span>
                         </TableCell>
@@ -663,25 +683,25 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             Penn Sync AI Quality Insights
           </CardTitle>
         </CardHeader>
         <CardContent>
           {isGenerating ? (
             <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-purple-600 mr-2" />
-              <span className="text-gray-600">Penn Sync AI is analyzing quality metrics...</span>
+              <RefreshCw className="w-6 h-6 animate-spin text-navy-600 mr-2" />
+              <span className="text-slate-600">Penn Sync AI is analyzing quality metrics...</span>
             </div>
           ) : aiInsights ? (
             <div className="space-y-4">
-              <div className="text-gray-700" style={{ whiteSpace: 'pre-wrap' }}>
+              <div className="text-slate-700" style={{ whiteSpace: 'pre-wrap' }}>
                 {aiInsights}
               </div>
               <Button
                 onClick={generateAIInsights}
                 variant="outline"
-                className="bg-gray-100 hover:bg-gray-200 text-gray-800 gap-2 mt-4"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 gap-2 mt-4"
               >
                 <Sparkles className="w-4 h-4" />
                 Regenerate Insights
@@ -691,7 +711,7 @@ ${Object.entries(metrics.nurseStats).map(([email, stats]) =>
             <div className="text-center py-8">
               <Button
                 onClick={generateAIInsights}
-                className="bg-purple-600 hover:bg-purple-700 gap-2"
+                className="bg-navy-600 hover:bg-navy-700 gap-2"
               >
                 <Sparkles className="w-4 h-4" />
                 Generate Penn Sync AI Insights

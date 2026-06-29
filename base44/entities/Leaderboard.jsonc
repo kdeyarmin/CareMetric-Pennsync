@@ -1,0 +1,60 @@
+{
+  "name": "Leaderboard",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User email"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "User full name"
+    },
+    "total_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Total gamification points"
+    },
+    "badges_earned": {
+      "type": "number",
+      "default": 0,
+      "description": "Total badges earned"
+    },
+    "courses_completed": {
+      "type": "number",
+      "default": 0,
+      "description": "Total courses completed"
+    },
+    "current_streak": {
+      "type": "number",
+      "default": 0,
+      "description": "Current consecutive completion streak"
+    },
+    "longest_streak": {
+      "type": "number",
+      "default": 0,
+      "description": "Longest streak ever"
+    },
+    "perfect_scores": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of perfect scores achieved"
+    },
+    "average_score": {
+      "type": "number",
+      "description": "Average quiz score"
+    },
+    "rank": {
+      "type": "number",
+      "description": "Current rank"
+    },
+    "last_activity": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last training activity"
+    }
+  },
+  "required": [
+    "user_id"
+  ]
+}

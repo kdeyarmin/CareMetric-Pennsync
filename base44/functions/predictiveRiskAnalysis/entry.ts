@@ -1,4 +1,21 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
+// response_json_schema, because the provider rejects deeply-nested object
+// schemas that lack an explicit `required` array at every level.
+function parseLLMJson(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  const text = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end <= start) return null;
+    try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  }
+}
 
 Deno.serve(async (req) => {
   try {
@@ -16,7 +33,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch comprehensive patient data
-    const patient = await base44.asServiceRole.entities.Patient.filter({ id: patient_id });
+    const patient = await base44.entities.Patient.filter({ id: patient_id });
     if (!patient || patient.length === 0) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
@@ -25,10 +42,10 @@ Deno.serve(async (req) => {
 
     // Fetch related data
     const [visits, carePlans, incidents, existingAlerts] = await Promise.all([
-      base44.asServiceRole.entities.Visit.filter({ patient_id }, '-visit_date', 10),
-      base44.asServiceRole.entities.CarePlan.filter({ patient_id }),
-      base44.asServiceRole.entities.Incident.filter({ patient_id }, '-incident_date', 5),
-      base44.asServiceRole.entities.PatientAlert.filter({ patient_id, status: 'active' })
+      base44.entities.Visit.filter({ patient_id }, '-visit_date', 10),
+      base44.entities.CarePlan.filter({ patient_id }),
+      base44.entities.Incident.filter({ patient_id }, '-incident_date', 5),
+      base44.entities.PatientAlert.filter({ patient_id, status: 'active' })
     ]);
 
     // Calculate age
@@ -90,8 +107,13 @@ BASELINE VITALS:
 - Weight: ${patientData.baseline_vitals?.weight} lbs
 `;
 
-    // Generate risk analysis
+    // Generate risk analysis. Uses response_json_schema, so the structured object
+    // is returned directly. (Was assigned to `rawRiskAnalysis` while every use
+    // below referenced an undeclared `riskAnalysis` — a guaranteed ReferenceError
+    // that 500'd every call, so this clinical feature produced no risk scores or
+    // alerts at all.)
     const riskAnalysis = await base44.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
       prompt: `You are an expert clinical risk assessment AI for home health/hospice care. Analyze this patient's comprehensive data to predict risk of adverse events and recommend preventative interventions.
 
 ${patientContext}
@@ -163,8 +185,26 @@ Return comprehensive risk assessment:`,
             items: {
               type: "object",
               properties: {
-                alert_type: { type: "string" },
-                severity: { type: "string" },
+                alert_type: {
+                  type: "string",
+                  enum: [
+                    "vital_deterioration",
+                    "medication_risk",
+                    "fall_risk",
+                    "readmission_risk",
+                    "infection_risk",
+                    "symptom_escalation",
+                    "care_gap",
+                    "urgent_intervention",
+                    "hospice_transition",
+                    "caregiver_burnout",
+                    "documentation_risk"
+                  ]
+                },
+                severity: {
+                  type: "string",
+                  enum: ["critical", "high", "medium", "low"]
+                },
                 risk_score: { type: "number" },
                 title: { type: "string" },
                 message: { type: "string" },
@@ -190,19 +230,55 @@ Return comprehensive risk assessment:`,
       }
     });
 
+    // Allowed PatientAlert alert_type values; anything the AI returns outside
+    // this set is coerced to a safe default so PatientAlert.create won't reject.
+    const ALLOWED_ALERT_TYPES = new Set([
+      'vital_deterioration',
+      'medication_risk',
+      'fall_risk',
+      'readmission_risk',
+      'infection_risk',
+      'symptom_escalation',
+      'care_gap',
+      'urgent_intervention',
+      'hospice_transition',
+      'caregiver_burnout',
+      'documentation_risk'
+    ]);
+
+    // Allowed PatientAlert severity values; anything the AI returns outside this
+    // set is coerced to a safe default so PatientAlert.create won't reject.
+    const ALLOWED_SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
+
+    // Confidence/risk gate: the prompt asks for alerts only at risk_score >= 50,
+    // but nothing enforces it — without a floor a low-risk AI alert auto-creates a
+    // PatientAlert and adds to alert fatigue. Skip anything below the threshold
+    // (override with RISK_ALERT_MIN_SCORE).
+    const minRiskScore = Number(Deno.env.get('RISK_ALERT_MIN_SCORE') || '50');
+
     // Create or update patient alerts for high-risk findings
     const createdAlerts = [];
     for (const alert of riskAnalysis.high_risk_alerts || []) {
+      const riskScore = Number(alert.risk_score);
+      if (Number.isFinite(riskScore) && riskScore < minRiskScore) continue;
+
+      const alertType = ALLOWED_ALERT_TYPES.has(alert.alert_type)
+        ? alert.alert_type
+        : 'urgent_intervention';
+      const severity = ALLOWED_SEVERITIES.has(alert.severity)
+        ? alert.severity
+        : 'medium';
+
       // Check if similar alert already exists
-      const existingSimilar = existingAlerts.find(ea => 
-        ea.alert_type === alert.alert_type && ea.status === 'active'
+      const existingSimilar = existingAlerts.find(ea =>
+        ea.alert_type === alertType && ea.status === 'active'
       );
 
       if (!existingSimilar) {
         const newAlert = await base44.asServiceRole.entities.PatientAlert.create({
           patient_id,
-          alert_type: alert.alert_type,
-          severity: alert.severity,
+          alert_type: alertType,
+          severity: severity,
           title: alert.title,
           message: alert.message,
           contributing_factors: alert.contributing_factors,
@@ -216,7 +292,7 @@ Return comprehensive risk assessment:`,
             incidents: incidents.length
           },
           status: 'active',
-          flagged_urgent: alert.severity === 'critical'
+          flagged_urgent: severity === 'critical'
         });
         createdAlerts.push(newAlert);
       }

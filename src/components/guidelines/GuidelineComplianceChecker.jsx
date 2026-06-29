@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,9 +14,13 @@ import {
   Loader2,
   BookOpen,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  AlertCircle,
+  FileText,
+  Plus
 } from "lucide-react";
 import { retrieveRelevantGuidelines } from "../smartNote/GuidelineContextRetriever";
+import { toast } from "sonner";
 
 export default function GuidelineComplianceChecker({
   noteContent,
@@ -24,16 +28,16 @@ export default function GuidelineComplianceChecker({
   visitType,
   patientData,
   careType = "home_health",
-  onIssueFound
+  onIssueFound,
+  onApplySuggestion
 }) {
   const [complianceResults, setComplianceResults] = useState(null);
-  const [isChecking, setIsChecking] = useState(false);
+  const ai = useAICall();
   const [appliedGuidelines, setAppliedGuidelines] = useState([]);
 
   const checkCompliance = async () => {
     if (!noteContent || noteContent.length < 50) return;
 
-    setIsChecking(true);
     try {
       // Retrieve relevant guidelines
       const guidelines = await retrieveRelevantGuidelines({
@@ -141,7 +145,8 @@ Return JSON with GRANULAR compliance analysis:
   "strengths": ["Areas where documentation meets or exceeds guidelines"]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -212,8 +217,8 @@ Return JSON with GRANULAR compliance analysis:
 
     } catch (error) {
       console.error('Error checking compliance:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsChecking(false);
   };
 
   const getStatusIcon = (status) => {
@@ -253,19 +258,19 @@ Return JSON with GRANULAR compliance analysis:
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-b from-purple-50 to-white">
+    <Card className="border-2 border-navy-300 bg-gradient-to-b from-navy-50 to-white">
       <CardHeader className="py-4">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-purple-600" />
+            <Shield className="w-5 h-5 text-navy-600" />
             Guideline-Based Compliance Check
           </CardTitle>
           <Button
             onClick={checkCompliance}
-            disabled={isChecking || !noteContent || noteContent.length < 50}
-            className="bg-purple-600 hover:bg-purple-700"
+            disabled={ai.loading || !noteContent || noteContent.length < 50}
+            className="bg-navy-600 hover:bg-navy-700"
           >
-            {isChecking ? (
+            {ai.loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Checking...</>
             ) : (
               <><Shield className="w-4 h-4 mr-2" /> Check Compliance</>
@@ -275,7 +280,7 @@ Return JSON with GRANULAR compliance analysis:
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {!complianceResults && !isChecking && (
+        {!complianceResults && !ai.loading && (
           <Alert className="bg-blue-50 border-blue-200">
             <BookOpen className="w-4 h-4 text-blue-600" />
             <AlertDescription className="text-blue-900 text-sm">
@@ -287,10 +292,10 @@ Return JSON with GRANULAR compliance analysis:
         {complianceResults && (
           <>
             {/* Overall Score */}
-            <div className="p-4 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg border-2 border-purple-200">
+            <div className="p-4 bg-gradient-to-r from-navy-100 to-blue-100 rounded-lg border-2 border-navy-200">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <p className="text-sm text-gray-700">Guideline Compliance Score</p>
+                  <p className="text-sm text-slate-700">Guideline Compliance Score</p>
                   <p className={`text-3xl font-bold ${
                     complianceResults.overall_compliance_score >= 90 ? 'text-green-600' :
                     complianceResults.overall_compliance_score >= 70 ? 'text-yellow-600' :
@@ -313,7 +318,7 @@ Return JSON with GRANULAR compliance analysis:
                 value={complianceResults.overall_compliance_score} 
                 className="h-2"
               />
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-slate-600 mt-2">
                 Reviewed against {complianceResults.guidelines_reviewed} Medicare guidelines
               </p>
             </div>
@@ -352,13 +357,13 @@ Return JSON with GRANULAR compliance analysis:
                                 <div className="flex items-center gap-2 flex-1">
                                   {getDegreeIcon(req.compliance_degree)}
                                   <div>
-                                    <p className="text-sm font-semibold text-gray-900">{req.requirement_name}</p>
+                                    <p className="text-sm font-semibold text-slate-900">{req.requirement_name}</p>
                                     <div className="flex items-center gap-2 mt-1">
                                       <Badge className={getSeverityColor(req.severity)}>
                                         {req.severity}
                                       </Badge>
                                       <Badge variant="outline" className="text-xs">
-                                        {req.compliance_degree.replace(/_/g, ' ')}
+                                        {(req.compliance_degree || '').replace(/_/g, ' ')}
                                       </Badge>
                                     </div>
                                   </div>
@@ -372,26 +377,26 @@ Return JSON with GRANULAR compliance analysis:
                                   }`}>
                                     {req.compliance_percentage}%
                                   </div>
-                                  <p className="text-xs text-gray-500">compliant</p>
+                                  <p className="text-xs text-slate-500">compliant</p>
                                 </div>
                               </div>
 
                               {/* Note Excerpts - What's Currently Documented */}
                               {req.note_excerpts?.length > 0 && (
-                                <div className="bg-white p-2 rounded border border-gray-300 mb-2">
-                                  <p className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                                <div className="bg-white p-2 rounded border border-slate-300 mb-2">
+                                  <p className="text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
                                     <FileText className="w-3 h-3" />
                                     Current Documentation:
                                   </p>
                                   <div className="space-y-1">
                                     {req.note_excerpts.map((excerpt, i) => (
-                                      <p key={i} className="text-xs text-gray-800 italic pl-3 border-l-2 border-blue-300">
+                                      <p key={i} className="text-xs text-slate-800 italic pl-3 border-l-2 border-blue-300">
                                         "{excerpt}"
                                       </p>
                                     ))}
                                   </div>
                                   {req.excerpt_assessment && (
-                                    <p className="text-xs text-gray-600 mt-2 bg-gray-50 p-2 rounded">
+                                    <p className="text-xs text-slate-600 mt-2 bg-slate-50 p-2 rounded">
                                       💬 {req.excerpt_assessment}
                                     </p>
                                   )}
@@ -419,17 +424,28 @@ Return JSON with GRANULAR compliance analysis:
                                 <div className="bg-green-50 p-2 rounded border border-green-300">
                                   <p className="text-xs font-semibold text-green-800 mb-1">✅ Suggested Enhancement:</p>
                                   <p className="text-xs text-green-900 font-medium">"{req.suggested_enhanced_text}"</p>
-                                  {onIssueFound && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="mt-2 w-full h-6 text-xs"
-                                      onClick={() => onIssueFound([req])}
-                                    >
-                                      <Plus className="w-3 h-3 mr-1" />
-                                      Apply Enhancement
-                                    </Button>
-                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-2 w-full h-6 text-xs"
+                                    onClick={() => {
+                                      // Actually apply the suggested text. Prefer the
+                                      // dedicated apply handler; fall back to copying
+                                      // so the button is never a no-op.
+                                      if (onApplySuggestion) {
+                                        onApplySuggestion(req.suggested_enhanced_text, req);
+                                        toast.success('Enhancement added to note');
+                                      } else {
+                                        navigator.clipboard?.writeText(req.suggested_enhanced_text);
+                                        toast.success('Enhancement copied — paste it into your note');
+                                      }
+                                      // Still report the gap to any diagnostics consumer.
+                                      onIssueFound?.([req]);
+                                    }}
+                                  >
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    Apply Enhancement
+                                  </Button>
                                 </div>
                               )}
                             </div>
@@ -487,7 +503,7 @@ Return JSON with GRANULAR compliance analysis:
             {/* Overall Recommendations */}
             {complianceResults.overall_recommendations?.length > 0 && (
               <div className="border-t pt-4 space-y-2">
-                <p className="text-sm font-semibold text-gray-900 mb-2">Priority Recommendations:</p>
+                <p className="text-sm font-semibold text-slate-900 mb-2">Priority Recommendations:</p>
                 {complianceResults.overall_recommendations
                   .filter(r => r.priority === 'critical' || r.priority === 'high')
                   .map((rec, idx) => (

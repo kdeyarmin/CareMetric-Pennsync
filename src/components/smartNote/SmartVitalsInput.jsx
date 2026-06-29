@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -97,7 +97,7 @@ const getStatusColor = (status) => {
       case 'low': return 'border-yellow-400 bg-yellow-50';
       case 'moderate': return 'border-yellow-400 bg-yellow-50';
       case 'normal': return 'border-green-400 bg-green-50';
-      default: return 'border-gray-200';
+      default: return 'border-slate-200';
     }
 };
 
@@ -121,7 +121,7 @@ const VitalInput = React.memo(({ field, label, icon: Icon, placeholder, value, o
         <Popover>
           <PopoverTrigger asChild>
             <button type="button" className="inline-flex">
-              <Info className="w-3 h-3 text-gray-400 cursor-help" />
+              <Info className="w-3 h-3 text-slate-400 cursor-help" />
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-48 p-2">
@@ -180,7 +180,7 @@ export default function SmartVitalsInput({ vitalSigns, onChange }) {
         <VitalInput field="pain" label="Pain Level" icon={Activity} placeholder="0-10" value={vitalSigns.pain || ''} onChangeValue={handleFieldChange('pain')} />
       </div>
       
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <VitalInput field="o2" label="O2 Saturation" icon={Wind} placeholder="98" value={vitalSigns.o2 || ''} onChangeValue={handleFieldChange('o2')} />
         <div>
           <Label className="text-xs mb-1 block">O2 Source</Label>

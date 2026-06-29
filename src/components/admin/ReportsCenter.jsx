@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { CHART_COLORS } from "@/constants/chartColors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -19,25 +21,22 @@ import {
   Users,
   Activity,
   FileText,
-  Calendar,
-  Clock,
   Target,
   Award,
-  AlertTriangle,
   Loader2,
-  PieChart,
   LineChart
 } from "lucide-react";
 import { BarChart, Bar, LineChart as RechartsLineChart, Line, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { format, subDays, startOfMonth, endOfMonth, differenceInDays } from "date-fns";
+import { format, subDays, differenceInDays } from "date-fns";
 import { formatEastern, todayEastern } from "@/components/utils/timezone";
-import { calculateNurseStats } from "@/components/utils/statsCalculator";
 import { useQuery } from "@tanstack/react-query";
+import { escapeCsvField } from "@/components/admin/csvExport";
+import { toast } from 'sonner';
 
-export default function ReportsCenter({ users, patients, visits, incidents }) {
+export default function ReportsCenter({ users: allUsers, patients: allPatients, visits, incidents }) {
   const [reportType, setReportType] = useState("productivity");
   const [dateRange, setDateRange] = useState("30");
-  const [selectedNurse, setSelectedNurse] = useState("all");
+  const [_selectedNurse, _setSelectedNurse] = useState("all");
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportFormat, setExportFormat] = useState("pdf");
   const [reportPreview, setReportPreview] = useState(null);
@@ -45,7 +44,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
 
   const generatePreview = () => {
     const endDate = todayEastern();
-    const startDate = format(subDays(new Date(), parseInt(dateRange)), 'yyyy-MM-dd');
+    const startDate = format(subDays(new Date(), parseInt(dateRange, 10)), 'yyyy-MM-dd');
 
     const filteredVisits = visits.filter(v => 
       v.visit_date >= startDate && v.visit_date <= endDate
@@ -59,16 +58,16 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
 
     switch (reportType) {
       case 'outcomes_by_diagnosis':
-        previewData = generateOutcomesByDiagnosisData(filteredVisits, filteredIncidents, patients);
+        previewData = generateOutcomesByDiagnosisData(filteredVisits, filteredIncidents, allPatients);
         break;
       case 'staff_comparison':
-        previewData = generateStaffComparisonData(filteredVisits, users);
+        previewData = generateStaffComparisonData(filteredVisits, allUsers);
         break;
       case 'financial_detailed':
-        previewData = generateDetailedFinancialData(filteredVisits, patients);
+        previewData = generateDetailedFinancialData(filteredVisits, allPatients);
         break;
       case 'trend_analysis':
-        previewData = generateTrendAnalysisData(visits, incidents, startDate, endDate);
+        previewData = generateTrendAnalysisData(visits, incidents, allPatients);
         break;
       default:
         break;
@@ -83,7 +82,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     
     try {
       const endDate = todayEastern();
-      const startDate = format(subDays(new Date(), parseInt(dateRange)), 'yyyy-MM-dd');
+      const startDate = format(subDays(new Date(), parseInt(dateRange, 10)), 'yyyy-MM-dd');
 
       if (exportFormat === 'pdf') {
         // Generate PDF using utility
@@ -103,14 +102,14 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
         switch (reportType) {
           case 'productivity':
             reportTitle = 'Productivity Report';
-            const prodData = generateProductivityReportData(filteredVisits, users);
+            const prodData = generateProductivityReportData(filteredVisits, allUsers);
             pdfContent = [
               { type: 'heading', text: 'Nurse Productivity Summary', size: 14 },
               { type: 'spacer', height: 5 },
               {
                 type: 'table',
                 headers: ['Nurse', 'Enhancements', 'Time Saved (hrs)'],
-                rows: prodData.nurses.map(d => [d.name, d.noteConversions, d.timeSavedHours])
+                rows: prodData.nurses.map(d => [d.name, d.noteEnhancements, d.timeSavedHours])
               },
               { type: 'spacer', height: 10 },
               { type: 'heading', text: 'Total Agency Productivity', size: 14 },
@@ -122,13 +121,33 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                   ['Total Note Enhancements', prodData.totalEnhancements],
                   ['Total Time Saved', `${prodData.totalTimeSaved} hours`]
                 ]
+              },
+              { type: 'pageBreak' },
+              { type: 'heading', text: 'Daily Enhancement Trend', size: 14 },
+              { type: 'spacer', height: 5 },
+              {
+                type: 'barChart',
+                data: prodData.dailyEnhancements,
+                xKey: 'date',
+                yKey: 'count',
+                height: 100
+              },
+              { type: 'pageBreak' },
+              { type: 'heading', text: 'Visit Type Distribution', size: 14 },
+              { type: 'spacer', height: 5 },
+              {
+                type: 'pieChart',
+                data: prodData.visitTypeChart,
+                nameKey: 'type',
+                valueKey: 'count',
+                radius: 50
               }
             ];
             break;
 
           case 'quality':
             reportTitle = 'Quality Metrics Report';
-            const qualityData = generateQualityReportData(filteredVisits, filteredIncidents, patients);
+            const qualityData = generateQualityReportData(filteredVisits, filteredIncidents, allPatients);
             pdfContent = [
               { type: 'heading', text: 'Overall Metrics', size: 14 },
               { type: 'spacer', height: 5 },
@@ -161,7 +180,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
 
           case 'financial':
             reportTitle = 'Financial Report';
-            const finData = generateDetailedFinancialData(filteredVisits, patients);
+            const finData = generateDetailedFinancialData(filteredVisits, allPatients);
             pdfContent = [
               { type: 'heading', text: 'Revenue Analysis', size: 14 },
               { type: 'spacer', height: 5 },
@@ -169,9 +188,9 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                 type: 'table',
                 headers: ['Visit Type', 'Count', 'Revenue/Visit', 'Total Revenue'],
                 rows: finData.visitTypes.map(vt => [
-                  vt.type.replace(/_/g, ' '),
+                  (vt.type || '').replace(/_/g, ' '),
                   vt.count,
-                  `$${Math.round(vt.revenue / vt.count)}`,
+                  `$${vt.count > 0 ? Math.round(vt.revenue / vt.count) : 0}`,
                   `$${vt.revenue}`
                 ])
               },
@@ -192,7 +211,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
 
           case 'staff_comparison':
             reportTitle = 'Staff Performance Comparison';
-            const staffData = generateStaffComparisonData(filteredVisits, users);
+            const staffData = generateStaffComparisonData(filteredVisits, allUsers);
             pdfContent = [
               { type: 'heading', text: 'Staff Rankings', size: 14 },
               { type: 'spacer', height: 5 },
@@ -239,34 +258,34 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
 
         switch (reportType) {
           case 'productivity':
-            ({ content: reportContent, fileName } = generateProductivityReport(filteredVisits, users, startDate, endDate));
+            ({ content: reportContent, fileName } = generateProductivityReport(filteredVisits, allUsers, startDate, endDate));
             break;
           case 'quality':
-            ({ content: reportContent, fileName } = generateQualityReport(filteredVisits, filteredIncidents, patients, startDate, endDate));
+            ({ content: reportContent, fileName } = generateQualityReport(filteredVisits, filteredIncidents, allPatients, startDate, endDate));
             break;
           case 'financial':
-            ({ content: reportContent, fileName } = generateFinancialReport(filteredVisits, patients, startDate, endDate));
+            ({ content: reportContent, fileName } = generateFinancialReport(filteredVisits, allPatients, startDate, endDate));
             break;
           case 'compliance':
-            ({ content: reportContent, fileName } = generateComplianceReport(filteredVisits, patients, startDate, endDate));
+            ({ content: reportContent, fileName } = generateComplianceReport(filteredVisits, allPatients, startDate, endDate));
             break;
           case 'clinical':
-            ({ content: reportContent, fileName } = generateClinicalReport(filteredVisits, patients, startDate, endDate));
+            ({ content: reportContent, fileName } = generateClinicalReport(filteredVisits, allPatients, startDate, endDate));
             break;
           case 'staff':
-            ({ content: reportContent, fileName } = generateStaffPerformanceReport(filteredVisits, users, startDate, endDate));
+            ({ content: reportContent, fileName } = generateStaffPerformanceReport(filteredVisits, allUsers, startDate, endDate));
             break;
           case 'outcomes_by_diagnosis':
-            ({ content: reportContent, fileName } = generateOutcomesByDiagnosisCSV(filteredVisits, filteredIncidents, patients, startDate, endDate));
+            ({ content: reportContent, fileName } = generateOutcomesByDiagnosisCSV(filteredVisits, filteredIncidents, allPatients, startDate, endDate));
             break;
           case 'staff_comparison':
-            ({ content: reportContent, fileName } = generateStaffComparisonCSV(filteredVisits, users, startDate, endDate));
+            ({ content: reportContent, fileName } = generateStaffComparisonCSV(filteredVisits, allUsers, startDate, endDate));
             break;
           case 'financial_detailed':
-            ({ content: reportContent, fileName } = generateDetailedFinancialCSV(filteredVisits, patients, startDate, endDate));
+            ({ content: reportContent, fileName } = generateDetailedFinancialCSV(filteredVisits, allPatients, startDate, endDate));
             break;
           case 'trend_analysis':
-            ({ content: reportContent, fileName } = generateTrendAnalysisCSV(visits, incidents, startDate, endDate));
+            ({ content: reportContent, fileName } = generateTrendAnalysisCSV(filteredVisits, filteredIncidents, startDate, endDate));
             break;
           default:
             throw new Error('Unknown report type');
@@ -286,47 +305,90 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
 
     } catch (error) {
       console.error('Error generating report:', error);
-      alert(`Failed to generate report: ${error.message || 'Unknown error'}. Please try again.`);
+      toast.error(`Failed to generate report: ${error.message || 'Unknown error'}. Please try again.`);
     }
     
     setIsGenerating(false);
   };
 
-  // Fetch note conversions for productivity reports
-  const { data: allNoteConversions = [] } = useQuery({
+  // Fetch note enhancements for productivity reports (backend entity: NoteConversion)
+  const { data: allNoteEnhancements = [] } = useQuery({
     queryKey: ['allNoteConversions'],
     queryFn: () => base44.entities.NoteConversion.list('-created_date', 1000),
     initialData: [],
   });
 
   // Helper functions for PDF data
-  const generateProductivityReportData = (visits, users) => {
-    const nursesData = users.filter(u => u.role === 'user').map(nurse => {
-      const stats = calculateNurseStats(nurse.email, {
-        visits,
-        noteConversions: allNoteConversions,
-        dateRange: parseInt(dateRange)
-      });
+  const generateProductivityReportData = (visits, allUsers) => {
+    const endDate = todayEastern();
+    const startDate = format(subDays(new Date(), parseInt(dateRange, 10)), 'yyyy-MM-dd');
+    
+    // Filter all note enhancements by date range FIRST
+    const filteredEnhancements = allNoteEnhancements.filter(nc => {
+      const createdDate = nc.created_date ? nc.created_date.split('T')[0] : null;
+      return createdDate && createdDate >= startDate && createdDate <= endDate;
+    });
+    
+    const nursesData = allUsers.filter(u => u.role === 'user').map(nurse => {
+      // Filter note enhancements for this specific nurse
+      const nurseEnhancements = filteredEnhancements.filter(nc => nc.nurse_email === nurse.email);
+      
+      const noteEnhancements = nurseEnhancements.length;
+      const timeSavedMinutes = noteEnhancements * 20; // 20 minutes saved per note enhancement
+      const timeSavedHours = parseFloat((timeSavedMinutes / 60).toFixed(1));
       
       return {
         name: nurse.full_name || nurse.email,
-        ...stats
+        noteEnhancements,
+        timeSavedHours,
+        dailyData: [] // Will populate for chart
       };
-    });
+    }).sort((a, b) => (b.noteEnhancements || 0) - (a.noteEnhancements || 0)); // Sort by highest enhancements first
 
-    const totalTimeSaved = nursesData.reduce((sum, nurse) => sum + (nurse.timeSavedHours || 0), 0);
-    const totalEnhancements = nursesData.reduce((sum, nurse) => sum + (nurse.noteConversions || 0), 0);
+    // Calculate totals from the filtered enhancements directly
+    const totalEnhancements = filteredEnhancements.length;
+    const totalTimeSavedMinutes = totalEnhancements * 20;
+    const totalTimeSaved = parseFloat((totalTimeSavedMinutes / 60).toFixed(1));
+    
+    // Generate daily enhancement data for chart
+    const days = parseInt(dateRange, 10);
+    const dailyEnhancements = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
+      const dayEnhancements = filteredEnhancements.filter(nc => {
+        const createdDate = nc.created_date ? nc.created_date.split('T')[0] : null;
+        return createdDate === date;
+      });
+      dailyEnhancements.push({
+        date: format(new Date(date), 'MM/dd'),
+        count: dayEnhancements.length
+      });
+    }
+    
+    // Generate visit type distribution for chart (based on note enhancements)
+    const visitTypeData = {};
+    filteredEnhancements.forEach(nc => {
+      const visit = visits.find(v => v.id === nc.visit_id);
+      const type = visit?.visit_type || nc.visit_type || 'unknown';
+      visitTypeData[type] = (visitTypeData[type] || 0) + 1;
+    });
+    const visitTypeChart = Object.entries(visitTypeData).map(([type, count]) => ({
+      type: (type || '').replace(/_/g, ' '),
+      count
+    }));
 
     return {
       nurses: nursesData,
       totalTimeSaved,
-      totalEnhancements
+      totalEnhancements,
+      dailyEnhancements,
+      visitTypeChart
     };
   };
 
-  const generateQualityReportData = (visits, incidents, patients) => {
+  const generateQualityReportData = (visits, incidents, allPatients) => {
     const completedVisits = visits.filter(v => v.status === 'completed');
-    const activePatients = patients.filter(p => p.status === 'active').length;
+    const activePatients = allPatients.filter(p => p.status === 'active').length;
     const falls = incidents.filter(i => i.incident_type === 'fall').length;
     const hospitalizations = incidents.filter(i => i.incident_type === 'hospitalized').length;
     const medErrors = incidents.filter(i => i.incident_type === 'medication_error').length;
@@ -345,8 +407,8 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   };
 
   // Productivity Report CSV
-  const generateProductivityReport = (visits, users, startDate, endDate) => {
-    const data = generateProductivityReportData(visits, users);
+  const generateProductivityReport = (visits, allUsers, startDate, endDate) => {
+    const data = generateProductivityReportData(visits, allUsers);
 
     let content = `Penn Sync Productivity Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
@@ -354,7 +416,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     content += `Nurse,Note Enhancements,Time Saved (hours)\n`;
     
     data.nurses.forEach(stats => {
-      content += `${stats.name},${stats.noteConversions},${stats.timeSavedHours}\n`;
+      content += `${escapeCsvField(stats.name)},${stats.noteEnhancements},${stats.timeSavedHours}\n`;
     });
 
     content += `\nTOTAL AGENCY PRODUCTIVITY\n`;
@@ -368,8 +430,8 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   };
 
   // Quality Report CSV
-  const generateQualityReport = (visits, incidents, patients, startDate, endDate) => {
-    const data = generateQualityReportData(visits, incidents, patients);
+  const generateQualityReport = (visits, incidents, allPatients, startDate, endDate) => {
+    const data = generateQualityReportData(visits, incidents, allPatients);
 
     let content = `Penn Sync Quality Metrics Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
@@ -393,7 +455,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   };
 
   // Financial Report
-  const generateFinancialReport = (visits, patients, startDate, endDate) => {
+  const generateFinancialReport = (visits, allPatients, startDate, endDate) => {
     const visitTypes = {};
     visits.forEach(v => {
       const type = v.visit_type || 'unknown';
@@ -427,14 +489,14 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     
     Object.entries(visitTypes).forEach(([type, count]) => {
       const revenue = count * (revenuePerType[type] || 160);
-      content += `${type.replace(/_/g, ' ')},${count},$${revenuePerType[type] || 160},$${revenue}\n`;
+      content += `${(type || '').replace(/_/g, ' ')},${count},$${revenuePerType[type] || 160},$${revenue}\n`;
     });
     
     content += `\nTOTAL ESTIMATED REVENUE,$${totalRevenue}\n\n`;
     content += `PENN SYNC ROI\n`;
     content += `Documentation Time Saved (hours),${Math.round(timeSavedHours)}\n`;
     content += `Cost Savings from Efficiency,$${Math.round(costSavings)}\n`;
-    content += `Active Patients,${patients.filter(p => p.status === 'active').length}\n`;
+    content += `Active Patients,${allPatients.filter(p => p.status === 'active').length}\n`;
 
     return {
       content,
@@ -443,7 +505,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   };
 
   // Compliance Report
-  const generateComplianceReport = (visits, patients, startDate, endDate) => {
+  const generateComplianceReport = (visits, allPatients, startDate, endDate) => {
     const completedVisits = visits.filter(v => v.status === 'completed');
     const visitsWithNotes = completedVisits.filter(v => v.nurse_notes && v.nurse_notes.length > 100);
     const visitsWithVitals = completedVisits.filter(v => v.vital_signs && Object.keys(v.vital_signs).length > 0);
@@ -477,9 +539,9 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   };
 
   // Clinical Report
-  const generateClinicalReport = (visits, patients, startDate, endDate) => {
+  const generateClinicalReport = (visits, allPatients, startDate, endDate) => {
     const diagnoses = {};
-    patients.forEach(p => {
+    allPatients.forEach(p => {
       if (p.primary_diagnosis) {
         diagnoses[p.primary_diagnosis] = (diagnoses[p.primary_diagnosis] || 0) + 1;
       }
@@ -511,7 +573,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     Object.entries(diagnoses)
       .sort((a, b) => b[1] - a[1])
       .forEach(([diagnosis, count]) => {
-        content += `${diagnosis},${count}\n`;
+        content += `${escapeCsvField(diagnosis)},${count}\n`;
       });
 
     content += `\nVITAL SIGNS AVERAGES\n`;
@@ -525,10 +587,10 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   };
 
   // Staff Performance Report
-  const generateStaffPerformanceReport = (visits, users, startDate, endDate) => {
+  const generateStaffPerformanceReport = (visits, allUsers, startDate, endDate) => {
     const nursePerformance = {};
     
-    users.filter(u => u.role === 'user').forEach(nurse => {
+    allUsers.filter(u => u.role === 'user').forEach(nurse => {
       const nurseVisits = visits.filter(v => v.created_by === nurse.email);
       const completed = nurseVisits.filter(v => v.status === 'completed');
       
@@ -556,7 +618,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     Object.values(nursePerformance)
       .sort((a, b) => b.completionRate - a.completionRate)
       .forEach(perf => {
-        content += `${perf.name},${perf.credentials},${perf.careScope},${perf.totalAssigned},${perf.completed},${perf.completionRate},${perf.docQualityRate}\n`;
+        content += `${escapeCsvField(perf.name)},${escapeCsvField(perf.credentials)},${escapeCsvField(perf.careScope)},${perf.totalAssigned},${perf.completed},${perf.completionRate},${perf.docQualityRate}\n`;
       });
 
     return {
@@ -629,10 +691,10 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   ];
 
   // Data generation for new report types
-  const generateOutcomesByDiagnosisData = (visits, incidents, patients) => {
+  const generateOutcomesByDiagnosisData = (visitsData, incidentsData, patientsData) => {
     const diagnosisData = {};
     
-    patients.forEach(p => {
+    patientsData.forEach(p => {
       const diagnosis = p.primary_diagnosis || 'Unknown';
       if (!diagnosisData[diagnosis]) {
         diagnosisData[diagnosis] = {
@@ -648,8 +710,8 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
       diagnosisData[diagnosis].patientCount++;
     });
 
-    visits.forEach(v => {
-      const patient = patients.find(p => p.id === v.patient_id);
+    visitsData.forEach(v => {
+      const patient = patientsData.find(p => p.id === v.patient_id);
       const diagnosis = patient?.primary_diagnosis || 'Unknown';
       if (diagnosisData[diagnosis]) {
         diagnosisData[diagnosis].visitCount++;
@@ -659,8 +721,8 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
       }
     });
 
-    incidents.forEach(i => {
-      const patient = patients.find(p => p.id === i.patient_id);
+    incidentsData.forEach(i => {
+      const patient = patientsData.find(p => p.id === i.patient_id);
       const diagnosis = patient?.primary_diagnosis || 'Unknown';
       if (diagnosisData[diagnosis]) {
         diagnosisData[diagnosis].incidents++;
@@ -672,9 +734,9 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     return Object.values(diagnosisData).sort((a, b) => b.visitCount - a.visitCount);
   };
 
-  const generateStaffComparisonData = (visits, users) => {
-    return users.filter(u => u.role === 'user').map(nurse => {
-      const nurseVisits = visits.filter(v => v.created_by === nurse.email);
+  const generateStaffComparisonData = (filteredVisits, allUsers) => {
+    return allUsers.filter(u => u.role === 'user').map(nurse => {
+      const nurseVisits = filteredVisits.filter(v => v.created_by === nurse.email);
       const completed = nurseVisits.filter(v => v.status === 'completed');
       const withCompleteDoc = completed.filter(v => 
         v.nurse_notes && v.nurse_notes.length > 100 &&
@@ -687,12 +749,12 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
         completed: completed.length,
         completionRate: nurseVisits.length > 0 ? Math.round((completed.length / nurseVisits.length) * 100) : 0,
         docQuality: completed.length > 0 ? Math.round((withCompleteDoc.length / completed.length) * 100) : 0,
-        avgVisitsPerDay: Math.round(nurseVisits.length / parseInt(dateRange))
+        avgVisitsPerDay: Math.round(nurseVisits.length / parseInt(dateRange, 10))
       };
     }).sort((a, b) => b.completionRate - a.completionRate);
   };
 
-  const generateDetailedFinancialData = (visits, patients) => {
+  const generateDetailedFinancialData = (filteredVisits, _allPatients) => {
     const visitTypes = {};
     const revenuePerType = {
       'skilled_nursing': 180,
@@ -703,7 +765,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
       'prn': 170
     };
 
-    visits.forEach(v => {
+    filteredVisits.forEach(v => {
       const type = v.visit_type || 'unknown';
       if (!visitTypes[type]) {
         visitTypes[type] = { type, count: 0, revenue: 0 };
@@ -713,25 +775,25 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     });
 
     const totalRevenue = Object.values(visitTypes).reduce((sum, vt) => sum + vt.revenue, 0);
-    const timeSavedHours = visits.filter(v => v.status === 'completed').length * 95 / 60;
+    const timeSavedHours = filteredVisits.filter(v => v.status === 'completed').length * 95 / 60;
     const costSavings = timeSavedHours * 40;
 
     return {
       visitTypes: Object.values(visitTypes),
       totalRevenue,
       costSavings,
-      roi: costSavings > 0 ? Math.round((costSavings / totalRevenue) * 100) : 0
+      roi: totalRevenue > 0 ? Math.round((costSavings / totalRevenue) * 100) : 0
     };
   };
 
-  const generateTrendAnalysisData = (allVisits, allIncidents, startDate, endDate) => {
-    const days = parseInt(dateRange);
+  const generateTrendAnalysisData = (visitsData, incidentsData) => {
+    const days = parseInt(dateRange, 10);
     const trends = [];
 
     for (let i = days - 1; i >= 0; i--) {
       const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
-      const dayVisits = allVisits.filter(v => v.visit_date === date);
-      const dayIncidents = allIncidents.filter(i => i.incident_date === date);
+      const dayVisits = visitsData.filter(v => v.visit_date === date);
+      const dayIncidents = incidentsData.filter(inc => inc.incident_date === date);
 
       trends.push({
         date: format(new Date(date), 'MM/dd'),
@@ -745,8 +807,8 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
   };
 
   // CSV generators for new report types
-  const generateOutcomesByDiagnosisCSV = (visits, incidents, patients, startDate, endDate) => {
-    const data = generateOutcomesByDiagnosisData(visits, incidents, patients);
+  const generateOutcomesByDiagnosisCSV = (visitsData, incidentsData, patientsData, startDate, endDate) => {
+    const data = generateOutcomesByDiagnosisData(visitsData, incidentsData, patientsData);
     
     let content = `Patient Outcomes by Diagnosis Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n\n`;
@@ -754,7 +816,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     
     data.forEach(d => {
       const completionRate = d.visitCount > 0 ? Math.round((d.completedVisits / d.visitCount) * 100) : 0;
-      content += `${d.diagnosis},${d.patientCount},${d.visitCount},${d.completedVisits},${d.incidents},${d.falls},${d.hospitalizations},${completionRate}%\n`;
+      content += `${escapeCsvField(d.diagnosis)},${d.patientCount},${d.visitCount},${d.completedVisits},${d.incidents},${d.falls},${d.hospitalizations},${completionRate}%\n`;
     });
 
     return {
@@ -763,15 +825,15 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     };
   };
 
-  const generateStaffComparisonCSV = (visits, users, startDate, endDate) => {
-    const data = generateStaffComparisonData(visits, users);
+  const generateStaffComparisonCSV = (filteredVisits, allUsers, startDate, endDate) => {
+    const data = generateStaffComparisonData(filteredVisits, allUsers);
     
     let content = `Staff Performance Comparison Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n\n`;
     content += `Nurse,Total Visits,Completed,Completion Rate %,Documentation Quality %,Avg Visits/Day,Rank\n`;
     
     data.forEach((d, idx) => {
-      content += `${d.name},${d.totalVisits},${d.completed},${d.completionRate},${d.docQuality},${d.avgVisitsPerDay},${idx + 1}\n`;
+      content += `${escapeCsvField(d.name)},${d.totalVisits},${d.completed},${d.completionRate},${d.docQuality},${d.avgVisitsPerDay},${idx + 1}\n`;
     });
 
     return {
@@ -780,8 +842,8 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     };
   };
 
-  const generateDetailedFinancialCSV = (visits, patients, startDate, endDate) => {
-    const data = generateDetailedFinancialData(visits, patients);
+  const generateDetailedFinancialCSV = (filteredVisits, allPatients, startDate, endDate) => {
+    const data = generateDetailedFinancialData(filteredVisits, allPatients);
     
     let content = `Detailed Financial Summary Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n\n`;
@@ -789,7 +851,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     
     data.visitTypes.forEach(vt => {
       const revenuePerVisit = vt.count > 0 ? Math.round(vt.revenue / vt.count) : 0;
-      content += `${vt.type.replace(/_/g, ' ')},${vt.count},$${revenuePerVisit},$${vt.revenue}\n`;
+      content += `${(vt.type || '').replace(/_/g, ' ')},${vt.count},$${revenuePerVisit},$${vt.revenue}\n`;
     });
 
     content += `\nTOTAL REVENUE,$${data.totalRevenue}\n`;
@@ -802,8 +864,9 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     };
   };
 
-  const generateTrendAnalysisCSV = (visits, incidents, startDate, endDate) => {
-    const data = generateTrendAnalysisData(visits, incidents, startDate, endDate);
+  const generateTrendAnalysisCSV = (filteredVisits, filteredIncidents, startDate, endDate) => {
+    // For trend analysis, we need all visits/incidents, not just filtered ones
+    const data = generateTrendAnalysisData(visits, incidents);
     
     let content = `Trend Analysis Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n\n`;
@@ -819,13 +882,13 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
     };
   };
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+  const COLORS = CHART_COLORS;
 
   const selectedReportType = reportTypes.find(r => r.value === reportType);
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-none">
+      <Card className="bg-gradient-to-r from-blue-600 to-navy-600 text-white border-none">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -898,8 +961,8 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                 <div className="flex items-start gap-3">
                   <selectedReportType.icon className="w-6 h-6 text-blue-600 mt-1" />
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-1">{selectedReportType.label}</h4>
-                    <p className="text-sm text-gray-700">{selectedReportType.description}</p>
+                    <h4 className="font-semibold text-slate-900 mb-1">{selectedReportType.label}</h4>
+                    <p className="text-sm text-slate-700">{selectedReportType.description}</p>
                   </div>
                 </div>
               </CardContent>
@@ -944,15 +1007,15 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
           <Card key={type.value} className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setReportType(type.value)}>
             <CardContent className="p-6">
               <div className="flex items-start justify-between mb-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-navy-500 rounded-lg flex items-center justify-center">
                   <type.icon className="w-6 h-6 text-white" />
                 </div>
                 {reportType === type.value && (
                   <Badge className="bg-green-500">Selected</Badge>
                 )}
               </div>
-              <h3 className="font-semibold text-gray-900 mb-2">{type.label}</h3>
-              <p className="text-sm text-gray-600">{type.description}</p>
+              <h3 className="font-semibold text-slate-900 mb-2">{type.label}</h3>
+              <p className="text-sm text-slate-600">{type.description}</p>
             </CardContent>
           </Card>
         ))}
@@ -981,7 +1044,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="visitCount" fill="#3b82f6" name="Total Visits" />
+                      <Bar dataKey="visitCount" fill="#3557b0" name="Total Visits" />
                       <Bar dataKey="completedVisits" fill="#10b981" name="Completed" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -1039,42 +1102,40 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="completionRate" fill="#3b82f6" name="Completion Rate %" />
+                      <Bar dataKey="completionRate" fill="#3557b0" name="Completion Rate %" />
                       <Bar dataKey="docQuality" fill="#10b981" name="Doc Quality %" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Rank</th>
-                        <th className="text-left p-2">Nurse</th>
-                        <th className="text-right p-2">Visits</th>
-                        <th className="text-right p-2">Completion %</th>
-                        <th className="text-right p-2">Quality %</th>
-                        <th className="text-right p-2">Avg/Day</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportPreview.map((d, idx) => (
-                        <tr key={idx} className="border-b hover:bg-gray-50">
-                          <td className="p-2">
-                            <Badge className={idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-orange-600' : 'bg-blue-500'}>
-                              #{idx + 1}
-                            </Badge>
-                          </td>
-                          <td className="p-2 font-medium">{d.name}</td>
-                          <td className="p-2 text-right">{d.totalVisits}</td>
-                          <td className="p-2 text-right">{d.completionRate}%</td>
-                          <td className="p-2 text-right">{d.docQuality}%</td>
-                          <td className="p-2 text-right">{d.avgVisitsPerDay}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Rank</TableHead>
+                      <TableHead>Nurse</TableHead>
+                      <TableHead className="text-right">Visits</TableHead>
+                      <TableHead className="text-right">Completion %</TableHead>
+                      <TableHead className="text-right">Quality %</TableHead>
+                      <TableHead className="text-right">Avg/Day</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportPreview.map((d, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <Badge className={idx === 0 ? 'bg-gold-400 text-navy-900' : idx === 1 ? 'bg-slate-300 text-slate-800' : idx === 2 ? 'bg-amber-500 text-white' : 'bg-navy-500 text-white'}>
+                            #{idx + 1}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{d.name}</TableCell>
+                        <TableCell className="text-right">{d.totalVisits}</TableCell>
+                        <TableCell className="text-right">{d.completionRate}%</TableCell>
+                        <TableCell className="text-right">{d.docQuality}%</TableCell>
+                        <TableCell className="text-right">{d.avgVisitsPerDay}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </>
             )}
 
@@ -1093,7 +1154,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                         outerRadius={90}
                         labelLine={true}
                         label={(entry) => {
-                          const name = entry.type.replace(/_/g, ' ');
+                          const name = (entry.type || '').replace(/_/g, ' ');
                           const percent = ((entry.revenue / reportPreview.totalRevenue) * 100).toFixed(0);
                           return `${name} (${percent}%)`;
                         }}
@@ -1110,20 +1171,20 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                 <div className="grid md:grid-cols-3 gap-4">
                   <Card className="bg-gradient-to-br from-green-50 to-emerald-50">
                     <CardContent className="p-6">
-                      <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
+                      <p className="text-sm text-slate-600 mb-1">Total Revenue</p>
                       <p className="text-3xl font-bold text-green-600">${reportPreview.totalRevenue.toLocaleString()}</p>
                     </CardContent>
                   </Card>
                   <Card className="bg-gradient-to-br from-blue-50 to-indigo-50">
                     <CardContent className="p-6">
-                      <p className="text-sm text-gray-600 mb-1">Cost Savings</p>
+                      <p className="text-sm text-slate-600 mb-1">Cost Savings</p>
                       <p className="text-3xl font-bold text-blue-600">${Math.round(reportPreview.costSavings).toLocaleString()}</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-gradient-to-br from-purple-50 to-pink-50">
+                  <Card className="bg-gradient-to-br from-navy-50 to-gold-50">
                     <CardContent className="p-6">
-                      <p className="text-sm text-gray-600 mb-1">ROI</p>
-                      <p className="text-3xl font-bold text-purple-600">{reportPreview.roi}%</p>
+                      <p className="text-sm text-slate-600 mb-1">ROI</p>
+                      <p className="text-3xl font-bold text-navy-600">{reportPreview.roi}%</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -1137,7 +1198,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="count" fill="#3b82f6" name="Visit Count" />
+                      <Bar dataKey="count" fill="#3557b0" name="Visit Count" />
                       <Bar dataKey="revenue" fill="#10b981" name="Revenue ($)" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -1156,7 +1217,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Line type="monotone" dataKey="visits" stroke="#3b82f6" strokeWidth={2} name="Total Visits" />
+                      <Line type="monotone" dataKey="visits" stroke="#3557b0" strokeWidth={2} name="Total Visits" />
                       <Line type="monotone" dataKey="completed" stroke="#10b981" strokeWidth={2} name="Completed" />
                       <Line type="monotone" dataKey="incidents" stroke="#ef4444" strokeWidth={2} name="Incidents" />
                     </RechartsLineChart>
@@ -1166,7 +1227,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                 <div className="grid md:grid-cols-4 gap-4">
                   <Card>
                     <CardContent className="p-4">
-                      <p className="text-xs text-gray-600 mb-1">Avg Daily Visits</p>
+                      <p className="text-xs text-slate-600 mb-1">Avg Daily Visits</p>
                       <p className="text-2xl font-bold">
                         {Math.round(reportPreview.reduce((sum, d) => sum + d.visits, 0) / reportPreview.length)}
                       </p>
@@ -1174,7 +1235,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <p className="text-xs text-gray-600 mb-1">Peak Day</p>
+                      <p className="text-xs text-slate-600 mb-1">Peak Day</p>
                       <p className="text-2xl font-bold">
                         {reportPreview.reduce((max, d) => d.visits > max.visits ? d : max, reportPreview[0])?.date}
                       </p>
@@ -1182,7 +1243,7 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <p className="text-xs text-gray-600 mb-1">Total Incidents</p>
+                      <p className="text-xs text-slate-600 mb-1">Total Incidents</p>
                       <p className="text-2xl font-bold text-red-600">
                         {reportPreview.reduce((sum, d) => sum + d.incidents, 0)}
                       </p>
@@ -1190,9 +1251,14 @@ export default function ReportsCenter({ users, patients, visits, incidents }) {
                   </Card>
                   <Card>
                     <CardContent className="p-4">
-                      <p className="text-xs text-gray-600 mb-1">Completion Rate</p>
+                      <p className="text-xs text-slate-600 mb-1">Completion Rate</p>
                       <p className="text-2xl font-bold text-green-600">
-                        {Math.round((reportPreview.reduce((sum, d) => sum + d.completed, 0) / reportPreview.reduce((sum, d) => sum + d.visits, 0)) * 100)}%
+                        {(() => {
+                          const totalVisits = reportPreview.reduce((sum, d) => sum + d.visits, 0);
+                          return totalVisits > 0
+                            ? Math.round((reportPreview.reduce((sum, d) => sum + d.completed, 0) / totalVisits) * 100)
+                            : 0;
+                        })()}%
                       </p>
                     </CardContent>
                   </Card>

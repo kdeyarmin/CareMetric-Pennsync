@@ -1,17 +1,12 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
   ResponsiveContainer,
   RadarChart,
   PolarGrid,
@@ -21,14 +16,10 @@ import {
 } from "recharts";
 import {
   TrendingUp,
-  TrendingDown,
   AlertTriangle,
-  Target,
   BookOpen,
   Loader2,
-  RefreshCw,
-  Award,
-  Sparkles
+  RefreshCw
 } from "lucide-react";
 
 export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommendations }) {
@@ -56,13 +47,26 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
     enabled: !!nurseEmail
   });
 
-  useEffect(() => {
-    if (audits.length > 0 || recommendations.length > 0 || noteConversions.length > 0) {
-      aggregateFeedback();
-    }
-  }, [audits, recommendations, noteConversions]);
+  const categorizeIssue = useCallback((element) => {
+    const elementLower = (element || '').toLowerCase();
+    if (elementLower.includes('homebound')) return 'Homebound Status';
+    if (elementLower.includes('skilled') || elementLower.includes('need')) return 'Skilled Need Justification';
+    if (elementLower.includes('vital') || elementLower.includes('bp') || elementLower.includes('heart')) return 'Vital Signs Documentation';
+    if (elementLower.includes('assessment') || elementLower.includes('finding')) return 'Assessment Documentation';
+    if (elementLower.includes('response') || elementLower.includes('patient')) return 'Patient Response';
+    if (elementLower.includes('plan') || elementLower.includes('goal')) return 'Care Planning';
+    if (elementLower.includes('intervention')) return 'Interventions';
+    if (elementLower.includes('functional') || elementLower.includes('adl')) return 'Functional Status';
+    if (elementLower.includes('medication') || elementLower.includes('med')) return 'Medication Documentation';
+    if (elementLower.includes('communication') || elementLower.includes('family')) return 'Communication';
+    return 'General Documentation';
+  }, []);
 
-  const aggregateFeedback = async () => {
+  const calculatePriority = useCallback((data) => {
+    return (data.severity.critical * 4) + (data.severity.high * 3) + (data.severity.medium * 2) + (data.severity.low * 1) + data.count;
+  }, []);
+
+  const aggregateFeedback = useCallback(async () => {
     setIsAnalyzing(true);
 
     // Aggregate issues from compliance audits
@@ -134,26 +138,13 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
     setAggregatedData(aggregated);
     onTrainingRecommendations?.(skillGaps);
     setIsAnalyzing(false);
-  };
+  }, [audits, recommendations, noteConversions, onTrainingRecommendations, categorizeIssue, calculatePriority]);
 
-  const categorizeIssue = (element) => {
-    const elementLower = (element || '').toLowerCase();
-    if (elementLower.includes('homebound')) return 'Homebound Status';
-    if (elementLower.includes('skilled') || elementLower.includes('need')) return 'Skilled Need Justification';
-    if (elementLower.includes('vital') || elementLower.includes('bp') || elementLower.includes('heart')) return 'Vital Signs Documentation';
-    if (elementLower.includes('assessment') || elementLower.includes('finding')) return 'Assessment Documentation';
-    if (elementLower.includes('response') || elementLower.includes('patient')) return 'Patient Response';
-    if (elementLower.includes('plan') || elementLower.includes('goal')) return 'Care Planning';
-    if (elementLower.includes('intervention')) return 'Interventions';
-    if (elementLower.includes('functional') || elementLower.includes('adl')) return 'Functional Status';
-    if (elementLower.includes('medication') || elementLower.includes('med')) return 'Medication Documentation';
-    if (elementLower.includes('communication') || elementLower.includes('family')) return 'Communication';
-    return 'General Documentation';
-  };
-
-  const calculatePriority = (data) => {
-    return (data.severity.critical * 4) + (data.severity.high * 3) + (data.severity.medium * 2) + (data.severity.low * 1) + data.count;
-  };
+  useEffect(() => {
+    if (audits.length > 0 || recommendations.length > 0 || noteConversions.length > 0) {
+      aggregateFeedback();
+    }
+  }, [audits, recommendations, noteConversions, aggregateFeedback]);
 
   const getSkillRadarData = () => {
     if (!aggregatedData) return [];
@@ -177,7 +168,7 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-indigo-600" />
@@ -198,7 +189,7 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
         {isAnalyzing ? (
           <div className="text-center py-8">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Analyzing your documentation feedback...</p>
+            <p className="text-sm text-slate-600">Analyzing your documentation feedback...</p>
           </div>
         ) : aggregatedData ? (
           <>
@@ -206,28 +197,28 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-blue-50 p-3 rounded-lg text-center">
                 <p className="text-2xl font-bold text-blue-700">{aggregatedData.avgQuality}%</p>
-                <p className="text-xs text-gray-600">Avg Quality</p>
+                <p className="text-xs text-slate-600">Avg Quality</p>
               </div>
               <div className="bg-green-50 p-3 rounded-lg text-center">
                 <p className="text-2xl font-bold text-green-700">{aggregatedData.avgCompliance}%</p>
-                <p className="text-xs text-gray-600">Avg Compliance</p>
+                <p className="text-xs text-slate-600">Avg Compliance</p>
               </div>
-              <div className="bg-purple-50 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-purple-700">{aggregatedData.passRate}%</p>
-                <p className="text-xs text-gray-600">Pass Rate</p>
+              <div className="bg-navy-50 p-3 rounded-lg text-center">
+                <p className="text-2xl font-bold text-navy-700">{aggregatedData.passRate}%</p>
+                <p className="text-xs text-slate-600">Pass Rate</p>
               </div>
             </div>
 
             {/* Skill Gaps Radar */}
             {getSkillRadarData().length > 0 && (
               <div className="h-48">
-                <p className="text-xs font-semibold text-gray-700 mb-2">Documentation Skill Profile</p>
+                <p className="text-xs font-semibold text-slate-700 mb-2">Documentation Skill Profile</p>
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart data={getSkillRadarData()}>
                     <PolarGrid />
                     <PolarAngleAxis dataKey="category" tick={{ fontSize: 10 }} />
                     <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 8 }} />
-                    <Radar name="Score" dataKey="score" stroke="#6366f1" fill="#6366f1" fillOpacity={0.5} />
+                    <Radar name="Score" dataKey="score" stroke="#264491" fill="#264491" fillOpacity={0.5} />
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
@@ -235,13 +226,13 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
 
             {/* Top Skill Gaps */}
             <div>
-              <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+              <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 text-orange-500" />
                 Areas Needing Improvement
               </p>
               <div className="space-y-2">
                 {aggregatedData.skillGaps.slice(0, 5).map((gap, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                     <div className="flex items-center gap-2">
                       <Badge className={`text-[10px] ${
                         gap.priority > 10 ? 'bg-red-100 text-red-800' :
@@ -250,10 +241,12 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
                       }`}>
                         {gap.count} issues
                       </Badge>
-                      <span className="text-xs font-medium text-gray-700">{gap.category}</span>
+                      <span className="text-xs font-medium text-slate-700">{gap.category}</span>
                     </div>
-                    <Button size="sm" variant="ghost" className="h-6 text-xs text-indigo-600">
-                      <BookOpen className="w-3 h-3 mr-1" /> Train
+                    <Button asChild size="sm" variant="ghost" className="h-6 text-xs text-indigo-600">
+                      <Link to={createPageUrl('NurseTrainingHub')}>
+                        <BookOpen className="w-3 h-3 mr-1" /> Train
+                      </Link>
                     </Button>
                   </div>
                 ))}
@@ -261,7 +254,7 @@ export default function NurseFeedbackAggregator({ nurseEmail, onTrainingRecommen
             </div>
           </>
         ) : (
-          <p className="text-sm text-gray-500 text-center py-4">
+          <p className="text-sm text-slate-500 text-center py-4">
             No feedback data available yet. Complete some documentation to see your analysis.
           </p>
         )}

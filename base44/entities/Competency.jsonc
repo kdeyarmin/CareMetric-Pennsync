@@ -1,0 +1,57 @@
+{
+  "name": "Competency",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Competency name"
+    },
+    "role_target": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Target roles"
+    },
+    "description": {
+      "type": "string",
+      "description": "Competency description"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "clinical",
+        "documentation",
+        "safety",
+        "communication",
+        "technical"
+      ],
+      "description": "Competency category"
+    },
+    "frequency": {
+      "type": "string",
+      "enum": [
+        "on_hire",
+        "annual",
+        "quarterly",
+        "as_needed"
+      ],
+      "description": "Validation frequency"
+    },
+    "required_observations_count": {
+      "type": "number",
+      "default": 1,
+      "description": "Required number of observations"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether competency is active"
+    }
+  },
+  "required": [
+    "name",
+    "role_target",
+    "frequency"
+  ]
+}

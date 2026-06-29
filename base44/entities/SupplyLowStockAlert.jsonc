@@ -1,0 +1,72 @@
+{
+  "name": "SupplyLowStockAlert",
+  "type": "object",
+  "properties": {
+    "supply_id": {
+      "type": "string",
+      "description": "Reference to SupplyItem"
+    },
+    "supply_name": {
+      "type": "string",
+      "description": "Supply name"
+    },
+    "current_quantity": {
+      "type": "number",
+      "description": "Current stock when alert triggered"
+    },
+    "threshold_quantity": {
+      "type": "number",
+      "description": "Threshold that was crossed"
+    },
+    "recommended_reorder": {
+      "type": "number",
+      "description": "Recommended quantity to reorder"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "warning",
+        "critical",
+        "out_of_stock"
+      ],
+      "description": "Alert severity level"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "acknowledged",
+        "resolved"
+      ],
+      "default": "active",
+      "description": "Alert status"
+    },
+    "triggered_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acknowledged_by": {
+      "type": "string",
+      "description": "User who acknowledged alert"
+    },
+    "acknowledged_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reorder_task_created": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether reorder task was auto-generated"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Reference to generated Task entity"
+    }
+  },
+  "required": [
+    "supply_id",
+    "current_quantity",
+    "threshold_quantity",
+    "severity"
+  ]
+}

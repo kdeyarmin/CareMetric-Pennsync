@@ -1,0 +1,55 @@
+{
+  "name": "OnCallShift",
+  "type": "object",
+  "properties": {
+    "shift_date": {
+      "type": "string",
+      "format": "date",
+      "description": "The calendar date this on-call coverage applies to (YYYY-MM-DD). For overnight weekday shifts this is the start date (coverage runs 5pm this day to 9am the next day)."
+    },
+    "coverage_type": {
+      "type": "string",
+      "enum": [
+        "holiday",
+        "overnight"
+      ],
+      "description": "holiday = all-day coverage for a federal holiday; overnight = Mon-Thu 5pm to 9am next day"
+    },
+    "holiday_name": {
+      "type": "string",
+      "description": "Name of the holiday when coverage_type is holiday"
+    },
+    "start_label": {
+      "type": "string",
+      "description": "Human-readable coverage start (e.g. '5:00 PM' or 'All day')"
+    },
+    "end_label": {
+      "type": "string",
+      "description": "Human-readable coverage end (e.g. '9:00 AM next day' or 'All day')"
+    },
+    "assigned_user_email": {
+      "type": "string",
+      "description": "Email of the staff member assigned to this on-call shift"
+    },
+    "assigned_user_name": {
+      "type": "string",
+      "description": "Display name of the assigned staff member"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional notes for this on-call shift"
+    }
+  },
+  "required": [
+    "shift_date",
+    "coverage_type"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

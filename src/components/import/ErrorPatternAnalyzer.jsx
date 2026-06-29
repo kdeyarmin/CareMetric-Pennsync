@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -121,10 +120,10 @@ export default function ErrorPatternAnalyzer({ validationErrors }) {
                 </div>
 
                 {data.examples.length > 0 && (
-                  <div className="bg-gray-50 border border-gray-200 rounded p-2 text-xs space-y-1">
-                    <p className="font-semibold text-gray-700">Examples:</p>
+                  <div className="bg-slate-50 border border-slate-200 rounded p-2 text-xs space-y-1">
+                    <p className="font-semibold text-slate-700">Examples:</p>
                     {data.examples.map((ex, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-gray-600">
+                      <div key={idx} className="flex items-center gap-2 text-slate-600">
                         <span className="font-mono bg-white px-1 rounded">Row {ex.row}</span>
                         <span>{ex.field}: "{ex.value}"</span>
                       </div>
@@ -137,8 +136,8 @@ export default function ErrorPatternAnalyzer({ validationErrors }) {
         </div>
 
         {sortedPatterns.length === 0 && (
-          <div className="text-center py-6 text-gray-500">
-            <TrendingDown className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+          <div className="text-center py-6 text-slate-500">
+            <TrendingDown className="w-8 h-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm">No error patterns detected</p>
           </div>
         )}

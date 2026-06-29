@@ -1,0 +1,86 @@
+{
+  "name": "LearningPlan",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Learning plan name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Plan description"
+    },
+    "business_line_scope": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "all"
+      ],
+      "default": "all",
+      "description": "Which business line this plan targets"
+    },
+    "year": {
+      "type": "number",
+      "description": "Year this plan applies to"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Plan start date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Plan end date"
+    },
+    "plan_type": {
+      "type": "string",
+      "enum": [
+        "annual",
+        "onboarding",
+        "quarterly",
+        "custom"
+      ],
+      "default": "annual",
+      "description": "Type of learning plan"
+    },
+    "global_due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Global due date for all courses (if not per-course)"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether plan is active"
+    },
+    "auto_enroll": {
+      "type": "boolean",
+      "default": false,
+      "description": "Auto-enroll users matching criteria"
+    },
+    "auto_enroll_criteria": {
+      "type": "object",
+      "description": "Criteria for auto-enrollment (business_line, roles, departments)"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Creator email"
+    },
+    "total_courses": {
+      "type": "number",
+      "default": 0,
+      "description": "Total number of courses in plan"
+    },
+    "estimated_hours": {
+      "type": "number",
+      "description": "Total estimated hours for plan"
+    }
+  },
+  "required": [
+    "name",
+    "business_line_scope",
+    "year"
+  ]
+}

@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, AlertTriangle, User, Calendar, XCircle, RotateCcw, ThumbsUp, ThumbsDown, MapPin, Phone, Award } from "lucide-react";
+import { CheckCircle2, AlertTriangle, User, Calendar, XCircle, RotateCcw, ThumbsUp, MapPin, Phone, Award } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -123,19 +123,19 @@ export default function PatientMatchSelector({
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2">
           <User className="w-5 h-5 text-blue-600" />
-          <span className="font-semibold text-gray-900">Patient Matching</span>
+          <span className="font-semibold text-slate-900">Patient Matching</span>
         </div>
 
         {/* Extracted Info */}
         <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
           <p className="text-xs text-blue-700 mb-2">Extracted from OASIS:</p>
           <div className="space-y-1">
-            <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+            <p className="text-sm font-medium text-slate-900 flex items-center gap-2">
               <User className="w-4 h-4" />
               {extractedName || <span className="text-red-600">Name not found</span>}
             </p>
             {extractedDOB && (
-              <p className="text-xs text-gray-600 flex items-center gap-1">
+              <p className="text-xs text-slate-600 flex items-center gap-1">
                 <Calendar className="w-3 h-3" />
                 DOB: {extractedDOB}
               </p>
@@ -149,7 +149,7 @@ export default function PatientMatchSelector({
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 {getConfidenceIcon(bestMatch.confidence)}
-                <span className="text-sm font-semibold text-gray-900">
+                <span className="text-sm font-semibold text-slate-900">
                   {bestMatch.confidence >= 90 ? 'Strong Match' : bestMatch.confidence >= 70 ? 'Likely Match' : 'Possible Match'}
                 </span>
               </div>
@@ -159,12 +159,12 @@ export default function PatientMatchSelector({
             </div>
             
             <div className="bg-white p-2 rounded border mb-2">
-              <p className="font-medium text-gray-900">
+              <p className="font-medium text-slate-900">
                 {bestMatch.patient.first_name} {bestMatch.patient.last_name}
               </p>
               <div className="space-y-0.5 mt-1">
                 {bestMatch.patient.date_of_birth && (
-                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                  <p className="text-xs text-slate-600 flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     DOB: {bestMatch.patient.date_of_birth}
                     {bestMatch.dobMatch && <CheckCircle2 className="w-3 h-3 text-green-600 ml-1" />}
@@ -172,14 +172,14 @@ export default function PatientMatchSelector({
                 )}
 
                 {bestMatch.patient.address && (
-                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                  <p className="text-xs text-slate-600 flex items-center gap-1">
                     <MapPin className="w-3 h-3" />
                     {bestMatch.patient.address}
                     {bestMatch.addressMatch && <CheckCircle2 className="w-3 h-3 text-green-600 ml-1" />}
                     </p>
                     )}
                     {bestMatch.patient.phone && (
-                    <p className="text-xs text-gray-600 flex items-center gap-1">
+                    <p className="text-xs text-slate-600 flex items-center gap-1">
                     <Phone className="w-3 h-3" />
                     {bestMatch.patient.phone}
                     {bestMatch.phoneMatch && <CheckCircle2 className="w-3 h-3 text-green-600 ml-1" />}
@@ -199,7 +199,7 @@ export default function PatientMatchSelector({
                     {bestMatch.confidence}% Match
                     </Badge>
                     {bestMatch.verifiedIdentifiers >= 3 && (
-                    <Badge className="bg-purple-600 text-white text-xs">
+                    <Badge className="bg-navy-600 text-white text-xs">
                     <Award className="w-3 h-3 mr-1" />
                     {bestMatch.verifiedIdentifiers} IDs Verified
                     </Badge>
@@ -212,7 +212,7 @@ export default function PatientMatchSelector({
                     </div>
 
                     {/* Match Factors */}
-            <div className="text-xs text-gray-700 space-y-1">
+            <div className="text-xs text-slate-700 space-y-1">
               {bestMatch.matchFactors?.map((factor, idx) => (
                 <div key={idx} className="flex items-center gap-1">
                   <span className="text-green-600">✓</span>
@@ -252,14 +252,14 @@ export default function PatientMatchSelector({
 
         {/* Alternative Matches - More Prominent */}
         {hasAlternatives && (
-          <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-lg border-2 border-purple-300">
+          <div className="bg-gradient-to-r from-navy-50 to-gold-50 p-4 rounded-lg border-2 border-navy-300">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-purple-900">Alternative Matches</p>
+              <p className="text-sm font-semibold text-navy-900">Alternative Matches</p>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowAllMatches(!showAllMatches)}
-                className="text-purple-700"
+                className="text-navy-700"
               >
                 {showAllMatches ? 'Show Less' : `Show All (${matchResults.matches.length - 1})`}
               </Button>
@@ -268,14 +268,14 @@ export default function PatientMatchSelector({
               {matchResults.matches.slice(1, showAllMatches ? undefined : 4).map((match, idx) => (
                 <div 
                   key={idx}
-                  className={`bg-white p-3 rounded-lg border-2 cursor-pointer hover:border-purple-400 transition-all ${
-                    selectedPatientId === match.patient.id ? 'border-purple-500 ring-2 ring-purple-200' : 'border-gray-200'
+                  className={`bg-white p-3 rounded-lg border-2 cursor-pointer hover:border-navy-400 transition-all ${
+                    selectedPatientId === match.patient.id ? 'border-navy-500 ring-2 ring-navy-200' : 'border-slate-200'
                   }`}
                   onClick={() => handleConfirmMatch(match.patient.id, false)}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-slate-900">
                         {match.patient.first_name} {match.patient.last_name}
                       </p>
                       <Badge className={getConfidenceBadge(match.confidence)}>
@@ -283,12 +283,12 @@ export default function PatientMatchSelector({
                       </Badge>
                     </div>
                     {selectedPatientId === match.patient.id && (
-                      <CheckCircle2 className="w-5 h-5 text-purple-600" />
+                      <CheckCircle2 className="w-5 h-5 text-navy-600" />
                     )}
                   </div>
                   <div className="space-y-0.5">
                     {match.patient.date_of_birth && (
-                      <p className="text-xs text-gray-600 flex items-center gap-1">
+                      <p className="text-xs text-slate-600 flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         DOB: {match.patient.date_of_birth}
                         {match.dobMatch && <CheckCircle2 className="w-3 h-3 text-green-600" />}
@@ -296,7 +296,7 @@ export default function PatientMatchSelector({
                     )}
 
                     {match.patient.address && (
-                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <p className="text-xs text-slate-500 flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
                         {match.patient.address}
                       </p>
@@ -320,12 +320,12 @@ export default function PatientMatchSelector({
         {/* Manual Override */}
         <div className="border-t pt-3">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-gray-600">Manual Selection:</p>
+            <p className="text-xs text-slate-600">Manual Selection:</p>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
-                setSelectedPatientId("");
+                onSelectPatient("");
                 setShowDispute(false);
               }}
               className="text-xs h-7"
@@ -378,17 +378,18 @@ export default function PatientMatchSelector({
           <div className="space-y-4">
             <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
               <p className="text-xs text-yellow-700 mb-1">Suggested Match:</p>
-              <p className="font-medium text-gray-900">
+              <p className="font-medium text-slate-900">
                 {bestMatch?.patient.first_name} {bestMatch?.patient.last_name}
               </p>
-              <p className="text-xs text-gray-600">Confidence: {bestMatch?.confidence}%</p>
+              <p className="text-xs text-slate-600">Confidence: {bestMatch?.confidence}%</p>
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
+              <label htmlFor="dispute-notes" className="text-sm font-medium text-slate-700 mb-2 block">
                 What's wrong with this match?
               </label>
               <Textarea
+                id="dispute-notes"
                 value={disputeNotes}
                 onChange={(e) => setDisputeNotes(e.target.value)}
                 placeholder="e.g., Different patient with similar name, wrong DOB, etc."

@@ -1,0 +1,49 @@
+{
+  "name": "UserBadge",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User email"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "User full name"
+    },
+    "badge_id": {
+      "type": "string",
+      "description": "Reference to SkillBadge"
+    },
+    "badge_name": {
+      "type": "string",
+      "description": "Badge name at time of award"
+    },
+    "badge_type": {
+      "type": "string",
+      "description": "Badge type"
+    },
+    "earned_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When badge was earned"
+    },
+    "points_awarded": {
+      "type": "number",
+      "description": "Points awarded"
+    },
+    "trigger_context": {
+      "type": "object",
+      "description": "Context that triggered the badge (course_id, score, etc.)"
+    },
+    "displayed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether user displays this badge"
+    }
+  },
+  "required": [
+    "user_id",
+    "badge_id",
+    "earned_at"
+  ]
+}

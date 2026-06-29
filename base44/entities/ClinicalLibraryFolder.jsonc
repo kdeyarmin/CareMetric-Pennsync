@@ -1,0 +1,46 @@
+{
+  "name": "ClinicalLibraryFolder",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Folder name"
+    },
+    "parent_folder_id": {
+      "type": "string",
+      "description": "Parent folder ID for nested folders (null for root level)"
+    },
+    "color": {
+      "type": "string",
+      "enum": [
+        "gray",
+        "blue",
+        "green",
+        "purple",
+        "yellow",
+        "red",
+        "indigo",
+        "pink"
+      ],
+      "default": "blue",
+      "description": "Folder color for visual organization"
+    },
+    "order": {
+      "type": "number",
+      "default": 0,
+      "description": "Display order"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Email of user who created this folder"
+    },
+    "is_agency_wide": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether all nurses can see this folder"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

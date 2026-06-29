@@ -1,0 +1,104 @@
+{
+  "name": "OASISFeedback",
+  "type": "object",
+  "properties": {
+    "oasis_upload_id": {
+      "type": "string",
+      "description": "Reference to OASISUpload entity"
+    },
+    "feedback_type": {
+      "type": "string",
+      "enum": [
+        "incorrect_match",
+        "correct_match",
+        "manual_override"
+      ],
+      "description": "Type of feedback"
+    },
+    "extracted_name": {
+      "type": "string",
+      "description": "Name extracted from OASIS"
+    },
+    "extracted_medicare_id": {
+      "type": "string",
+      "description": "Medicare ID extracted from OASIS"
+    },
+    "extracted_dob": {
+      "type": "string",
+      "description": "DOB extracted from OASIS"
+    },
+    "suggested_patient_id": {
+      "type": "string",
+      "description": "Patient ID suggested by algorithm"
+    },
+    "suggested_confidence": {
+      "type": "number",
+      "description": "Confidence score of suggestion"
+    },
+    "actual_patient_id": {
+      "type": "string",
+      "description": "Actual patient ID selected by user"
+    },
+    "user_notes": {
+      "type": "string",
+      "description": "User's notes about why they changed the match"
+    },
+    "match_factors_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Factors that led to the match"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Visit the AI suggestion feedback relates to (OASISFeedbackPanel path)"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Patient the AI suggestion feedback relates to (OASISFeedbackPanel path)"
+    },
+    "suggestion_type": {
+      "type": "string",
+      "description": "Category of the AI suggestion being rated"
+    },
+    "oasis_item": {
+      "type": "string",
+      "description": "OASIS M-item the suggestion targeted (e.g. M1830)"
+    },
+    "original_suggestion": {
+      "type": "string",
+      "description": "Serialized snapshot of the AI suggestion the user acted on"
+    },
+    "user_action": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "modified",
+        "rejected"
+      ],
+      "description": "What the clinician did with the suggestion"
+    },
+    "modified_text": {
+      "type": "string",
+      "description": "Edited documentation text when user_action is 'modified'"
+    },
+    "feedback_reason": {
+      "type": "string",
+      "description": "Free-text reason captured on reject/modify"
+    },
+    "reimbursement_impact_accuracy": {
+      "type": "string",
+      "description": "Clinician rating of the reimbursement-impact estimate's accuracy"
+    },
+    "clinical_accuracy": {
+      "type": "number",
+      "description": "Clinician star rating (0-5) of the suggestion's clinical accuracy"
+    },
+    "helpfulness_rating": {
+      "type": "number",
+      "description": "Clinician star rating (0-5) of how helpful the suggestion was"
+    }
+  },
+  "required": []
+}

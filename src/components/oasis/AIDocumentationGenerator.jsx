@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,7 @@ import {
 } from "lucide-react";
 
 export default function AIDocumentationGenerator({ analysisResults, pdgmData, navigationData }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [suggestions, setSuggestions] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null);
   const [editedTexts, setEditedTexts] = useState({});
@@ -31,9 +32,9 @@ export default function AIDocumentationGenerator({ analysisResults, pdgmData, na
   const generateDocumentation = async () => {
     if (!analysisResults && !navigationData) return;
 
-    setIsGenerating(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert clinical documentation specialist for home health OASIS assessments. Generate concise, clinically appropriate documentation text snippets to address identified issues.
 
 ANALYSIS RESULTS:
@@ -120,8 +121,8 @@ Return JSON:
       setCopiedIndices(new Set());
     } catch (err) {
       console.error("Documentation generation error:", err);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = (index, text) => {
@@ -141,17 +142,17 @@ Return JSON:
     setEditedTexts({ ...editedTexts, [index]: text });
   };
 
-  const handleSaveEdit = (index) => {
+  const handleSaveEdit = (_index) => {
     setEditingIndex(null);
   };
 
   const getCategoryColor = (category) => {
     const colors = {
-      functional_status: 'bg-purple-100 text-purple-800',
+      functional_status: 'bg-navy-100 text-navy-800',
       diagnosis: 'bg-blue-100 text-blue-800',
       comorbidity: 'bg-green-100 text-green-800',
       compliance: 'bg-orange-100 text-orange-800',
-      other: 'bg-gray-100 text-gray-800'
+      other: 'bg-slate-100 text-slate-800'
     };
     return colors[category] || colors.other;
   };
@@ -167,7 +168,7 @@ Return JSON:
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="text-lg flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-indigo-600" />
           AI Documentation Generator
@@ -176,15 +177,15 @@ Return JSON:
       <CardContent className="space-y-4 pt-4">
         {!suggestions ? (
           <>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600">
               Generate AI-powered documentation snippets to address identified issues and improve OASIS scoring.
             </p>
             <Button
               onClick={generateDocumentation}
-              disabled={isGenerating}
+              disabled={ai.loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Generating Documentation...
@@ -205,7 +206,7 @@ Return JSON:
               </Badge>
               <Button
                 onClick={generateDocumentation}
-                disabled={isGenerating}
+                disabled={ai.loading}
                 size="sm"
                 variant="outline"
               >
@@ -227,14 +228,14 @@ Return JSON:
                     <AccordionTrigger className="px-4 py-3 hover:no-underline">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge className={getCategoryColor(suggestion.category)}>
-                          {suggestion.category.replace('_', ' ')}
+                          {(suggestion.category || '').replace('_', ' ')}
                         </Badge>
                         {suggestion.m_item && (
                           <Badge variant="outline" className="font-mono text-xs">
                             {suggestion.m_item}
                           </Badge>
                         )}
-                        <span className="text-sm font-medium text-gray-900">{suggestion.title}</span>
+                        <span className="text-sm font-medium text-slate-900">{suggestion.title}</span>
                         <Badge className={`ml-auto ${getPriorityColor(suggestion.priority)}`}>
                           {suggestion.priority}
                         </Badge>
@@ -320,7 +321,7 @@ Return JSON:
                                 </div>
                               </>
                             ) : (
-                              <p className="text-sm text-gray-800 leading-relaxed">
+                              <p className="text-sm text-slate-800 leading-relaxed">
                                 {currentText}
                               </p>
                             )}
@@ -329,12 +330,12 @@ Return JSON:
 
                         {/* Alternative Text */}
                         {suggestion.alternative_text && (
-                          <details className="bg-gray-50 p-3 rounded border">
-                            <summary className="text-xs font-medium text-gray-700 cursor-pointer flex items-center gap-1">
+                          <details className="bg-slate-50 p-3 rounded border">
+                            <summary className="text-xs font-medium text-slate-700 cursor-pointer flex items-center gap-1">
                               <ChevronDown className="w-3 h-3" />
                               Alternative Phrasing
                             </summary>
-                            <p className="text-sm text-gray-600 mt-2 pl-4">
+                            <p className="text-sm text-slate-600 mt-2 pl-4">
                               {suggestion.alternative_text}
                             </p>
                           </details>

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.1';
 import JSZip from 'npm:jszip@3.10.1';
 
@@ -20,10 +20,10 @@ Deno.serve(async (req) => {
     const results = [];
     const zip = new JSZip();
 
-    for (let i = 0; i < fileUrls.length; i++) {
-      const fileUrl = fileUrls[i];
-      const fileName = fileNames?.[i] || `Document_${i + 1}`;
-      
+    // Process one document end-to-end (extract -> analyze -> render PDF).
+    // Returns a result object and never throws, so one bad file can't fail the
+    // whole batch.
+    const processOne = async (fileUrl, fileName) => {
       try {
         // Extract text from PDF
         const extractedData = await base44.integrations.Core.ExtractDataFromUploadedFile({
@@ -41,12 +41,11 @@ Deno.serve(async (req) => {
         });
 
         if (extractedData.status === "error") {
-          results.push({
+          return {
             fileName,
             status: 'error',
             error: extractedData.details || 'Failed to extract text from PDF'
-          });
-          continue;
+          };
         }
 
         let oasisTextContent = "";
@@ -61,16 +60,16 @@ Deno.serve(async (req) => {
         }
 
         if (!oasisTextContent || oasisTextContent.trim().length < 20) {
-          results.push({
+          return {
             fileName,
             status: 'error',
             error: 'Could not extract sufficient text from the PDF'
-          });
-          continue;
+          };
         }
 
         // Analyze with AI
         const analysisResult = await base44.integrations.Core.InvokeLLM({
+          model: "claude_opus_4_8",
           prompt: `You are an expert OASIS analyst. Analyze this OASIS assessment document:
 
 OASIS Document Content:
@@ -112,25 +111,46 @@ Return JSON:
           }
         });
 
-        // Generate PDF for this document
+        // Render this document's PDF; ZIP writes happen after the batch resolves.
         const pdfBytes = generatePDF(analysisResult, fileName);
-        
-        // Add to ZIP
         const safeName = fileName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
-        zip.file(`${safeName}_Analysis.pdf`, pdfBytes);
 
-        results.push({
+        return {
           fileName,
           status: 'success',
-          analysis: analysisResult
-        });
+          analysis: analysisResult,
+          pdfBytes,
+          safeName
+        };
 
       } catch (docError) {
-        results.push({
+        return {
           fileName,
           status: 'error',
           error: docError.message || 'Unknown error processing document'
-        });
+        };
+      }
+    };
+
+    // Run independent documents with bounded concurrency instead of fully
+    // serially, so an N-file batch isn't N×(extract+LLM) latency; the cap keeps
+    // us under extraction/LLM provider rate limits. ZIP writes stay sequential.
+    const CONCURRENCY = 5;
+    for (let start = 0; start < fileUrls.length; start += CONCURRENCY) {
+      const batch = fileUrls.slice(start, start + CONCURRENCY);
+      const batchResults = await Promise.all(
+        batch.map((fileUrl, j) => {
+          const idx = start + j;
+          return processOne(fileUrl, fileNames?.[idx] || `Document_${idx + 1}`);
+        })
+      );
+      for (const r of batchResults) {
+        if (r.status === 'success') {
+          zip.file(`${r.safeName}_Analysis.pdf`, r.pdfBytes);
+          results.push({ fileName: r.fileName, status: 'success', analysis: r.analysis });
+        } else {
+          results.push({ fileName: r.fileName, status: 'error', error: r.error });
+        }
       }
     }
 

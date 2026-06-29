@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { toast } from 'sonner';
 
 export default function AutomaticDocumentReviewer({
   noteContent,
@@ -37,7 +39,7 @@ export default function AutomaticDocumentReviewer({
   onReviewComplete,
   onApplySuggestion
 }) {
-  const [isReviewing, setIsReviewing] = useState(false);
+  const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
   const queryClient = useQueryClient();
 
@@ -52,19 +54,12 @@ export default function AutomaticDocumentReviewer({
     queryFn: () => base44.auth.me(),
   });
 
-  useEffect(() => {
-    if (autoReview && noteContent && noteContent.length > 100 && !reviewResults) {
-      performReview();
-    }
-  }, [autoReview, noteContent]);
-
-  const performReview = async () => {
+  const performReview = useCallback(async () => {
     if (!noteContent || noteContent.length < 50) {
-      alert('Note is too short for comprehensive review');
+      toast.error('Note is too short for comprehensive review');
       return;
     }
 
-    setIsReviewing(true);
     try {
       // Get relevant Medicare rules
       const relevantRules = medicareRules.filter(rule => 
@@ -75,7 +70,8 @@ export default function AutomaticDocumentReviewer({
         rule.category === 'plan_of_care'
       );
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert Medicare home health compliance auditor and clinical documentation specialist for Pennsylvania home health agencies. Perform a comprehensive review of this clinical note.
 
 CLINICAL NOTE TO REVIEW:
@@ -273,10 +269,16 @@ Return detailed JSON analysis.`,
 
     } catch (error) {
       console.error('Error reviewing document:', error);
-      alert('Failed to review document. Please try again.');
+      toast.error('Failed to review document. Please try again.');
     }
-    setIsReviewing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [currentUser?.email, diagnosis, medicareRules, noteContent, nurseEmail, onReviewComplete, patientData?.date_of_birth, queryClient, visitId, visitType, vitalSigns]);
+
+  useEffect(() => {
+    if (autoReview && noteContent && noteContent.length > 100 && !reviewResults) {
+      performReview();
+    }
+  }, [autoReview, noteContent, reviewResults, performReview]);
 
   const getScoreColor = (score) => {
     if (score >= 90) return 'text-green-600';
@@ -292,13 +294,13 @@ Return detailed JSON analysis.`,
     return 'bg-red-600';
   };
 
-  if (isReviewing) {
+  if (ai.loading) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-8 text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-4" />
-          <p className="text-lg font-medium text-gray-900 mb-2">AI Comprehensive Review in Progress</p>
-          <p className="text-sm text-gray-600">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-navy-600 mx-auto mb-4" />
+          <p className="text-lg font-medium text-slate-900 mb-2">AI Comprehensive Review in Progress</p>
+          <p className="text-sm text-slate-600">
             Analyzing note against 42 CFR 484, Pennsylvania regulations, and quality standards...
           </p>
         </CardContent>
@@ -308,18 +310,18 @@ Return detailed JSON analysis.`,
 
   if (!reviewResults && !autoReview) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileCheck className="w-5 h-5 text-purple-600" />
+            <FileCheck className="w-5 h-5 text-navy-600" />
             Automatic Document Review
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-slate-600 mb-4">
             Comprehensive AI review of clinical documentation for Medicare compliance, accuracy, and quality.
           </p>
-          <Button onClick={performReview} className="w-full bg-purple-600 hover:bg-purple-700">
+          <Button onClick={performReview} className="w-full bg-navy-600 hover:bg-navy-700">
             <Sparkles className="w-4 h-4 mr-2" />
             Start Comprehensive Review
           </Button>
@@ -347,11 +349,11 @@ Return detailed JSON analysis.`,
       )}
 
       {/* Overall Summary */}
-      <Card className="border-2 border-purple-300 bg-gradient-to-r from-purple-50 to-pink-50">
+      <Card className="border-2 border-navy-300 bg-gradient-to-r from-navy-50 to-gold-50">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <FileCheck className="w-5 h-5 text-purple-600" />
+              <FileCheck className="w-5 h-5 text-navy-600" />
               Comprehensive Review Results
             </span>
             <Badge className={getScoreBadge(reviewResults.overall_score)}>
@@ -362,8 +364,8 @@ Return detailed JSON analysis.`,
         <CardContent className="space-y-4">
           {/* Executive Summary */}
           <div className="bg-white p-4 rounded-lg border">
-            <h3 className="font-bold text-gray-900 mb-2">Executive Summary</h3>
-            <p className="text-sm text-gray-700">{reviewResults.executive_summary}</p>
+            <h3 className="font-bold text-slate-900 mb-2">Executive Summary</h3>
+            <p className="text-sm text-slate-700">{reviewResults.executive_summary}</p>
           </div>
 
           {/* Score Breakdown */}
@@ -379,7 +381,7 @@ Return detailed JSON analysis.`,
                 <p className={`text-2xl font-bold ${getScoreColor(metric.score)}`}>
                   {metric.score}
                 </p>
-                <p className="text-xs text-gray-600">{metric.label}</p>
+                <p className="text-xs text-slate-600">{metric.label}</p>
                 <Progress value={metric.score} className="h-1 mt-2" />
               </div>
             ))}
@@ -426,7 +428,7 @@ Return detailed JSON analysis.`,
                     <p className="font-semibold text-red-900">{issue.issue}</p>
                     <Badge className="bg-red-600">{issue.severity}</Badge>
                   </div>
-                  <p className="text-xs text-gray-600 mb-1">
+                  <p className="text-xs text-slate-600 mb-1">
                     <strong>CoP:</strong> {issue.cop_reference}
                   </p>
                   <p className="text-sm text-red-800">{issue.impact}</p>
@@ -449,7 +451,7 @@ Return detailed JSON analysis.`,
               {reviewResults.missing_elements.map((element, idx) => (
                 <div key={idx} className="bg-white p-3 rounded border">
                   <p className="font-semibold text-orange-900 mb-1">{element.element}</p>
-                  <p className="text-xs text-gray-600 mb-2">
+                  <p className="text-xs text-slate-600 mb-2">
                     <strong>Required by:</strong> {element.cop_requirement}
                   </p>
                   <p className="text-sm text-orange-800">{element.why_required}</p>
@@ -472,14 +474,14 @@ Return detailed JSON analysis.`,
               {reviewResults.vague_language.map((item, idx) => (
                 <div key={idx} className="bg-white p-3 rounded border">
                   <div className="mb-2">
-                    <p className="text-xs font-semibold text-gray-600 mb-1">Vague:</p>
+                    <p className="text-xs font-semibold text-slate-600 mb-1">Vague:</p>
                     <p className="text-sm text-red-700 italic">"{item.vague_text}"</p>
                   </div>
                   <div className="mb-2">
-                    <p className="text-xs font-semibold text-gray-600 mb-1">Better:</p>
+                    <p className="text-xs font-semibold text-slate-600 mb-1">Better:</p>
                     <p className="text-sm text-green-700 font-medium">"{item.specific_replacement}"</p>
                   </div>
-                  <p className="text-xs text-gray-600">{item.rationale}</p>
+                  <p className="text-xs text-slate-600">{item.rationale}</p>
                   {onApplySuggestion && (
                     <Button
                       size="sm"
@@ -516,10 +518,10 @@ Return detailed JSON analysis.`,
                       {suggestion.priority}
                     </Badge>
                   </div>
-                  <p className="text-sm text-gray-700 mb-2">{suggestion.suggestion}</p>
+                  <p className="text-sm text-slate-700 mb-2">{suggestion.suggestion}</p>
                   {suggestion.compliant_text && (
                     <>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">Suggested Text:</p>
+                      <p className="text-xs font-semibold text-slate-600 mb-1">Suggested Text:</p>
                       <p className="text-sm text-blue-800 bg-blue-50 p-2 rounded border border-blue-200">
                         {suggestion.compliant_text}
                       </p>
@@ -556,7 +558,7 @@ Return detailed JSON analysis.`,
                   <div className="bg-green-50 p-2 rounded border border-green-200 mb-2">
                     <p className="text-sm text-green-900 italic">"{section.excerpt}"</p>
                   </div>
-                  <p className="text-xs text-gray-700">{section.why_exemplary}</p>
+                  <p className="text-xs text-slate-700">{section.why_exemplary}</p>
                 </div>
               ))}
               {reviewResults.training_value && (

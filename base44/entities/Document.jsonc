@@ -1,0 +1,178 @@
+{
+  "name": "Document",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Document title or name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the document"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL to the uploaded file"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Original file name"
+    },
+    "file_size": {
+      "type": "number",
+      "description": "File size in bytes"
+    },
+    "file_type": {
+      "type": "string",
+      "description": "MIME type of the file"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "lab_results",
+        "imaging",
+        "consent_forms",
+        "insurance",
+        "referral",
+        "progress_notes",
+        "discharge_summary",
+        "medication_list",
+        "orders",
+        "state_reportable_incident",
+        "other"
+      ],
+      "description": "Document category"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Associated patient ID"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for additional categorization"
+    },
+    "document_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the document was created or relates to"
+    },
+    "uploaded_by": {
+      "type": "string",
+      "description": "Email of user who uploaded"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about the document"
+    },
+    "is_sensitive": {
+      "type": "boolean",
+      "default": false,
+      "description": "Flag for sensitive documents requiring additional access controls"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Expiration date if applicable (e.g., for consent forms)"
+    },
+    "ai_analysis": {
+      "type": "object",
+      "properties": {
+        "analyzed": {
+          "type": "boolean",
+          "default": false
+        },
+        "summary": {
+          "type": "string",
+          "description": "AI-generated summary of the document"
+        },
+        "extracted_data": {
+          "type": "object",
+          "description": "Extracted key data points (lab values, diagnoses, etc.)"
+        },
+        "suggested_category": {
+          "type": "string",
+          "description": "AI-suggested more specific category"
+        },
+        "critical_flags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "finding": {
+                "type": "string"
+              },
+              "details": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Critical findings flagged for review"
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "AI confidence score 0-100"
+        },
+        "analyzed_date": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "AI analysis results"
+    },
+    "clinician_signed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the clinician has signed the document"
+    },
+    "clinician_signed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the clinician signed the document"
+    },
+    "clinician_name": {
+      "type": "string",
+      "description": "Name of the clinician who signed"
+    },
+    "patient_signed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the patient has signed the document"
+    },
+    "patient_signed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the patient signed the document"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Name of the patient who signed"
+    },
+    "is_signed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the document is fully signed"
+    },
+    "is_locked": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the document is locked from further edits"
+    }
+  },
+  "required": [
+    "title",
+    "file_url",
+    "category"
+  ]
+}

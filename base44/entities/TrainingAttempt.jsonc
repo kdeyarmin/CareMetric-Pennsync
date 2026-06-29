@@ -1,0 +1,133 @@
+{
+  "name": "TrainingAttempt",
+  "type": "object",
+  "properties": {
+    "assignment_id": {
+      "type": "string",
+      "description": "Reference to TrainingAssignment"
+    },
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User taking the course"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When attempt started"
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When attempt was submitted"
+    },
+    "score": {
+      "type": "number",
+      "description": "Score percentage"
+    },
+    "objective_score": {
+      "type": "number",
+      "description": "Auto-graded score for objective questions"
+    },
+    "short_answer_score": {
+      "type": "number",
+      "description": "Score contribution from short answer or scenario responses"
+    },
+    "passed": {
+      "type": "boolean",
+      "description": "Whether attempt passed"
+    },
+    "pass_fail_result": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ],
+      "description": "Pass/fail result for the attempt"
+    },
+    "answers_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "User answers"
+    },
+    "grading_method": {
+      "type": "string",
+      "enum": [
+        "automatic",
+        "ai_assisted",
+        "manual_review"
+      ],
+      "default": "automatic",
+      "description": "How the attempt was graded"
+    },
+    "ai_grading_confidence": {
+      "type": "number",
+      "description": "Confidence score for AI-assisted grading"
+    },
+    "randomized_question_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Question order shown to the learner"
+    },
+    "time_spent_minutes": {
+      "type": "number",
+      "description": "Time spent in minutes"
+    },
+    "attempt_number": {
+      "type": "number",
+      "default": 1,
+      "description": "Attempt number"
+    },
+    "remediation_message": {
+      "type": "string",
+      "description": "Remediation guidance for failed attempt"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address for audit"
+    },
+    "badges_processed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set by awardBadgeOnCompletion once this attempt has been processed; gates idempotent badge/point/streak awards so a replayed attempt cannot double-award (covers attempts that earn no badge too)."
+    }
+  },
+  "required": [
+    "course_id",
+    "user_id",
+    "started_at"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,420 +1,364 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { 
-  CheckCircle2, 
-  XCircle, 
-  PlayCircle, 
-  FileText, 
-  Brain,
-  ArrowLeft,
-  Award
+import { Progress } from "@/components/ui/progress";
+import {
+  ChevronDown, ChevronUp, Lightbulb, BookOpenCheck, MessageSquare, Eye,
+  AlertTriangle, Zap, ListChecks, ThumbsUp, ThumbsDown, Brain, Stethoscope,
+  HelpCircle, ClipboardList
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import InteractiveSimulation from "./InteractiveSimulation";
-import GamifiedQuiz from "./GamifiedQuiz";
-import ModuleFeedbackForm from "./ModuleFeedbackForm";
+import ModuleVideoPlayer from "./ModuleVideoPlayer";
 
-export default function TrainingModuleViewer({ module, nurseEmail, onComplete, onBack }) {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [showResults, setShowResults] = useState(false);
-  const [feedback, setFeedback] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
-  const [completionRecord, setCompletionRecord] = useState(null);
-  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
-  
-  const queryClient = useQueryClient();
+function ReadingTime({ content }) {
+  const text = JSON.stringify(content || "");
+  const words = text.split(/\s+/).length;
+  const minutes = Math.max(1, Math.round(words / 200));
+  return <span className="text-xs text-slate-400">~{minutes} min read</span>;
+}
 
-  const completionMutation = useMutation({
-    mutationFn: (data) => base44.entities.TrainingCompletion.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['onboardingCompletions'] });
-      queryClient.invalidateQueries({ queryKey: ['trainingCompletions'] });
-    }
-  });
+function Section({ section, index, onViewed, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const sectionRef = useRef(null);
 
-  const updateCompletionMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.TrainingCompletion.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['onboardingCompletions'] });
-      queryClient.invalidateQueries({ queryKey: ['trainingCompletions'] });
-    }
-  });
-
-  const questions = module.content?.quiz_questions || [];
-  const hasQuiz = questions.length > 0;
-
-  const handleAnswerChange = (questionIndex, answerIndex) => {
-    setAnswers({
-      ...answers,
-      [questionIndex]: answerIndex
-    });
-  };
-
-  // Track real-time performance
-  const trackPerformance = async (metricData) => {
-    try {
-      await base44.entities.RealTimePerformanceMetric.create({
-        nurse_email: nurseEmail,
-        training_module_id: module.id,
-        session_id: sessionId,
-        ...metricData
-      });
-    } catch (error) {
-      console.error('Failed to track performance:', error);
-    }
-  };
-
-  const calculateScore = () => {
-    if (!hasQuiz || questions.length === 0) return 100;
-    
-    let correct = 0;
-    questions.forEach((q, idx) => {
-      if (answers[idx] === q?.correct_answer) {
-        correct++;
-      }
-    });
-    return Math.round((correct / questions.length) * 100);
-  };
-
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    const score = calculateScore();
-    
-    try {
-      // Check if completion already exists
-      const existingCompletions = await base44.entities.TrainingCompletion.filter({
-        nurse_email: nurseEmail,
-        training_module_id: module.id
-      });
-
-      const completionData = {
-        nurse_email: nurseEmail,
-        training_module_id: module.id,
-        completion_date: new Date().toISOString().split('T')[0],
-        score,
-        status: score >= (module.passing_score || 80) ? 'completed' : 'in_progress',
-        feedback: feedback || undefined
-      };
-
-      let completionId;
-      if (existingCompletions && existingCompletions.length > 0) {
-        await updateCompletionMutation.mutateAsync({
-          id: existingCompletions[0].id,
-          data: completionData
-        });
-        completionId = existingCompletions[0].id;
-      } else {
-        const newCompletion = await completionMutation.mutateAsync(completionData);
-        completionId = newCompletion.id;
-      }
-
-      setCompletionRecord({ id: completionId });
-      setShowResults(true);
-    } catch (error) {
-      console.error('Error submitting completion:', error);
-      alert('Failed to save progress');
-    }
-    
-    setIsSubmitting(false);
-  };
-
-  const handleFinish = () => {
-    // Show feedback form after completion
-    if (completionRecord && !showFeedbackForm) {
-      setShowFeedbackForm(true);
-    } else if (onComplete) {
-      onComplete(calculateScore());
-    }
-  };
-
-  const handleFeedbackSubmit = () => {
-    if (onComplete) {
-      onComplete(calculateScore());
-    }
-  };
-
-  const renderContent = () => {
-    // Interactive simulation
-    if (module.content_type === 'interactive' && module.content?.interactive_elements) {
-      const simulationScenario = {
-        description: module.description,
-        steps: module.content.interactive_elements
-      };
-      return (
-        <InteractiveSimulation
-          scenario={simulationScenario}
-          onComplete={handleSubmit}
-        />
-      );
-    }
-
-    if (module.content_type === 'video' && module.content?.video_url) {
-      return (
-        <div className="aspect-video bg-black rounded-lg mb-6">
-          <iframe
-            src={module.content.video_url}
-            className="w-full h-full rounded-lg"
-            allowFullScreen
-            title={module.title}
-          />
-        </div>
-      );
-    }
-
-    if (module.content_type === 'document' && module.content?.document_url) {
-      return (
-        <div className="mb-6">
-          <Button
-            onClick={() => window.open(module.content.document_url, '_blank')}
-            className="w-full"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            View Training Document
-          </Button>
-        </div>
-      );
-    }
-
-    if (module.content?.text) {
-      return (
-        <div className="prose max-w-none mb-6">
-          <ReactMarkdown>{module.content.text}</ReactMarkdown>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const renderQuiz = () => {
-    if (!hasQuiz) return null;
-
-    // Use gamified quiz for quiz content type
-    if (module.content_type === 'quiz') {
-      return (
-        <GamifiedQuiz
-          questions={questions}
-          title={module.title}
-          onComplete={(percentage, points) => {
-            handleSubmit();
-          }}
-        />
-      );
-    }
-
-    if (showResults) {
-      const score = calculateScore();
-      const passed = score >= (module.passing_score || 80);
-
-      return (
-        <Card className={`border-2 ${passed ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
-          <CardContent className="p-6">
-            <div className="text-center mb-6">
-              {passed ? (
-                <Award className="w-16 h-16 text-green-600 mx-auto mb-3" />
-              ) : (
-                <XCircle className="w-16 h-16 text-red-600 mx-auto mb-3" />
-              )}
-              <h3 className="text-2xl font-bold mb-2">
-                {passed ? 'Congratulations!' : 'Keep Practicing'}
-              </h3>
-              <p className="text-lg font-semibold mb-1">Your Score: {score}%</p>
-              <p className="text-sm text-gray-600">
-                Passing Score: {module.passing_score || 80}%
-              </p>
-            </div>
-
-            <div className="space-y-4 mb-6">
-              {questions?.map((q, idx) => {
-                const isCorrect = answers[idx] === q?.correct_answer;
-                return (
-                  <div key={idx} className="p-4 bg-white rounded-lg border">
-                    <div className="flex items-start gap-2 mb-2">
-                      {isCorrect ? (
-                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                      )}
-                      <p className="font-medium">{q?.question}</p>
-                    </div>
-                    {q?.explanation && (
-                      <p className="text-sm text-gray-600 ml-7">{q.explanation}</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex gap-3">
-              {!passed && (
-                <Button onClick={() => {
-                  setShowResults(false);
-                  setAnswers({});
-                  setCurrentQuestionIndex(0);
-                }} variant="outline" className="flex-1">
-                  Try Again
-                </Button>
-              )}
-              <Button onClick={handleFinish} className="flex-1">
-                {passed ? (showFeedbackForm ? 'Skip Feedback' : 'Rate This Module') : 'Exit'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    const currentQuestion = questions[currentQuestionIndex];
-    if (!currentQuestion) return null;
-    
-    const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
-
-    return (
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between mb-2">
-            <CardTitle className="flex items-center gap-2">
-              <Brain className="w-5 h-5 text-purple-600" />
-              Knowledge Check
-            </CardTitle>
-            <Badge>
-              Question {currentQuestionIndex + 1} of {questions.length}
-            </Badge>
-          </div>
-          <Progress value={progress} className="h-2" />
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <p className="text-lg font-medium">{currentQuestion?.question}</p>
-            
-            <RadioGroup
-              value={answers[currentQuestionIndex]?.toString()}
-              onValueChange={(value) => {
-                handleAnswerChange(currentQuestionIndex, parseInt(value));
-                // Track answer selection
-                trackPerformance({
-                  metric_type: 'quiz_question_response',
-                  question_difficulty: module.difficulty_level || 'medium',
-                  is_correct: parseInt(value) === currentQuestion?.correct_answer,
-                  time_spent_seconds: 0,
-                  attempts: 1
-                });
-              }}
-            >
-              {currentQuestion?.options?.map((option, idx) => (
-                <div key={idx} className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-gray-50">
-                  <RadioGroupItem value={idx.toString()} id={`option-${idx}`} />
-                  <Label htmlFor={`option-${idx}`} className="flex-1 cursor-pointer">
-                    {option}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
-                disabled={currentQuestionIndex === 0}
-              >
-                Previous
-              </Button>
-              
-              {currentQuestionIndex < questions.length - 1 ? (
-                <Button
-                  onClick={() => setCurrentQuestionIndex(currentQuestionIndex + 1)}
-                  disabled={answers[currentQuestionIndex] === undefined}
-                  className="flex-1"
-                >
-                  Next Question
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleSubmit}
-                  disabled={Object.keys(answers).length !== questions.length || isSubmitting}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                >
-                  {isSubmitting ? 'Submitting...' : 'Submit Quiz'}
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+  useEffect(() => {
+    if (!open || !sectionRef.current || !onViewed) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) onViewed(index); },
+      { threshold: 0.5 }
     );
+    observer.observe(sectionRef.current);
+    return () => observer.disconnect();
+  }, [open, index, onViewed]);
+
+  const doDont = section.do_dont;
+  const hasDoDont = doDont && ((doDont.do?.length > 0) || (doDont.dont?.length > 0));
+
+  return (
+    <div ref={sectionRef} className="border border-slate-100 rounded-xl overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3.5 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+          <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+            {index + 1}
+          </span>
+          {section.heading}
+        </span>
+        {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+      </button>
+
+      {open && (
+        <div className="px-4 sm:px-5 py-4 space-y-4 text-slate-700 text-sm leading-7">
+          {section.body && <p>{section.body}</p>}
+
+          {section.bullets?.length > 0 && (
+            <ul className="space-y-2">
+              {section.bullets.map((bullet, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2.5 flex-shrink-0" />
+                  <span>{bullet}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Step-by-step procedure */}
+          {section.steps?.length > 0 && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+              <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                <ListChecks className="w-3.5 h-3.5" /> Step-by-Step
+              </p>
+              <ol className="space-y-2">
+                {section.steps.map((step, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {i + 1}
+                    </span>
+                    <span className="text-indigo-900">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {section.example && (
+            <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Practical Example</p>
+              <p className="text-blue-900">{section.example}</p>
+            </div>
+          )}
+
+          {/* Pro tip */}
+          {section.pro_tip && (
+            <div className="rounded-xl bg-navy-50 border border-navy-200 p-4 flex gap-3">
+              <Zap className="w-5 h-5 text-navy-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-navy-700 uppercase tracking-wide mb-1">Pro Tip</p>
+                <p className="text-navy-900 text-sm">{section.pro_tip}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Warning callout */}
+          {section.warning && (
+            <div className="rounded-xl bg-red-50 border-2 border-red-200 p-4 flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Important Warning</p>
+                <p className="text-red-900 text-sm font-medium">{section.warning}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Do / Don't comparison */}
+          {hasDoDont && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {doDont.do?.length > 0 && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <ThumbsUp className="w-3.5 h-3.5" /> Do This
+                  </p>
+                  <ul className="space-y-1.5">
+                    {doDont.do.map((item, i) => (
+                      <li key={i} className="text-sm text-emerald-900 flex items-start gap-2">
+                        <span className="text-emerald-500 mt-0.5">✓</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {doDont.dont?.length > 0 && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <ThumbsDown className="w-3.5 h-3.5" /> Avoid This
+                  </p>
+                  <ul className="space-y-1.5">
+                    {doDont.dont.map((item, i) => (
+                      <li key={i} className="text-sm text-red-900 flex items-start gap-2">
+                        <span className="text-red-500 mt-0.5">✗</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mnemonic / Memory aid */}
+          {section.mnemonic && (
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 flex gap-3">
+              <Brain className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Memory Aid</p>
+                <p className="text-amber-900 text-sm font-medium">{section.mnemonic}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Regulation reference */}
+          {section.regulation_ref && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-600">
+              <ClipboardList className="w-3.5 h-3.5 flex-shrink-0" />
+              <span><strong>Regulatory Reference:</strong> {section.regulation_ref}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function TrainingModuleViewer({ module }) {
+  const content = module?.content_json || {};
+  const sections = content.sections || [];
+  const scenarios = content.case_scenarios || [];
+  const takeaways = content.key_takeaways || [];
+  const checkQuestions = content.check_your_understanding || [];
+  const [viewedSections, setViewedSections] = useState(new Set());
+
+  const handleSectionViewed = (index) => {
+    setViewedSections(prev => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+  };
+
+  const readingProgress = sections.length > 0
+    ? Math.round((viewedSections.size / sections.length) * 100)
+    : 100;
+
+  const typeColors = {
+    lesson: "bg-blue-100 text-blue-800",
+    video: "bg-navy-100 text-navy-800",
+    policy: "bg-orange-100 text-orange-800",
+    checklist: "bg-navy-100 text-navy-800",
+    attestation: "bg-gold-100 text-gold-800",
+    simulation: "bg-indigo-100 text-indigo-800",
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-        <CardContent className="p-6">
-          <Button variant="ghost" size="sm" onClick={onBack} className="mb-4">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Training
-          </Button>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{module.title}</h2>
-          <p className="text-gray-600 mb-4">{module.description}</p>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{module.content_type}</Badge>
-            <Badge variant="outline">{module.duration_minutes} minutes</Badge>
-            {module.difficulty_level && (
-              <Badge variant="outline" className="capitalize">{module.difficulty_level}</Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Content */}
-      <Card>
-        <CardContent className="p-6">
-          {renderContent()}
-          
-          {!hasQuiz && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="feedback">Feedback (Optional)</Label>
-                <Textarea
-                  id="feedback"
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="Share your thoughts about this training..."
-                  rows={3}
-                />
-              </div>
-              <Button 
-                onClick={handleSubmit} 
-                disabled={isSubmitting}
-                className="w-full"
-              >
-                {isSubmitting ? 'Completing...' : 'Mark as Complete'}
-              </Button>
+    <Card className="border-0 shadow-md">
+      <CardHeader className="border-b border-slate-100 pb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base sm:text-lg text-slate-900">{module.title}</CardTitle>
+            <div className="flex items-center gap-3 mt-1">
+              <ReadingTime content={content} />
+              {sections.length > 0 && (
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Eye className="w-3 h-3" />
+                  {viewedSections.size}/{sections.length} sections read
+                </span>
+              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+          <Badge className={typeColors[module.type] || "bg-slate-100 text-slate-700"}>
+            {module.type}
+          </Badge>
+        </div>
+        {sections.length > 1 && (
+          <Progress value={readingProgress} className="h-1 mt-3 [&>div]:bg-blue-500" />
+        )}
+      </CardHeader>
 
-      {/* Quiz */}
-      {hasQuiz && !showFeedbackForm && renderQuiz()}
+      <CardContent className="p-4 sm:p-5 space-y-5">
+        {/* Video-first lesson: plays the produced video if present, otherwise a
+            narrated slideshow built from this module's content. */}
+        <ModuleVideoPlayer module={module} />
 
-      {/* Feedback Form */}
-      {showFeedbackForm && completionRecord && (
-        <ModuleFeedbackForm
-          completionId={completionRecord.id}
-          moduleTitle={module.title}
-          onSubmit={handleFeedbackSubmit}
-        />
-      )}
-    </div>
+        {content.intro && (
+          <p className="text-slate-700 leading-7 text-sm sm:text-base border-l-4 border-blue-200 pl-4 bg-blue-50/50 py-2 rounded-r-xl">
+            {content.intro}
+          </p>
+        )}
+
+        {sections.length > 0 && (
+          <div className="space-y-2">
+            {sections.map((section, i) => (
+              <Section
+                key={i}
+                section={section}
+                index={i}
+                onViewed={handleSectionViewed}
+                defaultOpen={sections.length <= 4 || i === 0}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Check Your Understanding */}
+        {checkQuestions.length > 0 && (
+          <div className="rounded-xl border border-navy-200 bg-navy-50 p-4">
+            <h3 className="font-semibold text-navy-900 mb-3 flex items-center gap-2">
+              <HelpCircle className="w-4 h-4" /> Check Your Understanding
+            </h3>
+            <ul className="space-y-2">
+              {checkQuestions.map((q, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-navy-900">
+                  <span className="w-5 h-5 rounded-full bg-navy-200 text-navy-800 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                    {i + 1}
+                  </span>
+                  <span>{q}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Case Scenarios */}
+        {scenarios.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-amber-500" /> Case Scenarios
+            </h3>
+            {scenarios.map((scenario, i) => (
+              <div key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <p className="font-semibold text-amber-900">{scenario.title}</p>
+                {scenario.patient_context && (
+                  <div className="text-xs text-amber-800 bg-amber-100/70 rounded-lg px-3 py-2 flex items-start gap-2">
+                    <Stethoscope className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <span>{scenario.patient_context}</span>
+                  </div>
+                )}
+                <p className="text-amber-900/90 text-sm leading-6">{scenario.situation}</p>
+                {scenario.challenge && (
+                  <div className="text-sm text-amber-900 bg-amber-100 rounded-lg px-3 py-2 font-medium">
+                    <strong>The Question:</strong> {scenario.challenge}
+                  </div>
+                )}
+                {scenario.guidance && (
+                  <div className="text-sm text-amber-800 bg-white/60 rounded-lg px-3 py-2 border border-amber-200">
+                    <strong>Best Practice:</strong> {scenario.guidance}
+                  </div>
+                )}
+                {scenario.what_could_go_wrong && (
+                  <div className="text-sm text-red-800 bg-red-50 rounded-lg px-3 py-2 border border-red-200 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span><strong>Risk:</strong> {scenario.what_could_go_wrong}</span>
+                  </div>
+                )}
+                {scenario.discussion_questions?.length > 0 && (
+                  <div className="pt-2 border-t border-amber-200">
+                    <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Think About It</p>
+                    <ul className="space-y-1">
+                      {scenario.discussion_questions.map((dq, j) => (
+                        <li key={j} className="text-sm text-amber-800 flex items-start gap-2">
+                          <span className="text-amber-500 mt-0.5">→</span>
+                          <span>{dq}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Clinical Pearl */}
+        {content.clinical_pearl && (
+          <div className="rounded-xl bg-gradient-to-r from-navy-50 to-navy-50 border border-navy-200 p-4 flex gap-3">
+            <Stethoscope className="w-5 h-5 text-navy-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-navy-700 uppercase tracking-wide mb-1">Clinical Pearl</p>
+              <p className="text-navy-900 text-sm">{content.clinical_pearl}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Key Takeaways */}
+        {takeaways.length > 0 && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <h3 className="font-semibold text-emerald-900 mb-3 flex items-center gap-2">
+              <BookOpenCheck className="w-4 h-4" /> Key Takeaways
+            </h3>
+            <ul className="space-y-2">
+              {takeaways.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-emerald-900">
+                  <Lightbulb className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Module Summary */}
+        {content.summary && (
+          <div className="rounded-xl bg-slate-100 border border-slate-200 p-4 flex gap-3">
+            <ClipboardList className="w-5 h-5 text-slate-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Module Summary</p>
+              <p className="text-slate-800 text-sm leading-relaxed">{content.summary}</p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

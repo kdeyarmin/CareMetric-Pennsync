@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -20,14 +22,13 @@ import {
   Loader2,
   CheckCircle2,
   Plus,
-  Trash2,
-  Sparkles
+  Trash2
 } from "lucide-react";
 import { format } from "date-fns";
 import AIAuditReportAssistant from "./AIAuditReportAssistant";
 
 export default function OASISAuditReportGenerator({ audit, isOpen, onClose, currentUser }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [reportGenerated, setReportGenerated] = useState(false);
   const [additionalFindings, setAdditionalFindings] = useState("");
   const [recommendations, setRecommendations] = useState([""]);
@@ -79,7 +80,6 @@ export default function OASISAuditReportGenerator({ audit, isOpen, onClose, curr
   };
 
   const generateReport = async () => {
-    setIsGenerating(true);
 
     try {
       // Build report content
@@ -104,7 +104,8 @@ export default function OASISAuditReportGenerator({ audit, isOpen, onClose, curr
       };
 
       // Generate PDF report using AI
-      const reportContent = await base44.integrations.Core.InvokeLLM({
+      const reportContent = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a professional OASIS audit report in markdown format based on this data:
 
 ${JSON.stringify(reportData, null, 2)}
@@ -162,9 +163,9 @@ Use proper markdown formatting with headers, bullet points, and tables where app
       setReportGenerated(true);
     } catch (error) {
       console.error("Error generating report:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsGenerating(false);
   };
 
   const generateFallbackReport = (data) => {
@@ -228,8 +229,8 @@ ${data.corrections?.map(c => `
         {reportGenerated ? (
           <div className="py-8 text-center">
             <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <p className="text-lg font-medium text-gray-800">Report Generated Successfully</p>
-            <p className="text-sm text-gray-500 mt-2">The report has been downloaded to your device.</p>
+            <p className="text-lg font-medium text-slate-800">Report Generated Successfully</p>
+            <p className="text-sm text-slate-500 mt-2">The report has been downloaded to your device.</p>
             <Button onClick={onClose} className="mt-4">Close</Button>
           </div>
         ) : (
@@ -305,11 +306,11 @@ ${data.corrections?.map(c => `
                 </Button>
               </div>
               {corrections.length === 0 ? (
-                <p className="text-sm text-gray-500">No corrections documented yet.</p>
+                <p className="text-sm text-slate-500">No corrections documented yet.</p>
               ) : (
                 <div className="space-y-3">
                   {corrections.map((corr, idx) => (
-                    <div key={idx} className="p-3 bg-gray-50 rounded-lg border space-y-2">
+                    <div key={idx} className="p-3 bg-slate-50 rounded-lg border space-y-2">
                       <div className="flex items-center justify-between">
                         <Badge variant="outline">Correction {idx + 1}</Badge>
                         <Button size="sm" variant="ghost" onClick={() => removeCorrection(idx)}>
@@ -358,10 +359,10 @@ ${data.corrections?.map(c => `
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               <Button 
                 onClick={generateReport} 
-                disabled={isGenerating}
+                disabled={ai.loading}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isGenerating ? (
+                {ai.loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
                 ) : (
                   <><FileDown className="w-4 h-4 mr-2" /> Generate & Download Report</>

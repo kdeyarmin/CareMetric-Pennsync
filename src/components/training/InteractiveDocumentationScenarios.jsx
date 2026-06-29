@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -106,12 +108,12 @@ const scenarioTemplates = [
   }
 ];
 
-export default function InteractiveDocumentationScenarios({ nurseEmail, recommendations = [], initialScenarioId = null }) {
+export default function InteractiveDocumentationScenarios({ nurseEmail, _recommendations = [], initialScenarioId = null }) {
   const queryClient = useQueryClient();
   const [selectedScenario, setSelectedScenario] = useState(null);
   const [userResponse, setUserResponse] = useState("");
   const [feedback, setFeedback] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [showHint, setShowHint] = useState(false);
 
   // Auto-select scenario if provided
@@ -122,7 +124,7 @@ export default function InteractiveDocumentationScenarios({ nurseEmail, recommen
         handleStartScenario(scenario);
       }
     }
-  }, [initialScenarioId]);
+  }, [initialScenarioId, selectedScenario]);
 
   const savePracticeMutation = useMutation({
     mutationFn: async (practiceData) => {
@@ -143,7 +145,6 @@ export default function InteractiveDocumentationScenarios({ nurseEmail, recommen
   const handleSubmitResponse = async () => {
     if (!userResponse.trim() || !selectedScenario) return;
 
-    setIsAnalyzing(true);
     try {
       const prompt = `You are an expert nursing documentation reviewer. Analyze this nurse's documentation for a practice scenario.
 
@@ -168,7 +169,8 @@ Provide detailed feedback in JSON format:
   "passed": boolean (true if score >= 70)
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -205,8 +207,8 @@ Provide detailed feedback in JSON format:
       }
     } catch (error) {
       console.error("Error analyzing response:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
   };
 
   const handleReset = () => {
@@ -247,7 +249,7 @@ Provide detailed feedback in JSON format:
                     <Badge variant="outline">{scenario.category}</Badge>
                   </div>
                   <h3 className="font-semibold text-lg mb-2">{scenario.title}</h3>
-                  <p className="text-sm text-gray-600 mb-3">{scenario.description}</p>
+                  <p className="text-sm text-slate-600 mb-3">{scenario.description}</p>
                   <Button size="sm" className="w-full">
                     Start Practice <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
@@ -262,7 +264,7 @@ Provide detailed feedback in JSON format:
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+      <Card className="bg-gradient-to-r from-indigo-50 to-navy-50 border-indigo-200">
         <CardHeader>
           <div className="flex items-start justify-between">
             <div>
@@ -288,8 +290,8 @@ Provide detailed feedback in JSON format:
         </CardHeader>
         <CardContent>
           <div className="bg-white p-4 rounded-lg border border-indigo-200">
-            <h4 className="font-semibold text-gray-900 mb-2">Scenario:</h4>
-            <p className="text-gray-700">{selectedScenario.scenario}</p>
+            <h4 className="font-semibold text-slate-900 mb-2">Scenario:</h4>
+            <p className="text-slate-700">{selectedScenario.scenario}</p>
           </div>
         </CardContent>
       </Card>
@@ -311,10 +313,10 @@ Provide detailed feedback in JSON format:
             <div className="flex gap-2">
               <Button 
                 onClick={handleSubmitResponse}
-                disabled={!userResponse.trim() || isAnalyzing}
+                disabled={!userResponse.trim() || ai.loading}
                 className="bg-indigo-600 hover:bg-indigo-700"
               >
-                {isAnalyzing ? (
+                {ai.loading ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                     Analyzing...
@@ -379,7 +381,7 @@ Provide detailed feedback in JSON format:
             </div>
 
             <div className="bg-white p-4 rounded-lg border">
-              <p className="text-gray-700">{feedback.overallFeedback}</p>
+              <p className="text-slate-700">{feedback.overallFeedback}</p>
             </div>
 
             {feedback.elementsPresent?.length > 0 && (
@@ -390,7 +392,7 @@ Provide detailed feedback in JSON format:
                 </h4>
                 <ul className="space-y-1">
                   {feedback.elementsPresent.map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                    <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                       <CheckCircle2 className="w-3 h-3 text-green-600 mt-0.5 flex-shrink-0" />
                       {item}
                     </li>
@@ -407,7 +409,7 @@ Provide detailed feedback in JSON format:
                 </h4>
                 <ul className="space-y-1">
                   {feedback.elementsMissing.map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                    <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                       <XCircle className="w-3 h-3 text-orange-600 mt-0.5 flex-shrink-0" />
                       {item}
                     </li>
@@ -424,15 +426,15 @@ Provide detailed feedback in JSON format:
                 </h4>
                 <ul className="space-y-2">
                   {feedback.improvements.map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-700">{item}</li>
+                    <li key={idx} className="text-sm text-slate-700">{item}</li>
                   ))}
                 </ul>
               </div>
             )}
 
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h4 className="font-semibold text-gray-900 mb-2">Good Example:</h4>
-              <p className="text-sm text-gray-700 italic">{selectedScenario.goodExample}</p>
+            <div className="bg-white p-4 rounded-lg border border-slate-200">
+              <h4 className="font-semibold text-slate-900 mb-2">Good Example:</h4>
+              <p className="text-sm text-slate-700 italic">{selectedScenario.goodExample}</p>
             </div>
 
             <div className="flex gap-2">

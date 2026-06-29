@@ -1,0 +1,60 @@
+{
+  "name": "TrainingTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Template description"
+    },
+    "training_category": {
+      "type": "string",
+      "description": "Primary training category"
+    },
+    "business_line": {
+      "type": "string",
+      "description": "Business line for this template"
+    },
+    "template_type": {
+      "type": "string",
+      "enum": [
+        "in_service",
+        "annual_mandatory"
+      ],
+      "default": "in_service",
+      "description": "Template type"
+    },
+    "annual_cycle_year": {
+      "type": "number",
+      "description": "Annual education cycle year when applicable"
+    },
+    "prompt_json": {
+      "type": "object",
+      "description": "Saved AI prompt settings"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the template is active"
+    }
+  },
+  "required": [
+    "name",
+    "prompt_json"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

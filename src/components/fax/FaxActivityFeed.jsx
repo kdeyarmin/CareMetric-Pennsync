@@ -1,68 +1,89 @@
-import React from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Send, CheckCircle2, AlertCircle, RefreshCw, Clock, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Send, AlertCircle } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
-const STATUS_CONFIG = {
-  queued: { icon: Clock, color: "text-yellow-600", bg: "bg-yellow-50", label: "Queued" },
-  sending: { icon: Loader2, color: "text-blue-600", bg: "bg-blue-50", label: "Sending", spin: true },
-  sent: { icon: Send, color: "text-blue-600", bg: "bg-blue-50", label: "Sent" },
-  delivered: { icon: CheckCircle2, color: "text-green-600", bg: "bg-green-50", label: "Delivered" },
-  failed: { icon: AlertCircle, color: "text-red-600", bg: "bg-red-50", label: "Failed" },
-  scheduled: { icon: Clock, color: "text-purple-600", bg: "bg-purple-50", label: "Scheduled" },
-};
-
-export default function FaxActivityFeed({ userEmail }) {
-  const { data: faxes = [], isLoading } = useQuery({
-    queryKey: ["faxActivityFeed", userEmail],
-    queryFn: () => base44.entities.FaxHistory.filter({ user_email: userEmail }, "-created_date", 30),
-    enabled: !!userEmail,
-    refetchInterval: 10000,
+export default function FaxActivityFeed() {
+  const { data: recentFaxes = [] } = useQuery({
+    queryKey: ['fax-activity-feed'],
+    queryFn: () => base44.entities.FaxLog.list('-created_date', 20),
+    initialData: [],
+    refetchInterval: 10000
   });
+
+  const getActivityIcon = (status) => {
+    switch (status) {
+      case 'delivered':
+        return <CheckCircle className="w-5 h-5 text-green-600" />;
+      case 'failed':
+        return <XCircle className="w-5 h-5 text-red-600" />;
+      case 'sending':
+        return <Clock className="w-5 h-5 text-yellow-600 animate-spin" />;
+      case 'sent':
+        return <Send className="w-5 h-5 text-blue-600" />;
+      default:
+        return <Clock className="w-5 h-5 text-slate-600" />;
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'delivered':
+        return 'bg-green-100 text-green-800';
+      case 'failed':
+        return 'bg-red-100 text-red-800';
+      case 'sending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'sent':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-slate-100 text-slate-800';
+    }
+  };
 
   return (
     <Card>
-      <CardHeader className="pb-2 p-3">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Activity className="w-4 h-4 text-blue-600" /> Activity Feed
-        </CardTitle>
+      <CardHeader>
+        <CardTitle className="text-base">Recent Fax Activity</CardTitle>
       </CardHeader>
-      <CardContent className="p-3 pt-0">
-        {isLoading ? (
-          <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin" /></div>
-        ) : faxes.length === 0 ? (
-          <p className="text-xs text-slate-500 text-center py-4">No fax activity yet</p>
-        ) : (
-          <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
-            {faxes.map((fax) => {
-              const config = STATUS_CONFIG[fax.status] || STATUS_CONFIG.queued;
-              const Icon = config.icon;
-              return (
-                <div key={fax.id} className={`flex items-start gap-2 p-2 rounded-lg ${config.bg}`}>
-                  <Icon className={`w-3.5 h-3.5 mt-0.5 ${config.color} flex-shrink-0 ${config.spin ? "animate-spin" : ""}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-medium text-slate-800 truncate">
-                      {fax.recipient_name || fax.recipient_fax_number}
-                    </p>
-                    <p className="text-[9px] text-slate-500">
-                      {fax.subject || `${fax.document_urls?.length || 0} document(s)`}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end flex-shrink-0">
-                    <Badge className={`text-[8px] px-1 py-0 ${config.color} bg-transparent border-0`}>
-                      {config.label}
-                    </Badge>
-                    <span className="text-[8px] text-slate-400">
-                      {new Date(fax.created_date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
+      <CardContent>
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {recentFaxes.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-8">No recent activity</p>
+          ) : (
+            recentFaxes.map((fax) => (
+              <div key={fax.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                <div className="flex-shrink-0 mt-1">
+                  {getActivityIcon(fax.status)}
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-medium text-sm text-slate-900 truncate">
+                      {fax.document_name || 'Untitled Fax'}
+                    </p>
+                    <Badge className={`${getStatusColor(fax.status)} text-xs`}>
+                      {fax.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    To: {fax.to_name || fax.to_number}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {formatDistanceToNow(new Date(fax.created_date), { addSuffix: true })}
+                  </p>
+                  {fax.failure_reason && (
+                    <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
+                      <AlertCircle className="w-3 h-3" />
+                      {fax.failure_reason}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,14 +16,8 @@ import {
 } from "@/components/ui/select";
 import { 
   Activity, 
-  CheckCircle2, 
-  XCircle, 
-  AlertTriangle, 
-  TrendingUp, 
   Clock,
-  Filter,
-  Download,
-  Calendar
+  Download
 } from "lucide-react";
 import {
   BarChart,
@@ -40,7 +35,7 @@ import {
   ResponsiveContainer
 } from "recharts";
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
+const COLORS = ['#10b981', '#3557b0', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 export default function WorkflowMonitoringDashboard() {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -48,7 +43,7 @@ export default function WorkflowMonitoringDashboard() {
   const [ruleFilter, setRuleFilter] = useState('all');
 
   // Fetch workflow executions
-  const { data: workflowExecutions = [], isLoading } = useQuery({
+  const { data: workflowExecutions = [] } = useQuery({
     queryKey: ['workflowExecutions'],
     queryFn: () => base44.entities.OASISWorkflowExecution.list('-created_date', 200),
   });
@@ -134,8 +129,8 @@ export default function WorkflowMonitoringDashboard() {
     .slice(-14);
 
   const exportData = () => {
-    const csv = [
-      ['Date', 'Patient', 'Rule', 'Status', 'Actions', 'Tasks Created', 'Completion %'].join(','),
+    const csv = toCsvRows([
+      ['Date', 'Patient', 'Rule', 'Status', 'Actions', 'Tasks Created', 'Completion %'],
       ...filteredExecutions.map(exec => [
         new Date(exec.created_date).toLocaleDateString(),
         exec.patient_name || 'N/A',
@@ -144,8 +139,8 @@ export default function WorkflowMonitoringDashboard() {
         exec.actions_executed?.length || 0,
         exec.tasks_created?.length || 0,
         exec.completion_percentage || 0
-      ].join(','))
-    ].join('\n');
+      ])
+    ]);
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -165,7 +160,7 @@ export default function WorkflowMonitoringDashboard() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-purple-600" />
+              <Activity className="w-5 h-5 text-navy-600" />
               Workflow Monitoring Dashboard
             </CardTitle>
             <Button onClick={exportData} variant="outline" size="sm">
@@ -231,8 +226,8 @@ export default function WorkflowMonitoringDashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-gray-600 mb-1">Total Executions</p>
-            <p className="text-2xl font-bold text-purple-600">{stats.total_executions}</p>
+            <p className="text-xs text-slate-600 mb-1">Total Executions</p>
+            <p className="text-2xl font-bold text-navy-600">{stats.total_executions}</p>
           </CardContent>
         </Card>
         <Card className="bg-green-50">
@@ -304,7 +299,7 @@ export default function WorkflowMonitoringDashboard() {
                   labelLine={false}
                   label={({ name, value }) => `${name}: ${value}`}
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill="#264491"
                   dataKey="value"
                 >
                   {statusDistribution.map((entry, index) => (
@@ -347,17 +342,17 @@ export default function WorkflowMonitoringDashboard() {
         </CardHeader>
         <CardContent>
           {filteredExecutions.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">No workflow executions found</p>
+            <p className="text-center text-slate-500 py-8">No workflow executions found</p>
           ) : (
             <div className="space-y-3">
               {filteredExecutions.slice(0, 20).map((exec) => (
-                <Card key={exec.id} className="border-l-4 border-l-purple-500">
+                <Card key={exec.id} className="border-l-4 border-l-navy-500">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
-                        <p className="font-semibold text-gray-900">{exec.rule_name}</p>
-                        <p className="text-xs text-gray-600">{exec.patient_name || 'Unknown Patient'}</p>
-                        <p className="text-xs text-gray-500 mt-1">{exec.trigger_reason}</p>
+                        <p className="font-semibold text-slate-900">{exec.rule_name}</p>
+                        <p className="text-xs text-slate-600">{exec.patient_name || 'Unknown Patient'}</p>
+                        <p className="text-xs text-slate-500 mt-1">{exec.trigger_reason}</p>
                       </div>
                       <div className="text-right">
                         <Badge className={
@@ -368,7 +363,7 @@ export default function WorkflowMonitoringDashboard() {
                         }>
                           {exec.status}
                         </Badge>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-slate-500 mt-1">
                           {new Date(exec.created_date).toLocaleString()}
                         </p>
                       </div>
@@ -390,13 +385,13 @@ export default function WorkflowMonitoringDashboard() {
                     </div>
 
                     {exec.outcome_summary && (
-                      <p className="text-xs text-gray-600 mt-2 italic">{exec.outcome_summary}</p>
+                      <p className="text-xs text-slate-600 mt-2 italic">{exec.outcome_summary}</p>
                     )}
 
                     {exec.execution_time_ms && (
                       <div className="flex items-center gap-1 mt-2">
-                        <Clock className="w-3 h-3 text-gray-400" />
-                        <p className="text-xs text-gray-500">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        <p className="text-xs text-slate-500">
                           Executed in {exec.execution_time_ms}ms
                         </p>
                       </div>

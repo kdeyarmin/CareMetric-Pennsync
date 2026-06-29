@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,12 +30,12 @@ export default function MedicareComplianceChecker({
   visitType,
   patientData,
   diagnosis,
-  vitalSigns,
+  _vitalSigns,
   nurseType = "RN",
   onApplyFix,
   autoCheck = true
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [complianceResults, setComplianceResults] = useState(null);
   const [appliedFixes, setAppliedFixes] = useState(new Set());
 
@@ -43,16 +45,9 @@ export default function MedicareComplianceChecker({
     initialData: [],
   });
 
-  useEffect(() => {
-    if (autoCheck && noteContent && noteContent.length > 100 && complianceRules.length > 0) {
-      analyzeCompliance();
-    }
-  }, [noteContent, autoCheck, complianceRules]);
-
-  const analyzeCompliance = async () => {
+  const analyzeCompliance = useCallback(async () => {
     if (!noteContent || noteContent.length < 100) return;
 
-    setIsAnalyzing(true);
     try {
       // Filter rules applicable to this visit type
       const applicableRules = complianceRules.filter(rule => 
@@ -69,8 +64,9 @@ Examples (Compliant): ${rule.examples_compliant?.[0] || 'N/A'}
 Examples (Non-compliant): ${rule.examples_non_compliant?.[0] || 'N/A'}
 `).join('\n');
 
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a Medicare home health compliance expert with access to the latest 2025 CMS regulations. Analyze this clinical note against current 42 CFR 484 Conditions of Participation.
+      const result = await ai.run({
+        model: "claude_opus_4_8",
+        prompt: `You are a Medicare home health compliance expert with access to live internet data from CMS.gov. Analyze this clinical note against the LATEST 2025 42 CFR 484 Conditions of Participation for home health agencies.
 
 CLINICAL NOTE:
 ${noteContent}
@@ -80,19 +76,27 @@ CONTEXT:
 - Diagnosis: ${diagnosis || 'Not specified'}
 - Nurse Type: ${nurseType}
 - Patient: ${patientData?.first_name} ${patientData?.last_name}
+- Current Date: ${new Date().toISOString().split('T')[0]}
 
-INTERNAL COMPLIANCE RULES DATABASE:
+MEDICARE COMPLIANCE RULES TO CHECK:
 ${ruleContext}
 
+CRITICAL: Use live internet search to verify:
+1. Latest CMS policy updates for home health (2024-2025)
+2. Most recent 42 CFR 484 requirements
+3. Current OASIS-E documentation standards
+4. Recent Medicare Learning Network (MLN) guidance
+5. Any new compliance requirements effective in 2025
+
 For EACH rule, determine:
-1. Is it met? (fully_met, partially_met, not_met)
+1. Is it met per CURRENT 2025 standards? (fully_met, partially_met, not_met)
 2. What evidence exists in the note?
-3. What is missing?
-4. Specific remediation with compliant phrasing example
-5. CoP reference violated
+3. What is missing based on LATEST CMS requirements?
+4. Specific remediation with compliant phrasing example using 2025 standards
+5. CoP reference violated (cite specific 2025 regulation)
 6. Severity (critical, high, medium)
 
-CRITICAL REQUIREMENTS:
+CRITICAL REQUIREMENTS (2025):
 - Homebound Status: Must have specific mobility limitation + why leaving home is taxing
 - Skilled Need: Must explain WHY skilled nursing required (not just what was done)
 - Patient Response: Must document response to treatment/teaching
@@ -101,9 +105,7 @@ CRITICAL REQUIREMENTS:
 
 ${nurseType === 'LPN' ? 'LPN-SPECIFIC: Must state "under RN supervision" and document care per established plan. Cannot perform comprehensive assessments or change care plans.' : ''}
 
-IMPORTANT: Also search current CMS.gov and Medicare sources for any 2025 updates or changes that may affect compliance beyond the internal rules.
-
-Return JSON with overall_compliance_score (0-100), rule_violations array with rule_name, cop_reference, status, missing_elements, evidence_found, remediation_text, compliant_example, severity.`,
+Return JSON with overall_compliance_score (0-100), rule_violations array with rule_name, cop_reference, status, missing_elements, evidence_found, remediation_text, compliant_example, severity, latest_cms_guidance (string describing any 2025 policy changes relevant to this rule).`,
         add_context_from_internet: true,
         response_json_schema: {
           type: "object",
@@ -121,7 +123,8 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
                   evidence_found: { type: "string" },
                   remediation_text: { type: "string" },
                   compliant_example: { type: "string" },
-                  severity: { type: "string" }
+                  severity: { type: "string" },
+                  latest_cms_guidance: { type: "string" }
                 }
               }
             },
@@ -134,9 +137,16 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
       setComplianceResults(result);
     } catch (error) {
       console.error('Compliance check error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [noteContent, complianceRules, visitType, diagnosis, nurseType, patientData]);
+
+  useEffect(() => {
+    if (autoCheck && noteContent && noteContent.length > 100 && complianceRules.length > 0) {
+      analyzeCompliance();
+    }
+  }, [noteContent, autoCheck, complianceRules, analyzeCompliance]);
 
   const handleApplyFix = (violation) => {
     onApplyFix?.(violation.compliant_example, violation.rule_name, false);
@@ -148,7 +158,7 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
       case 'critical': return 'bg-red-100 border-red-400 text-red-900';
       case 'high': return 'bg-orange-100 border-orange-400 text-orange-900';
       case 'medium': return 'bg-yellow-100 border-yellow-400 text-yellow-900';
-      default: return 'bg-gray-100 border-gray-400 text-gray-900';
+      default: return 'bg-slate-100 border-slate-400 text-slate-900';
     }
   };
 
@@ -161,12 +171,13 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
     }
   };
 
-  if (isAnalyzing) {
+  if (ai.loading) {
     return (
       <Card className="border-2 border-blue-200">
         <CardContent className="p-6 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-sm text-gray-600">Analyzing against 42 CFR 484 Medicare requirements...</p>
+          <p className="text-sm text-slate-600 font-semibold">Analyzing against latest 2025 Medicare requirements...</p>
+          <p className="text-xs text-slate-500 mt-2">🌐 Using live internet data from CMS.gov</p>
         </CardContent>
       </Card>
     );
@@ -178,13 +189,18 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
             <Shield className="w-4 h-4 text-blue-600" />
-            Medicare Compliance Checker
+            Medicare Compliance Checker (2025)
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <Alert className="bg-blue-50 border-blue-200 mb-3">
+            <AlertDescription className="text-xs text-blue-900">
+              🌐 Uses live internet data from CMS.gov for the most current 2025 compliance requirements
+            </AlertDescription>
+          </Alert>
           <Button onClick={analyzeCompliance} disabled={!noteContent || noteContent.length < 100}>
             <Sparkles className="w-4 h-4 mr-2" />
-            Check Medicare Compliance
+            Check Medicare Compliance (2025)
           </Button>
         </CardContent>
       </Card>
@@ -228,11 +244,11 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white p-3 rounded border">
               <p className="text-2xl font-bold text-red-600">{criticalViolations.length}</p>
-              <p className="text-xs text-gray-600">Critical Issues</p>
+              <p className="text-xs text-slate-600">Critical Issues</p>
             </div>
             <div className="bg-white p-3 rounded border">
               <p className="text-2xl font-bold text-orange-600">{highViolations.length}</p>
-              <p className="text-xs text-gray-600">High Priority</p>
+              <p className="text-xs text-slate-600">High Priority</p>
             </div>
           </div>
 
@@ -269,7 +285,7 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
                         {getStatusIcon(violation.status)}
                         <div>
                           <p className="font-semibold text-sm">{violation.rule_name}</p>
-                          <p className="text-xs text-gray-600">{violation.cop_reference}</p>
+                          <p className="text-xs text-slate-600">{violation.cop_reference}</p>
                         </div>
                       </div>
                       <Badge className={violation.status === 'fully_met' ? 'bg-green-600' : 'bg-red-600'}>
@@ -282,8 +298,8 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
                     {/* Evidence Found */}
                     {violation.evidence_found && (
                       <div className="bg-white p-3 rounded border">
-                        <p className="text-xs font-semibold text-gray-700 mb-1">✓ Evidence Found:</p>
-                        <p className="text-xs text-gray-600 italic">"{violation.evidence_found}"</p>
+                        <p className="text-xs font-semibold text-slate-700 mb-1">✓ Evidence Found:</p>
+                        <p className="text-xs text-slate-600 italic">"{violation.evidence_found}"</p>
                       </div>
                     )}
 
@@ -307,23 +323,31 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
                       </div>
                     )}
 
+                    {/* Latest CMS Guidance */}
+                    {violation.latest_cms_guidance && (
+                     <div className="bg-navy-50 p-3 rounded border border-navy-200">
+                       <p className="text-xs font-semibold text-navy-900 mb-1">🌐 2025 CMS Guidance:</p>
+                       <p className="text-xs text-navy-800">{violation.latest_cms_guidance}</p>
+                     </div>
+                    )}
+
                     {/* Compliant Example */}
                     {violation.compliant_example && (
-                      <div className="bg-green-50 p-3 rounded border border-green-200">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-semibold text-green-900">✓ Compliant Example:</p>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              navigator.clipboard.writeText(violation.compliant_example);
-                            }}
-                          >
-                            <Copy className="w-3 h-3" />
-                          </Button>
-                        </div>
-                        <p className="text-xs text-green-800 italic">"{violation.compliant_example}"</p>
-                      </div>
+                     <div className="bg-green-50 p-3 rounded border border-green-200">
+                       <div className="flex items-center justify-between mb-2">
+                         <p className="text-xs font-semibold text-green-900">✓ Compliant Example (2025 Standards):</p>
+                         <Button
+                           size="sm"
+                           variant="ghost"
+                           onClick={() => {
+                             navigator.clipboard.writeText(violation.compliant_example);
+                           }}
+                         >
+                           <Copy className="w-3 h-3" />
+                         </Button>
+                       </div>
+                       <p className="text-xs text-green-800 italic">"{violation.compliant_example}"</p>
+                     </div>
                     )}
 
                     {/* Action Buttons */}
@@ -365,7 +389,7 @@ Return JSON with overall_compliance_score (0-100), rule_violations array with ru
           <CardContent>
             <ul className="space-y-2">
               {complianceResults.recommendations.map((rec, idx) => (
-                <li key={idx} className="text-xs text-gray-700 flex items-start gap-2">
+                <li key={idx} className="text-xs text-slate-700 flex items-start gap-2">
                   <span className="text-blue-600">•</span>
                   {rec}
                 </li>

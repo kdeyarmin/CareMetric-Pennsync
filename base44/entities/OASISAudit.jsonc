@@ -1,0 +1,173 @@
+{
+  "name": "OASISAudit",
+  "type": "object",
+  "properties": {
+    "oasis_upload_id": {
+      "type": "string",
+      "description": "Reference to OASISUpload entity"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "flag_reason": {
+      "type": "string",
+      "enum": [
+        "low_accuracy",
+        "low_compliance",
+        "high_audit_risk",
+        "manual_flag",
+        "revenue_opportunity"
+      ],
+      "description": "Why this was flagged"
+    },
+    "accuracy_score": {
+      "type": "number"
+    },
+    "compliance_score": {
+      "type": "number"
+    },
+    "revenue_score": {
+      "type": "number"
+    },
+    "overall_score": {
+      "type": "number"
+    },
+    "key_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "issue": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "rescore_opportunities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "m_item": {
+            "type": "string"
+          },
+          "current_score": {
+            "type": "string"
+          },
+          "recommended_score": {
+            "type": "string"
+          },
+          "revenue_impact": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "estimated_revenue_impact": {
+      "type": "number",
+      "description": "Potential revenue recovery in dollars"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "in_review",
+        "reviewed",
+        "corrected",
+        "dismissed"
+      ],
+      "default": "pending_review"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Auditor email"
+    },
+    "reviewed_by": {
+      "type": "string"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "auditor_findings": {
+      "type": "string",
+      "description": "Auditor's notes and findings"
+    },
+    "auditor_recommendations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "corrections_made": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "original_value": {
+            "type": "string"
+          },
+          "corrected_value": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "report_generated": {
+      "type": "boolean",
+      "default": false
+    },
+    "report_url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "oasis_upload_id",
+    "flag_reason",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

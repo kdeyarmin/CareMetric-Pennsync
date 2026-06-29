@@ -1,0 +1,134 @@
+{
+  "name": "OASISWorkflowExecution",
+  "type": "object",
+  "properties": {
+    "oasis_upload_id": {
+      "type": "string",
+      "description": "Reference to OASISUpload entity"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Patient name for display"
+    },
+    "automation_rule_id": {
+      "type": "string",
+      "description": "Reference to OASISAutomationRule that triggered this"
+    },
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the rule that triggered"
+    },
+    "trigger_reason": {
+      "type": "string",
+      "description": "Why this workflow was triggered"
+    },
+    "trigger_data": {
+      "type": "object",
+      "description": "Data that caused the trigger (scores, issues, etc.)"
+    },
+    "actions_executed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action_type": {
+            "type": "string"
+          },
+          "action_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ]
+          },
+          "action_details": {
+            "type": "object"
+          },
+          "executed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "result": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Actions that were executed"
+    },
+    "tasks_created": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of tasks created by this workflow"
+    },
+    "alerts_created": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of alerts created"
+    },
+    "notifications_sent": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "recipient": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Notifications that were sent"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "failed",
+        "partially_completed"
+      ],
+      "default": "running",
+      "description": "Overall workflow execution status"
+    },
+    "completion_percentage": {
+      "type": "number",
+      "default": 0,
+      "description": "Percentage of actions completed"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if workflow failed"
+    },
+    "execution_time_ms": {
+      "type": "number",
+      "description": "Time taken to execute workflow"
+    },
+    "outcome_summary": {
+      "type": "string",
+      "description": "Summary of what was accomplished"
+    }
+  },
+  "required": [
+    "oasis_upload_id",
+    "automation_rule_id",
+    "rule_name",
+    "trigger_reason"
+  ]
+}

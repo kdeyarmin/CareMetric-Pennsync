@@ -1,0 +1,131 @@
+{
+  "name": "Task",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity (optional for agency-wide tasks)"
+    },
+    "title": {
+      "type": "string",
+      "description": "Task title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed task description"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "call",
+        "notify",
+        "schedule",
+        "order",
+        "coordinate",
+        "document",
+        "safety",
+        "followup",
+        "other"
+      ],
+      "description": "Type of task"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium",
+      "description": "Task priority level"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "pending",
+      "description": "Task status"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Due date for the task"
+    },
+    "due_timeframe": {
+      "type": "string",
+      "enum": [
+        "today",
+        "24_hours",
+        "48_hours",
+        "this_week",
+        "next_visit"
+      ],
+      "description": "Relative timeframe for task completion"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Email of assigned user"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "ai_generated",
+        "manual",
+        "incident",
+        "care_plan"
+      ],
+      "default": "manual",
+      "description": "How the task was created"
+    },
+    "ai_reason": {
+      "type": "string",
+      "description": "AI-generated reason for the task"
+    },
+    "related_visit_id": {
+      "type": "string",
+      "description": "Reference to Visit entity if task was generated from a visit"
+    },
+    "completion_notes": {
+      "type": "string",
+      "description": "Notes added when task is completed"
+    }
+  },
+  "required": [
+    "title",
+    "priority",
+    "assigned_to"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "assigned_to": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "assigned_to": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

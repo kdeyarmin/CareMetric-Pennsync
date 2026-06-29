@@ -1,25 +1,19 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+
+
 import {
   Route,
   Zap,
-  CheckCircle2,
-  AlertTriangle,
   DollarSign,
   FileText,
   ClipboardList,
-  Lightbulb,
   Target,
   TrendingUp,
   Loader2,
@@ -27,10 +21,17 @@ import {
   Activity
 } from "lucide-react";
 
-export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, patientId, onTasksCreated, onPathwaysTriggered }) {
+export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, patientId, onTasksCreated, onPathwaysTriggered }) {
   const [triggeredPathways, setTriggeredPathways] = useState([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [_isAnalyzing, _setIsAnalyzing] = useState(false);
   const queryClient = useQueryClient();
+
+  // Current user — assigned_to is required on Task; without it the pathway task
+  // creates are rejected and nothing is generated.
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
 
   // Fetch all active clinical pathways
   const { data: pathways = [] } = useQuery({
@@ -49,39 +50,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
     }
   });
 
-  // Check for pathway triggers when data changes
-  useEffect(() => {
-    if (pdgmData && pathways.length > 0) {
-      checkPathwayTriggers();
-    }
-  }, [pdgmData, pathways]);
-
-  const checkPathwayTriggers = () => {
-    const triggered = [];
-
-    pathways.forEach(pathway => {
-      let isTriggered = false;
-
-      pathway.trigger_conditions?.forEach(condition => {
-        if (evaluateCondition(condition, pdgmData)) {
-          isTriggered = true;
-        }
-      });
-
-      if (isTriggered) {
-        triggered.push(pathway);
-      }
-    });
-
-    setTriggeredPathways(triggered);
-    
-    // Notify parent component
-    if (onPathwaysTriggered) {
-      onPathwaysTriggered(triggered);
-    }
-  };
-
-  const evaluateCondition = (condition, data) => {
+  const evaluateCondition = useCallback((condition, data) => {
     const { type, value, operator } = condition;
     const valueLower = (value || '').toLowerCase();
 
@@ -130,14 +99,52 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
     }
 
     return false;
-  };
+  }, []);
+
+  const checkPathwayTriggers = useCallback(() => {
+    const triggered = [];
+
+    pathways.forEach(pathway => {
+      let isTriggered = false;
+
+      pathway.trigger_conditions?.forEach(condition => {
+        if (evaluateCondition(condition, pdgmData)) {
+          isTriggered = true;
+        }
+      });
+
+      if (isTriggered) {
+        triggered.push(pathway);
+      }
+    });
+
+    setTriggeredPathways(triggered);
+
+    // Notify parent component
+    if (onPathwaysTriggered) {
+      onPathwaysTriggered(triggered);
+    }
+  }, [pathways, pdgmData, onPathwaysTriggered, evaluateCondition]);
+
+  // Check for pathway triggers when data changes
+  useEffect(() => {
+    if (pdgmData && pathways.length > 0) {
+      checkPathwayTriggers();
+    }
+  }, [pdgmData, pathways, checkPathwayTriggers]);
 
   const createPathwayTasks = async (pathway) => {
     if (!pathway.recommended_tasks || pathway.recommended_tasks.length === 0) return;
+    // assigned_to is required on Task; abort if the current user isn't resolved yet.
+    if (!currentUser?.email) {
+      toast.error('Could not determine the current user. Please refresh and try again.');
+      return;
+    }
 
     const taskPromises = pathway.recommended_tasks.map(task => {
       const taskData = {
         patient_id: patientId || null,
+        assigned_to: currentUser?.email,
         title: task.task_title,
         description: `[Clinical Pathway: ${pathway.pathway_name}] ${task.task_description}`,
         type: task.task_type || 'other',
@@ -163,7 +170,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
       case 'high': return 'bg-orange-500 text-white';
       case 'medium': return 'bg-yellow-500 text-white';
       case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
@@ -173,7 +180,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Route className="w-5 h-5 text-indigo-600" />
@@ -195,7 +202,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
         {triggeredPathways.map((pathway, idx) => (
           <div key={idx} className="border-2 border-indigo-300 rounded-lg overflow-hidden">
             {/* Pathway Header */}
-            <div className="bg-gradient-to-r from-indigo-100 to-purple-100 p-4">
+            <div className="bg-gradient-to-r from-indigo-100 to-navy-100 p-4">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-bold text-indigo-900 text-lg">{pathway.pathway_name}</h3>
                 <Badge className={getPriorityColor(pathway.priority_level)}>
@@ -224,12 +231,12 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
                     {pathway.documentation_prompts.map((prompt, pIdx) => (
                       <div key={pIdx} className="bg-white p-2 rounded border">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium text-gray-800">{prompt.category}</span>
+                          <span className="text-sm font-medium text-slate-800">{prompt.category}</span>
                           <Badge className={`text-xs ${getPriorityColor(prompt.priority)}`}>
                             {prompt.priority}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-700">{prompt.prompt}</p>
+                        <p className="text-sm text-slate-700">{prompt.prompt}</p>
                         {prompt.m_items_affected && prompt.m_items_affected.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
                             {prompt.m_items_affected.map((item, mIdx) => (
@@ -264,10 +271,10 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
                             </Badge>
                           )}
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">
+                        <p className="text-xs text-slate-600 mb-1">
                           Typical Range: <span className="font-medium">{opp.typical_score_range}</span>
                         </p>
-                        <p className="text-sm text-gray-800">{opp.documentation_to_support}</p>
+                        <p className="text-sm text-slate-800">{opp.documentation_to_support}</p>
                       </div>
                     ))}
                   </div>
@@ -294,14 +301,14 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
 
               {/* Functional Focus Areas */}
               {pathway.functional_focus_areas && pathway.functional_focus_areas.length > 0 && (
-                <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                <div className="bg-navy-50 p-3 rounded-lg border border-navy-200">
                   <div className="flex items-center gap-2 mb-3">
-                    <Activity className="w-4 h-4 text-purple-600" />
-                    <h4 className="font-semibold text-purple-900">Functional Assessment Focus</h4>
+                    <Activity className="w-4 h-4 text-navy-600" />
+                    <h4 className="font-semibold text-navy-900">Functional Assessment Focus</h4>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {pathway.functional_focus_areas.map((area, fIdx) => (
-                      <Badge key={fIdx} className="bg-purple-200 text-purple-800">
+                      <Badge key={fIdx} className="bg-navy-200 text-navy-800">
                         {area}
                       </Badge>
                     ))}
@@ -311,17 +318,17 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
 
               {/* Auto-Generate Tasks */}
               {pathway.recommended_tasks && pathway.recommended_tasks.length > 0 && (
-                <div className="bg-gradient-to-r from-cyan-50 to-blue-50 p-3 rounded-lg border border-cyan-200">
+                <div className="bg-gradient-to-r from-navy-50 to-blue-50 p-3 rounded-lg border border-navy-200">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <ClipboardList className="w-4 h-4 text-cyan-600" />
-                      <h4 className="font-semibold text-cyan-900">Recommended Tasks</h4>
+                      <ClipboardList className="w-4 h-4 text-navy-600" />
+                      <h4 className="font-semibold text-navy-900">Recommended Tasks</h4>
                     </div>
                     <Button
                       onClick={() => createPathwayTasks(pathway)}
                       disabled={!patientId || createTaskMutation.isPending}
                       size="sm"
-                      className="bg-cyan-600 hover:bg-cyan-700"
+                      className="bg-navy-600 hover:bg-navy-700"
                     >
                       {createTaskMutation.isPending ? (
                         <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Creating...</>
@@ -334,7 +341,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
                     {pathway.recommended_tasks.map((task, tIdx) => (
                       <div key={tIdx} className="bg-white p-2 rounded border">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium text-gray-800">{task.task_title}</span>
+                          <span className="text-sm font-medium text-slate-800">{task.task_title}</span>
                           <div className="flex gap-1">
                             <Badge className={`text-xs ${getPriorityColor(task.priority)}`}>
                               {task.priority}
@@ -344,7 +351,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
                             </Badge>
                           </div>
                         </div>
-                        <p className="text-xs text-gray-600">{task.task_description}</p>
+                        <p className="text-xs text-slate-600">{task.task_description}</p>
                       </div>
                     ))}
                   </div>
@@ -367,20 +374,20 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
           </div>
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <div className="bg-white p-2 rounded">
-              <p className="text-gray-500">Documentation Items</p>
+              <p className="text-slate-500">Documentation Items</p>
               <p className="text-lg font-bold text-blue-700">
                 {triggeredPathways.reduce((sum, p) => sum + (p.documentation_prompts?.length || 0), 0)}
               </p>
             </div>
             <div className="bg-white p-2 rounded">
-              <p className="text-gray-500">Rescore Opportunities</p>
+              <p className="text-slate-500">Rescore Opportunities</p>
               <p className="text-lg font-bold text-green-700">
                 {triggeredPathways.reduce((sum, p) => sum + (p.rescore_opportunities?.length || 0), 0)}
               </p>
             </div>
             <div className="bg-white p-2 rounded">
-              <p className="text-gray-500">Recommended Tasks</p>
-              <p className="text-lg font-bold text-cyan-700">
+              <p className="text-slate-500">Recommended Tasks</p>
+              <p className="text-lg font-bold text-navy-700">
                 {triggeredPathways.reduce((sum, p) => sum + (p.recommended_tasks?.length || 0), 0)}
               </p>
             </div>
@@ -391,12 +398,12 @@ export default function ClinicalPathwayTrigger({ pdgmData, analysisResults, pati
   );
 }
 
-const getPriorityColor = (priority) => {
+const _getPriorityColor = (priority) => {
   switch (priority) {
     case 'critical': return 'bg-red-600 text-white';
     case 'high': return 'bg-orange-500 text-white';
     case 'medium': return 'bg-yellow-500 text-white';
     case 'low': return 'bg-blue-500 text-white';
-    default: return 'bg-gray-500 text-white';
+    default: return 'bg-slate-500 text-white';
   }
 };

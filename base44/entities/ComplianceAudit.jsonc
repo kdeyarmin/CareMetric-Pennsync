@@ -1,0 +1,117 @@
+{
+  "name": "ComplianceAudit",
+  "type": "object",
+  "properties": {
+    "visit_id": {
+      "type": "string",
+      "description": "Reference to the Visit entity"
+    },
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse who documented"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "audit_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the audit was performed"
+    },
+    "compliance_score": {
+      "type": "number",
+      "description": "Overall compliance score 0-100"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "flagged",
+        "critical",
+        "pending_review"
+      ],
+      "default": "pending_review"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "List of compliance issues found"
+    },
+    "compliant_elements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Elements that passed compliance"
+    },
+    "audit_type": {
+      "type": "string",
+      "enum": [
+        "automated",
+        "manual",
+        "triggered"
+      ],
+      "default": "automated"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Admin who reviewed if manually reviewed"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_notes": {
+      "type": "string",
+      "description": "Notes from manual review"
+    },
+    "acknowledgment": {
+      "type": "object",
+      "description": "Override trail when a critical chart conflict (e.g. an allergy conflict) was knowingly acknowledged by the documenting nurse at save time",
+      "properties": {
+        "acknowledged_by": {
+          "type": "string",
+          "description": "Email of the nurse who acknowledged the conflict"
+        },
+        "acknowledged_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "justification": {
+          "type": "string",
+          "description": "Optional clinical rationale the nurse provided"
+        },
+        "finding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Ids of the critical chart findings that were acknowledged"
+        }
+      }
+    }
+  },
+  "required": [
+    "visit_id",
+    "nurse_email",
+    "compliance_score",
+    "status"
+  ]
+}

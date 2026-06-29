@@ -1,8 +1,28 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Activity } from "lucide-react";
+import { Activity, AlertTriangle } from "lucide-react";
+
+// Plausible entry ranges, deliberately wide. The goal is to catch data-entry and
+// unit mistakes (e.g. a Celsius temperature, a transposed BP) — not to second-guess
+// genuinely abnormal-but-real readings. Out-of-range values are flagged for the nurse
+// to confirm; entry is never blocked, so a true critical value can still be recorded.
+const VITAL_FIELDS = [
+  { key: "temperature", label: "Temperature (°F)", step: "0.1", placeholder: "98.6", min: 90, max: 110, unit: "°F" },
+  { key: "blood_pressure_systolic", label: "BP Systolic", placeholder: "120", min: 60, max: 260, unit: "mmHg" },
+  { key: "blood_pressure_diastolic", label: "BP Diastolic", placeholder: "80", min: 30, max: 180, unit: "mmHg" },
+  { key: "heart_rate", label: "Heart Rate", placeholder: "72", min: 30, max: 220, unit: "bpm" },
+  { key: "respiratory_rate", label: "Respiratory Rate", placeholder: "16", min: 4, max: 50, unit: "/min" },
+  { key: "oxygen_saturation", label: "O2 Saturation (%)", placeholder: "98", min: 50, max: 100, unit: "%" },
+  { key: "pain_level", label: "Pain Level (0-10)", placeholder: "0", min: 0, max: 10, unit: "" },
+];
+
+function rangeWarning(field, value) {
+  if (value === null || value === undefined || value === "" || Number.isNaN(value)) return null;
+  if (value > field.max) return `Above the expected range (max ${field.max}${field.unit}) — please confirm.`;
+  if (value < field.min) return `Below the expected range (min ${field.min}${field.unit}) — please confirm.`;
+  return null;
+}
 
 export default function VitalSignsForm({ vitalSigns, onChange }) {
   const handleChange = (field, value) => {
@@ -22,79 +42,33 @@ export default function VitalSignsForm({ vitalSigns, onChange }) {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <Label htmlFor="temperature">Temperature (°F)</Label>
-            <Input
-              id="temperature"
-              type="number"
-              step="0.1"
-              placeholder="98.6"
-              value={vitalSigns.temperature || ''}
-              onChange={(e) => handleChange('temperature', e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="bp_systolic">BP Systolic</Label>
-            <Input
-              id="bp_systolic"
-              type="number"
-              placeholder="120"
-              value={vitalSigns.blood_pressure_systolic || ''}
-              onChange={(e) => handleChange('blood_pressure_systolic', e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="bp_diastolic">BP Diastolic</Label>
-            <Input
-              id="bp_diastolic"
-              type="number"
-              placeholder="80"
-              value={vitalSigns.blood_pressure_diastolic || ''}
-              onChange={(e) => handleChange('blood_pressure_diastolic', e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="heart_rate">Heart Rate</Label>
-            <Input
-              id="heart_rate"
-              type="number"
-              placeholder="72"
-              value={vitalSigns.heart_rate || ''}
-              onChange={(e) => handleChange('heart_rate', e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="respiratory_rate">Respiratory Rate</Label>
-            <Input
-              id="respiratory_rate"
-              type="number"
-              placeholder="16"
-              value={vitalSigns.respiratory_rate || ''}
-              onChange={(e) => handleChange('respiratory_rate', e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="oxygen_saturation">O2 Saturation (%)</Label>
-            <Input
-              id="oxygen_saturation"
-              type="number"
-              placeholder="98"
-              value={vitalSigns.oxygen_saturation || ''}
-              onChange={(e) => handleChange('oxygen_saturation', e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="pain_level">Pain Level (0-10)</Label>
-            <Input
-              id="pain_level"
-              type="number"
-              min="0"
-              max="10"
-              placeholder="0"
-              value={vitalSigns.pain_level || ''}
-              onChange={(e) => handleChange('pain_level', e.target.value)}
-            />
-          </div>
+          {VITAL_FIELDS.map((field) => {
+            const value = vitalSigns[field.key];
+            const warning = rangeWarning(field, value);
+            return (
+              <div key={field.key}>
+                <Label htmlFor={field.key}>{field.label}</Label>
+                <Input
+                  id={field.key}
+                  type="number"
+                  step={field.step}
+                  min={field.min}
+                  max={field.max}
+                  placeholder={field.placeholder}
+                  aria-invalid={!!warning}
+                  className={warning ? "border-amber-500 focus-visible:ring-amber-500" : undefined}
+                  value={value || value === 0 ? value : ''}
+                  onChange={(e) => handleChange(field.key, e.target.value)}
+                />
+                {warning && (
+                  <p className="mt-1 flex items-start gap-1 text-xs text-amber-700">
+                    <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                    <span>{warning}</span>
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>

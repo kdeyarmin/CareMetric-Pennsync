@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { 
-  Users, 
   AlertCircle, 
   CheckCircle2, 
   RefreshCw,
@@ -22,33 +21,11 @@ import {
   Settings
 } from "lucide-react";
 
-// Levenshtein distance for fuzzy matching
-const levenshteinDistance = (str1, str2) => {
-  const matrix = [];
-  for (let i = 0; i <= str2.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= str1.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
-      }
-    }
-  }
-  return matrix[str2.length][str1.length];
-};
-
-// Calculate string similarity (0-100)
-const calculateSimilarity = (str1, str2) => {
-  if (!str1 || !str2) return 0;
-  const distance = levenshteinDistance(str1, str2);
-  const maxLength = Math.max(str1.length, str2.length);
-  return maxLength === 0 ? 100 : ((maxLength - distance) / maxLength) * 100;
-};
-
-// MRN-ONLY duplicate matching
-const calculateMatchScore = (patient, existingPatient, sensitivity = 'medium', criteria = {}) => {
+// MRN-ONLY duplicate matching.
+// Imports deliberately match on Medical Record Number only: fuzzy matching on
+// uploaded data is too risky to auto-update/close existing records, so this
+// surface intentionally does NOT use the shared fuzzy scorer.
+const calculateMatchScore = (patient, existingPatient, _sensitivity = 'medium', _criteria = {}) => {
   let score = 0;
   let matches = [];
   const criteriaMatched = {};
@@ -147,7 +124,7 @@ export default function DuplicateDetector({ patients, onResolve }) {
   const [sensitivity, setSensitivity] = useState('medium');
   const [customThreshold, setCustomThreshold] = useState(40);
   const [showSettings, setShowSettings] = useState(false);
-  const [matchingCriteria, setMatchingCriteria] = useState({
+  const [matchingCriteria, _setMatchingCriteria] = useState({
     mrn: true,
     nameAndDob: true,
     phoneAndLastName: true,
@@ -170,7 +147,7 @@ export default function DuplicateDetector({ patients, onResolve }) {
       <Card>
         <CardContent className="p-8 text-center">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
-          <p className="text-sm text-gray-600">Checking for duplicate patients...</p>
+          <p className="text-sm text-slate-600">Checking for duplicate patients...</p>
         </CardContent>
       </Card>
     );
@@ -274,7 +251,7 @@ export default function DuplicateDetector({ patients, onResolve }) {
   const getConfidenceBadgeColor = (level) => {
     switch (level) {
       case 'definitive':
-        return 'bg-purple-100 text-purple-900 border-purple-400';
+        return 'bg-navy-100 text-navy-900 border-navy-400';
       case 'very_high':
         return 'bg-red-100 text-red-800 border-red-300';
       case 'high':
@@ -349,7 +326,7 @@ export default function DuplicateDetector({ patients, onResolve }) {
                   Loose
                 </Button>
               </div>
-              <div className="text-xs text-gray-600 space-y-1 bg-white p-3 rounded-lg border">
+              <div className="text-xs text-slate-600 space-y-1 bg-white p-3 rounded-lg border">
                <p><strong>MRN-Only Matching:</strong> Duplicates are detected ONLY by matching Medical Record Number (MRN)</p>
                <p><strong>Auto-Update:</strong> When MRN matches, the existing patient record will be updated with new information from the upload</p>
                <p>Sensitivity settings do not affect MRN matching - exact match required</p>
@@ -368,13 +345,13 @@ export default function DuplicateDetector({ patients, onResolve }) {
                 step={5}
                 className="mb-2"
               />
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-slate-600">
                 Matches scoring {customThreshold}% or higher will be flagged as potential duplicates
               </p>
             </div>
 
-            <Alert className="bg-purple-50 border-purple-300">
-              <AlertDescription className="text-xs text-purple-900">
+            <Alert className="bg-navy-50 border-navy-300">
+              <AlertDescription className="text-xs text-navy-900">
                 <strong>MRN-Only Matching:</strong> Duplicates are identified exclusively by Medical Record Number (MRN). 
                 When an MRN match is found, the existing patient record will be automatically updated with any new information from the upload file.
               </AlertDescription>
@@ -383,30 +360,32 @@ export default function DuplicateDetector({ patients, onResolve }) {
             <div className="border-t pt-4">
               <Label className="text-sm font-medium mb-3 block">Automatic Resolution Strategy</Label>
               <div className="space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label htmlFor="auto-resolve-merge" className="flex items-center gap-2 cursor-pointer">
                   <input
+                    id="auto-resolve-merge"
                     type="radio"
                     name="autoResolve"
                     checked={autoResolveStrategy === 'merge'}
                     onChange={() => setAutoResolveStrategy('merge')}
                     className="rounded-full"
                   />
-                  <div>
-                    <span className="text-sm font-medium">Auto-Update (Recommended)</span>
-                    <p className="text-xs text-gray-600">Automatically update existing records when MRN matches</p>
+                  <div className="text-sm font-medium">
+                    Auto-Update (Recommended)
+                    <p className="text-xs font-normal text-slate-600">Automatically update existing records when MRN matches</p>
                   </div>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label htmlFor="auto-resolve-manual" className="flex items-center gap-2 cursor-pointer">
                   <input
+                    id="auto-resolve-manual"
                     type="radio"
                     name="autoResolve"
                     checked={autoResolveStrategy === 'manual'}
                     onChange={() => setAutoResolveStrategy('manual')}
                     className="rounded-full"
                   />
-                  <div>
-                    <span className="text-sm font-medium">Manual Review</span>
-                    <p className="text-xs text-gray-600">Review each MRN match manually before updating</p>
+                  <div className="text-sm font-medium">
+                    Manual Review
+                    <p className="text-xs font-normal text-slate-600">Review each MRN match manually before updating</p>
                   </div>
                 </label>
               </div>
@@ -470,10 +449,10 @@ export default function DuplicateDetector({ patients, onResolve }) {
                     <Card key={index} className="border-2 border-orange-200">
                       <CardContent className="p-4">
                         <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <h4 className="font-semibold text-gray-900 mb-2">
+                          <h4 className="font-semibold text-slate-900 mb-2">
                             Import Row {index + 1}: {patient.first_name} {patient.last_name}
                           </h4>
-                          <div className="text-sm text-gray-700 space-y-1">
+                          <div className="text-sm text-slate-700 space-y-1">
                             <div>DOB: {patient.date_of_birth || 'N/A'} | MRN: {patient.medical_record_number || 'N/A'}</div>
                             {patient.phone && <div>Phone: {patient.phone}</div>}
                             {patient.address && <div>Address: {patient.address}</div>}
@@ -487,17 +466,17 @@ export default function DuplicateDetector({ patients, onResolve }) {
                           </p>
                           
                           {duplicates.map((dup, dupIdx) => (
-                            <Card key={dupIdx} className="bg-gray-50">
+                            <Card key={dupIdx} className="bg-slate-50">
                               <CardContent className="p-3">
                                 <div className="flex items-start justify-between mb-2">
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                      <p className="font-medium text-gray-900">
+                                      <p className="font-medium text-slate-900">
                                         Existing: {dup.patient.first_name} {dup.patient.last_name}
                                       </p>
                                       <Badge variant="outline" className={
                                         dup.patient.status === 'active' ? 'bg-green-100 text-green-800 text-xs' :
-                                        dup.patient.status === 'discharged' ? 'bg-gray-100 text-gray-800 text-xs' :
+                                        dup.patient.status === 'discharged' ? 'bg-slate-100 text-slate-800 text-xs' :
                                         'bg-orange-100 text-orange-800 text-xs'
                                       }>
                                         {dup.patient.status || 'unknown'}
@@ -525,7 +504,7 @@ export default function DuplicateDetector({ patients, onResolve }) {
                                       }`}>
                                         Match Score: {Math.round(dup.score)}%
                                       </Badge>
-                                      <Badge className="bg-purple-100 text-purple-800 border-purple-300 text-xs">
+                                      <Badge className="bg-navy-100 text-navy-800 border-navy-300 text-xs">
                                         {dup.criteriaMet} of 6 criteria met
                                       </Badge>
                                       {dup.differences.length > 0 && (
@@ -549,11 +528,11 @@ export default function DuplicateDetector({ patients, onResolve }) {
                                     <div className="space-y-2 max-h-48 overflow-y-auto">
                                       {dup.differences.map((diff, diffIdx) => (
                                         <div key={diffIdx} className="text-xs p-2 bg-blue-50 rounded border border-blue-200">
-                                          <div className="font-semibold text-gray-800 mb-1 capitalize">
+                                          <div className="font-semibold text-slate-800 mb-1 capitalize">
                                             {diff.field.replace(/_/g, ' ')}
                                           </div>
                                           <div className="flex items-center gap-2">
-                                            <span className={`flex-1 ${diff.isNew ? 'text-gray-500 italic' : 'text-red-700'}`}>
+                                            <span className={`flex-1 ${diff.isNew ? 'text-slate-500 italic' : 'text-red-700'}`}>
                                               Current: {diff.existingValue}
                                             </span>
                                             <ArrowRight className="w-3 h-3 text-blue-600 flex-shrink-0" />
@@ -620,9 +599,9 @@ export default function DuplicateDetector({ patients, onResolve }) {
                           </div>
 
                           {resolution[index] && (
-                            <Alert className={resolution[index].auto ? 'bg-purple-50 border-purple-300' : 'bg-blue-50 border-blue-200'}>
-                              <CheckCircle2 className={`w-4 h-4 ${resolution[index].auto ? 'text-purple-600' : 'text-blue-600'}`} />
-                              <AlertDescription className={`text-sm ${resolution[index].auto ? 'text-purple-900' : 'text-blue-900'}`}>
+                            <Alert className={resolution[index].auto ? 'bg-navy-50 border-navy-300' : 'bg-blue-50 border-blue-200'}>
+                              <CheckCircle2 className={`w-4 h-4 ${resolution[index].auto ? 'text-navy-600' : 'text-blue-600'}`} />
+                              <AlertDescription className={`text-sm ${resolution[index].auto ? 'text-navy-900' : 'text-blue-900'}`}>
                                 <strong>{resolution[index].auto ? 'Auto-selected (MRN Match):' : 'Action selected:'}</strong>{' '}
                                 {resolution[index].action === 'add' && 'Add as new patient'}
                                 {resolution[index].action === 'update' && 'Update existing patient with new information'}

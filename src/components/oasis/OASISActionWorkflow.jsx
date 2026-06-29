@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,14 +26,11 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  AlertTriangle,
   DollarSign,
   FileCheck,
   ClipboardList,
   Loader2,
   ArrowRight,
-  User,
-  Calendar,
   Trash2,
   Eye,
   Send,
@@ -44,10 +41,10 @@ import {
 export default function OASISActionWorkflow({ 
   analysisId, 
   analysisResults, 
-  pdgmData,
-  originalPayment,
+  _pdgmData,
+  _originalPayment,
   patientName,
-  scenarios = []
+  _scenarios = []
 }) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("pending");
@@ -182,14 +179,33 @@ export default function OASISActionWorkflow({
       });
     });
 
-    // Create all actions
+    // Create all actions. Continue past individual failures so a mid-loop
+    // error doesn't leave the UI stuck or silently drop the remaining actions.
+    let createdCount = 0;
+    let failedCount = 0;
     for (const action of actions) {
-      await createActionMutation.mutateAsync(action);
+      try {
+        await createActionMutation.mutateAsync(action);
+        createdCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        console.error("Failed to create OASIS action item:", error);
+      }
+    }
+
+    if (failedCount === 0) {
+      if (createdCount > 0) {
+        toast.success(`Created ${createdCount} action item(s).`);
+      }
+    } else if (createdCount > 0) {
+      toast.error(`Created ${createdCount} action item(s), but ${failedCount} failed. Please retry.`);
+    } else {
+      toast.error("Failed to create action items. Please try again.");
     }
   };
 
   // Generate actions from selected scenarios
-  const generateActionsFromScenarios = async (selectedScenarios) => {
+  const _generateActionsFromScenarios = async (selectedScenarios) => {
     for (const scenario of selectedScenarios) {
       for (const change of (scenario.changes_made || [])) {
         await createActionMutation.mutateAsync({
@@ -197,7 +213,7 @@ export default function OASISActionWorkflow({
           patient_name: patientName,
           action_type: 'correction',
           category: getCategoryFromField(change.field),
-          oasis_item: change.field.toUpperCase().replace('_', ''),
+          oasis_item: (change.field || '').toUpperCase().replace('_', ''),
           current_value: change.original_value,
           proposed_value: change.new_value,
           rationale: `From scenario "${scenario.scenario_name}": Change ${change.field} to optimize PDGM payment`,
@@ -250,7 +266,7 @@ export default function OASISActionWorkflow({
   const parseRevenueImpact = (text) => {
     if (!text) return 0;
     const match = text.match(/\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
-    return match ? parseFloat(match[1].replace(',', '')) : 0;
+    return match ? parseFloat(match[1].replace(/,/g, '')) : 0;
   };
 
   const handleReview = (action, decision) => {
@@ -276,9 +292,9 @@ export default function OASISActionWorkflow({
       approved: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800',
       implemented: 'bg-blue-100 text-blue-800',
-      task_created: 'bg-purple-100 text-purple-800'
+      task_created: 'bg-navy-100 text-navy-800'
     };
-    return styles[status] || 'bg-gray-100 text-gray-800';
+    return styles[status] || 'bg-slate-100 text-slate-800';
   };
 
   const getSeverityBadge = (severity) => {
@@ -288,7 +304,7 @@ export default function OASISActionWorkflow({
       medium: 'bg-yellow-100 text-yellow-800',
       low: 'bg-blue-100 text-blue-800'
     };
-    return styles[severity] || 'bg-gray-100 text-gray-800';
+    return styles[severity] || 'bg-slate-100 text-slate-800';
   };
 
   const filteredActions = actionItems.filter(a => {
@@ -308,7 +324,7 @@ export default function OASISActionWorkflow({
 
   return (
     <Card className="border-2 border-blue-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-blue-50 to-cyan-50">
+      <CardHeader className="pb-3 bg-gradient-to-r from-blue-50 to-navy-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ClipboardList className="w-5 h-5 text-blue-600" />
@@ -350,10 +366,10 @@ export default function OASISActionWorkflow({
             <p className="text-lg font-bold text-green-700">{approvedCount}</p>
             <p className="text-xs text-green-600">Approved</p>
           </div>
-          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 text-center">
-            <FileCheck className="w-5 h-5 text-purple-600 mx-auto mb-1" />
-            <p className="text-lg font-bold text-purple-700">{taskCount}</p>
-            <p className="text-xs text-purple-600">Tasks Created</p>
+          <div className="p-3 bg-navy-50 rounded-lg border border-navy-200 text-center">
+            <FileCheck className="w-5 h-5 text-navy-600 mx-auto mb-1" />
+            <p className="text-lg font-bold text-navy-700">{taskCount}</p>
+            <p className="text-xs text-navy-600">Tasks Created</p>
           </div>
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
             <TrendingUp className="w-5 h-5 text-blue-600 mx-auto mb-1" />
@@ -385,7 +401,7 @@ export default function OASISActionWorkflow({
                 <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
               </div>
             ) : filteredActions.length === 0 ? (
-              <Alert className="bg-gray-50">
+              <Alert className="bg-slate-50">
                 <AlertDescription>
                   No actions in this category. {activeTab === 'pending' && 'Click "Generate Actions" to analyze findings.'}
                 </AlertDescription>
@@ -421,24 +437,24 @@ export default function OASISActionWorkflow({
                       )}
                     </div>
 
-                    <p className="text-sm text-gray-800 mb-2">{action.rationale}</p>
+                    <p className="text-sm text-slate-800 mb-2">{action.rationale}</p>
 
                     {(action.current_value || action.proposed_value) && (
-                      <div className="flex items-center gap-2 text-xs mb-3 p-2 bg-gray-50 rounded">
+                      <div className="flex items-center gap-2 text-xs mb-3 p-2 bg-slate-50 rounded">
                         <div className="flex-1">
-                          <span className="text-gray-500">Current: </span>
+                          <span className="text-slate-500">Current: </span>
                           <span className="text-red-700">{action.current_value || 'N/A'}</span>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-gray-400" />
+                        <ArrowRight className="w-4 h-4 text-slate-400" />
                         <div className="flex-1">
-                          <span className="text-gray-500">Proposed: </span>
+                          <span className="text-slate-500">Proposed: </span>
                           <span className="text-green-700">{action.proposed_value || 'N/A'}</span>
                         </div>
                       </div>
                     )}
 
                     {action.scenario_name && (
-                      <p className="text-xs text-purple-600 mb-2">
+                      <p className="text-xs text-navy-600 mb-2">
                         From scenario: {action.scenario_name}
                       </p>
                     )}
@@ -477,7 +493,7 @@ export default function OASISActionWorkflow({
                       {action.status === 'approved' && (
                         <Button 
                           size="sm" 
-                          className="bg-purple-600 hover:bg-purple-700"
+                          className="bg-navy-600 hover:bg-navy-700"
                           onClick={() => createTaskMutation.mutate(action)}
                           disabled={createTaskMutation.isPending}
                         >
@@ -490,7 +506,7 @@ export default function OASISActionWorkflow({
                         </Button>
                       )}
                       {action.linked_task_id && (
-                        <Badge className="bg-purple-100 text-purple-800">
+                        <Badge className="bg-navy-100 text-navy-800">
                           Task #{action.linked_task_id.slice(-6)}
                         </Badge>
                       )}
@@ -532,9 +548,9 @@ export default function OASISActionWorkflow({
                   )}
                 </div>
 
-                <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="bg-slate-50 p-3 rounded-lg">
                   <p className="text-sm font-medium mb-2">Rationale</p>
-                  <p className="text-sm text-gray-700">{selectedAction.rationale}</p>
+                  <p className="text-sm text-slate-700">{selectedAction.rationale}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -557,9 +573,9 @@ export default function OASISActionWorkflow({
                 )}
 
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Assign To</label>
+                  <label htmlFor="action-assign-to" className="text-sm font-medium mb-1 block">Assign To</label>
                   <Select value={assignTo} onValueChange={setAssignTo}>
-                    <SelectTrigger>
+                    <SelectTrigger id="action-assign-to">
                       <SelectValue placeholder="Select assignee..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -573,8 +589,9 @@ export default function OASISActionWorkflow({
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Review Notes</label>
-                  <Textarea 
+                  <label htmlFor="action-review-notes" className="text-sm font-medium mb-1 block">Review Notes</label>
+                  <Textarea
+                    id="action-review-notes"
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
                     placeholder="Add notes about your decision..."

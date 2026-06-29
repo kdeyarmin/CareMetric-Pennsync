@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +20,7 @@ export default function ComplianceReportGenerator({
   dateRange = 7,
   nurseEmail = null 
 }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [reportData, setReportData] = useState(null);
 
   const { data: audits = [] } = useQuery({
@@ -26,7 +28,13 @@ export default function ComplianceReportGenerator({
     queryFn: async () => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - dateRange);
-      return base44.entities.ComplianceAudit.filter({}, '-audit_date', 1000);
+      const all = await base44.entities.ComplianceAudit.filter({}, '-audit_date', 1000);
+      // Actually apply the date window (previously computed but never used).
+      return (all || []).filter((a) => {
+        if (!a.audit_date) return false;
+        const d = new Date(a.audit_date);
+        return !Number.isNaN(d.getTime()) && d >= startDate;
+      });
     },
     initialData: [],
   });
@@ -38,16 +46,18 @@ export default function ComplianceReportGenerator({
   });
 
   const generateReport = async () => {
-    setIsGenerating(true);
     try {
       const filteredAudits = nurseEmail 
         ? audits.filter(a => a.nurse_email === nurseEmail)
         : audits;
 
-      // Aggregate compliance data
+      // Aggregate compliance data. Guard the divide-by-zero so an empty set shows
+      // "no data" instead of NaN.
       const totalAudits = filteredAudits.length;
-      const avgScore = filteredAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / totalAudits;
-      
+      const avgScore = totalAudits > 0
+        ? filteredAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / totalAudits
+        : null;
+
       const criticalIssues = filteredAudits.flatMap(a => 
         (a.issues || []).filter(i => i.severity === 'critical')
       );
@@ -66,12 +76,13 @@ export default function ComplianceReportGenerator({
         .map(([element, count]) => ({ element, count, percentage: (count / totalAudits * 100).toFixed(1) }));
 
       // Use AI to generate insights
-      const aiInsights = await base44.integrations.Core.InvokeLLM({
-        prompt: `Generate Medicare compliance insights report for ${nurseEmail ? 'individual nurse' : 'home health agency'}.
+      const aiInsights = await ai.run({
+        model: "claude_opus_4_8",
+        prompt: `Generate Medicare compliance insights report for Pennsylvania home health agency.
 
 DATA:
 - Total Visits Audited: ${totalAudits}
-- Average Compliance Score: ${avgScore.toFixed(1)}%
+- Average Compliance Score: ${avgScore == null ? 'No data' : `${avgScore.toFixed(1)}%`}
 - Critical Issues Found: ${criticalIssues.length}
 - Top Documentation Gaps: ${topGaps.map(g => `${g.element} (${g.count} occurrences)`).join(', ')}
 
@@ -120,61 +131,82 @@ Return JSON with sections: executive_summary, key_findings array, trends, remedi
       });
     } catch (error) {
       console.error('Error generating report:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const downloadReport = async () => {
     if (!reportData) return;
 
-    const { formatTextDocument } = await import('../utils/branding');
+    const reportText = `
+MEDICARE COMPLIANCE REPORT
+Pennsylvania Home Health Agency
+42 CFR 484 Conditions of Participation
 
-    const reportContent = `
+Generated: ${format(new Date(reportData.metadata.generated_date), 'PPpp')}
+Period: Last ${dateRange} days
+${nurseEmail ? `Nurse: ${nurseEmail}` : 'All Nurses'}
+
+============================================
 EXECUTIVE SUMMARY
+============================================
 ${reportData.ai_insights.executive_summary}
 
+============================================
 KEY METRICS
+============================================
 • Total Visits Audited: ${reportData.metadata.total_audits}
-• Average Compliance Score: ${reportData.metrics.average_compliance_score.toFixed(1)}%
+• Average Compliance Score: ${reportData.metrics.average_compliance_score == null ? 'No data' : `${reportData.metrics.average_compliance_score.toFixed(1)}%`}
 • Critical Issues: ${reportData.metrics.critical_issues_count}
 • Total Issues: ${reportData.metrics.total_issues}
 
+============================================
 TOP DOCUMENTATION GAPS
+============================================
 ${reportData.top_gaps.map((gap, i) => 
   `${i + 1}. ${gap.element} - ${gap.count} occurrences (${gap.percentage}% of visits)`
 ).join('\n')}
 
+============================================
 KEY FINDINGS
+============================================
 ${reportData.ai_insights.key_findings.map((f, i) => `${i + 1}. ${f}`).join('\n')}
 
+============================================
 COMPLIANCE TRENDS
+============================================
 ${reportData.ai_insights.trends}
 
+============================================
 REMEDIATION ACTIONS
+============================================
 ${reportData.ai_insights.remediation_actions.map((a, i) => `${i + 1}. ${a}`).join('\n')}
 
+============================================
 TRAINING RECOMMENDATIONS
+============================================
 ${reportData.ai_insights.training_recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
+============================================
 RISK ASSESSMENT
+============================================
 ${reportData.ai_insights.risk_assessment}
 
+============================================
 CRITICAL ISSUES REQUIRING IMMEDIATE ATTENTION
+============================================
 ${reportData.critical_issues.slice(0, 10).map((issue, i) => 
   `${i + 1}. ${issue.element}: ${issue.problem}\n   CMS Reference: ${issue.cop_reference || 'See 42 CFR 484'}`
 ).join('\n\n')}
+
+Report generated by Penn Sync AI Compliance System
     `.trim();
 
-    const formattedReport = formatTextDocument(reportContent, {
-      title: `Medicare Compliance Report - ${nurseEmail ? 'Personal' : 'Agency-Wide'}`,
-      date: format(new Date(reportData.metadata.generated_date), 'PPpp')
-    });
-
-    const blob = new Blob([formattedReport], { type: 'text/plain' });
+    const blob = new Blob([reportText], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `CareMetric_Compliance_Report_${format(new Date(), 'yyyy-MM-dd')}.txt`;
+    a.download = `Medicare_Compliance_Report_${format(new Date(), 'yyyy-MM-dd')}.txt`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -192,10 +224,10 @@ ${reportData.critical_issues.slice(0, 10).map((issue, i) =>
       <CardContent className="space-y-4">
         {!reportData ? (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600">
               Generate comprehensive compliance report analyzing documentation against 42 CFR 484 requirements.
             </p>
-            <div className="flex items-center gap-2 text-sm text-gray-700">
+            <div className="flex items-center gap-2 text-sm text-slate-700">
               <Calendar className="w-4 h-4" />
               <span>Last {dateRange} days</span>
               {nurseEmail && (
@@ -207,10 +239,10 @@ ${reportData.critical_issues.slice(0, 10).map((issue, i) =>
             </div>
             <Button 
               onClick={generateReport} 
-              disabled={isGenerating || audits.length === 0}
+              disabled={ai.loading || audits.length === 0}
               className="w-full"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                   Generating Report...
@@ -229,21 +261,23 @@ ${reportData.critical_issues.slice(0, 10).map((issue, i) =>
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-blue-50 p-3 rounded border border-blue-200">
                 <p className="text-2xl font-bold text-blue-600">
-                  {reportData.metrics.average_compliance_score.toFixed(1)}%
+                  {reportData.metrics.average_compliance_score == null
+                    ? 'No data'
+                    : `${reportData.metrics.average_compliance_score.toFixed(1)}%`}
                 </p>
-                <p className="text-xs text-gray-600">Avg Score</p>
+                <p className="text-xs text-slate-600">Avg Score</p>
               </div>
               <div className="bg-red-50 p-3 rounded border border-red-200">
                 <p className="text-2xl font-bold text-red-600">
                   {reportData.metrics.critical_issues_count}
                 </p>
-                <p className="text-xs text-gray-600">Critical Issues</p>
+                <p className="text-xs text-slate-600">Critical Issues</p>
               </div>
               <div className="bg-green-50 p-3 rounded border border-green-200">
                 <p className="text-2xl font-bold text-green-600">
                   {reportData.metadata.total_audits}
                 </p>
-                <p className="text-xs text-gray-600">Audits</p>
+                <p className="text-xs text-slate-600">Audits</p>
               </div>
             </div>
 
@@ -251,7 +285,7 @@ ${reportData.critical_issues.slice(0, 10).map((issue, i) =>
             <Card className="bg-gradient-to-r from-blue-50 to-indigo-50">
               <CardContent className="p-4">
                 <p className="text-sm font-semibold text-blue-900 mb-2">Executive Summary</p>
-                <p className="text-sm text-gray-700">{reportData.ai_insights.executive_summary}</p>
+                <p className="text-sm text-slate-700">{reportData.ai_insights.executive_summary}</p>
               </CardContent>
             </Card>
 
@@ -265,7 +299,7 @@ ${reportData.critical_issues.slice(0, 10).map((issue, i) =>
               </CardHeader>
               <CardContent className="space-y-2">
                 {reportData.top_gaps.map((gap, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                     <span className="text-sm">{gap.element}</span>
                     <Badge variant="outline">{gap.count} ({gap.percentage}%)</Badge>
                   </div>
@@ -281,7 +315,7 @@ ${reportData.critical_issues.slice(0, 10).map((issue, i) =>
               <CardContent>
                 <ul className="space-y-2">
                   {reportData.ai_insights.key_findings.map((finding, idx) => (
-                    <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                    <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                       <span className="text-blue-600 font-bold">{idx + 1}.</span>
                       {finding}
                     </li>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { CheckSquare, ChevronDown, Users, Tag, Trash2 } from "lucide-react";
+import { CheckSquare, ChevronDown, Tag, Trash2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
@@ -143,10 +143,10 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
             </Button>
             <Button
               onClick={() => updateStatusMutation.mutate(newStatus)}
-              disabled={!newStatus || updateStatusMutation.isLoading}
+              disabled={!newStatus || updateStatusMutation.isPending}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              {updateStatusMutation.isLoading ? "Updating..." : "Update Status"}
+              {updateStatusMutation.isPending ? "Updating..." : "Update Status"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -159,7 +159,7 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
             <DialogTitle>Delete {selectedPatients.length} Patient(s)?</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600">
               Are you sure you want to delete {selectedPatients.length} patient(s)? This action cannot be undone and will remove all associated visits, care plans, and data.
             </p>
             <div className="bg-red-50 border border-red-200 rounded p-3 mt-3">
@@ -172,10 +172,10 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
             </Button>
             <Button
               onClick={() => deletePatientsMutation.mutate()}
-              disabled={deletePatientsMutation.isLoading}
+              disabled={deletePatientsMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
-              {deletePatientsMutation.isLoading ? "Deleting..." : "Delete Patients"}
+              {deletePatientsMutation.isPending ? "Deleting..." : "Delete Patients"}
             </Button>
           </DialogFooter>
         </DialogContent>

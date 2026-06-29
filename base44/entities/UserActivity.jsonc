@@ -1,0 +1,87 @@
+{
+  "name": "UserActivity",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of the user performing the action"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Full name of the user"
+    },
+    "action": {
+      "type": "string",
+      "description": "Type of action performed (login, logout, page_visit, create, update, delete, export, etc.)"
+    },
+    "page": {
+      "type": "string",
+      "description": "Page or section where action occurred"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Type of entity affected (Patient, Document, FaxLog, etc.)"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID of the entity affected"
+    },
+    "details": {
+      "type": "object",
+      "description": "Additional details about the action"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address of the user"
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "Browser user agent string"
+    },
+    "device_type": {
+      "type": "string",
+      "enum": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "description": "Type of device used"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failure",
+        "warning"
+      ],
+      "default": "success",
+      "description": "Status of the activity"
+    },
+    "duration_ms": {
+      "type": "number",
+      "description": "Duration of action in milliseconds"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if action failed"
+    }
+  },
+  "required": [
+    "user_email",
+    "action"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

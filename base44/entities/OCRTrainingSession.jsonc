@@ -1,0 +1,84 @@
+{
+  "name": "OCRTrainingSession",
+  "type": "object",
+  "properties": {
+    "session_name": {
+      "type": "string",
+      "description": "Name/identifier for this training session"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "in_progress",
+        "completed",
+        "failed"
+      ],
+      "default": "queued",
+      "description": "Current status of the training session"
+    },
+    "feedback_count": {
+      "type": "number",
+      "description": "Number of feedback items used for training"
+    },
+    "accuracy_before": {
+      "type": "number",
+      "description": "Average OCR confidence before retraining"
+    },
+    "accuracy_after": {
+      "type": "number",
+      "description": "Average OCR confidence after retraining"
+    },
+    "improvement_percentage": {
+      "type": "number",
+      "description": "Percentage improvement in accuracy"
+    },
+    "document_types_trained": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Types of documents included in training"
+    },
+    "training_metrics": {
+      "type": "object",
+      "properties": {
+        "minor_corrections": {
+          "type": "number"
+        },
+        "moderate_corrections": {
+          "type": "number"
+        },
+        "major_corrections": {
+          "type": "number"
+        },
+        "avg_correction_length": {
+          "type": "number"
+        }
+      },
+      "description": "Detailed training metrics"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When training started"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When training completed"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if training failed"
+    },
+    "initiated_by": {
+      "type": "string",
+      "description": "Email of admin who initiated training"
+    }
+  },
+  "required": [
+    "session_name",
+    "status"
+  ]
+}

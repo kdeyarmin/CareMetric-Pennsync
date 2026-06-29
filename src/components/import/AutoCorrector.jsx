@@ -1,9 +1,8 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { Wand2, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 export default function AutoCorrector({ csvData, columnMapping, onCorrectedData }) {
@@ -20,7 +19,7 @@ export default function AutoCorrector({ csvData, columnMapping, onCorrectedData 
       total: 0
     };
 
-    const correctedRows = csvData.rows.map((row, rowIdx) => {
+    const correctedRows = csvData.rows.map((row, _rowIdx) => {
       const newRow = [...row];
       
       Object.entries(columnMapping).forEach(([colIndex, fieldKey]) => {
@@ -133,20 +132,20 @@ export default function AutoCorrector({ csvData, columnMapping, onCorrectedData 
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-gold-50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Wand2 className="w-5 h-5 text-purple-600" />
+          <Wand2 className="w-5 h-5 text-navy-600" />
           Auto-Correct Data
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {!results ? (
           <>
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-slate-700">
               Automatically fix common data issues before validation:
             </p>
-            <ul className="text-sm text-gray-600 space-y-2 ml-4">
+            <ul className="text-sm text-slate-600 space-y-2 ml-4">
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                 <span>Convert dates to YYYY-MM-DD format</span>
@@ -167,7 +166,7 @@ export default function AutoCorrector({ csvData, columnMapping, onCorrectedData 
             <Button
               onClick={autoCorrectData}
               disabled={isProcessing}
-              className="w-full bg-purple-600 hover:bg-purple-700"
+              className="w-full bg-navy-600 hover:bg-navy-700"
             >
               {isProcessing ? (
                 <>

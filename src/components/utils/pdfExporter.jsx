@@ -135,7 +135,7 @@ export const exportToPDF = async (options = {}) => {
 
           // Calculate max height needed for this row
           let maxHeight = 0;
-          const cellLines = row.map((cell, i) => {
+          const cellLines = row.map((cell, _i) => {
             const cellText = String(cell || '');
             const lines = doc.splitTextToSize(cellText, colWidth - 4);
             maxHeight = Math.max(maxHeight, lines.length);
@@ -162,6 +162,136 @@ export const exportToPDF = async (options = {}) => {
         doc.setDrawColor(200);
         doc.line(margin, yPosition, pageWidth - margin, yPosition);
         yPosition += 5;
+      } else if (section.type === 'pageBreak') {
+        doc.addPage();
+        yPosition = margin;
+      } else if (section.type === 'barChart') {
+        const { data, xKey, yKey, _title, height = 80, maxBars = 20 } = section;
+        const chartWidth = pageWidth - (2 * margin);
+        const chartHeight = height;
+        const displayData = data.slice(0, maxBars);
+        
+        if (displayData.length === 0) {
+          yPosition += 5;
+          continue;
+        }
+        
+        // Draw chart area background
+        doc.setFillColor(250, 250, 250);
+        doc.rect(margin, yPosition, chartWidth, chartHeight, 'F');
+        
+        // Find max value for scaling
+        const maxValue = Math.max(...displayData.map(d => d[yKey] || 0));
+        const barWidth = chartWidth / displayData.length;
+        const scale = maxValue > 0 ? (chartHeight - 20) / maxValue : 1;
+        
+        // Draw bars
+        displayData.forEach((item, i) => {
+          const value = item[yKey] || 0;
+          const barHeight = value * scale;
+          const x = margin + (i * barWidth);
+          const y = yPosition + chartHeight - barHeight - 10;
+          
+          // Bar
+          doc.setFillColor(59, 130, 246);
+          doc.rect(x + 2, y, barWidth - 4, barHeight, 'F');
+          
+          // Value label on top of bar
+          doc.setFontSize(7);
+          doc.setTextColor(0);
+          doc.text(String(value), x + barWidth / 2, y - 2, { align: 'center' });
+          
+          // X-axis label
+          doc.setFontSize(6);
+          const label = String(item[xKey] || '');
+          const labelText = label.length > 8 ? label.substring(0, 7) + '...' : label;
+          doc.text(labelText, x + barWidth / 2, yPosition + chartHeight - 2, { align: 'center', angle: 45, maxWidth: barWidth });
+        });
+        
+        // Draw axes
+        doc.setDrawColor(100);
+        doc.line(margin, yPosition + chartHeight - 10, margin + chartWidth, yPosition + chartHeight - 10);
+        doc.line(margin, yPosition, margin, yPosition + chartHeight - 10);
+        
+        yPosition += chartHeight + 15;
+      } else if (section.type === 'pieChart') {
+        const { data, nameKey, valueKey, _title, radius = 40 } = section;
+        
+        if (data.length === 0) {
+          yPosition += 5;
+          continue;
+        }
+        
+        const centerX = pageWidth / 2;
+        const centerY = yPosition + radius + 10;
+        
+        // Calculate total and angles
+        const total = data.reduce((sum, item) => sum + (item[valueKey] || 0), 0);
+        let startAngle = -90;
+        
+        const colors = [
+          [59, 130, 246],   // blue
+          [16, 185, 129],   // green
+          [245, 158, 11],   // orange
+          [239, 68, 68],    // red
+          [139, 92, 246],   // purple
+          [220, 171, 53],   // gold
+          [20, 184, 166],   // teal
+          [249, 115, 22]    // orange-alt
+        ];
+        
+        // Draw pie slices
+        data.forEach((item, i) => {
+          const value = item[valueKey] || 0;
+          const angle = (value / total) * 360;
+          const endAngle = startAngle + angle;
+          
+          doc.setFillColor(...colors[i % colors.length]);
+          
+          // Draw slice using triangle approximation
+          const steps = Math.ceil(angle / 5);
+          for (let j = 0; j < steps; j++) {
+            const a1 = (startAngle + (angle * j / steps)) * Math.PI / 180;
+            const a2 = (startAngle + (angle * (j + 1) / steps)) * Math.PI / 180;
+            
+            doc.triangle(
+              centerX,
+              centerY,
+              centerX + radius * Math.cos(a1),
+              centerY + radius * Math.sin(a1),
+              centerX + radius * Math.cos(a2),
+              centerY + radius * Math.sin(a2),
+              'F'
+            );
+          }
+          
+          startAngle = endAngle;
+        });
+        
+        yPosition += (radius * 2) + 20;
+        
+        // Legend
+        doc.setFontSize(8);
+        let legendY = yPosition;
+        data.forEach((item, i) => {
+          if (legendY > pageHeight - 30) {
+            doc.addPage();
+            legendY = margin;
+          }
+          
+          const percentage = total > 0 ? Math.round((item[valueKey] / total) * 100) : 0;
+          
+          // Color box
+          doc.setFillColor(...colors[i % colors.length]);
+          doc.rect(margin, legendY - 3, 4, 4, 'F');
+          
+          // Label
+          doc.setTextColor(0);
+          doc.text(`${item[nameKey]}: ${item[valueKey]} (${percentage}%)`, margin + 7, legendY);
+          legendY += 6;
+        });
+        
+        yPosition = legendY + 5;
       }
     }
   }

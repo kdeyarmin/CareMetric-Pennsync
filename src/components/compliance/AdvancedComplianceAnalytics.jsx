@@ -1,8 +1,7 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -24,36 +23,30 @@ import {
   ResponsiveContainer,
   Legend,
   AreaChart,
-  Area,
-  ScatterChart,
-  Scatter,
-  ZAxis
+  Area
 } from "recharts";
 import {
   TrendingUp,
   TrendingDown,
   Users,
   AlertTriangle,
-  Award,
   Calendar,
-  Download,
-  Filter,
   BarChart3,
   Target,
   BookOpen,
   Zap
 } from "lucide-react";
-import { format, subMonths, startOfMonth, endOfMonth, parseISO, isWithinInterval } from "date-fns";
+import { format, subMonths, parseISO, isWithinInterval } from "date-fns";
 
 export default function AdvancedComplianceAnalytics({ 
   audits = [], 
   trainingCompletions = [],
-  nurses = [],
-  patients = []
+  _nurses = [],
+  _patients = []
 }) {
   const [timeRange, setTimeRange] = useState("6m");
   const [selectedNurse, setSelectedNurse] = useState("all");
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [_selectedCategory, _setSelectedCategory] = useState("all");
 
   // Calculate date range based on selection
   const dateRange = useMemo(() => {
@@ -164,11 +157,16 @@ export default function AdvancedComplianceAnalytics({
             critical: 0,
             high: 0,
             medium: 0,
+            // 'low' is a valid severity in the auditor schema; without a counter
+            // here `categories[cat]['low']++` did `undefined++` and wrote low: NaN.
+            low: 0,
             affectedNurses: new Set(),
             trend: []
           };
         }
         categories[cat].count++;
+        // Guard against any unexpected severity so we never write a NaN counter.
+        if (categories[cat][issue.severity] === undefined) categories[cat][issue.severity] = 0;
         categories[cat][issue.severity || 'medium']++;
         categories[cat].affectedNurses.add(audit.nurse_email);
       });
@@ -233,11 +231,16 @@ export default function AdvancedComplianceAnalytics({
     );
     const totalIssues = filteredAudits.reduce((sum, a) => sum + (a.issues?.length || 0), 0);
     
-    // Calculate trend
+    // Calculate trend — only meaningful with at least two audits to split into two
+    // halves. With a single audit, midpoint is 0 and recentAvg becomes 0/0 -> 0,
+    // producing a bogus large "declining" trend against the real olderAvg.
     const midpoint = Math.floor(filteredAudits.length / 2);
-    const recentAvg = filteredAudits.slice(0, midpoint).reduce((s, a) => s + (a.compliance_score || 0), 0) / midpoint || 0;
-    const olderAvg = filteredAudits.slice(midpoint).reduce((s, a) => s + (a.compliance_score || 0), 0) / (filteredAudits.length - midpoint) || 0;
-    const trend = recentAvg - olderAvg;
+    let trend = 0;
+    if (filteredAudits.length >= 2 && midpoint > 0) {
+      const recentAvg = filteredAudits.slice(0, midpoint).reduce((s, a) => s + (a.compliance_score || 0), 0) / midpoint;
+      const olderAvg = filteredAudits.slice(midpoint).reduce((s, a) => s + (a.compliance_score || 0), 0) / (filteredAudits.length - midpoint);
+      trend = recentAvg - olderAvg;
+    }
 
     return { avgScore, passRate, totalAudits: filteredAudits.length, totalIssues, trend };
   }, [filteredAudits]);
@@ -254,7 +257,7 @@ export default function AdvancedComplianceAnalytics({
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-4 items-end">
             <div>
-              <Label className="text-xs text-gray-500">Time Range</Label>
+              <Label className="text-xs text-slate-500">Time Range</Label>
               <Select value={timeRange} onValueChange={setTimeRange}>
                 <SelectTrigger className="w-32">
                   <SelectValue />
@@ -268,7 +271,7 @@ export default function AdvancedComplianceAnalytics({
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-gray-500">Nurse</Label>
+              <Label className="text-xs text-slate-500">Nurse</Label>
               <Select value={selectedNurse} onValueChange={setSelectedNurse}>
                 <SelectTrigger className="w-48">
                   <SelectValue placeholder="All Nurses" />
@@ -308,10 +311,10 @@ export default function AdvancedComplianceAnalytics({
               <p className="text-xs text-green-100">Pass Rate</p>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+          <Card className="bg-gradient-to-br from-navy-500 to-navy-600 text-white">
             <CardContent className="p-4 text-center">
               <p className="text-3xl font-bold">{overallStats.totalAudits}</p>
-              <p className="text-xs text-purple-100">Total Audits</p>
+              <p className="text-xs text-navy-100">Total Audits</p>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
@@ -358,7 +361,7 @@ export default function AdvancedComplianceAnalytics({
                       <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                       <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
                       <Tooltip />
-                      <Area type="monotone" dataKey="avgScore" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} name="Avg Score" />
+                      <Area type="monotone" dataKey="avgScore" stroke="#3557b0" fill="#3557b0" fillOpacity={0.3} name="Avg Score" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -426,7 +429,7 @@ export default function AdvancedComplianceAnalytics({
               <CardContent>
                 <div className="space-y-3">
                   {orgRisks.slice(0, 6).map((risk, idx) => (
-                    <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                    <div key={idx} className="p-3 bg-slate-50 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-sm">{risk.category}</span>
                         <Badge className={
@@ -438,11 +441,11 @@ export default function AdvancedComplianceAnalytics({
                         </Badge>
                       </div>
                       <div className="flex gap-2 text-xs">
-                        <span className="text-gray-500">{risk.count} issues</span>
-                        <span className="text-gray-300">|</span>
+                        <span className="text-slate-500">{risk.count} issues</span>
+                        <span className="text-slate-300">|</span>
                         <span className="text-red-600">{risk.critical} critical</span>
-                        <span className="text-gray-300">|</span>
-                        <span className="text-gray-500">{risk.affectedNurses} nurses affected</span>
+                        <span className="text-slate-300">|</span>
+                        <span className="text-slate-500">{risk.affectedNurses} nurses affected</span>
                       </div>
                     </div>
                   ))}
@@ -453,7 +456,7 @@ export default function AdvancedComplianceAnalytics({
             <Card>
               <CardHeader className="py-3">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Target className="w-4 h-4 text-purple-600" />
+                  <Target className="w-4 h-4 text-navy-600" />
                   Risk Distribution
                 </CardTitle>
               </CardHeader>
@@ -503,7 +506,7 @@ export default function AdvancedComplianceAnalytics({
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
+                  <div className="h-64 flex items-center justify-center text-slate-500 text-sm">
                     Not enough data to show training impact yet
                   </div>
                 )}
@@ -521,10 +524,10 @@ export default function AdvancedComplianceAnalytics({
                 <div className="space-y-3">
                   {trainingImpact.length > 0 ? (
                     trainingImpact.sort((a, b) => b.improvement - a.improvement).map((nurse, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                         <span className="text-sm font-medium">{nurse.name}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">{nurse.beforeAvg}% → {nurse.afterAvg}%</span>
+                          <span className="text-xs text-slate-500">{nurse.beforeAvg}% → {nurse.afterAvg}%</span>
                           <Badge className={nurse.improvement >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                             {nurse.improvement >= 0 ? '+' : ''}{nurse.improvement}%
                           </Badge>
@@ -532,7 +535,7 @@ export default function AdvancedComplianceAnalytics({
                       </div>
                     ))
                   ) : (
-                    <div className="text-center text-gray-500 text-sm py-8">
+                    <div className="text-center text-slate-500 text-sm py-8">
                       Complete more training modules to see impact data
                     </div>
                   )}
@@ -552,58 +555,56 @@ export default function AdvancedComplianceAnalytics({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-3">Rank</th>
-                      <th className="text-left py-2 px-3">Nurse</th>
-                      <th className="text-center py-2 px-3">Audits</th>
-                      <th className="text-center py-2 px-3">Avg Score</th>
-                      <th className="text-center py-2 px-3">Pass Rate</th>
-                      <th className="text-center py-2 px-3">Avg Issues</th>
-                      <th className="text-center py-2 px-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nursePerformance.map((nurse, idx) => (
-                      <tr key={nurse.email} className="border-b hover:bg-gray-50">
-                        <td className="py-2 px-3">
-                          {idx < 3 ? (
-                            <Badge className={
-                              idx === 0 ? 'bg-yellow-400 text-yellow-900' :
-                              idx === 1 ? 'bg-gray-300 text-gray-800' :
-                              'bg-orange-300 text-orange-900'
-                            }>
-                              #{idx + 1}
-                            </Badge>
-                          ) : (
-                            <span className="text-gray-500">#{idx + 1}</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 font-medium">{nurse.name}</td>
-                        <td className="py-2 px-3 text-center">{nurse.totalAudits}</td>
-                        <td className="py-2 px-3 text-center">
-                          <span className={nurse.avgScore >= 85 ? 'text-green-600 font-semibold' : nurse.avgScore >= 70 ? 'text-yellow-600' : 'text-red-600'}>
-                            {nurse.avgScore}%
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-center">{nurse.passRate}%</td>
-                        <td className="py-2 px-3 text-center">{nurse.avgIssues}</td>
-                        <td className="py-2 px-3 text-center">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Rank</TableHead>
+                    <TableHead>Nurse</TableHead>
+                    <TableHead className="text-center">Audits</TableHead>
+                    <TableHead className="text-center">Avg Score</TableHead>
+                    <TableHead className="text-center">Pass Rate</TableHead>
+                    <TableHead className="text-center">Avg Issues</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {nursePerformance.map((nurse, idx) => (
+                    <TableRow key={nurse.email}>
+                      <TableCell>
+                        {idx < 3 ? (
                           <Badge className={
-                            nurse.avgScore >= 85 ? 'bg-green-100 text-green-800' :
-                            nurse.avgScore >= 70 ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
+                            idx === 0 ? 'bg-gold-100 text-gold-800 border border-gold-300' :
+                            idx === 1 ? 'bg-slate-200 text-slate-800' :
+                            'bg-amber-100 text-amber-800 border border-amber-200'
                           }>
-                            {nurse.avgScore >= 85 ? 'Excellent' : nurse.avgScore >= 70 ? 'Good' : 'Needs Improvement'}
+                            #{idx + 1}
                           </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        ) : (
+                          <span className="text-slate-500">#{idx + 1}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">{nurse.name}</TableCell>
+                      <TableCell className="text-center">{nurse.totalAudits}</TableCell>
+                      <TableCell className="text-center">
+                        <span className={nurse.avgScore >= 85 ? 'text-emerald-600 font-semibold' : nurse.avgScore >= 70 ? 'text-amber-600' : 'text-red-600'}>
+                          {nurse.avgScore}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">{nurse.passRate}%</TableCell>
+                      <TableCell className="text-center">{nurse.avgIssues}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={
+                          nurse.avgScore >= 85 ? 'success' :
+                          nurse.avgScore >= 70 ? 'warning' :
+                          'destructive'
+                        }>
+                          {nurse.avgScore >= 85 ? 'Excellent' : nurse.avgScore >= 70 ? 'Good' : 'Needs Improvement'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>

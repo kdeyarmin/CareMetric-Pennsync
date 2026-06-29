@@ -1,12 +1,10 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DollarSign, TrendingUp, ArrowUpRight } from "lucide-react";
+import { DollarSign, ArrowUpRight } from "lucide-react";
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -40,16 +38,19 @@ export default function RevenueImpactAnalysis({ data = [], compact = false }) {
       weeks[weekKey].count += 1;
     });
 
+    // Sort/slice on the ISO weekKey BEFORE formatting to a year-less label —
+    // `new Date("Mar 5")` assumes the current year, so sorting on the label
+    // misorders weeks that straddle a year boundary.
     return Object.values(weeks)
+      .sort((a, b) => new Date(a.week) - new Date(b.week))
+      .slice(-8)
       .map(w => ({
         week: new Date(w.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         actual: Math.round(w.actual),
         potential: Math.round(w.potential),
         gap: Math.round(w.potential - w.actual),
         episodes: w.count
-      }))
-      .sort((a, b) => new Date(a.week) - new Date(b.week))
-      .slice(-8);
+      }));
   }, [data]);
 
   // Summary metrics
@@ -118,7 +119,7 @@ export default function RevenueImpactAnalysis({ data = [], compact = false }) {
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">No revenue data available</p>
+          <p className="text-center text-slate-500 py-8">No revenue data available</p>
         ) : (
           <>
             {/* Summary metrics */}
@@ -137,13 +138,13 @@ export default function RevenueImpactAnalysis({ data = [], compact = false }) {
               </div>
               {!compact && (
                 <>
-                  <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                    <p className="text-xl font-bold text-purple-900">{metrics.totalEpisodes}</p>
-                    <p className="text-xs text-purple-700">Episodes</p>
+                  <div className="text-center p-3 bg-navy-50 rounded-lg border border-navy-200">
+                    <p className="text-xl font-bold text-navy-900">{metrics.totalEpisodes}</p>
+                    <p className="text-xs text-navy-700">Episodes</p>
                   </div>
-                  <div className="text-center p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-xl font-bold text-gray-900">${metrics.avgPerEpisode.toFixed(0)}</p>
-                    <p className="text-xs text-gray-700">Avg/Episode</p>
+                  <div className="text-center p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <p className="text-xl font-bold text-slate-900">${metrics.avgPerEpisode.toFixed(0)}</p>
+                    <p className="text-xs text-slate-700">Avg/Episode</p>
                   </div>
                 </>
               )}
@@ -169,7 +170,7 @@ export default function RevenueImpactAnalysis({ data = [], compact = false }) {
                     />
                     <Legend />
                     <Area type="monotone" dataKey="actual" stroke="#22c55e" fill="url(#actualGradient)" name="Actual Revenue" />
-                    <Area type="monotone" dataKey="potential" stroke="#3b82f6" fill="none" strokeDasharray="5 5" name="Potential" />
+                    <Area type="monotone" dataKey="potential" stroke="#3557b0" fill="none" strokeDasharray="5 5" name="Potential" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -177,14 +178,14 @@ export default function RevenueImpactAnalysis({ data = [], compact = false }) {
               {/* Revenue by category */}
               {!compact && revenueByCategory.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-gray-700 mb-3">Revenue by Clinical Group</p>
+                  <p className="text-sm font-medium text-slate-700 mb-3">Revenue by Clinical Group</p>
                   <div className="space-y-2">
                     {revenueByCategory.slice(0, 5).map((cat) => (
-                      <div key={cat.name} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div key={cat.name} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                         <span className="text-sm font-medium">{cat.name}</span>
                         <div className="text-right">
-                          <p className="text-sm font-bold text-gray-900">${(cat.amount / 1000).toFixed(1)}k</p>
-                          <p className="text-xs text-gray-500">{cat.count} episodes</p>
+                          <p className="text-sm font-bold text-slate-900">${(cat.amount / 1000).toFixed(1)}k</p>
+                          <p className="text-xs text-slate-500">{cat.count} episodes</p>
                         </div>
                       </div>
                     ))}

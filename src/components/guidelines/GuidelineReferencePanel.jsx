@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,6 @@ import {
   CheckCircle2,
   Plus,
   Sparkles,
-  AlertCircle,
   FileText
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -36,7 +35,7 @@ export default function GuidelineReferencePanel({
   const [searchTerm, setSearchTerm] = useState("");
   const [relevantGuidelines, setRelevantGuidelines] = useState([]);
   const [copied, setCopied] = useState(null);
-  const [isLoadingRelevant, setIsLoadingRelevant] = useState(false);
+  const [_isLoadingRelevant, setIsLoadingRelevant] = useState(false);
 
   const { data: allGuidelines = [] } = useQuery({
     queryKey: ['activeGuidelines'],
@@ -44,14 +43,7 @@ export default function GuidelineReferencePanel({
     initialData: [],
   });
 
-  // Auto-load relevant guidelines based on context
-  useEffect(() => {
-    if (diagnosis || visitType || noteContent) {
-      loadRelevantGuidelines();
-    }
-  }, [diagnosis, visitType]);
-
-  const loadRelevantGuidelines = async () => {
+  const loadRelevantGuidelines = useCallback(async () => {
     setIsLoadingRelevant(true);
     try {
       const relevant = await retrieveRelevantGuidelines({
@@ -65,7 +57,14 @@ export default function GuidelineReferencePanel({
       console.error('Error loading relevant guidelines:', error);
     }
     setIsLoadingRelevant(false);
-  };
+  }, [diagnosis, visitType, noteContent]);
+
+  // Auto-load relevant guidelines based on context
+  useEffect(() => {
+    if (diagnosis || visitType || noteContent) {
+      loadRelevantGuidelines();
+    }
+  }, [diagnosis, visitType, noteContent, loadRelevantGuidelines]);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -85,15 +84,15 @@ export default function GuidelineReferencePanel({
 
   const getCategoryColor = (category) => {
     const colors = {
-      oasis: "bg-purple-100 text-purple-800",
+      oasis: "bg-navy-100 text-navy-800",
       medicare_cop: "bg-red-100 text-red-800",
       clinical_documentation: "bg-blue-100 text-blue-800",
       home_health_regulations: "bg-indigo-100 text-indigo-800",
       quality_measures: "bg-yellow-100 text-yellow-800",
       compliance_audit: "bg-orange-100 text-orange-800",
-      pdgm: "bg-teal-100 text-teal-800"
+      pdgm: "bg-navy-100 text-navy-800"
     };
-    return colors[category] || "bg-gray-100 text-gray-800";
+    return colors[category] || "bg-slate-100 text-slate-800";
   };
 
   if (compact) {
@@ -113,8 +112,8 @@ export default function GuidelineReferencePanel({
             <div key={guideline.id} className="p-2 bg-blue-50 rounded border border-blue-200">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-900 mb-1">{guideline.title}</p>
-                  <p className="text-xs text-gray-600 line-clamp-2">{guideline.summary}</p>
+                  <p className="text-xs font-medium text-slate-900 mb-1">{guideline.title}</p>
+                  <p className="text-xs text-slate-600 line-clamp-2">{guideline.summary}</p>
                 </div>
                 {onInsertGuideline && (
                   <Button
@@ -150,7 +149,7 @@ export default function GuidelineReferencePanel({
       <CardContent className="space-y-4">
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
           <Input
             placeholder="Search all guidelines..."
             value={searchTerm}
@@ -171,8 +170,8 @@ export default function GuidelineReferencePanel({
         <ScrollArea className="h-96">
           <div className="space-y-3 pr-4">
             {displayGuidelines.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <FileText className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+              <div className="text-center py-8 text-slate-500">
+                <FileText className="w-8 h-8 mx-auto mb-2 text-slate-400" />
                 <p className="text-sm">
                   {searchTerm ? 'No guidelines found' : 'No relevant guidelines found'}
                 </p>
@@ -190,7 +189,7 @@ export default function GuidelineReferencePanel({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <Badge className={`${getCategoryColor(guideline.category)} text-xs`}>
-                              {guideline.category.replace(/_/g, ' ')}
+                              {(guideline.category || '').replace(/_/g, ' ')}
                             </Badge>
                             {guideline.regulatory_citation && (
                               <Badge variant="outline" className="text-xs">
@@ -203,7 +202,7 @@ export default function GuidelineReferencePanel({
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm font-medium text-gray-900">{guideline.title}</p>
+                          <p className="text-sm font-medium text-slate-900">{guideline.title}</p>
                         </div>
                       </div>
                     </AccordionTrigger>
@@ -217,7 +216,7 @@ export default function GuidelineReferencePanel({
                       {/* Keywords */}
                       {guideline.keywords?.length > 0 && (
                         <div>
-                          <p className="text-xs font-medium text-gray-700 mb-1">Related Topics:</p>
+                          <p className="text-xs font-medium text-slate-700 mb-1">Related Topics:</p>
                           <div className="flex flex-wrap gap-1">
                             {guideline.keywords.map((kw, idx) => (
                               <Badge key={idx} variant="secondary" className="text-xs">
@@ -229,7 +228,7 @@ export default function GuidelineReferencePanel({
                       )}
 
                       {/* Content Preview */}
-                      <div className="bg-gray-50 p-3 rounded max-h-48 overflow-y-auto">
+                      <div className="bg-slate-50 p-3 rounded max-h-48 overflow-y-auto">
                         <div className="prose prose-sm max-w-none text-xs">
                           <ReactMarkdown>
                             {guideline.content_markdown?.substring(0, 800) + '...'}

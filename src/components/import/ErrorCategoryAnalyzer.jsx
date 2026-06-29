@@ -1,6 +1,5 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -8,7 +7,6 @@ import {
   AlertCircle,
   FileText,
   Calendar,
-  Mail,
   Phone,
   User,
   ClipboardCheck,
@@ -39,7 +37,7 @@ const ERROR_CATEGORIES = {
   DATE_ERROR: {
     label: "Date Issues",
     icon: Calendar,
-    color: "bg-purple-100 text-purple-800 border-purple-300",
+    color: "bg-navy-100 text-navy-800 border-navy-300",
     keywords: ["date", "dob", "admission", "future", "past"]
   },
   CONTACT_INFO: {
@@ -51,7 +49,7 @@ const ERROR_CATEGORIES = {
   DUPLICATE: {
     label: "Duplicate Records",
     icon: User,
-    color: "bg-pink-100 text-pink-800 border-pink-300",
+    color: "bg-gold-100 text-gold-800 border-gold-300",
     keywords: ["duplicate", "already exists", "unique"]
   }
 };
@@ -76,7 +74,7 @@ export default function ErrorCategoryAnalyzer({ validationErrors, onSelectErrors
     const categories = {};
     
     validationErrors.forEach((error, idx) => {
-      error.errors.forEach(errorMsg => {
+      (error.errors || []).forEach(errorMsg => {
         const category = categorizeError(errorMsg);
         
         if (!categories[category]) {
@@ -112,10 +110,10 @@ export default function ErrorCategoryAnalyzer({ validationErrors, onSelectErrors
   const sortedCategories = Object.entries(categorizedErrors).sort((a, b) => b[1].length - a[1].length);
 
   return (
-    <Card className="border-2 border-purple-200">
+    <Card className="border-2 border-navy-200">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <Info className="w-5 h-5 text-purple-600" />
+          <Info className="w-5 h-5 text-navy-600" />
           Error Analysis by Category
         </CardTitle>
       </CardHeader>
@@ -125,7 +123,7 @@ export default function ErrorCategoryAnalyzer({ validationErrors, onSelectErrors
             const category = ERROR_CATEGORIES[categoryKey] || {
               label: "Other Errors",
               icon: AlertCircle,
-              color: "bg-gray-100 text-gray-800 border-gray-300"
+              color: "bg-slate-100 text-slate-800 border-slate-300"
             };
             const Icon = category.icon;
             const isExpanded = expandedCategories[categoryKey];
@@ -143,8 +141,8 @@ export default function ErrorCategoryAnalyzer({ validationErrors, onSelectErrors
                         <Icon className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-900">{category.label}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="font-semibold text-slate-900">{category.label}</p>
+                        <p className="text-sm text-slate-600">
                           {errors.length} error{errors.length !== 1 ? 's' : ''} • {affectedRows} row{affectedRows !== 1 ? 's' : ''}
                         </p>
                       </div>
@@ -162,9 +160,9 @@ export default function ErrorCategoryAnalyzer({ validationErrors, onSelectErrors
                         Select All
                       </Button>
                       {isExpanded ? (
-                        <ChevronUp className="w-5 h-5 text-gray-500" />
+                        <ChevronUp className="w-5 h-5 text-slate-500" />
                       ) : (
-                        <ChevronDown className="w-5 h-5 text-gray-500" />
+                        <ChevronDown className="w-5 h-5 text-slate-500" />
                       )}
                     </div>
                   </div>
@@ -179,14 +177,14 @@ export default function ErrorCategoryAnalyzer({ validationErrors, onSelectErrors
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1">
                                     <span className="font-semibold">Row {error.row}:</span> {error.patient}
-                                    <p className="text-xs mt-1 text-gray-700">{error.error}</p>
+                                    <p className="text-xs mt-1 text-slate-700">{error.error}</p>
                                   </div>
                                 </div>
                               </AlertDescription>
                             </Alert>
                           ))}
                           {errors.length > 10 && (
-                            <p className="text-xs text-gray-500 text-center py-2">
+                            <p className="text-xs text-slate-500 text-center py-2">
                               + {errors.length - 10} more errors
                             </p>
                           )}
@@ -201,8 +199,8 @@ export default function ErrorCategoryAnalyzer({ validationErrors, onSelectErrors
         </div>
 
         {sortedCategories.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <Info className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <div className="text-center py-8 text-slate-500">
+            <Info className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <p>No errors to analyze</p>
           </div>
         )}

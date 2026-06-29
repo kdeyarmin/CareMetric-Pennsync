@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -29,7 +29,7 @@ export default function RichTextNoteEditor({
       setEditableText(value);
     }
     isInternalChange.current = false;
-  }, [value]);
+  }, [value, editableText]);
 
   // Track changes for undo/redo
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function RichTextNoteEditor({
       setHistoryIndex(newHistory.length - 1);
       lastValueRef.current = value;
     }
-  }, [value]);
+  }, [value, history, historyIndex]);
 
   const handleUndo = useCallback(() => {
     if (historyIndex > 0) {
@@ -147,7 +147,7 @@ export default function RichTextNoteEditor({
           >
             <Redo2 className="w-4 h-4" />
           </Button>
-          <span className="text-xs text-gray-400 ml-2">
+          <span className="text-xs text-slate-400 ml-2">
             {historyIndex + 1}/{history.length} versions
           </span>
         </div>
@@ -187,7 +187,7 @@ export default function RichTextNoteEditor({
               overlay.scrollLeft = e.target.scrollLeft;
             }
           }}
-          className="w-full h-full min-h-[300px] p-4 font-sans text-sm leading-relaxed resize-none bg-transparent relative z-10 text-gray-900 focus:outline-none overflow-auto"
+          className="w-full h-full min-h-[300px] p-4 font-sans text-sm leading-relaxed resize-none bg-transparent relative z-10 text-slate-900 focus:outline-none overflow-auto"
           style={{ caretColor: 'black' }}
           placeholder="Enhanced note will appear here..."
         />
@@ -199,7 +199,7 @@ export default function RichTextNoteEditor({
         </div>
       </div>
 
-      <p className="text-xs text-gray-500 text-center">
+      <p className="text-xs text-slate-500 text-center">
         Use undo/redo buttons or Ctrl+Z / Ctrl+Shift+Z keyboard shortcuts
       </p>
     </div>

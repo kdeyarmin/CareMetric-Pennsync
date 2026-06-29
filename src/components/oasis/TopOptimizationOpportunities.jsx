@@ -1,11 +1,9 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Trophy,
   TrendingUp,
   DollarSign,
-  ArrowRight,
   Lightbulb,
   Star
 } from "lucide-react";
@@ -24,16 +22,16 @@ export default function TopOptimizationOpportunities({ revenueTips }) {
       case 'high': return 'bg-green-100 text-green-800 border-green-300';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'low': return 'bg-blue-100 text-blue-800 border-blue-300';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
   const getRankStyle = (index) => {
     switch (index) {
       case 0: return { bg: 'bg-gradient-to-r from-yellow-400 to-amber-500', icon: '🥇' };
-      case 1: return { bg: 'bg-gradient-to-r from-gray-300 to-gray-400', icon: '🥈' };
+      case 1: return { bg: 'bg-gradient-to-r from-slate-300 to-slate-400', icon: '🥈' };
       case 2: return { bg: 'bg-gradient-to-r from-amber-600 to-amber-700', icon: '🥉' };
-      default: return { bg: 'bg-gray-200', icon: '' };
+      default: return { bg: 'bg-slate-200', icon: '' };
     }
   };
 
@@ -54,7 +52,7 @@ export default function TopOptimizationOpportunities({ revenueTips }) {
               key={index}
               className={`relative p-4 rounded-lg border-2 ${
                 index === 0 ? 'border-amber-300 bg-amber-50' :
-                index === 1 ? 'border-gray-300 bg-gray-50' :
+                index === 1 ? 'border-slate-300 bg-slate-50' :
                 'border-orange-200 bg-orange-50'
               }`}
             >
@@ -87,8 +85,8 @@ export default function TopOptimizationOpportunities({ revenueTips }) {
                 <div className="space-y-2">
                   {tip.current_documentation && (
                     <div className="flex items-start gap-2">
-                      <span className="text-xs text-gray-500 w-16 flex-shrink-0">Current:</span>
-                      <p className="text-xs text-gray-600">{tip.current_documentation}</p>
+                      <span className="text-xs text-slate-500 w-16 flex-shrink-0">Current:</span>
+                      <p className="text-xs text-slate-600">{tip.current_documentation}</p>
                     </div>
                   )}
                   
@@ -105,8 +103,8 @@ export default function TopOptimizationOpportunities({ revenueTips }) {
                   <div className="mt-3 p-2 bg-white rounded border flex items-start gap-2">
                     <Lightbulb className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-medium text-gray-700">Recommended Action:</p>
-                      <p className="text-xs text-gray-600">{tip.specific_action}</p>
+                      <p className="text-xs font-medium text-slate-700">Recommended Action:</p>
+                      <p className="text-xs text-slate-600">{tip.specific_action}</p>
                     </div>
                   </div>
                 )}

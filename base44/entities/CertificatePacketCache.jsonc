@@ -1,0 +1,57 @@
+{
+  "name": "CertificatePacketCache",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User email"
+    },
+    "certificate_ids_json": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of certificate IDs in packet"
+    },
+    "date_range_start": {
+      "type": "string",
+      "format": "date",
+      "description": "Date range start (optional)"
+    },
+    "date_range_end": {
+      "type": "string",
+      "format": "date",
+      "description": "Date range end (optional)"
+    },
+    "file_uri": {
+      "type": "string",
+      "description": "URI to cached PDF file in private storage"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When packet was generated"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When cache expires (24 hours after generation)"
+    },
+    "download_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times downloaded"
+    },
+    "last_downloaded": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last download timestamp"
+    }
+  },
+  "required": [
+    "user_id",
+    "file_uri",
+    "generated_at",
+    "expires_at"
+  ]
+}

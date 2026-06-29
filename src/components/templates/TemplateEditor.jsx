@@ -1,8 +1,7 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,18 +18,19 @@ import {
   RefreshCw,
   Wand2
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function TemplateEditor({ 
   templateData, 
   patient,
-  visitType,
+  _visitType,
   onContentChange,
   onClose 
 }) {
   const [content, setContent] = useState(templateData?.content?.template_content || '');
   const [expandedSections, setExpandedSections] = useState({});
   const [clinicalResponses, setClinicalResponses] = useState({});
-  const [isEnhancing, setIsEnhancing] = useState(false);
+  const ai = useAICall();
   const [copied, setCopied] = useState(false);
 
   const clinicalPrompts = templateData?.content?.clinical_prompts || [];
@@ -51,7 +51,6 @@ export default function TemplateEditor({
   };
 
   const handleEnhanceWithAI = async () => {
-    setIsEnhancing(true);
     try {
       const prompt = `You are a clinical documentation specialist. Enhance this clinical note by:
 1. Filling in placeholders with clinically appropriate language based on the responses provided
@@ -74,7 +73,8 @@ ${content}
 
 Return the enhanced, complete clinical note ready for documentation. Keep all factual information accurate. Fill in bracketed placeholders appropriately.`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt
       });
 
@@ -84,9 +84,8 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
       }
     } catch (error) {
       console.error('Error enhancing template:', error);
-      alert('Failed to enhance template. Please try again.');
+      toast.error('Failed to enhance template. Please try again.');
     }
-    setIsEnhancing(false);
   };
 
   const handleCopyToClipboard = () => {
@@ -122,8 +121,8 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
                 <FileText className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">{templateData?.template?.name || 'Clinical Template'}</h3>
-                <p className="text-sm text-gray-600">{templateData?.template?.description}</p>
+                <h3 className="font-semibold text-slate-900">{templateData?.template?.name || 'Clinical Template'}</h3>
+                <p className="text-sm text-slate-600">{templateData?.template?.description}</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -158,7 +157,7 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-600" />
+              <Sparkles className="w-5 h-5 text-navy-600" />
               Quick Fill - Clinical Responses
             </CardTitle>
           </CardHeader>
@@ -167,7 +166,7 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
               <div key={section} className="border rounded-lg">
                 <button
                   onClick={() => toggleSection(section)}
-                  className="w-full flex items-center justify-between p-3 hover:bg-gray-50"
+                  className="w-full flex items-center justify-between p-3 hover:bg-slate-50"
                 >
                   <span className="font-medium capitalize">{section.replace(/_/g, ' ')}</span>
                   {expandedSections[section] ? (
@@ -180,7 +179,7 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
                   <div className="p-3 pt-0 space-y-3 border-t">
                     {prompts.map((prompt, idx) => (
                       <div key={idx}>
-                        <Label className="text-sm text-gray-700">{prompt.prompt}</Label>
+                        <Label className="text-sm text-slate-700">{prompt.prompt}</Label>
                         {prompt.options && prompt.options.length > 0 ? (
                           <Select
                             value={clinicalResponses[`${section}_${idx}`] || ''}
@@ -214,10 +213,10 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
 
             <Button
               onClick={handleEnhanceWithAI}
-              disabled={isEnhancing}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              disabled={ai.loading}
+              className="w-full bg-gradient-to-r from-navy-600 to-gold-600 hover:from-navy-700 hover:to-gold-700"
             >
-              {isEnhancing ? (
+              {ai.loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                   Enhancing with AI...

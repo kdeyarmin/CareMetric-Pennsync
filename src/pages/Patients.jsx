@@ -1,39 +1,24 @@
-import React, { useState, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Search, User, Phone, MapPin, FileText, X, Trash2, Download } from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { format, isValid } from 'date-fns';
-import { toast } from "sonner";
-import { secureDelete, handleSecureError, logSecurityEvent } from "../components/utils/security";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Plus, User, ArrowUpDown, Users, UserCheck, Target, CalendarPlus } from "lucide-react";
+import { secureDelete, handleSecureError } from "../components/utils/security";
 
 import PatientForm from "../components/patient/PatientForm";
-import AIPatientSummaryReport from "../components/smartNote/AIPatientSummaryReport";
-import DuplicatePatientManager from "../components/patient/DuplicatePatientManager";
+import { patientMatchesSearch } from "../components/patient/AdvancedPatientFilters";
 import AdvancedPatientFilters from "../components/patient/AdvancedPatientFilters";
-import ReferralUploadProcessor from "../components/referral/ReferralUploadProcessor";
 import BulkPatientActions from "../components/patient/BulkPatientActions";
 import PatientMergeDialog from "../components/patient/PatientMergeDialog";
 import PaginatedPatientList from "../components/patient/PaginatedPatientList";
-import Pagination from "../components/ui/Pagination";
-import FavoriteButton from "../components/navigation/FavoriteButton";
+import PageHeader from "@/components/ui/PageHeader";
+import PageContainer from "@/components/ui/PageContainer";
+import StatCard from "@/components/ui/stat-card";
+import EmptyState from "@/components/ui/empty-state";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
-import EmptyState from "../components/ui/EmptyState";
-import PullToRefresh from "../components/mobile/PullToRefresh";
+import PatientCardSkeleton from "../components/loading/PatientCardSkeleton";
+import SwipeablePatientCard from "../components/mobile/SwipeablePatientCard";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,42 +29,45 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Patients() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState({});
   const [editingPatient, setEditingPatient] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showSummaryDialog, setShowSummaryDialog] = useState(false);
-  const [summaryPatient, setSummaryPatient] = useState(null);
   const [selectedPatients, setSelectedPatients] = useState([]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [patientsToMerge, setPatientsToMerge] = useState({ patient1: null, patient2: null });
-  const [showReferralUpload, setShowReferralUpload] = useState(false);
-  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
-  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [sortBy, setSortBy] = useState('newest');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceTimer = useRef(null);
+
+  // Debounce search input by 300ms to avoid filtering on every keystroke
+  useEffect(() => {
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(filters.search || '');
+    }, 300);
+    return () => clearTimeout(debounceTimer.current);
+  }, [filters.search]);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: async () => {
-      try {
-        return await base44.auth.me();
-      } catch (error) {
-        base44.auth.redirectToLogin();
-        return null;
-      }
-    },
+    queryFn: () => base44.auth.me(),
   });
 
   // Log page visit
-  React.useEffect(() => {
+  useEffect(() => {
     if (currentUser?.email) {
       logActivity(ActivityActions.PAGE_VISIT, {
         page: 'Patients',
@@ -90,88 +78,41 @@ export default function Patients() {
 
   const { data: patients, isLoading, error: patientsError } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list('-created_date'),
+    queryFn: async () => {
+      const allPatients = await base44.entities.Patient.list('-created_date', 2000);
+      return allPatients.filter(patient => !patient.is_archived);
+    },
     initialData: [],
   });
 
   const { data: allVisits = [] } = useQuery({
     queryKey: ['allVisits'],
-    queryFn: () => base44.entities.Visit.list(),
+    queryFn: () => base44.entities.Visit.list('-visit_date', 500),
     initialData: [],
+    staleTime: 300000,
   });
 
   const { data: allCarePlans = [] } = useQuery({
     queryKey: ['allCarePlans'],
-    queryFn: () => base44.entities.CarePlan.list(),
+    queryFn: () => base44.entities.CarePlan.list('-updated_date', 300),
     initialData: [],
+    staleTime: 300000,
   });
 
-  // Fetch visits and care plans for summary dialog
-  const { data: summaryVisits = [] } = useQuery({
-    queryKey: ['summaryVisits', summaryPatient?.id],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: summaryPatient.id, status: 'completed' }, '-visit_date', 10),
-    enabled: !!summaryPatient?.id,
-  });
-
-  const { data: summaryCarePlans = [] } = useQuery({
-    queryKey: ['summaryCarePlans', summaryPatient?.id],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: summaryPatient.id }),
-    enabled: !!summaryPatient?.id,
-  });
-
-  const handleShowSummary = (patient) => {
-    setSummaryPatient(patient);
-    setShowSummaryDialog(true);
-  };
-
-  // Handle query errors gracefully (logged server-side)
-
-  const createPatientMutation = useMutation({
-    mutationFn: (patientData) => base44.entities.Patient.create(patientData),
-    onSuccess: (newPatient) => {
-      queryClient.invalidateQueries({ queryKey: ['patients'] });
-      setShowForm(false);
-      setEditingPatient(null);
-      
-      // Log patient creation
-      logActivity(ActivityActions.CREATE, {
-        entity_type: 'Patient',
-        entity_id: newPatient.id,
-        patient_name: `${newPatient.first_name} ${newPatient.last_name}`,
-        page: 'Patients'
-      });
-    },
-  });
-
-  const updatePatientMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Patient.update(id, data),
-    onSuccess: (updatedPatient, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['patients'] });
-      setShowForm(false);
-      setEditingPatient(null);
-      
-      // Log patient update
-      logActivity(ActivityActions.UPDATE, {
-        entity_type: 'Patient',
-        entity_id: variables.id,
-        page: 'Patients'
-      });
-    },
-  });
+  // Handle query errors gracefully
+  if (patientsError) {
+    console.error('Error loading patients:', patientsError);
+  }
 
   const deletePatientMutation = useMutation({
     mutationFn: async (patientId) => {
-      const { data } = await base44.functions.invoke('deletePatientData', { patientId });
-      return data;
+      await secureDelete(base44.entities.Patient, patientId, 'Patient');
     },
-    onSuccess: (data, deletedId) => {
+    onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
-      queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
       setDeleteDialogOpen(false);
       setPatientToDelete(null);
       setIsDeleting(false);
-      toast.success('Patient and all related data deleted');
       
       // Log patient deletion
       logActivity(ActivityActions.DELETE, {
@@ -182,27 +123,7 @@ export default function Patients() {
     },
     onError: async (error) => {
       setIsDeleting(false);
-      toast.error('Failed to delete patient');
       await handleSecureError(error, 'patient_delete', (msg) => toast.error(msg));
-    }
-  });
-
-  const bulkDeleteMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await base44.functions.invoke('deletePatientData', { deleteAll: true });
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['patients'] });
-      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
-      queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
-      setShowBulkDeleteDialog(false);
-      setIsBulkDeleting(false);
-      toast.success(data.message || 'All patients deleted');
-    },
-    onError: (error) => {
-      setIsBulkDeleting(false);
-      toast.error('Failed to delete all patients');
     }
   });
 
@@ -212,77 +133,81 @@ export default function Patients() {
     deletePatientMutation.mutate(patientToDelete.id);
   };
 
-  const handleBulkDelete = () => {
-    setIsBulkDeleting(true);
-    bulkDeleteMutation.mutate();
-  };
-
-  const handleSubmit = (data) => {
-    if (editingPatient) {
-      updatePatientMutation.mutate({ id: editingPatient.id, data });
-    } else {
-      createPatientMutation.mutate(data);
-    }
-  };
-
-  // Visit type template quick-add
-  const createVisitFromTemplate = useMutation({
-    mutationFn: async ({ patientId, templateType }) => {
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const visitData = {
-        patient_id: patientId,
-        visit_date: today,
-        visit_time: '', // Could be dynamic or default to empty
-        visit_type: templateType,
-        status: 'scheduled'
-      };
-      return base44.entities.Visit.create(visitData);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['todayVisits'] }); // Invalidate relevant queries, e.g., for a dashboard showing today's visits
-      toast.success('Visit scheduled successfully!'); // Simple feedback
-    },
-    onError: (error) => {
-      toast.error('Failed to schedule visit. Please try again.');
-    }
-  });
-
-  const visitTemplates = [
-    { type: 'routine_visit', label: 'Routine Visit', icon: '📋' },
-    { type: 'skilled_nursing', label: 'Skilled Nursing', icon: '💉' },
-    { type: 'admission', label: 'Admission', icon: '🏥' },
-    { type: 'recertification', label: 'Recertification', icon: '📝' },
-  ];
-
   const calculateAge = (dob) => {
     if (!dob) return null;
     const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    // Parse a bare ISO date (YYYY-MM-DD) as PLAIN calendar components. `new
+    // Date("YYYY-MM-DD")` parses as UTC midnight, so in a timezone behind UTC the
+    // local day shifts back one (e.g. 1961-12-01 → 1961-11-30), which can flip the
+    // birthday comparison and report the wrong age at the Medicare-band boundary.
+    let birthYear, birthMonth, birthDay;
+    const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(dob).trim());
+    if (iso) {
+      birthYear = Number(iso[1]); birthMonth = Number(iso[2]) - 1; birthDay = Number(iso[3]);
+    } else {
+      const birthDate = new Date(dob);
+      if (Number.isNaN(birthDate.getTime())) return null;
+      birthYear = birthDate.getFullYear(); birthMonth = birthDate.getMonth(); birthDay = birthDate.getDate();
+    }
+    let age = today.getFullYear() - birthYear;
+    const m = today.getMonth() - birthMonth;
+    if (m < 0 || (m === 0 && today.getDate() < birthDay)) {
       age--;
     }
     return age;
   };
 
-  const filteredPatients = (patients || []).filter(patient => {
+  const lastVisitDateByPatientId = useMemo(() => {
+    const map = {};
+    for (const v of allVisits) {
+      const existing = map[v.patient_id];
+      if (!existing || new Date(v.visit_date) > new Date(existing)) {
+        map[v.patient_id] = v.visit_date;
+      }
+    }
+    return map;
+  }, [allVisits]);
+
+  const visitCountByPatientId = useMemo(() => {
+    const map = {};
+    for (const v of allVisits) {
+      map[v.patient_id] = (map[v.patient_id] || 0) + 1;
+    }
+    return map;
+  }, [allVisits]);
+
+  const carePlanCountByPatientId = useMemo(() => {
+    const map = {};
+    for (const cp of allCarePlans) {
+      map[cp.patient_id] = (map[cp.patient_id] || 0) + 1;
+    }
+    return map;
+  }, [allCarePlans]);
+
+  // Roster summary stats — memoized so the four StatCards don't re-scan the full
+  // patient list on every unrelated re-render (search typing, dialog open, etc.).
+  const rosterStats = useMemo(() => {
+    const list = patients || [];
+    const cutoff = Date.now() - 30 * 86400000;
+    return {
+      total: list.length,
+      active: list.filter(p => p.status === 'active').length,
+      withCarePlans: list.filter(p => (carePlanCountByPatientId[p.id] || 0) > 0).length,
+      recent: list.filter(p => p.created_date && new Date(p.created_date).getTime() >= cutoff).length,
+    };
+  }, [patients, carePlanCountByPatientId]);
+
+  const filteredPatients = useMemo(() => (patients || []).filter(patient => {
     if (!patient) return false;
-    
-    // Text search
-    const searchLower = (filters.search || searchTerm || '').toLowerCase();
-    const matchesSearch = !searchLower || 
-      (patient.first_name || '').toLowerCase().includes(searchLower) ||
-      (patient.last_name || '').toLowerCase().includes(searchLower) ||
-      (patient.medical_record_number || '').toLowerCase().includes(searchLower) ||
-      (patient.phone || '').toLowerCase().includes(searchLower) ||
-      (patient.address || '').toLowerCase().includes(searchLower);
+
+    // Fuzzy search across name, MRN, phone, diagnosis (debounced)
+    const matchesSearch = patientMatchesSearch(patient, debouncedSearch);
 
     // Status filter
     const matchesStatus = !filters.status || filters.status === 'all' || patient.status === filters.status;
 
     // Diagnosis filter
-    const matchesDiagnosis = !filters.diagnosis || 
+    const matchesDiagnosis = !filters.diagnosis ||
       (patient.primary_diagnosis || '').toLowerCase().includes(filters.diagnosis.toLowerCase());
 
     // Age filter
@@ -290,27 +215,50 @@ export default function Patients() {
     const matchesAgeMin = !filters.ageMin || (patientAge !== null && patientAge >= parseInt(filters.ageMin));
     const matchesAgeMax = !filters.ageMax || (patientAge !== null && patientAge <= parseInt(filters.ageMax));
 
-    // Visit filter
-    const patientVisits = allVisits.filter(v => v.patient_id === patient.id);
+    // Visit filter — use pre-built index instead of filtering allVisits per patient
+    const patientVisitCount = visitCountByPatientId[patient.id] || 0;
     const matchesVisits = !filters.hasVisits || filters.hasVisits === 'all' ||
-      (filters.hasVisits === 'yes' && patientVisits.length > 0) ||
-      (filters.hasVisits === 'no' && patientVisits.length === 0);
+      (filters.hasVisits === 'yes' && patientVisitCount > 0) ||
+      (filters.hasVisits === 'no' && patientVisitCount === 0);
 
-    // Care plan filter
-    const patientCarePlans = allCarePlans.filter(cp => cp.patient_id === patient.id);
+    // Care plan filter — use pre-built index instead of filtering allCarePlans per patient
+    const patientCarePlanCount = carePlanCountByPatientId[patient.id] || 0;
     const matchesCarePlans = !filters.hasCarePlans || filters.hasCarePlans === 'all' ||
-      (filters.hasCarePlans === 'yes' && patientCarePlans.length > 0) ||
-      (filters.hasCarePlans === 'no' && patientCarePlans.length === 0);
+      (filters.hasCarePlans === 'yes' && patientCarePlanCount > 0) ||
+      (filters.hasCarePlans === 'no' && patientCarePlanCount === 0);
 
     // Date range filter
     const createdDate = new Date(patient.created_date);
     const matchesAfter = !filters.createdAfter || createdDate >= new Date(filters.createdAfter);
     const matchesBefore = !filters.createdBefore || createdDate <= new Date(filters.createdBefore);
 
-    return matchesSearch && matchesStatus && matchesDiagnosis && 
-           matchesAgeMin && matchesAgeMax && matchesVisits && 
+    return matchesSearch && matchesStatus && matchesDiagnosis &&
+           matchesAgeMin && matchesAgeMax && matchesVisits &&
            matchesCarePlans && matchesAfter && matchesBefore;
-  });
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case 'name-asc':
+        return (`${a.last_name} ${a.first_name}`).localeCompare(`${b.last_name} ${b.first_name}`);
+      case 'name-desc':
+        return (`${b.last_name} ${b.first_name}`).localeCompare(`${a.last_name} ${a.first_name}`);
+      case 'newest':
+        return new Date(b.created_date || 0) - new Date(a.created_date || 0);
+      case 'oldest':
+        return new Date(a.created_date || 0) - new Date(b.created_date || 0);
+      case 'last-visit': {
+        const aDate = lastVisitDateByPatientId[a.id] || 0;
+        const bDate = lastVisitDateByPatientId[b.id] || 0;
+        return new Date(bDate) - new Date(aDate);
+      }
+      case 'most-visits': {
+        const aCount = visitCountByPatientId[a.id] || 0;
+        const bCount = visitCountByPatientId[b.id] || 0;
+        return bCount - aCount;
+      }
+      default:
+        return 0;
+    }
+  }), [patients, filters, debouncedSearch, sortBy, visitCountByPatientId, lastVisitDateByPatientId, carePlanCountByPatientId]);
 
   const togglePatientSelection = (patient) => {
     setSelectedPatients(prev => {
@@ -330,75 +278,35 @@ export default function Patients() {
     }
   };
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredPatients.length / itemsPerPage);
-  const paginatedPatients = filteredPatients.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+
 
   return (
-    <PremiumFeatureGate
-      featureName="Patient Management"
-      featureDescription="Manage your patient roster with comprehensive profiles, medical histories, and AI-powered insights. This premium feature enables better clinical decision-making and personalized care planning."
-      allowTrial={true}
-    >
-    <PullToRefresh onRefresh={async () => {
-      await queryClient.invalidateQueries({ queryKey: ['patients'] });
-    }}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full max-w-full overflow-x-hidden min-w-0 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
-       <div className="flex flex-col gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
-         <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-3">
-           <div className="flex items-start gap-2 flex-1">
-             <div className="flex-1">
-               <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100">My Patients</h1>
-               <p className="text-[10px] sm:text-xs md:text-sm text-slate-600 dark:text-slate-400 mt-0.5 sm:mt-1">Patient roster</p>
-            </div>
-            <FavoriteButton type="page" id="Patients" name="Patients" />
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
-            <Button
-              onClick={() => setShowReferralUpload(true)}
-              variant="outline"
-              size="sm"
-              className="flex-1 sm:flex-none"
-            >
-              <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="text-xs sm:text-sm">Upload</span>
-            </Button>
-            {currentUser?.role === 'admin' && (
-              <Button
-                onClick={() => setShowBulkDeleteDialog(true)}
-                variant="destructive"
-                size="sm"
-                className="flex-1 sm:flex-none"
-              >
-                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                <span className="text-xs sm:text-sm">Delete All</span>
-              </Button>
-            )}
-            <Button
-              onClick={() => navigate(createPageUrl('PatientOnboarding'))}
-              size="sm"
-              className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700"
-            >
-              <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="text-xs sm:text-sm">Onboard Patient</span>
-            </Button>
-            <Button
-              onClick={() => {
-                setEditingPatient(null);
-                setShowForm(true);
-              }}
-              size="sm"
-              variant="outline"
-              className="flex-1 sm:flex-none"
-            >
-              <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="text-xs sm:text-sm">Quick Add</span>
-            </Button>
-          </div>
-        </div>
+    <PageContainer>
+      <PageHeader
+        icon={Users}
+        eyebrow="Patient Care"
+        title="Patient Management"
+        description="Search, filter, and manage the active patient roster."
+        favoritePage="Patients"
+        actions={
+          <Button onClick={() => { setEditingPatient(null); setShowForm(true); }} className="min-h-[46px] px-5">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Patient
+          </Button>
+        }
+      />
+
+      {/* Roster summary — shared StatCard treatment, matching the Dashboard. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard label="Total Patients" value={rosterStats.total} icon={Users} tone="navy" />
+        <StatCard label="Active" value={rosterStats.active} icon={UserCheck} tone="emerald" />
+        <StatCard label="With Care Plans" value={rosterStats.withCarePlans} icon={Target} tone="gold" />
+        <StatCard
+          label="New (30 days)"
+          value={rosterStats.recent}
+          icon={CalendarPlus}
+          tone="slate"
+        />
       </div>
 
       {showForm && (
@@ -415,20 +323,40 @@ export default function Patients() {
         />
       )}
 
-      {/* Duplicate Detection Alert */}
-      <DuplicatePatientManager />
-
-      {/* Advanced Filters */}
-      <div className="mb-4">
-        <AdvancedPatientFilters 
+      <div className="mb-6">
+        <AdvancedPatientFilters
           onFilterChange={setFilters}
           activeFilters={filters}
         />
       </div>
 
+      {/* Sort & Results Count */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm text-slate-500">
+          {filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}
+          {filters.search && ` matching "${filters.search}"`}
+        </p>
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-[160px] h-8 text-xs">
+              <SelectValue placeholder="Sort by..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="name-asc">Name A-Z</SelectItem>
+              <SelectItem value="name-desc">Name Z-A</SelectItem>
+              <SelectItem value="last-visit">Last Visit</SelectItem>
+              <SelectItem value="most-visits">Most Visits</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {/* Bulk Actions Bar */}
       {selectedPatients.length > 0 && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <BulkPatientActions
             selectedPatients={selectedPatients}
             onClearSelection={() => setSelectedPatients([])}
@@ -436,7 +364,7 @@ export default function Patients() {
           {selectedPatients.length === 2 && (
             <Button
               onClick={handleMergeSelected}
-              className="mt-2"
+              className="mt-2 bg-navy-600 hover:bg-navy-700 w-full sm:w-auto min-h-[44px]"
             >
               Merge Selected Patients
             </Button>
@@ -444,38 +372,77 @@ export default function Patients() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4">
+      {/* Mobile Optimized List */}
+      <div className="lg:hidden space-y-3 mb-20">
         {isLoading ? (
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              Loading patients...
-            </CardContent>
-          </Card>
+          <>
+            <PatientCardSkeleton />
+            <PatientCardSkeleton />
+            <PatientCardSkeleton />
+          </>
         ) : filteredPatients.length === 0 ? (
-          <div className="md:col-span-2">
-            <EmptyState
-              icon={User}
-              iconColor="text-blue-300"
-              title="No Patients Found"
-              description={
-                searchTerm || Object.keys(filters).length > 0
-                  ? "Try adjusting your search or filters to find patients"
-                  : "Add your first patient to begin managing their care and documentation"
-              }
-              actionLabel={!searchTerm && Object.keys(filters).length === 0 ? "Add Your First Patient" : null}
-              onAction={!searchTerm && Object.keys(filters).length === 0 ? () => setShowForm(true) : null}
-              secondaryActionLabel={searchTerm || Object.keys(filters).length > 0 ? "Clear Filters" : null}
-              onSecondaryAction={searchTerm || Object.keys(filters).length > 0 ? () => { setSearchTerm(""); setFilters({}); } : null}
-            />
-          </div>
+          <EmptyState
+            icon={User}
+            title="No patients found"
+            description={filters.search ? 'No patients match your search.' : 'Start by adding your first patient.'}
+            action={!filters.search && (
+              <Button onClick={() => setShowForm(true)} className="min-h-[44px]">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Your First Patient
+              </Button>
+            )}
+          />
         ) : (
-          <div className="md:col-span-2 space-y-4">
+          filteredPatients.map((patient) => (
+            <SwipeablePatientCard
+              key={patient.id}
+              patient={patient}
+              isSelected={selectedPatients.some(p => p.id === patient.id)}
+              onToggleSelect={togglePatientSelection}
+              onEdit={(p) => {
+                setEditingPatient(p);
+                setShowForm(true);
+              }}
+              onDelete={(p) => {
+                setPatientToDelete(p);
+                setDeleteDialogOpen(true);
+              }}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Desktop Grid View */}
+      <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6">
+        {isLoading ? (
+          <>
+            <PatientCardSkeleton />
+            <PatientCardSkeleton />
+            <PatientCardSkeleton />
+            <PatientCardSkeleton />
+          </>
+        ) : filteredPatients.length === 0 ? (
+          <EmptyState
+            className="md:col-span-2"
+            icon={User}
+            title="No patients found"
+            description={filters.search ? 'No patients match your search.' : 'Start by adding your first patient.'}
+            action={!filters.search && (
+              <Button onClick={() => setShowForm(true)} className="min-h-[44px]">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Your First Patient
+              </Button>
+            )}
+          />
+        ) : (
+          <div className="md:col-span-2">
             <PaginatedPatientList
-              patients={paginatedPatients}
+              patients={filteredPatients}
               showCheckboxes={true}
+              showSearch={false}
               selectedPatients={selectedPatients.map(p => p.id)}
               onSelectionChange={(ids) => {
-                const selected = paginatedPatients.filter(p => ids.includes(p.id));
+                const selected = filteredPatients.filter(p => ids.includes(p.id));
                 setSelectedPatients(selected);
               }}
               onPatientSelect={(patientId) => {
@@ -485,32 +452,12 @@ export default function Patients() {
                   setShowForm(true);
                 }
               }}
-              onPatientDelete={(patient) => {
-                setPatientToDelete(patient);
-                setDeleteDialogOpen(true);
-              }}
-            />
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={(page) => {
-                setCurrentPage(page);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              itemsPerPage={itemsPerPage}
-              onItemsPerPageChange={(count) => {
-                setItemsPerPage(count);
-                setCurrentPage(1);
-              }}
-              totalItems={filteredPatients.length}
-              showItemsPerPage={true}
             />
           </div>
         )}
       </div>
 
-      {/* Legacy patient cards - keeping for reference if needed */}
-      
+
 
       {/* Patient Merge Dialog */}
       <PatientMergeDialog
@@ -525,67 +472,16 @@ export default function Patients() {
         patient2={patientsToMerge.patient2}
       />
 
-      {/* Referral Upload Dialog */}
-      <Dialog open={showReferralUpload} onOpenChange={setShowReferralUpload}>
-        <DialogContent className="max-w-2xl sm:max-w-5xl max-h-[90vh] overflow-y-auto w-full mx-2">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-                 <FileText className="w-5 h-5 text-slate-700 dark:text-slate-400" />
-                 Upload Patient Referral
-               </DialogTitle>
-          </DialogHeader>
-          <ReferralUploadProcessor
-            onPatientDataExtracted={(data) => {
-              // Data extracted successfully
-            }}
-            onCreatePatient={async (patientData) => {
-              await createPatientMutation.mutateAsync(patientData);
-              setShowReferralUpload(false);
-            }}
-          />
-        </DialogContent>
-      </Dialog>
 
-      {/* Patient Summary Dialog */}
-                  <Dialog open={showSummaryDialog} onOpenChange={setShowSummaryDialog}>
-                    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                             <FileText className="w-5 h-5 text-slate-700 dark:text-slate-400" />
-                          Patient Summary: {summaryPatient?.first_name} {summaryPatient?.last_name}
-                        </DialogTitle>
-                      </DialogHeader>
-                      {summaryPatient && (
-                        <AIPatientSummaryReport
-                          patient={summaryPatient}
-                          previousVisits={summaryVisits}
-                          carePlans={summaryCarePlans}
-                          compact={false}
-                        />
-                      )}
-                    </DialogContent>
-                  </Dialog>
 
                   {/* Delete Confirmation Dialog */}
                   <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Patient & All Data</AlertDialogTitle>
+                        <AlertDialogTitle>Delete Patient</AlertDialogTitle>
                         <AlertDialogDescription>
-                          <div className="space-y-3">
-                            <p>Are you sure you want to permanently delete <strong>{patientToDelete?.first_name} {patientToDelete?.last_name}</strong>?</p>
-                            <div className="bg-slate-200 border border-slate-300 dark:bg-slate-800 dark:border-slate-600 rounded-lg p-3 text-sm text-slate-900 dark:text-slate-100">
-                              <p className="font-semibold mb-1">⚠️ This will permanently delete:</p>
-                              <ul className="list-disc list-inside space-y-1 ml-2">
-                                <li>Patient profile and medical history</li>
-                                <li>All visit notes and documentation</li>
-                                <li>Care plans and goals</li>
-                                <li>Incident reports</li>
-                                <li>All associated data</li>
-                              </ul>
-                              <p className="mt-2 font-semibold">This action cannot be undone.</p>
-                            </div>
-                          </div>
+                          Are you sure you want to delete {patientToDelete?.first_name} {patientToDelete?.last_name}? 
+                          This action cannot be undone and will remove all associated data.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -593,52 +489,13 @@ export default function Patients() {
                         <AlertDialogAction
                           onClick={handleDeletePatient}
                           disabled={isDeleting}
-                          className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-600 text-white"
+                          className="bg-red-600 hover:bg-red-700"
                         >
-                          {isDeleting ? "Deleting..." : "Delete Patient & All Data"}
+                          {isDeleting ? "Deleting..." : "Delete"}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-
-                  {/* Bulk Delete Confirmation Dialog */}
-                  <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="text-red-600">⚠️ Delete ALL Patients?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          <div className="space-y-3">
-                            <p className="font-semibold text-red-600">This is extremely destructive and will delete:</p>
-                            <div className="bg-red-50 border border-red-300 dark:bg-red-900/20 dark:border-red-600 rounded-lg p-3 text-sm text-slate-900 dark:text-slate-100">
-                              <ul className="list-disc list-inside space-y-1 ml-2">
-                                <li><strong>ALL patient profiles</strong> ({patients?.length || 0} patients)</li>
-                                <li><strong>ALL visit notes and documentation</strong></li>
-                                <li><strong>ALL care plans</strong></li>
-                                <li><strong>ALL tasks and alerts</strong></li>
-                                <li><strong>ALL incidents and reports</strong></li>
-                                <li><strong>ALL education assignments</strong></li>
-                                <li><strong>ALL associated data</strong></li>
-                              </ul>
-                              <p className="mt-3 font-bold text-red-600">THIS ACTION CANNOT BE UNDONE!</p>
-                              <p className="mt-1 text-xs">The app cache will also be cleared.</p>
-                            </div>
-                          </div>
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isBulkDeleting}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={handleBulkDelete}
-                          disabled={isBulkDeleting}
-                          className="bg-red-600 hover:bg-red-700 text-white"
-                        >
-                          {isBulkDeleting ? "Deleting All..." : "Yes, Delete Everything"}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-    </PullToRefresh>
-    </PremiumFeatureGate>
+                </PageContainer>
               );
             }

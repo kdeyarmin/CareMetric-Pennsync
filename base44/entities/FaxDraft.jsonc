@@ -1,0 +1,45 @@
+{
+  "name": "FaxDraft",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Draft name"
+    },
+    "from_number": {
+      "type": "string"
+    },
+    "to_numbers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of recipient numbers"
+    },
+    "document_url": {
+      "type": "string",
+      "description": "Attached document URL"
+    },
+    "captured_images": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Base64 captured images"
+    },
+    "cover_page_data": {
+      "type": "object",
+      "description": "Cover page details"
+    },
+    "include_cover_page": {
+      "type": "boolean",
+      "default": false
+    },
+    "patient_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

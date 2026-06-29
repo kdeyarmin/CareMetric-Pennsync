@@ -1,10 +1,9 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -22,12 +21,13 @@ import {
   Lightbulb,
   MessageCircle
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function SimplifiedExplanationGenerator({ patient, diagnosis }) {
   const [nurseInput, setNurseInput] = useState("");
   const [explanationType, setExplanationType] = useState("condition");
   const [simplificationLevel, setSimplificationLevel] = useState("very_simple");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [explanation, setExplanation] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -48,13 +48,13 @@ export default function SimplifiedExplanationGenerator({ patient, diagnosis }) {
 
   const generateExplanation = async () => {
     if (!nurseInput.trim()) {
-      alert("Please enter the medical information you want to explain.");
+      toast.error("Please enter the medical information you want to explain.");
       return;
     }
 
-    setIsGenerating(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `You are an expert health communicator specializing in translating complex medical information into patient-friendly language.
 
 NURSE'S INPUT (Medical Information):
@@ -123,9 +123,8 @@ Return JSON:
       setExplanation(result);
     } catch (error) {
       console.error("Error generating explanation:", error);
-      alert("Error generating explanation. Please try again.");
+      toast.error("Error generating explanation. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = (text) => {
@@ -135,15 +134,15 @@ Return JSON:
   };
 
   return (
-    <Card className="border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-purple-600" />
+          <Sparkles className="w-5 h-5 text-navy-600" />
           AI Simplified Explanation Generator
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-4">
-        <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-sm text-purple-800">
+        <div className="bg-navy-50 p-3 rounded-lg border border-navy-200 text-sm text-navy-800">
           <Lightbulb className="w-4 h-4 inline mr-1" />
           Enter complex medical information and AI will transform it into simple, patient-friendly language with analogies.
         </div>
@@ -199,10 +198,10 @@ Example: 'Patient has CHF with reduced ejection fraction of 35%. Needs to unders
 
           <Button
             onClick={generateExplanation}
-            disabled={isGenerating || !nurseInput.trim()}
-            className="w-full bg-purple-600 hover:bg-purple-700"
+            disabled={ai.loading || !nurseInput.trim()}
+            className="w-full bg-navy-600 hover:bg-navy-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Simple Explanation...</>
             ) : (
               <><Sparkles className="w-4 h-4 mr-2" /> Generate Patient-Friendly Explanation</>
@@ -214,7 +213,7 @@ Example: 'Patient has CHF with reduced ejection fraction of 35%. Needs to unders
         {explanation && (
           <div className="space-y-4 pt-4 border-t">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900">{explanation.title}</h3>
+              <h3 className="text-lg font-bold text-slate-900">{explanation.title}</h3>
               <Button
                 variant="outline"
                 size="sm"
@@ -235,7 +234,7 @@ Example: 'Patient has CHF with reduced ejection fraction of 35%. Needs to unders
                 <BookOpen className="w-4 h-4 text-blue-600" />
                 Simple Explanation
               </h4>
-              <p className="text-gray-700 whitespace-pre-line">{explanation.simplified_explanation}</p>
+              <p className="text-slate-700 whitespace-pre-line">{explanation.simplified_explanation}</p>
             </div>
 
             {/* Analogies */}
@@ -246,7 +245,7 @@ Example: 'Patient has CHF with reduced ejection fraction of 35%. Needs to unders
                   {explanation.key_analogies.map((analogy, idx) => (
                     <div key={idx} className="bg-white p-3 rounded border border-yellow-200">
                       <p className="text-sm">
-                        <span className="font-medium text-gray-700">{analogy.medical_concept}:</span>
+                        <span className="font-medium text-slate-700">{analogy.medical_concept}:</span>
                       </p>
                       <p className="text-yellow-800 mt-1">"{analogy.simple_analogy}"</p>
                     </div>
@@ -305,8 +304,8 @@ Example: 'Patient has CHF with reduced ejection fraction of 35%. Needs to unders
             </div>
 
             {/* Encouraging Closing */}
-            <div className="bg-pink-50 p-3 rounded-lg border border-pink-200 text-center">
-              <p className="text-pink-800 font-medium">{explanation.encouraging_closing}</p>
+            <div className="bg-gold-50 p-3 rounded-lg border border-gold-200 text-center">
+              <p className="text-gold-800 font-medium">{explanation.encouraging_closing}</p>
             </div>
 
             {/* Regenerate */}

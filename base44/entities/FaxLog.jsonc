@@ -1,0 +1,125 @@
+{
+  "name": "FaxLog",
+  "type": "object",
+  "properties": {
+    "from_number": {
+      "type": "string",
+      "description": "Sender fax number"
+    },
+    "to_number": {
+      "type": "string",
+      "description": "Recipient fax number"
+    },
+    "to_name": {
+      "type": "string",
+      "description": "Recipient name if from address book"
+    },
+    "document_url": {
+      "type": "string",
+      "description": "URL of the faxed document"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Name of the document"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "sending",
+        "sent",
+        "delivered",
+        "failed",
+        "retrying",
+        "retried"
+      ],
+      "default": "queued",
+      "description": "Fax status"
+    },
+    "telnyx_fax_id": {
+      "type": "string",
+      "description": "Telnyx/Twilio fax ID for tracking"
+    },
+    "pages": {
+      "type": "number",
+      "description": "Number of pages"
+    },
+    "cover_page_details": {
+      "type": "object",
+      "description": "AI-generated cover page details"
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Reason for failure if applicable"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Associated patient if applicable"
+    },
+    "sent_by": {
+      "type": "string",
+      "description": "User who sent the fax"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "urgent",
+        "normal",
+        "low"
+      ],
+      "default": "normal",
+      "description": "Fax priority level"
+    },
+    "retry_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of retry attempts made"
+    },
+    "next_retry_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Scheduled time for next automatic retry attempt"
+    },
+    "final_failure_notified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the user was notified after all retries were exhausted"
+    },
+    "estimated_cost": {
+      "type": "number",
+      "description": "Estimated cost in cents"
+    },
+    "delivery_confirmation_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether delivery notification was sent"
+    },
+    "ocr_text": {
+      "type": "string",
+      "description": "Extracted text content from OCR"
+    },
+    "ocr_processed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether OCR has been processed"
+    },
+    "ocr_confidence": {
+      "type": "number",
+      "description": "OCR confidence score 0-100"
+    },
+    "retry_claimed_by": {
+      "type": "string",
+      "description": "Per-run token claiming this fax for a retry send (concurrency guard)"
+    },
+    "retry_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this fax was claimed for a retry send"
+    }
+  },
+  "required": [
+    "from_number",
+    "to_number",
+    "document_url"
+  ]
+}

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
@@ -18,6 +18,13 @@ Deno.serve(async (req) => {
     // Fetch existing OASIS data if patient ID provided
     let existingOASIS = null;
     if (patientId) {
+      // Authorize against the patient before reading their OASIS PHI into the
+      // prompt/response (assigned nurse or admin). RLS-independent code check.
+      const [oasisPatient] = await base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1);
+      if (!oasisPatient) return Response.json({ error: 'Patient not found' }, { status: 404 });
+      if (user.role !== 'admin' && oasisPatient.created_by !== user.email && !(Array.isArray(oasisPatient.assigned_nurses) && oasisPatient.assigned_nurses.includes(user.email))) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
       const oasisRecords = await base44.asServiceRole.entities.OASISUpload.filter(
         { patient_id: patientId },
         '-created_date',
@@ -253,6 +260,7 @@ DISCREPANCY SEVERITY RULES:
 Return JSON with detailed mapping results:`;
 
     const result = await base44.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
       prompt,
       response_json_schema: {
         type: "object",
@@ -306,10 +314,13 @@ Return JSON with detailed mapping results:`;
     // Log the mapping for audit trail
     try {
       await base44.asServiceRole.entities.SystemLog.create({
-        log_type: 'oasis_automation',
-        user_email: user.email,
+        job_name: 'OASIS Automation',
+        job_type: 'other',
+        status: 'success',
+        message: `Mapped note to OASIS for patient ${patientId} by ${user.email}`,
         details: {
           patient_id: patientId,
+          mapped_by: user.email,
           items_mapped: result.overall_summary?.total_items_mapped || 0,
           discrepancies: result.overall_summary?.discrepancy_count || 0,
           timestamp: new Date().toISOString()

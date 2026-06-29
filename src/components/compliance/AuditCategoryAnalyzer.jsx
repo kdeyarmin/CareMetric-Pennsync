@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -7,8 +7,7 @@ import {
   Pie,
   Cell,
   ResponsiveContainer,
-  Tooltip,
-  Legend
+  Tooltip
 } from "recharts";
 import {
   Home,
@@ -23,11 +22,11 @@ import {
 } from "lucide-react";
 
 const CATEGORY_CONFIG = {
-  'Homebound Status': { icon: Home, color: '#3b82f6' },
+  'Homebound Status': { icon: Home, color: '#3557b0' },
   'Skilled Need': { icon: Stethoscope, color: '#8b5cf6' },
   'Vital Signs': { icon: Activity, color: '#10b981' },
   'Assessment': { icon: ClipboardList, color: '#f59e0b' },
-  'Patient Response': { icon: MessageSquare, color: '#ec4899' },
+  'Patient Response': { icon: MessageSquare, color: '#0d9488' },
   'Medication': { icon: Pill, color: '#ef4444' },
   'Care Plan': { icon: Target, color: '#06b6d4' },
   'Functional Status': { icon: User, color: '#84cc16' },
@@ -53,7 +52,10 @@ export default function AuditCategoryAnalyzer({ audits = [] }) {
           };
         }
         categories[category].count++;
-        categories[category][issue.severity || 'medium']++;
+        // Only the four known severities are seeded; an unexpected value would make
+        // categories[category][severity]++ do undefined++ === NaN. Clamp to 'medium'.
+        const severity = ['critical', 'high', 'medium', 'low'].includes(issue.severity) ? issue.severity : 'medium';
+        categories[category][severity]++;
         categories[category].issues.push({
           ...issue,
           auditDate: audit.audit_date,
@@ -78,7 +80,7 @@ export default function AuditCategoryAnalyzer({ audits = [] }) {
   if (audits.length === 0) {
     return (
       <Card>
-        <CardContent className="p-6 text-center text-gray-500">
+        <CardContent className="p-6 text-center text-slate-500">
           No audit data available for analysis.
         </CardContent>
       </Card>
@@ -87,7 +89,7 @@ export default function AuditCategoryAnalyzer({ audits = [] }) {
 
   return (
     <Card className="border-2 border-blue-200">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 py-3">
+      <CardHeader className="bg-gradient-to-r from-blue-50 to-navy-50 py-3">
         <CardTitle className="text-sm flex items-center gap-2">
           <ClipboardList className="w-4 h-4 text-blue-600" />
           Issues by Documentation Category
@@ -128,7 +130,7 @@ export default function AuditCategoryAnalyzer({ audits = [] }) {
               const percentage = Math.round((cat.count / totalIssues) * 100);
 
               return (
-                <div key={idx} className="p-2 bg-gray-50 rounded-lg">
+                <div key={idx} className="p-2 bg-slate-50 rounded-lg">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <div 
@@ -137,13 +139,13 @@ export default function AuditCategoryAnalyzer({ audits = [] }) {
                       >
                         <Icon className="w-3 h-3" style={{ color: config.color }} />
                       </div>
-                      <span className="text-xs font-medium text-gray-900">{cat.name}</span>
+                      <span className="text-xs font-medium text-slate-900">{cat.name}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Badge variant="outline" className="text-[10px]">
                         {cat.count} issues
                       </Badge>
-                      <span className="text-[10px] text-gray-500">{percentage}%</span>
+                      <span className="text-[10px] text-slate-500">{percentage}%</span>
                     </div>
                   </div>
                   <Progress 
@@ -171,24 +173,24 @@ export default function AuditCategoryAnalyzer({ audits = [] }) {
         {/* Summary Stats */}
         <div className="grid grid-cols-4 gap-2 mt-4 pt-4 border-t">
           <div className="text-center">
-            <p className="text-lg font-bold text-gray-900">{totalIssues}</p>
-            <p className="text-[10px] text-gray-500">Total Issues</p>
+            <p className="text-lg font-bold text-slate-900">{totalIssues}</p>
+            <p className="text-[10px] text-slate-500">Total Issues</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-red-600">
               {categoryData.reduce((sum, c) => sum + c.critical, 0)}
             </p>
-            <p className="text-[10px] text-gray-500">Critical</p>
+            <p className="text-[10px] text-slate-500">Critical</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-orange-600">
               {categoryData.reduce((sum, c) => sum + c.high, 0)}
             </p>
-            <p className="text-[10px] text-gray-500">High</p>
+            <p className="text-[10px] text-slate-500">High</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-blue-600">{categoryData.length}</p>
-            <p className="text-[10px] text-gray-500">Categories</p>
+            <p className="text-[10px] text-slate-500">Categories</p>
           </div>
         </div>
       </CardContent>

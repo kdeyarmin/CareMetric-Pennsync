@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf';
 
 Deno.serve(async (req) => {
@@ -10,7 +10,61 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { moduleName, completionDate, score } = await req.json();
+    const body = await req.json();
+    const requestedModule = body.moduleName || body.module_title || null;
+    const recordId = body.completion_id || body.certificate_id || null;
+    const moduleId = body.module_id || null;
+
+    // Re-derive the certificate's facts from a record the caller actually OWNS so
+    // a cert can't be minted for training they never completed. Reads are scoped
+    // to the caller's own email (reliable regardless of per-id RLS). Callers pass
+    // inconsistent shapes (moduleName / module_title+certificate_id /
+    // completion_id+module_id) — all are resolved here.
+    const [myCerts, myAssignments] = await Promise.all([
+      base44.asServiceRole.entities.TrainingCertificate.filter({ user_id: user.email }, '-issued_at', 500).catch(() => []),
+      base44.asServiceRole.entities.TrainingAssignment.filter({ assigned_to_user_id: user.email }, '-completion_date', 500).catch(() => []),
+    ]);
+    const myCompleted = myAssignments.filter((a) => a.status === 'completed' || a.pass_fail_result === 'passed');
+
+    if (myCerts.length === 0 && myCompleted.length === 0) {
+      return Response.json({ error: 'No completed training found for this account.' }, { status: 403 });
+    }
+
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    let moduleName = null;
+    let completionDate = null;
+    let score = null;
+
+    const cert = myCerts.find((c) =>
+      (recordId && (c.id === recordId || c.certificate_id === recordId)) ||
+      (requestedModule && norm(c.course_title) === norm(requestedModule)));
+    if (cert) {
+      moduleName = cert.course_title || requestedModule;
+      completionDate = cert.completion_date || cert.issued_at || null;
+      score = typeof cert.score === 'number' ? cert.score : null;
+    } else {
+      // Fall back to a completed course assignment the caller owns. Match by the
+      // assignment id (recordId) or, for legacy callers, the course id (moduleId).
+      const comp = myCompleted.find((a) =>
+        (recordId && a.id === recordId) || (moduleId && a.course_id === moduleId) ||
+        (requestedModule && norm(a.course_title) === norm(requestedModule)));
+      if (comp) {
+        completionDate = comp.completion_date || null;
+        score = typeof comp.score_percentage === 'number' ? comp.score_percentage : null;
+        moduleName = comp.course_title || requestedModule;
+      } else if (recordId) {
+        // A specific record was requested but none of the caller's records match
+        // it — refuse rather than mint against an id they don't own.
+        return Response.json({ error: 'Training record not found for this account.' }, { status: 403 });
+      }
+    }
+
+    // Fall back to the request only for display fields we could not derive (the
+    // legacy caller that passes just moduleName); ownership is already established
+    // by the non-empty owned-record check above.
+    moduleName = moduleName || requestedModule;
+    completionDate = completionDate || body.completionDate || body.completion_date || null;
+    if (score === null && typeof body.score === 'number') score = body.score;
 
     if (!moduleName || !completionDate) {
       return Response.json({ error: 'Module name and completion date required' }, { status: 400 });
@@ -62,7 +116,7 @@ Deno.serve(async (req) => {
     doc.setFontSize(28);
     doc.setFont(undefined, 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.text(user.full_name, 148.5, 110, { align: 'center' });
+    doc.text(user.full_name || 'User', 148.5, 110, { align: 'center' });
 
     // Line under name
     doc.setDrawColor(79, 70, 229);
@@ -126,7 +180,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename=Training_Certificate_${user.full_name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
+        'Content-Disposition': `attachment; filename=Training_Certificate_${(user.full_name || 'User').replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
       }
     });
   } catch (error) {

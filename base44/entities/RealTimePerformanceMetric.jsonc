@@ -1,0 +1,65 @@
+{
+  "name": "RealTimePerformanceMetric",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse"
+    },
+    "training_module_id": {
+      "type": "string",
+      "description": "Reference to TrainingModule"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Unique session identifier"
+    },
+    "metric_type": {
+      "type": "string",
+      "enum": [
+        "quiz_question_response",
+        "simulation_step_completion",
+        "time_to_complete_step",
+        "hint_usage",
+        "error_correction",
+        "confidence_level"
+      ],
+      "description": "Type of performance metric"
+    },
+    "metric_value": {
+      "type": "number",
+      "description": "Numeric value of the metric"
+    },
+    "question_difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "description": "Difficulty level of the question or step"
+    },
+    "is_correct": {
+      "type": "boolean",
+      "description": "Whether the response was correct"
+    },
+    "time_spent_seconds": {
+      "type": "number",
+      "description": "Time spent on this item"
+    },
+    "attempts": {
+      "type": "number",
+      "default": 1,
+      "description": "Number of attempts taken"
+    },
+    "context_data": {
+      "type": "object",
+      "description": "Additional context about the metric"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "training_module_id",
+    "metric_type"
+  ]
+}

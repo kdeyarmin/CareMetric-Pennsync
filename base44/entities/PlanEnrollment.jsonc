@@ -1,0 +1,76 @@
+{
+  "name": "PlanEnrollment",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "Reference to LearningPlan"
+    },
+    "plan_name": {
+      "type": "string",
+      "description": "Plan name at enrollment"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User email"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "User full name"
+    },
+    "enrolled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Enrollment timestamp"
+    },
+    "enrolled_by": {
+      "type": "string",
+      "description": "Who enrolled this user"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "in_progress",
+        "completed",
+        "overdue",
+        "cancelled"
+      ],
+      "default": "active",
+      "description": "Enrollment status"
+    },
+    "progress_percentage": {
+      "type": "number",
+      "default": 0,
+      "description": "Overall plan completion percentage"
+    },
+    "courses_completed": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of courses completed"
+    },
+    "courses_total": {
+      "type": "number",
+      "description": "Total courses in plan"
+    },
+    "completion_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When plan was completed"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Plan due date"
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the enrollment attempt was submitted"
+    }
+  },
+  "required": [
+    "plan_id",
+    "user_id"
+  ]
+}

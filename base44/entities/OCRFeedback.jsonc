@@ -1,0 +1,49 @@
+{
+  "name": "OCRFeedback",
+  "type": "object",
+  "properties": {
+    "fax_log_id": {
+      "type": "string",
+      "description": "Reference to FaxLog entity"
+    },
+    "original_ocr_text": {
+      "type": "string",
+      "description": "Original OCR extracted text"
+    },
+    "corrected_text": {
+      "type": "string",
+      "description": "User-corrected text"
+    },
+    "correction_type": {
+      "type": "string",
+      "enum": [
+        "minor",
+        "moderate",
+        "major"
+      ],
+      "description": "Severity of correction needed"
+    },
+    "feedback_notes": {
+      "type": "string",
+      "description": "User notes about the correction"
+    },
+    "document_type": {
+      "type": "string",
+      "description": "Type of document (medical form, prescription, etc.)"
+    },
+    "corrected_by": {
+      "type": "string",
+      "description": "Email of user who made correction"
+    },
+    "applied_to_training": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this feedback was used for model improvement"
+    }
+  },
+  "required": [
+    "fax_log_id",
+    "original_ocr_text",
+    "corrected_text"
+  ]
+}

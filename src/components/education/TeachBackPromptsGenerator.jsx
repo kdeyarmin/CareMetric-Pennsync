@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,6 @@ import {
   ChevronRight,
   ChevronLeft,
   CheckCircle2,
-  HelpCircle,
   Lightbulb,
   RefreshCw,
   ThumbsUp,
@@ -31,6 +30,7 @@ import {
   Copy,
   Target
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function TeachBackPromptsGenerator({ 
   patient, 
@@ -41,7 +41,7 @@ export default function TeachBackPromptsGenerator({
   const [condition, setCondition] = useState(diagnosis || "");
   const [educationTopic, setEducationTopic] = useState("");
   const [patientLiteracy, setPatientLiteracy] = useState("average");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const generatingAi = useAICall();
   const [prompts, setPrompts] = useState(null);
   const [currentPromptIdx, setCurrentPromptIdx] = useState(0);
   const [responses, setResponses] = useState([]);
@@ -49,7 +49,7 @@ export default function TeachBackPromptsGenerator({
   const [currentLevel, setCurrentLevel] = useState("");
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [followUpPrompt, setFollowUpPrompt] = useState(null);
-  const [isGeneratingFollowUp, setIsGeneratingFollowUp] = useState(false);
+  const generatingFollowUpAi = useAICall();
   const [isComplete, setIsComplete] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -62,17 +62,17 @@ export default function TeachBackPromptsGenerator({
   const generatePrompts = async () => {
     const topic = educationTopic || educationMaterial?.title || condition;
     if (!topic) {
-      alert("Please enter a condition or education topic.");
+      toast.error("Please enter a condition or education topic.");
       return;
     }
 
-    setIsGenerating(true);
     setResponses([]);
     setCurrentPromptIdx(0);
     setIsComplete(false);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await generatingAi.run({
+        model: "claude_sonnet_4_6",
         prompt: `You are an expert in patient education and the teach-back method. Generate tailored teach-back prompts for a nurse to use during a patient education session.
 
 CONDITION/TOPIC: ${topic}
@@ -140,17 +140,16 @@ Return JSON:
       setPrompts(result);
     } catch (error) {
       console.error("Error generating prompts:", error);
-      alert("Error generating prompts. Please try again.");
+      toast.error("Error generating prompts. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const generateFollowUpPrompt = async (response, level) => {
-    setIsGeneratingFollowUp(true);
     try {
       const currentPrompt = prompts.prompts[currentPromptIdx];
       
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await generatingFollowUpAi.run({
+        model: "claude_sonnet_4_6",
         prompt: `Based on the patient's teach-back response, generate a tailored follow-up prompt.
 
 ORIGINAL QUESTION: "${currentPrompt.primary_question}"
@@ -192,12 +191,11 @@ Return JSON:
     } catch (error) {
       console.error("Error generating follow-up:", error);
     }
-    setIsGeneratingFollowUp(false);
   };
 
   const handleRecordResponse = () => {
     if (!currentResponse.trim() || !currentLevel) {
-      alert("Please enter the patient's response and select understanding level.");
+      toast.error("Please enter the patient's response and select understanding level.");
       return;
     }
 
@@ -284,7 +282,7 @@ Nurse Signature: _______________________`;
       case 'easy': return 'bg-green-100 text-green-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'hard': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -292,7 +290,7 @@ Nurse Signature: _______________________`;
 
   return (
     <Card className="border-indigo-200">
-      <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="flex items-center gap-2">
           <Brain className="w-5 h-5 text-indigo-600" />
           AI Teach-Back Prompts Generator
@@ -342,10 +340,10 @@ Nurse Signature: _______________________`;
 
             <Button
               onClick={generatePrompts}
-              disabled={isGenerating || !condition.trim()}
+              disabled={generatingAi.loading || !condition.trim()}
               className="w-full bg-indigo-600 hover:bg-indigo-700"
             >
-              {isGenerating ? (
+              {generatingAi.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Prompts...</>
               ) : (
                 <><MessageSquare className="w-4 h-4 mr-2" /> Generate Teach-Back Prompts</>
@@ -356,7 +354,7 @@ Nurse Signature: _______________________`;
           <div className="space-y-4">
             {/* Progress */}
             <div className="space-y-2">
-              <div className="flex justify-between text-sm text-gray-600">
+              <div className="flex justify-between text-sm text-slate-600">
                 <span>Question {currentPromptIdx + 1} of {prompts.prompts.length}</span>
                 <span>{prompts.topic}</span>
               </div>
@@ -382,8 +380,8 @@ Nurse Signature: _______________________`;
 
               {/* Alternative Phrasings */}
               <div className="bg-white p-2 rounded border border-indigo-200 mt-3">
-                <p className="text-xs font-medium text-gray-600 mb-1">Alternative ways to ask:</p>
-                <ul className="text-xs text-gray-700 space-y-1">
+                <p className="text-xs font-medium text-slate-600 mb-1">Alternative ways to ask:</p>
+                <ul className="text-xs text-slate-700 space-y-1">
                   {currentPrompt.alternative_phrasings?.map((alt, idx) => (
                     <li key={idx}>• "{alt}"</li>
                   ))}
@@ -417,16 +415,16 @@ Nurse Signature: _______________________`;
 
             {/* Follow-Up Prompt (if generated) */}
             {showFollowUp && followUpPrompt && (
-              <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                <p className="text-xs font-semibold text-purple-800 mb-2 flex items-center gap-1">
+              <div className="bg-navy-50 p-4 rounded-lg border border-navy-200">
+                <p className="text-xs font-semibold text-navy-800 mb-2 flex items-center gap-1">
                   <Lightbulb className="w-3 h-3" /> AI-Generated Follow-Up
                 </p>
-                <p className="text-purple-800 font-medium">"{followUpPrompt.follow_up_question}"</p>
-                <div className="mt-2 text-xs text-purple-700">
+                <p className="text-navy-800 font-medium">"{followUpPrompt.follow_up_question}"</p>
+                <div className="mt-2 text-xs text-navy-700">
                   <p><strong>Teaching Point:</strong> {followUpPrompt.teaching_point}</p>
                   <p className="mt-1"><strong>Example:</strong> {followUpPrompt.example_or_analogy}</p>
                 </div>
-                <p className="mt-2 text-purple-600 italic">{followUpPrompt.encouragement}</p>
+                <p className="mt-2 text-navy-600 italic">{followUpPrompt.encouragement}</p>
               </div>
             )}
 
@@ -477,8 +475,8 @@ Nurse Signature: _______________________`;
                 </div>
               </RadioGroup>
               
-              {isGeneratingFollowUp && (
-                <p className="text-xs text-purple-600 mt-2 flex items-center gap-1">
+              {generatingFollowUpAi.loading && (
+                <p className="text-xs text-navy-600 mt-2 flex items-center gap-1">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Generating follow-up prompt...
                 </p>
@@ -515,9 +513,9 @@ Nurse Signature: _______________________`;
             </div>
 
             {/* Teaching Tips */}
-            <div className="bg-gray-50 p-3 rounded-lg border">
-              <p className="text-xs font-semibold text-gray-700 mb-1">💡 Teaching Tips:</p>
-              <ul className="text-xs text-gray-600 space-y-1">
+            <div className="bg-slate-50 p-3 rounded-lg border">
+              <p className="text-xs font-semibold text-slate-700 mb-1">💡 Teaching Tips:</p>
+              <ul className="text-xs text-slate-600 space-y-1">
                 {prompts.general_teaching_tips?.slice(0, 2).map((tip, idx) => (
                   <li key={idx}>• {tip}</li>
                 ))}
@@ -558,7 +556,7 @@ Nurse Signature: _______________________`;
             {/* Response Details */}
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {responses.map((r, idx) => (
-                <div key={idx} className="p-2 bg-gray-50 rounded border text-sm">
+                <div key={idx} className="p-2 bg-slate-50 rounded border text-sm">
                   <div className="flex items-center justify-between mb-1">
                     <Badge variant="outline" className="text-xs">{r.category}</Badge>
                     <Badge className={
@@ -569,7 +567,7 @@ Nurse Signature: _______________________`;
                       {r.understandingLevel}
                     </Badge>
                   </div>
-                  <p className="text-xs text-gray-600">{r.question}</p>
+                  <p className="text-xs text-slate-600">{r.question}</p>
                 </div>
               ))}
             </div>

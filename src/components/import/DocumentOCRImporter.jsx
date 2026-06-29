@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Upload, FileImage, Scan, CheckCircle2, AlertCircle, FileText, Camera } from "lucide-react";
+import { Upload, FileImage, Scan, CheckCircle2, AlertCircle, FileText, Camera } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function DocumentOCRImporter({ onPatientExtracted }) {
   const [files, setFiles] = useState([]);
@@ -47,7 +48,7 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
     );
     
     if (validFiles.length !== selectedFiles.length) {
-      alert('Only images (JPG, PNG) and PDF files are supported');
+      toast.error('Only images (JPG, PNG) and PDF files are supported');
     }
     
     setFiles(validFiles);
@@ -57,7 +58,7 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
 
   const processDocuments = async () => {
     if (files.length === 0) {
-      alert('Please select at least one document to process');
+      toast.error('Please select at least one document to process');
       return;
     }
 
@@ -119,23 +120,44 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
     if (results.length === 0) return;
 
     try {
-      const patientsToCreate = results.map(r => r.data);
+      // Normalize OCR-extracted enum fields to the Patient schema. The extraction
+      // returns free-form strings ("Home Health", "Active", "New", "Skilled
+      // Nursing") that don't match the lowercase enums, so Base44 would silently
+      // drop them and fall back to defaults. Drop unrecognized values (so the
+      // schema default applies) rather than writing an out-of-enum string.
+      const CARE_TYPES = ['home_health', 'hospice'];
+      const STATUSES = ['active', 'discharged', 'hospitalized', 'merged'];
+      const STATUS_SYNONYMS = { new: 'active', admitted: 'active', hospital: 'hospitalized', discharge: 'discharged' };
+      const normEnum = (v, allowed, synonyms = {}) => {
+        if (!v) return undefined;
+        const key = String(v).trim().toLowerCase().replace(/\s+/g, '_');
+        const mapped = synonyms[key] ?? key;
+        return allowed.includes(mapped) ? mapped : undefined;
+      };
+      const patientsToCreate = results.map(r => {
+        const d = { ...r.data };
+        const ct = normEnum(d.care_type, CARE_TYPES);
+        if (ct) d.care_type = ct; else delete d.care_type;
+        const st = normEnum(d.status, STATUSES, STATUS_SYNONYMS);
+        if (st) d.status = st; else delete d.status;
+        return d;
+      });
       await base44.entities.Patient.bulkCreate(patientsToCreate);
-      alert(`Successfully created ${results.length} patient record(s)`);
+      toast.success(`Successfully created ${results.length} patient record(s)`);
       
       // Reset
       setFiles([]);
       setResults([]);
       setErrors([]);
     } catch (error) {
-      alert('Failed to create patient records: ' + error.message);
+      toast.error('Failed to create patient records: ' + error.message);
     }
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-gold-50">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-purple-900">
+        <CardTitle className="flex items-center gap-2 text-navy-900">
           <Scan className="w-6 h-6" />
           AI Document Scanner - Extract Patient Data
         </CardTitle>
@@ -159,8 +181,9 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
             disabled={isProcessing}
           />
           <label htmlFor="ocr-upload">
-            <Button 
-              className="w-full bg-purple-600 hover:bg-purple-700" 
+            <span className="sr-only">Select Document(s) to Scan</span>
+            <Button
+              className="w-full bg-navy-600 hover:bg-navy-700" 
               disabled={isProcessing}
               asChild
             >
@@ -174,11 +197,11 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
 
         {files.length > 0 && !isProcessing && results.length === 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">{files.length} file(s) selected:</p>
+            <p className="text-sm font-medium text-slate-700">{files.length} file(s) selected:</p>
             <div className="space-y-1">
               {files.map((file, idx) => (
                 <div key={idx} className="flex items-center gap-2 p-2 bg-white rounded border text-sm">
-                  <FileImage className="w-4 h-4 text-purple-600" />
+                  <FileImage className="w-4 h-4 text-navy-600" />
                   <span className="flex-1 truncate">{file.name}</span>
                   <Badge variant="outline" className="text-xs">
                     {(file.size / 1024).toFixed(0)} KB
@@ -188,7 +211,7 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
             </div>
             <Button
               onClick={processDocuments}
-              className="w-full bg-purple-600 hover:bg-purple-700"
+              className="w-full bg-navy-600 hover:bg-navy-700"
             >
               <Scan className="w-4 h-4 mr-2" />
               Extract Patient Data with AI
@@ -199,11 +222,11 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
         {isProcessing && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Processing documents...</span>
-              <span className="text-sm text-gray-600">{progress}%</span>
+              <span className="text-sm font-medium text-slate-700">Processing documents...</span>
+              <span className="text-sm text-slate-600">{progress}%</span>
             </div>
             <Progress value={progress} className="h-2" />
-            <p className="text-xs text-center text-gray-600 mt-2">
+            <p className="text-xs text-center text-slate-600 mt-2">
               Using AI to read and extract patient information
             </p>
           </div>
@@ -219,14 +242,14 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
             </Alert>
 
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700">Extracted Patient Data:</p>
+              <p className="text-sm font-semibold text-slate-700">Extracted Patient Data:</p>
               {results.map((result, idx) => (
                 <Card key={idx} className="border-green-200 bg-green-50">
                   <CardContent className="p-3">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-green-600" />
-                        <span className="text-sm font-medium text-gray-900 truncate">
+                        <span className="text-sm font-medium text-slate-900 truncate">
                           {result.fileName}
                         </span>
                       </div>
@@ -234,31 +257,31 @@ export default function DocumentOCRImporter({ onPatientExtracted }) {
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="p-2 bg-white rounded">
-                        <span className="font-medium text-gray-600">Name:</span>
-                        <p className="text-gray-900">{result.data.first_name} {result.data.last_name || 'N/A'}</p>
+                        <span className="font-medium text-slate-600">Name:</span>
+                        <p className="text-slate-900">{result.data.first_name} {result.data.last_name || 'N/A'}</p>
                       </div>
                       {result.data.date_of_birth && (
                         <div className="p-2 bg-white rounded">
-                          <span className="font-medium text-gray-600">DOB:</span>
-                          <p className="text-gray-900">{result.data.date_of_birth}</p>
+                          <span className="font-medium text-slate-600">DOB:</span>
+                          <p className="text-slate-900">{result.data.date_of_birth}</p>
                         </div>
                       )}
                       {result.data.medical_record_number && (
                         <div className="p-2 bg-white rounded">
-                          <span className="font-medium text-gray-600">MRN:</span>
-                          <p className="text-gray-900">{result.data.medical_record_number}</p>
+                          <span className="font-medium text-slate-600">MRN:</span>
+                          <p className="text-slate-900">{result.data.medical_record_number}</p>
                         </div>
                       )}
                       {result.data.phone && (
                         <div className="p-2 bg-white rounded">
-                          <span className="font-medium text-gray-600">Phone:</span>
-                          <p className="text-gray-900">{result.data.phone}</p>
+                          <span className="font-medium text-slate-600">Phone:</span>
+                          <p className="text-slate-900">{result.data.phone}</p>
                         </div>
                       )}
                       {result.data.primary_diagnosis && (
                         <div className="p-2 bg-white rounded col-span-2">
-                          <span className="font-medium text-gray-600">Diagnosis:</span>
-                          <p className="text-gray-900">{result.data.primary_diagnosis}</p>
+                          <span className="font-medium text-slate-600">Diagnosis:</span>
+                          <p className="text-slate-900">{result.data.primary_diagnosis}</p>
                         </div>
                       )}
                     </div>

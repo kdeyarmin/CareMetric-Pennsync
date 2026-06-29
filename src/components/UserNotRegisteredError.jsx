@@ -1,28 +1,58 @@
-import React from 'react';
+import { useAuth } from "@/lib/AuthContext";
+import { Button } from "@/components/ui/button";
+import { ShieldAlert, LogOut } from "lucide-react";
+
+const LOGO_URL =
+  "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png";
 
 const UserNotRegisteredError = () => {
+  // Route sign-out through AuthContext.logout (not base44.auth.logout directly)
+  // so cached PHI is purged — queryClient.clear() + clearCachedPHI() — before
+  // the token is removed. A de-registered user who was previously approved may
+  // still have patient data cached in localStorage/IndexedDB on a shared device.
+  const { logout } = useAuth();
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-white to-slate-50">
-      <div className="max-w-md w-full p-8 bg-white rounded-lg shadow-lg border border-slate-100">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 mb-6 rounded-full bg-orange-100">
-            <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-4">Access Restricted</h1>
-          <p className="text-slate-600 mb-8">
-            You are not registered to use this application. Please contact the app administrator to request access.
-          </p>
-          <div className="p-4 bg-slate-50 rounded-md text-sm text-slate-600">
-            <p>If you believe this is an error, you can:</p>
-            <ul className="list-disc list-inside mt-2 space-y-1">
-              <li>Verify you are logged in with the correct account</li>
-              <li>Contact the app administrator for access</li>
-              <li>Try logging out and back in again</li>
-            </ul>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy-50 via-white to-navy-100 p-4">
+      <div className="w-full max-w-md">
+        {/* Brand lockup */}
+        <div className="mb-6 flex items-center justify-center gap-2">
+          <img src={LOGO_URL} alt="PennSync" className="h-9 w-9 rounded-lg" />
+          <span className="text-xl font-bold tracking-tight text-navy-900">
+            Penn<span className="text-gold-600">Sync</span>
+          </span>
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-navy-600 via-navy-500 to-gold-400" />
+          <div className="p-8 text-center">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-navy-50 to-navy-100 ring-1 ring-inset ring-navy-200/60">
+              <ShieldAlert className="h-8 w-8 text-navy-600" />
+            </div>
+            <h1 className="mb-2 text-2xl font-bold text-slate-900">Access Restricted</h1>
+            <p className="mb-6 text-slate-600">
+              Your account isn’t registered for this application yet. Please contact your
+              agency administrator to request access.
+            </p>
+
+            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left text-sm text-slate-600">
+              <p className="mb-2 font-medium text-slate-700">If you believe this is an error:</p>
+              <ul className="list-inside list-disc space-y-1.5">
+                <li>Verify you’re signed in with the correct account</li>
+                <li>Contact your agency administrator for access</li>
+                <li>Try signing out and back in</li>
+              </ul>
+            </div>
+
+            <Button onClick={() => { void logout(); }} variant="outline" className="w-full">
+              <LogOut className="mr-2 h-4 w-4" /> Sign out
+            </Button>
           </div>
         </div>
+
+        <p className="mt-6 text-center text-xs text-slate-400">
+          Secure clinical platform · HIPAA compliant
+        </p>
       </div>
     </div>
   );

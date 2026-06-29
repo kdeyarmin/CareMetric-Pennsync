@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.1';
 
 Deno.serve(async (req) => {
@@ -466,7 +466,6 @@ Deno.serve(async (req) => {
     console.error('Error generating guide:', error);
     return Response.json({ 
       error: error.message,
-      stack: error.stack 
     }, { status: 500 });
   }
 });

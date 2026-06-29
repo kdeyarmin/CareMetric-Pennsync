@@ -11,13 +11,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Download, Loader2, CheckCircle2, Users, Calendar } from "lucide-react";
 import { todayEastern } from "../utils/timezone";
 
-export default function OfflinePatientSelector({ onCacheComplete }) {
+export default function OfflinePatientSelector({ onCacheComplete, _showDetails = false, _selectedPatientId, onSelectPatient }) {
   const [selectedPatients, setSelectedPatients] = useState([]);
-  const [dateRange, setDateRange] = useState(1); // days
+  const [_dateRange, _setDateRange] = useState(1); // days
   const [isCaching, setIsCaching] = useState(false);
   const [cacheResult, setCacheResult] = useState(null);
 
-  const { data: currentUser } = useQuery({
+  const { data: _currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
@@ -25,7 +25,7 @@ export default function OfflinePatientSelector({ onCacheComplete }) {
   const { data: allVisits = [] } = useQuery({
     queryKey: ['upcomingVisits'],
     queryFn: async () => {
-      const today = todayEastern();
+      const _today = todayEastern();
       return base44.entities.Visit.filter({ 
         status: 'scheduled'
       }, 'visit_date', 100);
@@ -34,7 +34,7 @@ export default function OfflinePatientSelector({ onCacheComplete }) {
 
   const { data: allPatients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 
   // Get patients with upcoming visits
@@ -125,7 +125,8 @@ export default function OfflinePatientSelector({ onCacheComplete }) {
       }
 
       // Store in localStorage
-      const existingCache = JSON.parse(localStorage.getItem('offline_patient_data') || '[]');
+      let existingCache = [];
+      try { existingCache = JSON.parse(localStorage.getItem('offline_patient_data') || '[]'); } catch {}
       const mergedCache = [...cachedData];
       
       // Remove duplicates, keep newest
@@ -191,8 +192,8 @@ export default function OfflinePatientSelector({ onCacheComplete }) {
         )}
 
         {patientsWithVisits.length === 0 ? (
-          <div className="text-center py-6 text-gray-500">
-            <Users className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+          <div className="text-center py-6 text-slate-500">
+            <Users className="w-12 h-12 text-slate-300 mx-auto mb-2" />
             <p className="text-sm">No patients with scheduled visits</p>
           </div>
         ) : (
@@ -216,17 +217,25 @@ export default function OfflinePatientSelector({ onCacheComplete }) {
                   <div
                     key={patient.id}
                     className="flex items-start gap-3 p-3 bg-white rounded-lg border hover:bg-blue-50 cursor-pointer"
-                    onClick={() => handleTogglePatient(patient.id)}
+                    onClick={() => {
+                      if (onSelectPatient) {
+                        onSelectPatient(patient.id, patient);
+                      } else {
+                        handleTogglePatient(patient.id);
+                      }
+                    }}
                   >
-                    <Checkbox
-                      checked={selectedPatients.includes(patient.id)}
-                      onCheckedChange={() => handleTogglePatient(patient.id)}
-                    />
+                    {!onSelectPatient && (
+                      <Checkbox
+                        checked={selectedPatients.includes(patient.id)}
+                        onCheckedChange={() => handleTogglePatient(patient.id)}
+                      />
+                    )}
                     <div className="flex-1">
                       <p className="font-medium text-sm">
                         {patient.first_name} {patient.last_name}
                       </p>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-slate-600">
                         {patient.primary_diagnosis || 'No diagnosis'}
                       </p>
                       <Badge variant="outline" className="text-xs mt-1">
@@ -238,23 +247,25 @@ export default function OfflinePatientSelector({ onCacheComplete }) {
               </div>
             </ScrollArea>
 
-            <Button
-              onClick={handleCacheData}
-              disabled={selectedPatients.length === 0 || isCaching}
-              className="w-full bg-blue-600 hover:bg-blue-700"
-            >
-              {isCaching ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Caching Data...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" />
-                  Cache {selectedPatients.length} Patient{selectedPatients.length !== 1 ? 's' : ''} for Offline
-                </>
-              )}
-            </Button>
+            {!onSelectPatient && (
+              <Button
+                onClick={handleCacheData}
+                disabled={selectedPatients.length === 0 || isCaching}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {isCaching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Caching Data...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Cache {selectedPatients.length} Patient{selectedPatients.length !== 1 ? 's' : ''} for Offline
+                  </>
+                )}
+              </Button>
+            )}
           </>
         )}
       </CardContent>

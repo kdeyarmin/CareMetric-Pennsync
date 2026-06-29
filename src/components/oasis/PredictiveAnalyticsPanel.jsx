@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +27,11 @@ export default function PredictiveAnalyticsPanel({
   carePlans = [],
   incidents = []
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [predictions, setPredictions] = useState(null);
   const [error, setError] = useState(null);
 
   const analyzePredictiveRisks = async () => {
-    setIsAnalyzing(true);
     setError(null);
 
     try {
@@ -111,7 +110,8 @@ Based on this comprehensive patient profile, provide a detailed predictive analy
 
 Provide specific, actionable insights with confidence levels.`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -195,8 +195,6 @@ Provide specific, actionable insights with confidence levels.`;
     } catch (err) {
       setError(err.message);
       console.error("Predictive analysis error:", err);
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
@@ -210,7 +208,7 @@ Provide specific, actionable insights with confidence levels.`;
     return colors[level] || colors.moderate;
   };
 
-  const getRiskIcon = (level) => {
+  const _getRiskIcon = (level) => {
     if (level === 'critical' || level === 'high') return <AlertTriangle className="w-5 h-5" />;
     if (level === 'moderate') return <Clock className="w-5 h-5" />;
     return <CheckCircle2 className="w-5 h-5" />;
@@ -227,26 +225,26 @@ Provide specific, actionable insights with confidence levels.`;
   };
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-blue-50">
         <CardTitle className="flex items-center gap-2">
-          <Brain className="w-6 h-6 text-purple-600" />
+          <Brain className="w-6 h-6 text-navy-600" />
           AI Predictive Analytics
         </CardTitle>
       </CardHeader>
       <CardContent className="p-6 space-y-4">
-        {!predictions && !isAnalyzing && (
+        {!predictions && !ai.loading && (
           <div className="text-center py-8">
-            <Brain className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <Brain className="w-16 h-16 text-navy-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
               Generate Predictive Insights
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-slate-600 mb-6">
               AI-powered analysis of patient risks, outcomes, and proactive interventions
             </p>
             <Button
               onClick={analyzePredictiveRisks}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-navy-600 hover:bg-navy-700"
             >
               <Activity className="w-4 h-4 mr-2" />
               Analyze Patient Risk Profile
@@ -254,10 +252,10 @@ Provide specific, actionable insights with confidence levels.`;
           </div>
         )}
 
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="text-center py-12">
-            <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-            <p className="text-gray-600">Analyzing patient data and generating predictions...</p>
+            <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+            <p className="text-slate-600">Analyzing patient data and generating predictions...</p>
           </div>
         )}
 
@@ -352,9 +350,9 @@ Provide specific, actionable insights with confidence levels.`;
                             {risk.probability}%
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">Warning Signs:</p>
+                        <p className="text-xs text-slate-600 mb-1">Warning Signs:</p>
                         {risk.warning_signs?.map((sign, sIdx) => (
-                          <p key={sIdx} className="text-xs text-gray-700">• {sign}</p>
+                          <p key={sIdx} className="text-xs text-slate-700">• {sign}</p>
                         ))}
                       </div>
                     ))}
@@ -386,13 +384,13 @@ Provide specific, actionable insights with confidence levels.`;
                       <div key={idx} className={`p-2 rounded border ${
                         gap.impact === 'high' ? 'bg-red-50 border-red-200' :
                         gap.impact === 'medium' ? 'bg-yellow-50 border-yellow-200' :
-                        'bg-gray-50 border-gray-200'
+                        'bg-slate-50 border-slate-200'
                       }`}>
                         <div className="flex items-center justify-between mb-1">
                           <p className="font-semibold text-sm">{gap.gap_type}</p>
                           <Badge variant="outline">{gap.impact} impact</Badge>
                         </div>
-                        <p className="text-xs text-gray-700 mb-1">{gap.description}</p>
+                        <p className="text-xs text-slate-700 mb-1">{gap.description}</p>
                         <p className="text-xs text-blue-700">
                           <strong>Recommendation:</strong> {gap.recommendation}
                         </p>
@@ -419,10 +417,10 @@ Provide specific, actionable insights with confidence levels.`;
                           {intervention.priority}
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-700 mb-1">
+                      <p className="text-xs text-slate-700 mb-1">
                         <strong>Rationale:</strong> {intervention.rationale}
                       </p>
-                      <p className="text-xs text-gray-700 mb-1">
+                      <p className="text-xs text-slate-700 mb-1">
                         <strong>Timing:</strong> {intervention.timing}
                       </p>
                       <p className="text-xs text-green-700">
@@ -439,13 +437,13 @@ Provide specific, actionable insights with confidence levels.`;
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <Activity className="w-5 h-5 text-purple-600" />
+                    <Activity className="w-5 h-5 text-navy-600" />
                     <h4 className="font-bold">Resource Utilization Forecast</h4>
                   </div>
                   <div className="space-y-2 text-sm">
                     <p><strong>Visit Frequency:</strong> {predictions.resource_forecast.predicted_visit_frequency}</p>
                     <p><strong>Service Intensity:</strong> {predictions.resource_forecast.service_intensity_trend}</p>
-                    <p className="text-gray-700">{predictions.resource_forecast.cost_considerations}</p>
+                    <p className="text-slate-700">{predictions.resource_forecast.cost_considerations}</p>
                   </div>
                 </CardContent>
               </Card>

@@ -1,303 +1,304 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// Operational logs are gated behind FUNCTIONS_DEBUG so they don't run in
+// production by default. console.error/warn remain ungated for visibility.
+const DEBUG = !!Deno.env.get('FUNCTIONS_DEBUG');
+const debugLog = (...args) => { if (DEBUG) console.log(...args); };
+
+// ── On-hire annual enrollment helpers ───────────────────────────────────────
+// A new hire should immediately receive the current-year required in-services
+// for their business line and role tier. Resolve them to EXACTLY ONE annual
+// plan (mirrors autoEnrollAnnualPlans) so shared core courses aren't assigned
+// twice, then create the enrollment + per-course assignments idempotently.
+const isLicensedNurse = (u) => {
+  const c = `${u?.credential_type || ''} ${u?.credentials || ''} ${u?.job_title || ''}`.toUpperCase();
+  return c.includes('RN') || c.includes('LPN') || c.includes('NURSE');
+};
+const userLine = (u) => {
+  const bl = u?.business_line;
+  if (bl === 'home_health' || bl === 'hospice') return bl;
+  const cs = u?.care_scope;
+  if (cs === 'hospice') return 'hospice';
+  if (cs === 'home_health') return 'home_health';
+  return 'home_health';
+};
+const resolveAnnualPlanForUser = (u, plans) => {
+  const line = userLine(u);
+  const wantNurses = isLicensedNurse(u);
+  const linePlans = plans.filter((p) => p.business_line_scope === line);
+  const pool = linePlans.length ? linePlans : plans.filter((p) => p.business_line_scope === 'all');
+  if (!pool.length) return null;
+  return pool.find((p) => /nurse/i.test(p.name || '') === wantNurses) || pool[0];
+};
+
+async function enrollNewHireInAnnualPlan(base44, user) {
+  const svc = base44.asServiceRole.entities;
+  const today = new Date();
+  const year = today.getUTCFullYear();
+  const plans = await svc.LearningPlan.filter({ plan_type: 'annual', year, active: true }, '-created_date', 200);
+  const plan = resolveAnnualPlanForUser(user, plans);
+  if (!plan) return { enrolled: false, reason: 'no_matching_plan' };
+
+  const planItems = await svc.LearningPlanCourse.filter({ plan_id: plan.id }, 'order_index', 300);
+  const dueDate = `${year}-12-31`;
+
+  const [existingEnrollment] = await svc.PlanEnrollment.filter({ plan_id: plan.id, user_id: user.email }, '-created_date', 1);
+  if (!existingEnrollment) {
+    await svc.PlanEnrollment.create({
+      plan_id: plan.id,
+      plan_name: plan.name,
+      user_id: user.email,
+      user_name: user.full_name,
+      enrolled_at: today.toISOString(),
+      enrolled_by: 'system-on-hire',
+      status: 'active',
+      progress_percentage: 0,
+      courses_completed: 0,
+      courses_total: planItems.length,
+      due_date: dueDate,
+    });
+  }
+
+  let assignmentsCreated = 0;
+  for (const item of planItems) {
+    const existing = await svc.TrainingAssignment.filter(
+      { plan_id: plan.id, course_id: item.course_id, assigned_to_user_id: user.email, annual_cycle_year: year },
+      '-created_date',
+      1,
+    );
+    if (existing.length > 0) continue;
+    await svc.TrainingAssignment.create({
+      course_id: item.course_id,
+      course_title: item.course_title,
+      plan_id: plan.id,
+      assigned_to_user_id: user.email,
+      assigned_to_role: user.job_title || user.credential_type || user.role,
+      assigned_to_business_line: user.business_line || '',
+      assigned_by: 'system-on-hire',
+      assigned_date: today.toISOString(),
+      due_date: item.specific_due_date || dueDate,
+      annual_cycle_year: year,
+      priority: 'high',
+      status: 'assigned',
+      required: item.is_required !== false,
+      passing_score_required: 80,
+      waiting_period_hours: 0,
+      regenerate_test_on_retake: true,
+      retake_required: false,
+      renewal_frequency: 'annual',
+      attestation_required: false,
+      remediation_message: 'Please review the lesson content and complete a new retake.',
+      progress_percentage: 0,
+      notes: 'Automatically assigned on hire (current-year required in-services).',
+      archived_status: false,
+    });
+    assignmentsCreated++;
+  }
+  return { enrolled: true, plan_name: plan.name, assignments_created: assignmentsCreated };
+}
 
 Deno.serve(async (req) => {
   try {
-    console.log('onUserSignup triggered');
+    debugLog('onUserSignup triggered');
     const base44 = createClientFromRequest(req);
     const { user } = await req.json();
-    console.log('User data received:', user?.email);
+    debugLog('User data received:', user?.email ? '[email present]' : '[no email]');
 
     if (!user || !user.email) {
       console.error('No user data provided');
       return Response.json({ error: 'No user data provided' }, { status: 400 });
     }
 
-    // Generate unique referral code for new user
-    const referralCode = crypto.randomUUID().slice(0, 8).toUpperCase();
-    console.log('Generated referral code:', referralCode);
-    
-    try {
-      await base44.asServiceRole.entities.User.update(user.id, {
-        referral_code: referralCode
-      });
-      console.log('Referral code saved for user:', user.email);
-    } catch (codeError) {
-      console.error('Failed to save referral code:', codeError);
+    // Opt-in webhook-secret gate: if SIGNUP_WEBHOOK_SECRET is set, require it so
+    // arbitrary HTTP callers can't forge signups / role escalation. Unset => no
+    // enforcement (so the platform trigger keeps working).
+    const signupSecret = Deno.env.get('SIGNUP_WEBHOOK_SECRET');
+    if (signupSecret && req.headers.get('x-webhook-secret') !== signupSecret) {
+      return Response.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
-    // Create 14-day free trial subscription for new user
-    console.log('Creating trial subscription for:', user.email);
-    try {
-      // Check if subscription already exists
-      const existingSubs = await base44.asServiceRole.entities.Subscription.filter({ user_email: user.email });
-      
-      if (!existingSubs || existingSubs.length === 0) {
-        const trialEndDate = new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + 14);
-        
-        await base44.asServiceRole.entities.Subscription.create({
-          user_email: user.email,
-          status: 'trialing',
-          trial_start: new Date().toISOString(),
-          trial_end: trialEndDate.toISOString(),
-          plan_name: '14-Day Free Trial - Full Access',
-          monthly_amount: 0
-        });
-        console.log('✅ 14-day trial subscription created for:', user.email);
-      } else {
-        console.log('ℹ️ Subscription already exists for:', user.email);
-      }
-    } catch (trialError) {
-      console.error('Failed to create trial subscription:', trialError);
-      // Don't fail signup if trial creation fails
-    }
-
-    // Check if user was invited
-    console.log('Checking for invitation...');
-    const invitations = await base44.asServiceRole.entities.UserInvitation.filter({ 
-      email: user.email,
+    // Check if user was invited. Match the invitation email case-insensitively:
+    // the invitation casing may differ from the signup payload (e.g. an admin
+    // invites Jane.Doe@Example.com but the auth event sends jane.doe@example.com).
+    // A case-sensitive match would misclassify a genuinely invited user as an
+    // uninvited signup — and with invite-only there is no manual-approval rescue.
+    debugLog('Checking for invitation...');
+    const normalizedEmail = (user.email || '').trim().toLowerCase();
+    const pendingInvitations = await base44.asServiceRole.entities.UserInvitation.filter({
       status: 'pending'
     });
-    console.log('Found invitations:', invitations?.length || 0);
+    const invitations = (pendingInvitations || []).filter(
+      (inv) => (inv.email || '').trim().toLowerCase() === normalizedEmail
+    );
+    debugLog('Found invitations:', invitations.length);
 
-    // Auto-approve ALL users
-    console.log('Auto-approving user...');
-    try {
-      if (invitations && invitations.length > 0) {
-        const invitation = invitations[0];
+    if (invitations && invitations.length > 0) {
+      const invitation = invitations[0];
+
+      // Don't trust the body's user.id<->email pairing: confirm the id resolves
+      // to the invited email before granting role/approval.
+      const actualUsers = await base44.asServiceRole.entities.User.filter({ id: user.id });
+      if (!actualUsers?.[0] || actualUsers[0].email !== user.email) {
+        return Response.json({ error: 'User id/email mismatch' }, { status: 400 });
+      }
+      
+      // Auto-approve ALL invited users (admin-added users should be automatically approved)
+      debugLog('Auto-approving invited user...');
+      
+      try {
         await base44.asServiceRole.entities.User.update(user.id, {
+          // Apply the admin-provided name from the invitation so invited users
+          // start with their real name (not an email-derived placeholder).
+          // Fall back to whatever the signup already set so we never wipe a name.
+          full_name: invitation.full_name || user.full_name,
           role: invitation.role,
           care_scope: invitation.care_scope,
           phone: invitation.phone,
           credentials: invitation.credentials,
-          is_approved: true,
-          service_type: 'home_health'
+          is_approved: true
         });
-        await base44.asServiceRole.entities.UserInvitation.delete(invitation.id);
-      } else {
-        // No invitation - still auto-approve with default role
-        await base44.asServiceRole.entities.User.update(user.id, {
-          is_approved: true,
-          role: 'user',
-          onboarding_completed: false
-        });
-      }
-      console.log('User auto-approved:', user.email);
-    } catch (updateError) {
-      console.error('Failed to auto-approve user:', updateError);
-    }
 
-    // Notify admins of new signup using Core.SendEmail (more reliable)
-    console.log('Fetching admin users...');
-    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
-    console.log('Found admins:', admins.length);
+        const verification = await verifyInvitedUser(base44, user.email);
 
-    // Send email to all admins
-    if (admins && admins.length > 0) {
-      try {
-        for (const admin of admins) {
-          console.log('Sending admin notification to:', admin.email);
-          
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: admin.email,
-            from_name: 'CareMetric AI System',
-            subject: `🎉 New User Signup - ${user.full_name || user.email}`,
-            body: `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-    .container { max-width: 600px; margin: 20px auto; background: white; padding: 0; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
-    .header { background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; padding: 30px; text-align: center; }
-    .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-    .content { padding: 30px; }
-    .info-box { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 20px; margin: 20px 0; border-radius: 6px; }
-    .info-row { display: flex; margin: 10px 0; }
-    .info-label { font-weight: 600; color: #555; min-width: 140px; }
-    .info-value { color: #333; }
-    .cta { text-align: center; margin: 30px 0; }
-    .cta-button { display: inline-block; background: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; }
-    .footer { background: #f8fafc; padding: 20px; text-align: center; color: #666; font-size: 13px; border-top: 1px solid #e5e7eb; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎉 New User Registration</h1>
-      <p style="margin: 10px 0 0; opacity: 0.95;">CareMetric AI</p>
-    </div>
-    
-    <div class="content">
-      <p>Hello ${admin.full_name || 'Admin'},</p>
-      
-      <p>A new user has successfully registered for CareMetric AI and has been automatically approved with a 14-day free trial.</p>
-
-      <div class="info-box">
-        <h3 style="margin-top: 0; color: #1e40af;">User Information</h3>
-        <div class="info-row">
-          <span class="info-label">Name:</span>
-          <span class="info-value">${user.full_name || 'Not provided'}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Email:</span>
-          <span class="info-value">${user.email}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Signup Date:</span>
-          <span class="info-value">${new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Role:</span>
-          <span class="info-value">${user.role || 'user'}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Provider Type:</span>
-          <span class="info-value">${user.credential_type || 'Not set'}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Work Setting:</span>
-          <span class="info-value">${user.service_type || 'Not set'}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Status:</span>
-          <span class="info-value"><strong style="color: #10b981;">Auto-approved ✓</strong></span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Trial Status:</span>
-          <span class="info-value">14-day free trial active</span>
-        </div>
-      </div>
-
-      <p style="color: #555; font-size: 14px;">
-        <strong>Next Steps:</strong> The user has received a welcome email with onboarding instructions. You may want to monitor their initial activity or reach out to offer personalized assistance.
-      </p>
-
-      <div class="cta">
-        <a href="https://app.caremetricai.com/UserManagement" class="cta-button">
-          View in Admin Dashboard →
-        </a>
-      </div>
-    </div>
-    
-    <div class="footer">
-      <p><strong>CareMetric AI Admin Notification</strong></p>
-      <p style="margin-top: 10px; font-size: 12px; color: #999;">
-        This is an automated notification sent to all administrators.
-      </p>
-    </div>
-  </div>
-</body>
-</html>`
-          });
-          
-          console.log('✅ Admin notification sent to:', admin.email);
+        if (verification.success) {
+          await base44.asServiceRole.entities.UserInvitation.delete(invitation.id);
         }
-      } catch (emailError) {
-        console.error('Failed to send admin notification emails:', emailError);
-        console.error('Error details:', emailError.message);
-        // Continue execution - don't fail signup if email fails
+
+        try {
+          await base44.asServiceRole.entities.UserActivity.create({
+            user_email: user.email,
+            user_name: user.full_name,
+            action: 'user_signup_auto_approved',
+            details: {
+              invitation_id: invitation.id,
+              role: invitation.role,
+              care_scope: invitation.care_scope,
+              invited_by: invitation.invited_by,
+              auth_verified: verification.success
+            },
+            page: 'Signup',
+            entity_type: 'User',
+            entity_id: user.id
+          });
+        } catch (logError) {
+          console.error('Failed to log activity:', logError);
+        }
+
+        // Enroll the new hire into the current-year required in-services for
+        // their line/role. Best-effort: a failure here must never block the
+        // signup/approval, matching the function's fail-open posture.
+        let enrollment = null;
+        try {
+          enrollment = await enrollNewHireInAnnualPlan(base44, { ...actualUsers[0], ...invitation, email: user.email, full_name: invitation.full_name || user.full_name });
+          debugLog('On-hire annual enrollment:', enrollment);
+        } catch (enrollError) {
+          console.error('On-hire annual enrollment failed:', enrollError);
+        }
+
+        debugLog('Auto-approved invited user', verification.success ? '(verified)' : '(verification pending)');
+        return Response.json({ success: true, auto_approved: true, auth_verified: verification.success, enrollment });
+      } catch (updateError) {
+        console.error('Failed to auto-approve user:', updateError);
       }
-    } else {
-      console.warn('⚠️ No admin users found to notify');
     }
 
-    // Generate PDF guide URLs
-    let userGuideUrl = '';
-    let quickGuideUrl = '';
+    // INVITE-ONLY APP: there is no public sign-up. A signup with no matching
+    // invitation is unauthorized. The account is left unapproved (is_approved
+    // defaults to false) so the app's approval gate blocks it, and it cannot be
+    // approved manually — the only path to access is an admin invitation.
+    // Admins are sent a security alert so they can invite the person if the
+    // attempt was legitimate.
+    console.warn('Blocked uninvited sign-up (invite-only app):', user.email);
+
+    // Record the blocked attempt for the audit trail.
     try {
-      const fullGuideRes = await base44.asServiceRole.functions.invoke('generateUserGuidePDF', { guide_type: 'full' });
-      const fullGuideData = fullGuideRes.data || fullGuideRes;
-      userGuideUrl = fullGuideData.file_url || '';
-      
-      const quickGuideRes = await base44.asServiceRole.functions.invoke('generateUserGuidePDF', { guide_type: 'quick' });
-      const quickGuideData = quickGuideRes.data || quickGuideRes;
-      quickGuideUrl = quickGuideData.file_url || '';
-      
-      console.log('Generated guide PDFs for welcome email');
-    } catch (guideError) {
-      console.error('Failed to generate guide PDFs:', guideError);
-    }
-
-    // Send welcome email with onboarding link and guides
-    try {
-      const appUrl = Deno.env.get('APP_URL') || 'https://app.caremetricai.com';
-      const onboardingUrl = `${appUrl}/onboarding`;
-      
-      const guideSection = (userGuideUrl || quickGuideUrl) ? `
-      <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 20px; margin: 20px 0;">
-        <h3 style="margin-top: 0; color: #0369a1; font-size: 16px;">📚 Your Getting Started Guides</h3>
-        <p style="color: #475569; font-size: 14px; margin-bottom: 15px;">Download these guides for quick reference — they cover everything you need to know!</p>
-        ${userGuideUrl ? `<a href="${userGuideUrl}" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; margin-right: 10px; margin-bottom: 8px;">📖 Complete User Guide (PDF)</a>` : ''}
-        ${quickGuideUrl ? `<a href="${quickGuideUrl}" style="display: inline-block; background: #059669; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; margin-bottom: 8px;">⚡ Quick Reference Guide (PDF)</a>` : ''}
-      </div>` : '';
-
-      await base44.asServiceRole.integrations.Core.SendEmail({
-        to: user.email,
-        from_name: 'CareMetric AI',
-        subject: '🎉 Welcome to CareMetric AI - Your Free Trial Starts Now!',
-        body: `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
-  <div style="max-width: 600px; margin: 20px auto; background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
-    <div style="background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; padding: 30px; text-align: center;">
-      <h1 style="margin: 0; font-size: 24px;">🎉 Welcome to CareMetric AI!</h1>
-      <p style="margin: 10px 0 0; opacity: 0.95; font-size: 15px;">Your 14-day free trial is now active</p>
-    </div>
-    
-    <div style="padding: 30px;">
-      <p style="font-size: 15px;">Hello ${user.full_name || 'there'},</p>
-      
-      <p style="color: #475569;">Welcome aboard! You now have full access to all CareMetric AI features for the next 14 days — no credit card required.</p>
-
-      <h3 style="color: #1e40af; margin-top: 25px;">🚀 Getting Started in 4 Easy Steps</h3>
-      <ol style="color: #475569; font-size: 14px; padding-left: 20px;">
-        <li style="margin-bottom: 8px;"><strong>Complete your profile</strong> — Set your provider type in Settings</li>
-        <li style="margin-bottom: 8px;"><strong>Add your first patient</strong> — Go to Patients > Add Patient</li>
-        <li style="margin-bottom: 8px;"><strong>Try the Smart Note Assistant</strong> — Create your first AI-enhanced note</li>
-        <li style="margin-bottom: 8px;"><strong>Explore the Dashboard</strong> — See everything in one place</li>
-      </ol>
-
-      <div style="text-align: center; margin: 25px 0;">
-        <a href="${appUrl}/Dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">Get Started Now →</a>
-      </div>
-
-      ${guideSection}
-
-      <h3 style="color: #1e40af; margin-top: 25px;">✨ What You Can Do</h3>
-      <div style="color: #475569; font-size: 14px;">
-        <p>✅ <strong>Smart Note Assistant</strong> — AI-powered clinical documentation</p>
-        <p>✅ <strong>Medical Scribe</strong> — Voice-to-note with speaker identification</p>
-        <p>✅ <strong>Care Plans</strong> — Automated care plan generation</p>
-        <p>✅ <strong>Compliance Tools</strong> — Real-time compliance monitoring</p>
-        <p>✅ <strong>Patient Alerts</strong> — AI-powered risk detection</p>
-        <p>✅ <strong>Analytics</strong> — Track your time savings and performance</p>
-      </div>
-
-      <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 6px; margin: 20px 0;">
-        <p style="margin: 0; color: #1e40af; font-size: 13px;">💡 <strong>Pro Tip:</strong> Most nurses save 20-30 minutes on their very first AI-enhanced note. Start with the Smart Note Assistant to see the difference immediately!</p>
-      </div>
-
-      <p style="color: #64748b; font-size: 13px;">Questions? Visit our <a href="${appUrl}/Documentation" style="color: #2563eb;">Documentation</a> page, check the <a href="${appUrl}/FAQ" style="color: #2563eb;">FAQ</a>, or email us at <a href="mailto:support@caremetricai.com" style="color: #2563eb;">support@caremetricai.com</a>.</p>
-    </div>
-    
-    <div style="background: #f8fafc; padding: 20px; text-align: center; color: #666; font-size: 12px; border-top: 1px solid #e5e7eb;">
-      <p><strong>CareMetric AI</strong> — AI-Powered Clinical Documentation</p>
-      <p style="margin-top: 5px; color: #999;">© ${new Date().getFullYear()} CareMetric AI. All rights reserved.</p>
-    </div>
-  </div>
-</body>
-</html>`
+      await base44.asServiceRole.entities.UserActivity.create({
+        user_email: user.email,
+        user_name: user.full_name,
+        action: 'uninvited_signup_blocked',
+        details: { email: user.email, attempted_at: new Date().toISOString() },
+        page: 'Signup',
+        entity_type: 'User',
+        entity_id: user.id
       });
-      console.log('Welcome email sent to:', user.email);
-    } catch (emailError) {
-      console.error('Failed to send welcome email:', emailError);
+    } catch (logError) {
+      console.error('Failed to log blocked signup:', logError);
     }
 
-    return Response.json({ 
-      success: true, 
-      message: `User account created. Notification sent to ${admins?.length || 0} admin(s)` 
+    // Defense-in-depth: explicitly ensure this account is NOT approved, so an
+    // unexpected platform default can never grant access. Verify the id resolves
+    // to this email first (don't trust the body's id<->email pairing). This is
+    // fail-closed — it only ever removes access, never grants it.
+    try {
+      const blockedUsers = await base44.asServiceRole.entities.User.filter({ id: user.id });
+      const blockedUser = blockedUsers?.[0];
+      if (blockedUser
+        && (blockedUser.email || '').trim().toLowerCase() === normalizedEmail
+        && blockedUser.is_approved) {
+        await base44.asServiceRole.entities.User.update(user.id, { is_approved: false });
+        debugLog('Forced is_approved=false for uninvited signup');
+      }
+    } catch (blockError) {
+      console.error('Failed to enforce blocked state for uninvited signup:', blockError);
+    }
+
+    debugLog('Fetching admin users...');
+    const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' });
+    debugLog('Found admins:', admins.length);
+
+    const emailBody = `
+    Hello,
+
+    A sign-up attempt was BLOCKED on Penn Sync because the account was not invited.
+
+    Penn Sync is invite-only — there is no public sign-up. This account has NOT
+    been granted access and cannot be approved manually.
+
+    👤 Name: ${user.full_name || 'Not provided'}
+    📧 Email: ${user.email}
+    📅 Attempt Date: ${new Date().toLocaleString()}
+
+    If this person should have access, send them an invitation:
+    ➡️ Admin Dashboard > User Management
+
+    No other action is required — they remain blocked until invited.
+
+    Best regards,
+    Penn Sync Security
+    `.trim();
+
+    // Send a security alert to all admins
+    const emailPromises = admins.map(admin =>
+      base44.asServiceRole.integrations.Core.SendEmail({
+        to: admin.email,
+        subject: `🚫 Blocked Uninvited Sign-up - Penn Sync`,
+        from_name: 'Penn Sync Security',
+        body: `Hello ${admin.full_name || 'Admin'},\n\n${emailBody}`
+      })
+    );
+
+    // Optionally also alert an additional security contact, configurable per
+    // deployment via SECURITY_ALERT_EMAIL (admins are always alerted above).
+    const extraAlertEmail = Deno.env.get('SECURITY_ALERT_EMAIL');
+    if (extraAlertEmail) {
+      emailPromises.push(
+        base44.asServiceRole.integrations.Core.SendEmail({
+          to: extraAlertEmail,
+          subject: `🚫 Blocked Uninvited Sign-up - Penn Sync`,
+          from_name: 'Penn Sync Security',
+          body: `Hello,\n\n${emailBody}`
+        })
+      );
+    }
+
+    debugLog('Sending blocked-signup security alert to admins...');
+    await Promise.all(emailPromises);
+    debugLog('Blocked-signup alert complete');
+
+    return Response.json({
+      success: true,
+      blocked: true,
+      message: `Uninvited sign-up blocked; alerted ${admins.length} admin(s)`
     });
 
   } catch (error) {
@@ -312,3 +313,48 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+async function verifyInvitedUser(base44, email) {
+  try {
+    const config = base44.getConfig();
+    let users = await base44.asServiceRole.entities.User.filter({ email });
+    let authUser = users?.[0];
+
+    if (authUser?.is_verified) {
+      return { success: true, already_verified: true };
+    }
+
+    const otpExpired = !authUser?.otp_code || !authUser?.otp_expires_at || new Date(authUser.otp_expires_at) <= new Date();
+
+    if (otpExpired) {
+      const resendResponse = await fetch(`${config.serverUrl}/api/apps/${config.appId}/auth/resend-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      if (!resendResponse.ok) {
+        return { success: false, step: 'resend_failed' };
+      }
+
+      users = await base44.asServiceRole.entities.User.filter({ email });
+      authUser = users?.[0];
+    }
+
+    if (!authUser?.otp_code) {
+      return { success: false, step: 'missing_otp_code' };
+    }
+
+    const verifyResponse = await fetch(`${config.serverUrl}/api/apps/${config.appId}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp_code: authUser.otp_code })
+    });
+
+    const result = await verifyResponse.json();
+    return { success: verifyResponse.ok, result };
+  } catch (error) {
+    console.error('verifyInvitedUser error:', error);
+    return { success: false, step: 'exception', error: String(error?.message || error) };
+  }
+}

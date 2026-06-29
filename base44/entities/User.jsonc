@@ -1,0 +1,131 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "care_scope": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "both"
+      ],
+      "description": "What type of care this nurse provides"
+    },
+    "credentials": {
+      "type": "string",
+      "description": "Nursing credentials/certifications"
+    },
+    "credential_type": {
+      "type": "string",
+      "enum": [
+        "RN",
+        "LPN"
+      ],
+      "description": "Required: Registered Nurse or Licensed Practical Nurse"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Contact phone number"
+    },
+    "license_number": {
+      "type": "string",
+      "description": "State nursing license number"
+    },
+    "license_state": {
+      "type": "string",
+      "description": "State where license was issued"
+    },
+    "license_expiration": {
+      "type": "string",
+      "format": "date",
+      "description": "License expiration date"
+    },
+    "is_approved": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether user has been approved by admin"
+    },
+    "favorited_patients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "List of favorited patients"
+    },
+    "business_line": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "all"
+      ],
+      "description": "Business line this user belongs to"
+    },
+    "account_type": {
+      "type": "string",
+      "enum": [
+        "user",
+        "agency_admin",
+        "super_admin"
+      ],
+      "default": "user",
+      "description": "Account type for Learning Center permissions"
+    },
+    "location": {
+      "type": "string",
+      "description": "Branch or location (optional)"
+    },
+    "department": {
+      "type": "string",
+      "description": "Department or team (optional)"
+    },
+    "agency_name": {
+      "type": "string",
+      "description": "Agency or business name"
+    },
+    "job_title": {
+      "type": "string",
+      "description": "Employee job title"
+    },
+    "discipline": {
+      "type": "string",
+      "description": "Clinical or operational discipline grouping"
+    },
+    "employment_type": {
+      "type": "string",
+      "enum": [
+        "full_time",
+        "part_time",
+        "per_diem",
+        "contract"
+      ],
+      "description": "Employment type"
+    },
+    "profile_completeness_score": {
+      "type": "number",
+      "description": "Percentage of profile fields completed (0-100)"
+    },
+    "manager_email": {
+      "type": "string",
+      "description": "Email of this user's manager/approver for time-off and approvals"
+    },
+    "is_manager": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this user can approve time-off requests for their direct reports"
+    }
+  },
+  "required": [
+    "credential_type",
+    "phone",
+    "care_scope"
+  ]
+}

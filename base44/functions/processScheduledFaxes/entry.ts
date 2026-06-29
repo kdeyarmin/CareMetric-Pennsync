@@ -1,126 +1,92 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
 
-    if (user?.role !== 'admin') {
-      return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    // Authorization: opt-in lockdown for this privileged scheduled job (mirrors
+    // processTrainingRenewals / syncFaxStatuses). When INTERNAL_FN_SECRET is set,
+    // require an admin OR the internal-secret header; the no-identity cron path is
+    // allowed only while no secret is configured.
+    const me = await base44.auth.me().catch(() => null);
+    const isAdmin = me?.role === 'admin';
+    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
+    if (internalSecret) {
+      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else if (me && !isAdmin) {
+      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 
-    const apiKey = Deno.env.get("TELNYX_API_KEY");
-    if (!apiKey) {
-      return Response.json({ error: 'TELNYX_API_KEY not configured' }, { status: 500 });
-    }
+    const now = new Date().toISOString();
 
-    const now = new Date();
+    // Get scheduled faxes that are due
+    const scheduledFaxes = await base44.asServiceRole.entities.ScheduledFax.filter({
+      status: 'pending',
+      scheduled_time: { "$lte": now }
+    });
 
-    // Fetch scheduled faxes that are due
-    const scheduledFaxes = await base44.asServiceRole.entities.FaxHistory.filter(
-      { status: 'scheduled' },
-      'scheduled_send_at',
-      50
-    );
+    console.log(`Found ${scheduledFaxes.length} scheduled faxes to process`);
 
-    let processedCount = 0;
-    let failedCount = 0;
+    // NOTE: only ONE scheduled-fax processor should be enabled in the platform
+    // scheduler (this OR processScheduledFaxesByPriority) — running both will
+    // double-send. See docs.
 
-    for (const fax of scheduledFaxes) {
-      if (!fax.scheduled_send_at) continue;
-
-      const scheduledTime = new Date(fax.scheduled_send_at);
-      if (scheduledTime > now) continue; // Not due yet
-
-      if (!fax.document_urls || fax.document_urls.length === 0) {
-        await base44.asServiceRole.entities.FaxHistory.update(fax.id, {
-          status: 'failed',
-          error_message: 'No documents attached to scheduled fax'
+    for (const scheduledFax of scheduledFaxes) {
+      // Claim the row (pending -> processing) with a token BEFORE sending, then
+      // RE-READ to confirm we own it. A bare status flip isn't atomic: two
+      // overlapping runs (or this processor + processScheduledFaxesByPriority)
+      // both read 'pending' and both flip it, double-sending the fax. The
+      // claim-token + re-read makes the loser detect it lost and skip. (Mirrors
+      // dispatchScheduledSms — Twilio fax has no client idempotency key.)
+      const runId = crypto.randomUUID();
+      try {
+        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+          status: 'processing', claimed_by: runId, claimed_at: new Date().toISOString(),
         });
-        failedCount++;
+      } catch (claimErr) {
+        console.error(`Could not claim scheduled fax ${scheduledFax.id}; skipping`, claimErr);
         continue;
       }
-
+      const claimCheck = await base44.asServiceRole.entities.ScheduledFax
+        .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
+      if (!claimCheck[0] || claimCheck[0].claimed_by !== runId) {
+        // Another run claimed it first — skip to avoid a duplicate send.
+        continue;
+      }
       try {
-        // Format number
-        let formattedNumber = fax.recipient_fax_number.replace(/[^\d+]/g, '');
-        if (!formattedNumber.startsWith('+')) {
-          if (formattedNumber.length === 10) formattedNumber = '+1' + formattedNumber;
-          else if (formattedNumber.length === 11 && formattedNumber.startsWith('1')) formattedNumber = '+' + formattedNumber;
-          else formattedNumber = '+' + formattedNumber;
-        }
-
-        await base44.asServiceRole.entities.FaxHistory.update(fax.id, {
-          status: 'sending'
+        // Use the batch send function for each scheduled fax
+        const response = await base44.asServiceRole.functions.invoke('sendBatchFax', {
+          file_url: scheduledFax.document_url,
+          to_numbers: scheduledFax.to_numbers,
+          from_number: scheduledFax.from_number,
+          document_name: scheduledFax.document_name,
+          patient_id: scheduledFax.patient_id,
+          cover_page_details: scheduledFax.cover_page_details,
+          priority: scheduledFax.priority
         });
 
-        const telnyxResponse = await fetch('https://api.telnyx.com/v2/faxes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            to: formattedNumber,
-            from: '+18445550100',
-            media_url: fax.document_urls[0],
-            quality: 'high',
-            monochrome: false
-          })
+        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+          status: 'sent'
         });
 
-        const telnyxData = await telnyxResponse.json();
-
-        if (telnyxResponse.ok) {
-          await base44.asServiceRole.entities.FaxHistory.update(fax.id, {
-            status: 'sent',
-            telnyx_fax_id: telnyxData?.data?.id,
-            sent_at: new Date().toISOString()
-          });
-
-          // Send notification
-          try {
-            await base44.asServiceRole.functions.invoke('sendFaxNotification', {
-              user_email: fax.user_email,
-              fax_history_id: fax.id,
-              status: 'sent',
-              recipient_name: fax.recipient_name || '',
-              recipient_fax_number: fax.recipient_fax_number
-            });
-          } catch (e) {
-            console.warn('[processScheduledFaxes] Notification failed:', e.message);
-          }
-
-          processedCount++;
-        } else {
-          const errMsg = telnyxData?.errors?.[0]?.detail || 'Scheduled send failed';
-          await base44.asServiceRole.entities.FaxHistory.update(fax.id, {
-            status: 'failed',
-            error_message: errMsg
-          });
-          failedCount++;
-        }
-      } catch (err) {
-        console.error(`[processScheduledFaxes] Error for fax ${fax.id}:`, err.message);
-        await base44.asServiceRole.entities.FaxHistory.update(fax.id, {
-          status: 'failed',
-          error_message: err.message
+        console.log(`Processed scheduled fax ${scheduledFax.id}`);
+      } catch (error) {
+        console.error(`Failed to process scheduled fax ${scheduledFax.id}:`, error);
+        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
+          status: 'failed'
         });
-        failedCount++;
       }
     }
-
-    console.log(`[processScheduledFaxes] Processed: ${processedCount}, Failed: ${failedCount}, Total checked: ${scheduledFaxes.length}`);
 
     return Response.json({
       success: true,
-      total_checked: scheduledFaxes.length,
-      processed: processedCount,
-      failed: failedCount
+      processed: scheduledFaxes.length
     });
 
   } catch (error) {
-    console.error('[processScheduledFaxes] Error:', error.message, error.stack);
+    console.error('Process scheduled faxes error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

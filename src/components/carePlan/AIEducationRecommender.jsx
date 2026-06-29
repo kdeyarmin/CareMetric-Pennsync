@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,14 +13,12 @@ import {
   BookOpen,
   Loader2,
   CheckCircle2,
-  Sparkles,
-  Target,
-  Calendar
+  Sparkles
 } from "lucide-react";
 import { format } from "date-fns";
 
 export default function AIEducationRecommender({ patient, carePlans = [], onAssignEducation }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [recommendations, setRecommendations] = useState([]);
   const [selectedTopics, setSelectedTopics] = useState({});
   const [isAssigning, setIsAssigning] = useState(false);
@@ -34,12 +34,12 @@ export default function AIEducationRecommender({ patient, carePlans = [], onAssi
   const generateRecommendations = async () => {
     if (!patient) return;
 
-    setIsGenerating(true);
     try {
       const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
       const assignedTopics = existingEducation.map(e => e.topic.toLowerCase());
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `You are a patient education specialist. Recommend educational topics for this patient based on their diagnosis and care plan goals.
 
 PATIENT: ${patient.first_name} ${patient.last_name}
@@ -105,9 +105,8 @@ Return JSON:`,
 
     } catch (error) {
       console.error("Education recommendation error:", error);
-      alert("Failed to generate recommendations. Please try again.");
+      toast.error("Failed to generate recommendations. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const toggleSelection = (idx) => {
@@ -119,41 +118,62 @@ Return JSON:`,
 
     const selected = recommendations.filter((_, idx) => selectedTopics[idx]);
     if (selected.length === 0) {
-      alert("Please select at least one education topic.");
+      toast.error("Please select at least one education topic.");
       return;
     }
 
     setIsAssigning(true);
     try {
-      const assignments = [];
-      for (const topic of selected) {
-        const assignment = await base44.entities.PatientEducationAssignment.create({
-          patient_id: patient.id,
-          topic: topic.topic,
-          content: topic.content,
-          format: topic.delivery_format,
-          status: 'assigned',
-          assigned_date: format(new Date(), 'yyyy-MM-dd'),
-          assigned_by: (await base44.auth.me()).email,
-          priority: topic.priority,
-          materials_provided: topic.key_points || []
-        });
-        assignments.push(assignment);
-      }
+      const assignedBy = (await base44.auth.me()).email;
 
-      if (onAssignEducation) {
+      const results = await Promise.allSettled(
+        selected.map((topic) =>
+          base44.entities.PatientEducationAssignment.create({
+            patient_id: patient.id,
+            topic: topic.topic,
+            content: topic.content,
+            format: topic.delivery_format,
+            status: 'assigned',
+            assigned_date: format(new Date(), 'yyyy-MM-dd'),
+            assigned_by: assignedBy,
+            priority: topic.priority,
+            materials_provided: topic.key_points || []
+          })
+        )
+      );
+
+      const assignments = results
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => r.value);
+      const failedCount = results.length - assignments.length;
+
+      if (assignments.length > 0 && onAssignEducation) {
         onAssignEducation(assignments);
       }
 
-      alert(`Assigned ${assignments.length} education topic(s)!`);
-      setRecommendations([]);
-      setSelectedTopics({});
+      if (failedCount === 0) {
+        toast.success(`Assigned ${assignments.length} education topic(s)!`);
+      } else if (assignments.length > 0) {
+        results
+          .filter((r) => r.status === 'rejected')
+          .forEach((r) => console.error("Education assignment error:", r.reason));
+        toast.error(`Assigned ${assignments.length} topic(s), but ${failedCount} failed. Please retry the rest.`);
+      } else {
+        results.forEach((r) => console.error("Education assignment error:", r.reason));
+        toast.error("Failed to assign education. Please try again.");
+      }
 
+      // Only clear topics that succeeded so failures can be retried.
+      if (failedCount === 0) {
+        setRecommendations([]);
+        setSelectedTopics({});
+      }
     } catch (error) {
       console.error("Assignment error:", error);
-      alert("Failed to assign education. Please try again.");
+      toast.error("Failed to assign education. Please try again.");
+    } finally {
+      setIsAssigning(false);
     }
-    setIsAssigning(false);
   };
 
   const getPriorityColor = (priority) => {
@@ -162,7 +182,7 @@ Return JSON:`,
       medium: "bg-yellow-100 text-yellow-800 border-yellow-300",
       low: "bg-blue-100 text-blue-800 border-blue-300"
     };
-    return colors[priority] || "bg-gray-100 text-gray-800";
+    return colors[priority] || "bg-slate-100 text-slate-800";
   };
 
   const selectedCount = Object.values(selectedTopics).filter(Boolean).length;
@@ -185,10 +205,10 @@ Return JSON:`,
             </Alert>
             <Button
               onClick={generateRecommendations}
-              disabled={isGenerating || !patient}
+              disabled={ai.loading || !patient}
               className="w-full bg-green-600 hover:bg-green-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
               ) : (
                 <><Sparkles className="w-4 h-4 mr-2" /> Generate Education Topics</>
@@ -218,7 +238,7 @@ Return JSON:`,
                     className={`border transition-all ${
                       selectedTopics[idx] 
                         ? 'border-green-400 bg-green-50' 
-                        : 'border-gray-200'
+                        : 'border-slate-200'
                     }`}
                   >
                     <CardContent className="p-4">
@@ -238,7 +258,7 @@ Return JSON:`,
                             </Badge>
                           </div>
 
-                          <h4 className="font-semibold text-gray-900">{rec.topic}</h4>
+                          <h4 className="font-semibold text-slate-900">{rec.topic}</h4>
                           
                           <div className="bg-blue-50 p-2 rounded border border-blue-200">
                             <p className="text-xs text-blue-900">
@@ -246,12 +266,12 @@ Return JSON:`,
                             </p>
                           </div>
 
-                          <p className="text-sm text-gray-700">{rec.content}</p>
+                          <p className="text-sm text-slate-700">{rec.content}</p>
 
                           {rec.learning_objectives?.length > 0 && (
-                            <div className="bg-purple-50 p-2 rounded border border-purple-200">
-                              <p className="text-xs font-medium text-purple-800 mb-1">Learning Objectives:</p>
-                              <ul className="text-xs text-purple-900 space-y-0.5">
+                            <div className="bg-navy-50 p-2 rounded border border-navy-200">
+                              <p className="text-xs font-medium text-navy-800 mb-1">Learning Objectives:</p>
+                              <ul className="text-xs text-navy-900 space-y-0.5">
                                 {rec.learning_objectives.map((obj, i) => (
                                   <li key={i}>• {obj}</li>
                                 ))}

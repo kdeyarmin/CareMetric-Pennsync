@@ -1,0 +1,97 @@
+{
+  "name": "ComplianceRule",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the compliance rule"
+    },
+    "rule_category": {
+      "type": "string",
+      "enum": [
+        "oasis",
+        "medicare_cop",
+        "state_regulation",
+        "agency_policy",
+        "hipaa",
+        "quality_measure"
+      ],
+      "description": "Category of the compliance rule"
+    },
+    "rule_code": {
+      "type": "string",
+      "description": "Official code/reference (e.g., OASIS-C M1021, CoP 484.55)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what this rule checks"
+    },
+    "required_elements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of documentation elements required by this rule"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Keywords to look for in documentation"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium",
+      "description": "Severity if rule is violated"
+    },
+    "applies_to_visit_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which visit types this rule applies to"
+    },
+    "applies_to_care_type": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "both"
+      ],
+      "default": "both"
+    },
+    "penalty_description": {
+      "type": "string",
+      "description": "Description of potential penalties for non-compliance"
+    },
+    "remediation_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Steps to fix non-compliance"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When this rule became effective"
+    }
+  },
+  "required": [
+    "rule_name",
+    "rule_category",
+    "description",
+    "severity"
+  ]
+}

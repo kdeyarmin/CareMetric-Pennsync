@@ -2,7 +2,6 @@ import React from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -18,8 +17,7 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
-  FileText,
-  Target
+  FileText
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -78,7 +76,7 @@ export default function EducationTracker({ patient }) {
       medium: "bg-yellow-100 text-yellow-800",
       low: "bg-blue-100 text-blue-800"
     };
-    return colors[priority] || "bg-gray-100 text-gray-800";
+    return colors[priority] || "bg-slate-100 text-slate-800";
   };
 
   const stats = {
@@ -111,19 +109,19 @@ export default function EducationTracker({ patient }) {
             <p className="text-xs text-yellow-600">In Progress</p>
             <p className="text-xl font-bold text-yellow-900">{stats.inProgress}</p>
           </div>
-          <div className="text-center p-2 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-xs text-gray-600">Assigned</p>
-            <p className="text-xl font-bold text-gray-900">{stats.assigned}</p>
+          <div className="text-center p-2 bg-slate-50 rounded-lg border border-slate-200">
+            <p className="text-xs text-slate-600">Assigned</p>
+            <p className="text-xl font-bold text-slate-900">{stats.assigned}</p>
           </div>
         </div>
 
         {/* Assignments List */}
         {isLoading ? (
-          <p className="text-sm text-gray-500 text-center py-4">Loading...</p>
+          <p className="text-sm text-slate-500 text-center py-4">Loading...</p>
         ) : assignments.length === 0 ? (
           <div className="text-center py-8">
-            <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">No education assigned yet</p>
+            <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">No education assigned yet</p>
           </div>
         ) : (
           <ScrollArea className="h-[400px]">
@@ -146,7 +144,7 @@ export default function EducationTracker({ patient }) {
                         {getStatusIcon(assignment.status)}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h4 className="font-semibold text-gray-900">{assignment.topic}</h4>
+                            <h4 className="font-semibold text-slate-900">{assignment.topic}</h4>
                             <Badge className={getStatusColor(assignment.status)}>
                               {assignment.status.replace('_', ' ')}
                             </Badge>
@@ -157,7 +155,7 @@ export default function EducationTracker({ patient }) {
                             )}
                           </div>
 
-                          <div className="flex gap-3 text-xs text-gray-500 mb-2">
+                          <div className="flex gap-3 text-xs text-slate-500 mb-2">
                             <span>Assigned: {format(new Date(assignment.assigned_date), 'MMM d, yyyy')}</span>
                             {assignment.completed_date && (
                               <span className="text-green-600">
@@ -169,7 +167,7 @@ export default function EducationTracker({ patient }) {
                           {isExpanded && (
                             <div className="mt-3 space-y-3">
                               <div className="bg-white p-3 rounded border">
-                                <p className="text-sm text-gray-700">{assignment.content}</p>
+                                <p className="text-sm text-slate-700">{assignment.content}</p>
                               </div>
 
                               {assignment.materials_provided?.length > 0 && (
@@ -184,14 +182,14 @@ export default function EducationTracker({ patient }) {
                               )}
 
                               <div>
-                                <label className="text-xs font-medium text-gray-600 block mb-1">
+                                <label htmlFor={`update-status-${assignment.id}`} className="text-xs font-medium text-slate-600 block mb-1">
                                   Update Status:
                                 </label>
                                 <Select
                                   value={assignment.status}
                                   onValueChange={(newStatus) => handleStatusChange(assignment.id, newStatus)}
                                 >
-                                  <SelectTrigger className="h-8">
+                                  <SelectTrigger id={`update-status-${assignment.id}`} className="h-8">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -205,10 +203,11 @@ export default function EducationTracker({ patient }) {
 
                               {assignment.status !== 'completed' && (
                                 <div>
-                                  <label className="text-xs font-medium text-gray-600 block mb-1">
+                                  <label htmlFor={`teach-back-notes-${assignment.id}`} className="text-xs font-medium text-slate-600 block mb-1">
                                     Teach-Back Notes (optional):
                                   </label>
                                   <Textarea
+                                    id={`teach-back-notes-${assignment.id}`}
                                     placeholder="Document patient's understanding..."
                                     value={teachBackNotes[assignment.id] || ''}
                                     onChange={(e) => setTeachBackNotes(prev => ({

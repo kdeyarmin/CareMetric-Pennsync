@@ -26,6 +26,7 @@ export const ActivityActions = {
   UPDATE: 'update',
   DELETE: 'delete',
   LOGIN: 'login',
+  LOGOUT: 'logout',
   PAGE_VISIT: 'page_visit',
   EXPORT: 'export',
   GENERATE: 'generate',
@@ -51,7 +52,35 @@ export const ActivityActions = {
   ALERT_DISMISSED: 'alert_dismissed',
   AI_FEATURE_USED: 'ai_feature_used',
   SEARCH: 'search',
-  FILTER_APPLIED: 'filter_applied'
+  FILTER_APPLIED: 'filter_applied',
+  // User management actions
+  USER_CREATED: 'user_created',
+  USER_ROLE_CHANGED: 'user_role_changed',
+  USER_ENABLED: 'user_enabled',
+  USER_DISABLED: 'user_disabled',
+  USER_PASSWORD_RESET: 'user_password_reset',
+  USER_DELETED: 'user_deleted',
+  INVITATION_SENT: 'invitation_sent',
+  INVITATION_RESENT: 'invitation_resent',
+  INVITATION_DELETED: 'invitation_deleted',
+  // Document actions
+  DOCUMENT_GENERATED: 'document_generated',
+  DOCUMENT_SIGNED: 'document_signed',
+  DOCUMENT_UPLOADED: 'document_uploaded',
+  DOCUMENT_DELETED: 'document_deleted',
+  // Admin actions
+  SETTINGS_UPDATED: 'settings_updated',
+  ROLE_PERMISSION_CHANGED: 'role_permission_changed',
+  // Telnyx phone / messaging actions
+  SMS_SENT: 'sms_sent',
+  SMS_RECEIVED: 'sms_received',
+  SMS_STATUS_UPDATED: 'sms_status_updated',
+  SMS_OPT_OUT: 'sms_opt_out',
+  CALL_INITIATED: 'call_initiated',
+  INBOUND_CALL_RECEIVED: 'inbound_call_received',
+  CALL_STATUS_UPDATED: 'call_status_updated',
+  DUTY_STATUS_CHANGED: 'duty_status_changed',
+  WORK_NUMBER_PROVISIONED: 'work_number_provisioned'
 };
 
 export const logError = async (errorMessage, errorDetails = {}) => {
@@ -59,7 +88,7 @@ export const logError = async (errorMessage, errorDetails = {}) => {
     let user = null;
     try {
       user = await base44.auth.me();
-    } catch (e) {
+    } catch {
       // User might not be logged in
     }
 

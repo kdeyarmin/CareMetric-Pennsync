@@ -1,4 +1,21 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
+// response_json_schema, because the provider rejects deeply-nested object
+// schemas that lack an explicit `required` array at every level.
+function parseLLMJson(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  const text = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end <= start) return null;
+    try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  }
+}
 
 Deno.serve(async (req) => {
   try {
@@ -15,17 +32,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'patient_id is required' }, { status: 400 });
     }
 
-    // Fetch comprehensive patient data
+    // Fetch comprehensive patient data using the RLS-scoped client (NOT
+    // asServiceRole) so the platform enforces that this user may access this
+    // patient — prevents cross-patient IDOR via a guessed patient_id. Mirrors
+    // the safe pattern in processCompletedVisit / expandClinicalPhrase.
     const [patients, visits, carePlans, incidents, alerts] = await Promise.all([
-      base44.asServiceRole.entities.Patient.filter({ id: patient_id }),
-      base44.asServiceRole.entities.Visit.filter({ patient_id }, '-visit_date', 20),
-      base44.asServiceRole.entities.CarePlan.filter({ patient_id }),
-      base44.asServiceRole.entities.Incident.filter({ patient_id }),
-      base44.asServiceRole.entities.PatientAlert.filter({ patient_id, status: 'active' })
+      base44.entities.Patient.filter({ id: patient_id }),
+      base44.entities.Visit.filter({ patient_id }, '-visit_date', 20),
+      base44.entities.CarePlan.filter({ patient_id }),
+      base44.entities.Incident.filter({ patient_id }),
+      base44.entities.PatientAlert.filter({ patient_id, status: 'active' })
     ]);
 
     const patient = patients[0];
     if (!patient) {
+      // Either the patient doesn't exist or the caller isn't authorized for it.
       return Response.json({ error: 'Patient not found' }, { status: 404 });
     }
 
@@ -96,52 +117,25 @@ Pay special attention to:
 - Social determinants of health
 - Gaps in care or documentation
 
-Be specific and evidence-based in your predictions.`;
+Be specific and evidence-based in your predictions.
 
-    const riskPredictions = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: predictionPrompt,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          overall_risk_level: {
-            type: 'string',
-            enum: ['low', 'medium', 'high', 'critical']
-          },
-          risk_assessments: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                risk_type: { type: 'string' },
-                risk_score: { type: 'number' },
-                urgency: { type: 'string' },
-                contributing_factors: {
-                  type: 'array',
-                  items: { type: 'string' }
-                },
-                recommendations: {
-                  type: 'array',
-                  items: { type: 'string' }
-                },
-                evidence: { type: 'string' }
-              }
-            }
-          },
-          immediate_actions_needed: {
-            type: 'array',
-            items: { type: 'string' }
-          },
-          monitoring_priorities: {
-            type: 'array',
-            items: { type: 'string' }
-          }
-        }
-      }
+Return ONLY valid JSON, no prose or code fences, with this shape:
+{"overall_risk_level":"low|medium|high|critical","risk_assessments":[{"risk_type":"","risk_score":0,"urgency":"low|medium|high|critical","contributing_factors":[""],"recommendations":[""],"evidence":""}],"immediate_actions_needed":[""],"monitoring_priorities":[""]}`;
+
+    const rawRiskPredictions = await base44.asServiceRole.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
+      prompt: predictionPrompt
     });
+    const riskPredictions = parseLLMJson(rawRiskPredictions) || {};
 
-    // Create alerts for high-risk findings
+    // Create alerts for high-risk findings. `risk_assessments` is not a required
+    // field in the LLM response schema, so guard against a missing/non-array
+    // value rather than throwing "undefined is not iterable" (an unhandled 500).
     const newAlerts = [];
-    for (const risk of riskPredictions.risk_assessments) {
+    const riskAssessments = Array.isArray(riskPredictions?.risk_assessments)
+      ? riskPredictions.risk_assessments
+      : [];
+    for (const risk of riskAssessments) {
       if (risk.risk_score >= 70 && risk.urgency !== 'low') {
         // Check if alert already exists
         const existingAlert = alerts.find(a => 
@@ -183,7 +177,7 @@ Be specific and evidence-based in your predictions.`;
       details: {
         patient_id,
         overall_risk_level: riskPredictions.overall_risk_level,
-        high_risk_count: riskPredictions.risk_assessments.filter(r => r.risk_score >= 70).length,
+        high_risk_count: riskAssessments.filter(r => r.risk_score >= 70).length,
         alerts_created: newAlerts.length,
         analyzed_by: user.email
       }
@@ -193,7 +187,7 @@ Be specific and evidence-based in your predictions.`;
       success: true,
       patient_id,
       overall_risk_level: riskPredictions.overall_risk_level,
-      risk_assessments: riskPredictions.risk_assessments,
+      risk_assessments: riskAssessments,
       immediate_actions: riskPredictions.immediate_actions_needed,
       monitoring_priorities: riskPredictions.monitoring_priorities,
       alerts_created: newAlerts.length,
@@ -202,9 +196,8 @@ Be specific and evidence-based in your predictions.`;
 
   } catch (error) {
     console.error('Error predicting patient risks:', error);
-    return Response.json({ 
-      error: error.message,
-      stack: error.stack 
+    return Response.json({
+      error: error.message
     }, { status: 500 });
   }
 });

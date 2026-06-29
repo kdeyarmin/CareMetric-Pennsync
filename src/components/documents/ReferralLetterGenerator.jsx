@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +20,7 @@ export default function ReferralLetterGenerator({ patientId, patient }) {
   const [reasonForReferral, setReasonForReferral] = useState("");
   const [urgency, setUrgency] = useState("routine");
   const [generatedLetter, setGeneratedLetter] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [additionalContext, setAdditionalContext] = useState("");
 
   const { data: visits = [] } = useQuery({
@@ -34,11 +36,11 @@ export default function ReferralLetterGenerator({ patientId, patient }) {
   });
 
   const generateLetter = async () => {
-    setIsGenerating(true);
     try {
       const recentVisit = visits[0];
       
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a professional medical referral letter.
 
 FROM:
@@ -112,8 +114,8 @@ Keep the tone professional and concise. Include all relevant clinical informatio
       setGeneratedLetter(result.letter);
     } catch (error) {
       console.error("Error generating referral letter:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   return (
@@ -147,7 +149,7 @@ Keep the tone professional and concise. Include all relevant clinical informatio
               <div>
                 <Label>Urgency</Label>
                 <select 
-                  className="w-full h-10 px-3 border border-gray-300 rounded-md"
+                  className="w-full h-10 px-3 border border-slate-300 rounded-md"
                   value={urgency}
                   onChange={(e) => setUrgency(e.target.value)}
                 >
@@ -190,13 +192,13 @@ Keep the tone professional and concise. Include all relevant clinical informatio
             {additionalContext && (
               <div>
                 <Label>Context from Smart Notes</Label>
-                <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-sm">
-                  <p className="text-gray-700 whitespace-pre-wrap">{additionalContext}</p>
+                <div className="bg-navy-50 p-3 rounded-lg border border-navy-200 text-sm">
+                  <p className="text-slate-700 whitespace-pre-wrap">{additionalContext}</p>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => setAdditionalContext("")}
-                    className="mt-2 text-xs text-purple-600"
+                    className="mt-2 text-xs text-navy-600"
                   >
                     Clear Context
                   </Button>
@@ -206,10 +208,10 @@ Keep the tone professional and concise. Include all relevant clinical informatio
 
             <Button 
               onClick={generateLetter} 
-              disabled={isGenerating || !referringTo || !reasonForReferral}
+              disabled={ai.loading || !referringTo || !reasonForReferral}
               className="w-full bg-indigo-600 hover:bg-indigo-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" /> Generating...</>
               ) : (
                 <><Sparkles className="w-5 h-5 mr-2" /> Generate Referral Letter</>

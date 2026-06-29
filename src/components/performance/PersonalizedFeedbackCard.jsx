@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,7 @@ export default function PersonalizedFeedbackCard({ feedback, onAcknowledge }) {
 
   return (
     <Card className="border-indigo-200">
-      <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="flex items-center gap-2 text-indigo-900">
           <MessageSquare className="w-5 h-5" />
           AI Coach Feedback
@@ -25,8 +24,8 @@ export default function PersonalizedFeedbackCard({ feedback, onAcknowledge }) {
         <div className="flex items-start gap-3">
           <TrendingUp className="w-6 h-6 text-indigo-600 mt-1 flex-shrink-0" />
           <div className="flex-1">
-            <p className="text-gray-900 font-medium mb-2">{feedback.message}</p>
-            <p className="text-sm text-gray-600">{feedback.details}</p>
+            <p className="text-slate-900 font-medium mb-2">{feedback.message}</p>
+            <p className="text-sm text-slate-600">{feedback.details}</p>
           </div>
           <Badge className={priorityColor[feedback.priority] + ' text-white'}>
             {feedback.priority}

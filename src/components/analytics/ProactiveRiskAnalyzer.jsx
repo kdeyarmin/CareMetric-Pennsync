@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +13,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertTriangle,
@@ -22,7 +23,6 @@ import {
   CheckCircle2,
   XCircle,
   ChevronRight,
-  Bell,
   User,
   TrendingDown,
   Heart,
@@ -30,11 +30,11 @@ import {
   Clock,
   Zap
 } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { format } from "date-fns";
 
-export default function ProactiveRiskAnalyzer({ users = [] }) {
+export default function ProactiveRiskAnalyzer({ _users = [] }) {
   const queryClient = useQueryClient();
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [selectedAlert, setSelectedAlert] = useState(null);
@@ -42,7 +42,7 @@ export default function ProactiveRiskAnalyzer({ users = [] }) {
   // Fetch patients
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 
   // Fetch recent visits
@@ -84,7 +84,6 @@ export default function ProactiveRiskAnalyzer({ users = [] }) {
   });
 
   const runProactiveAnalysis = async () => {
-    setIsAnalyzing(true);
     setAnalysisProgress(0);
     setAnalysisResults(null);
 
@@ -135,7 +134,8 @@ export default function ProactiveRiskAnalyzer({ users = [] }) {
       for (let i = 0; i < patientData.length; i += batchSize) {
         const batch = patientData.slice(i, i + batchSize);
         
-        const result = await base44.integrations.Core.InvokeLLM({
+        const result = await ai.run({
+          model: "claude_opus_4_8",
           prompt: `You are a clinical risk analysis AI for home health/hospice. Analyze these patients for potential adverse events, non-compliance risks, and urgent care needs.
 
 PATIENT DATA:
@@ -257,9 +257,9 @@ Return JSON:
       refetchAlerts();
     } catch (error) {
       console.error("Error in proactive analysis:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
     
-    setIsAnalyzing(false);
   };
 
   const getSeverityColor = (severity) => {
@@ -268,7 +268,7 @@ Return JSON:
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'low': return 'bg-blue-100 text-blue-800 border-blue-300';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -278,7 +278,7 @@ Return JSON:
       medication_risk: <AlertTriangle className="w-4 h-4 text-orange-600" />,
       fall_risk: <TrendingDown className="w-4 h-4 text-yellow-600" />,
       readmission_risk: <Heart className="w-4 h-4 text-red-500" />,
-      infection_risk: <Shield className="w-4 h-4 text-purple-600" />,
+      infection_risk: <Shield className="w-4 h-4 text-navy-600" />,
       symptom_escalation: <TrendingDown className="w-4 h-4 text-orange-500" />,
       care_gap: <Clock className="w-4 h-4 text-blue-600" />,
       urgent_intervention: <Zap className="w-4 h-4 text-red-600" />
@@ -317,11 +317,11 @@ Return JSON:
   };
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-indigo-50">
         <CardTitle className="text-base flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-600" />
+            <Brain className="w-5 h-5 text-navy-600" />
             Proactive Risk Analysis
             {existingAlerts.length > 0 && (
               <Badge className="bg-red-600 text-white">{existingAlerts.length} Active</Badge>
@@ -330,10 +330,10 @@ Return JSON:
           <Button
             size="sm"
             onClick={runProactiveAnalysis}
-            disabled={isAnalyzing}
-            className="bg-purple-600 hover:bg-purple-700"
+            disabled={ai.loading}
+            className="bg-navy-600 hover:bg-navy-700"
           >
-            {isAnalyzing ? (
+            {ai.loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
             ) : (
               <><RefreshCw className="w-4 h-4 mr-2" /> Run Analysis</>
@@ -342,18 +342,18 @@ Return JSON:
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4">
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600">Analyzing patient data...</span>
+              <span className="text-sm text-slate-600">Analyzing patient data...</span>
               <span className="text-sm font-medium">{analysisProgress}%</span>
             </div>
             <Progress value={analysisProgress} className="h-2" />
           </div>
         )}
 
-        {analysisResults && !isAnalyzing && (
-          <Alert className="mb-4 bg-purple-50 border-purple-200">
+        {analysisResults && !ai.loading && (
+          <Alert className="mb-4 bg-navy-50 border-navy-200">
             <Brain className="w-4 h-4" />
             <AlertDescription>
               Analyzed {analysisResults.total_analyzed} patients. Found {analysisResults.alerts_generated} potential risks 
@@ -386,7 +386,7 @@ Return JSON:
         {/* Active Alerts List */}
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {existingAlerts.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-500">
               <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-400" />
               <p>No active alerts. Run analysis to check for risks.</p>
             </div>
@@ -410,17 +410,17 @@ Return JSON:
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-sm">{alert.title}</p>
                           <Badge variant="outline" className="text-xs capitalize">
-                            {alert.alert_type.replace(/_/g, ' ')}
+                            {(alert.alert_type || '').replace(/_/g, ' ')}
                           </Badge>
                           {alert.flagged_urgent && (
                             <Badge className="bg-red-600 text-white text-xs">URGENT</Badge>
                           )}
                         </div>
-                        <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
+                        <p className="text-xs text-slate-700 mt-1 flex items-center gap-1">
                           <User className="w-3 h-3" />
                           {patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown Patient'}
                         </p>
-                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">{alert.message}</p>
+                        <p className="text-xs text-slate-600 mt-1 line-clamp-2">{alert.message}</p>
                       </div>
                       <div className="text-right flex-shrink-0">
                         <Badge className={`${
@@ -430,7 +430,7 @@ Return JSON:
                         } text-white text-xs`}>
                           {alert.risk_score || 'N/A'}
                         </Badge>
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-slate-400 mt-1">
                           {format(new Date(alert.created_date), 'MMM d')}
                         </p>
                       </div>
@@ -457,7 +457,7 @@ Return JSON:
                     {selectedAlert.severity}
                   </Badge>
                   <Badge variant="outline" className="capitalize">
-                    {selectedAlert.alert_type.replace(/_/g, ' ')}
+                    {(selectedAlert.alert_type || '').replace(/_/g, ' ')}
                   </Badge>
                   {selectedAlert.risk_score && (
                     <Badge variant="outline">Risk: {selectedAlert.risk_score}</Badge>
@@ -465,14 +465,14 @@ Return JSON:
                 </div>
 
                 <div>
-                  <p className="text-sm font-semibold text-gray-700 mb-1">Details</p>
-                  <p className="text-sm text-gray-600">{selectedAlert.message}</p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">Details</p>
+                  <p className="text-sm text-slate-600">{selectedAlert.message}</p>
                 </div>
 
                 {selectedAlert.contributing_factors?.length > 0 && (
                   <div>
-                    <p className="text-sm font-semibold text-gray-700 mb-1">Contributing Factors</p>
-                    <ul className="list-disc list-inside text-sm text-gray-600">
+                    <p className="text-sm font-semibold text-slate-700 mb-1">Contributing Factors</p>
+                    <ul className="list-disc list-inside text-sm text-slate-600">
                       {selectedAlert.contributing_factors.map((factor, idx) => (
                         <li key={idx}>{factor}</li>
                       ))}
@@ -482,10 +482,10 @@ Return JSON:
 
                 {selectedAlert.recommended_actions?.length > 0 && (
                   <div>
-                    <p className="text-sm font-semibold text-gray-700 mb-1">Recommended Actions</p>
+                    <p className="text-sm font-semibold text-slate-700 mb-1">Recommended Actions</p>
                     <ul className="space-y-1">
                       {selectedAlert.recommended_actions.map((action, idx) => (
-                        <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
+                        <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
                           <ChevronRight className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                           {action}
                         </li>

@@ -1,6 +1,5 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -9,9 +8,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import { TrendingUp, TrendingDown, Users, Activity, AlertTriangle } from "lucide-react";
-import { format, subDays, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, eachMonthOfInterval } from "date-fns";
+import { format, subDays, eachDayOfInterval } from "date-fns";
+import { computeAge } from "@/components/oasis/oasisAnalytics";
 
 export default function PopulationTrendAnalyzer({ patients, visits, incidents }) {
   const [timeRange, setTimeRange] = useState("90");
@@ -83,7 +83,10 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
       const ageGroups = { "0-50": 0, "51-65": 0, "66-75": 0, "76-85": 0, "86+": 0 };
       patients.forEach(p => {
         if (!p.date_of_birth) return;
-        const age = new Date().getFullYear() - new Date(p.date_of_birth).getFullYear();
+        // Month/day-aware (and ISO-timezone-safe) — a bare year subtraction
+        // mis-buckets patients near their birthday.
+        const age = computeAge(p.date_of_birth);
+        if (Number.isNaN(age)) return;
         if (age <= 50) ageGroups["0-50"]++;
         else if (age <= 65) ageGroups["51-65"]++;
         else if (age <= 75) ageGroups["66-75"]++;
@@ -142,9 +145,9 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-3">
             <div className="flex-1 min-w-[200px]">
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Metric</label>
+              <label htmlFor="population-metric" className="text-xs font-medium text-slate-600 mb-1 block">Metric</label>
               <Select value={metric} onValueChange={setMetric}>
-                <SelectTrigger>
+                <SelectTrigger id="population-metric">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -155,9 +158,9 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
               </Select>
             </div>
             <div className="flex-1 min-w-[200px]">
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Time Range</label>
+              <label htmlFor="population-time-range" className="text-xs font-medium text-slate-600 mb-1 block">Time Range</label>
               <Select value={timeRange} onValueChange={setTimeRange}>
-                <SelectTrigger>
+                <SelectTrigger id="population-time-range">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -169,9 +172,9 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
               </Select>
             </div>
             <div className="flex-1 min-w-[200px]">
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Group By</label>
+              <label htmlFor="population-group-by" className="text-xs font-medium text-slate-600 mb-1 block">Group By</label>
               <Select value={groupBy} onValueChange={setGroupBy}>
-                <SelectTrigger>
+                <SelectTrigger id="population-group-by">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -192,7 +195,7 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">{insight.label}</p>
+                  <p className="text-sm text-slate-600">{insight.label}</p>
                   <p className="text-2xl font-bold mt-1">{insight.value}</p>
                 </div>
                 <insight.icon className={`w-8 h-8 ${insight.color}`} />
@@ -231,15 +234,15 @@ export default function PopulationTrendAnalyzer({ patients, visits, incidents })
             <AreaChart data={trendData}>
               <defs>
                 <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="#3557b0" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#3557b0" stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" />
               <YAxis />
               <Tooltip />
-              <Area type="monotone" dataKey="value" stroke="#3b82f6" fillOpacity={1} fill="url(#colorValue)" />
+              <Area type="monotone" dataKey="value" stroke="#3557b0" fillOpacity={1} fill="url(#colorValue)" />
             </AreaChart>
           </ResponsiveContainer>
         </CardContent>

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf';
 
 Deno.serve(async (req) => {
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     doc.rect(10, y, 190, 20, 'F');
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
-    doc.text(`Nurse: ${user.full_name}`, 15, y + 8);
+    doc.text(`Nurse: ${user.full_name || 'User'}`, 15, y + 8);
     doc.setFont(undefined, 'normal');
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 15, y + 15);
@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
         doc.roundedRect(15, y + 9, 30, 4, 1, 1, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(8);
-        doc.text(skill.level.toUpperCase(), 17, y + 12);
+        doc.text((skill.level || 'unknown').toUpperCase(), 17, y + 12);
         doc.setTextColor(0, 0, 0);
         
         y += 18;
@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename=Skill_Assessment_${user.full_name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
+        'Content-Disposition': `attachment; filename=Skill_Assessment_${(user.full_name || 'User').replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
       }
     });
   } catch (error) {

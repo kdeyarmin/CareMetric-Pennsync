@@ -1,9 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -23,8 +21,6 @@ import {
   X,
   Edit3,
   Star,
-  ThumbsUp,
-  ThumbsDown,
   MessageSquare,
   Loader2
 } from "lucide-react";
@@ -91,13 +87,13 @@ export default function OASISFeedbackPanel({
 
   const StarRating = ({ value, onChange, label }) => (
     <div className="space-y-1">
-      <p className="text-xs text-gray-600">{label}</p>
+      <p className="text-xs text-slate-600">{label}</p>
       <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
             onClick={() => onChange(star)}
-            className={`p-0.5 ${star <= value ? 'text-yellow-500' : 'text-gray-300'}`}
+            className={`p-0.5 ${star <= value ? 'text-yellow-500' : 'text-slate-300'}`}
           >
             <Star className="w-5 h-5 fill-current" />
           </button>
@@ -108,7 +104,7 @@ export default function OASISFeedbackPanel({
 
   return (
     <>
-      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200">
+      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200">
         <Button
           size="sm"
           variant="outline"
@@ -150,8 +146,9 @@ export default function OASISFeedbackPanel({
           <div className="space-y-4 py-4">
             {feedbackAction === 'modified' && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Your Modified Version:</label>
+                <label htmlFor="feedback-modified-version" className="text-sm font-medium">Your Modified Version:</label>
                 <Textarea
+                  id="feedback-modified-version"
                   value={modifiedText}
                   onChange={(e) => setModifiedText(e.target.value)}
                   rows={4}
@@ -178,9 +175,9 @@ export default function OASISFeedbackPanel({
 
             {reimbursementImpact && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Reimbursement Impact Accuracy:</label>
+                <label htmlFor="feedback-reimbursement-accuracy" className="text-sm font-medium">Reimbursement Impact Accuracy:</label>
                 <Select value={reimbursementAccuracy} onValueChange={setReimbursementAccuracy}>
-                  <SelectTrigger className="text-sm">
+                  <SelectTrigger id="feedback-reimbursement-accuracy" className="text-sm">
                     <SelectValue placeholder="How accurate was the impact estimate?" />
                   </SelectTrigger>
                   <SelectContent>

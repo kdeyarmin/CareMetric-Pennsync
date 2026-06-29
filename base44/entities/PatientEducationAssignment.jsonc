@@ -1,0 +1,89 @@
+{
+  "name": "PatientEducationAssignment",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "care_plan_id": {
+      "type": "string",
+      "description": "Related care plan if applicable"
+    },
+    "topic": {
+      "type": "string",
+      "description": "Education topic"
+    },
+    "content": {
+      "type": "string",
+      "description": "Educational content"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "handout",
+        "verbal",
+        "demonstration",
+        "video",
+        "written"
+      ],
+      "default": "handout",
+      "description": "Format of education delivery"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "assigned",
+        "in_progress",
+        "completed",
+        "declined"
+      ],
+      "default": "assigned",
+      "description": "Status of education"
+    },
+    "assigned_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date assigned"
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date completed"
+    },
+    "assigned_by": {
+      "type": "string",
+      "description": "Nurse who assigned"
+    },
+    "comprehension_verified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether patient understanding was verified"
+    },
+    "teach_back_notes": {
+      "type": "string",
+      "description": "Notes from teach-back verification"
+    },
+    "materials_provided": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Materials given to patient"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    }
+  },
+  "required": [
+    "patient_id",
+    "topic",
+    "content"
+  ]
+}

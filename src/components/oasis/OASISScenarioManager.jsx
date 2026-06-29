@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,19 +27,15 @@ import {
   Save,
   Trash2,
   Play,
-  CheckCircle2,
-  DollarSign,
   TrendingUp,
   TrendingDown,
   Loader2,
-  Plus,
-  Copy,
   FileCheck,
   Sliders,
   BarChart3
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
-import debounce from "lodash/debounce";
+import { debounce } from "@/lib/debounce";
 
 const FUNCTIONAL_ITEMS = [
   { key: 'm1800_grooming', label: 'M1800 Grooming', max: 3 },
@@ -55,7 +52,7 @@ export default function OASISScenarioManager({
   originalPdgmData, 
   originalPayment,
   patientName,
-  onScenarioSelect,
+  _onScenarioSelect,
   onCreateActions
 }) {
   const queryClient = useQueryClient();
@@ -68,8 +65,9 @@ export default function OASISScenarioManager({
   const [selectedScenarios, setSelectedScenarios] = useState([]);
 
   // Fetch saved scenarios
-  const { data: savedScenarios = [], isLoading: loadingScenarios } = useQuery({
+  const { data: savedScenarios = [] } = useQuery({
     queryKey: ['oasis-scenarios', analysisId],
+    // Scenarios are scoped to the OASIS analysis they were modeled from.
     queryFn: () => base44.entities.OASISScenario.filter({ analysis_id: analysisId }),
     enabled: !!analysisId
   });
@@ -82,7 +80,7 @@ export default function OASISScenarioManager({
         functional_scores: { ...originalPdgmData.functional_scores }
       });
     }
-  }, [originalPdgmData]);
+  }, [originalPdgmData, currentScenario]);
 
   // Save scenario mutation
   const saveMutation = useMutation({
@@ -92,6 +90,9 @@ export default function OASISScenarioManager({
       setShowSaveDialog(false);
       setScenarioName("");
       setScenarioDescription("");
+    },
+    onError: () => {
+      toast.error("Couldn't save the scenario. Please try again.");
     }
   });
 
@@ -100,12 +101,15 @@ export default function OASISScenarioManager({
     mutationFn: (id) => base44.entities.OASISScenario.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasis-scenarios', analysisId] });
+    },
+    onError: () => {
+      toast.error("Couldn't delete the scenario. Please try again.");
     }
   });
 
   // Debounced calculation
-  const calculateScenarioPayment = useCallback(
-    debounce(async (scenarioData) => {
+  const calculateScenarioPayment = useMemo(
+    () => debounce(async (scenarioData) => {
       if (!scenarioData) return;
       setIsCalculating(true);
       try {
@@ -121,6 +125,9 @@ export default function OASISScenarioManager({
     }, 500),
     [originalPdgmData]
   );
+
+  // Cancel any pending debounced calculation on unmount
+  useEffect(() => () => calculateScenarioPayment.cancel(), [calculateScenarioPayment]);
 
   // Update scenario and recalculate
   const updateScenario = (field, value) => {
@@ -247,11 +254,11 @@ export default function OASISScenarioManager({
   }
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="pb-3 bg-gradient-to-r from-navy-50 to-indigo-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sliders className="w-5 h-5 text-purple-600" />
+            <Sliders className="w-5 h-5 text-navy-600" />
             Scenario Planning
           </div>
           <div className="flex items-center gap-2">
@@ -272,7 +279,7 @@ export default function OASISScenarioManager({
               size="sm" 
               onClick={() => setShowSaveDialog(true)}
               disabled={changes.length === 0}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-navy-600 hover:bg-navy-700"
             >
               <Save className="w-4 h-4 mr-1" /> Save Scenario
             </Button>
@@ -282,13 +289,13 @@ export default function OASISScenarioManager({
       <CardContent className="space-y-4 pt-4">
         {/* Payment Comparison */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 bg-gray-50 rounded-lg border text-center">
-            <p className="text-xs text-gray-500 mb-1">Original Payment</p>
-            <p className="text-lg font-bold text-gray-700">{formatCurrency(originalPayment)}</p>
+          <div className="p-3 bg-slate-50 rounded-lg border text-center">
+            <p className="text-xs text-slate-500 mb-1">Original Payment</p>
+            <p className="text-lg font-bold text-slate-700">{formatCurrency(originalPayment)}</p>
           </div>
-          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 text-center">
-            <p className="text-xs text-purple-600 mb-1">Scenario Payment</p>
-            <p className="text-lg font-bold text-purple-700">
+          <div className="p-3 bg-navy-50 rounded-lg border border-navy-200 text-center">
+            <p className="text-xs text-navy-600 mb-1">Scenario Payment</p>
+            <p className="text-lg font-bold text-navy-700">
               {isCalculating ? (
                 <Loader2 className="w-5 h-5 animate-spin mx-auto" />
               ) : (
@@ -298,11 +305,11 @@ export default function OASISScenarioManager({
           </div>
           <div className={`p-3 rounded-lg border text-center ${
             paymentDiff > 0 ? 'bg-green-50 border-green-200' : 
-            paymentDiff < 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50'
+            paymentDiff < 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50'
           }`}>
-            <p className="text-xs text-gray-500 mb-1">Difference</p>
+            <p className="text-xs text-slate-500 mb-1">Difference</p>
             <p className={`text-lg font-bold flex items-center justify-center gap-1 ${
-              paymentDiff > 0 ? 'text-green-700' : paymentDiff < 0 ? 'text-red-700' : 'text-gray-500'
+              paymentDiff > 0 ? 'text-green-700' : paymentDiff < 0 ? 'text-red-700' : 'text-slate-500'
             }`}>
               {paymentDiff > 0 ? <TrendingUp className="w-4 h-4" /> : 
                paymentDiff < 0 ? <TrendingDown className="w-4 h-4" /> : null}
@@ -316,12 +323,12 @@ export default function OASISScenarioManager({
           {/* Admission & Timing */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Admission Source</label>
-              <Select 
-                value={currentScenario?.admission_source || 'community'} 
+              <label htmlFor="scenario-admission-source" className="text-xs font-medium text-slate-700 mb-1 block">Admission Source</label>
+              <Select
+                value={currentScenario?.admission_source || 'community'}
                 onValueChange={(v) => updateScenario('admission_source', v)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="scenario-admission-source">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -331,12 +338,12 @@ export default function OASISScenarioManager({
               </Select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Episode Timing</label>
-              <Select 
-                value={currentScenario?.episode_timing || 'early'} 
+              <label htmlFor="scenario-episode-timing" className="text-xs font-medium text-slate-700 mb-1 block">Episode Timing</label>
+              <Select
+                value={currentScenario?.episode_timing || 'early'}
                 onValueChange={(v) => updateScenario('episode_timing', v)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="scenario-episode-timing">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -349,7 +356,7 @@ export default function OASISScenarioManager({
 
           {/* Functional Scores */}
           <div className="space-y-3">
-            <p className="text-sm font-medium text-gray-700">Functional Scores</p>
+            <p className="text-sm font-medium text-slate-700">Functional Scores</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {FUNCTIONAL_ITEMS.map(item => {
                 const origVal = originalPdgmData.functional_scores?.[item.key] || 0;
@@ -357,16 +364,16 @@ export default function OASISScenarioManager({
                 const isChanged = origVal !== currVal;
 
                 return (
-                  <div key={item.key} className={`p-3 rounded-lg border ${isChanged ? 'bg-purple-50 border-purple-200' : 'bg-gray-50'}`}>
+                  <div key={item.key} className={`p-3 rounded-lg border ${isChanged ? 'bg-navy-50 border-navy-200' : 'bg-slate-50'}`}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium">{item.label}</span>
                       <div className="flex items-center gap-2">
                         {isChanged && (
-                          <Badge className="text-xs bg-purple-100 text-purple-700">
+                          <Badge className="text-xs bg-navy-100 text-navy-700">
                             {origVal} → {currVal}
                           </Badge>
                         )}
-                        <span className="text-sm font-bold text-purple-700">{currVal}</span>
+                        <span className="text-sm font-bold text-navy-700">{currVal}</span>
                       </div>
                     </div>
                     <Slider
@@ -376,7 +383,7 @@ export default function OASISScenarioManager({
                       step={1}
                       className="w-full"
                     />
-                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                    <div className="flex justify-between text-xs text-slate-400 mt-1">
                       <span>0 (Indep)</span>
                       <span>{item.max} (Dep)</span>
                     </div>
@@ -391,7 +398,7 @@ export default function OASISScenarioManager({
         {savedScenarios.length > 0 && (
           <div className="border-t pt-4">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4" />
                 Saved Scenarios ({savedScenarios.length})
               </p>
@@ -413,7 +420,7 @@ export default function OASISScenarioManager({
                   className={`p-3 rounded-lg border flex items-center justify-between ${
                     selectedScenarios.includes(scenario.id) 
                       ? 'bg-green-50 border-green-300' 
-                      : 'bg-white hover:bg-gray-50'
+                      : 'bg-white hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -425,7 +432,7 @@ export default function OASISScenarioManager({
                     />
                     <div>
                       <p className="text-sm font-medium">{scenario.scenario_name}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-slate-500">
                         {scenario.changes_made?.length || 0} changes • 
                         <span className={scenario.payment_difference > 0 ? 'text-green-600' : 'text-red-600'}>
                           {' '}{scenario.payment_difference > 0 ? '+' : ''}{formatCurrency(scenario.payment_difference)}
@@ -460,29 +467,31 @@ export default function OASISScenarioManager({
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <label className="text-sm font-medium mb-1 block">Scenario Name</label>
-                <Input 
+                <label htmlFor="scenario-name" className="text-sm font-medium mb-1 block">Scenario Name</label>
+                <Input
+                  id="scenario-name"
                   value={scenarioName}
                   onChange={(e) => setScenarioName(e.target.value)}
                   placeholder="e.g., Higher Functional Scores"
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Description (Optional)</label>
-                <Textarea 
+                <label htmlFor="scenario-description" className="text-sm font-medium mb-1 block">Description (Optional)</label>
+                <Textarea
+                  id="scenario-description"
                   value={scenarioDescription}
                   onChange={(e) => setScenarioDescription(e.target.value)}
                   placeholder="Describe what this scenario represents..."
                   rows={3}
                 />
               </div>
-              <div className="bg-purple-50 p-3 rounded-lg">
-                <p className="text-sm font-medium text-purple-800 mb-2">
+              <div className="bg-navy-50 p-3 rounded-lg">
+                <p className="text-sm font-medium text-navy-800 mb-2">
                   Payment Impact: <span className={paymentDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
                     {paymentDiff > 0 ? '+' : ''}{formatCurrency(paymentDiff)}
                   </span>
                 </p>
-                <p className="text-xs text-purple-600">{changes.length} modifications from original</p>
+                <p className="text-xs text-navy-600">{changes.length} modifications from original</p>
               </div>
             </div>
             <DialogFooter>
@@ -490,7 +499,7 @@ export default function OASISScenarioManager({
               <Button 
                 onClick={handleSaveScenario}
                 disabled={!scenarioName || saveMutation.isPending}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="bg-navy-600 hover:bg-navy-700"
               >
                 {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
                 Save

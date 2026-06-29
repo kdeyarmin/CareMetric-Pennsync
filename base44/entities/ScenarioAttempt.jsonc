@@ -1,0 +1,65 @@
+{
+  "name": "ScenarioAttempt",
+  "type": "object",
+  "properties": {
+    "scenario_id": {
+      "type": "string",
+      "description": "Reference to ClinicalScenario"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User email"
+    },
+    "assignment_id": {
+      "type": "string",
+      "description": "Reference to TrainingAssignment if part of course"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When attempt started"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When attempt was completed"
+    },
+    "decisions_made_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Array of decisions made in order {nodeId, choiceIndex, isCorrect, timestamp}"
+    },
+    "correct_decisions": {
+      "type": "number",
+      "description": "Number of correct decisions"
+    },
+    "total_decisions": {
+      "type": "number",
+      "description": "Total decisions in scenario"
+    },
+    "score_percentage": {
+      "type": "number",
+      "description": "Score as percentage"
+    },
+    "passed": {
+      "type": "boolean",
+      "description": "Whether user passed scenario"
+    },
+    "attempt_number": {
+      "type": "number",
+      "default": 1,
+      "description": "Which attempt this is"
+    },
+    "time_spent_minutes": {
+      "type": "number",
+      "description": "Time spent on scenario"
+    }
+  },
+  "required": [
+    "scenario_id",
+    "user_id",
+    "started_at"
+  ]
+}

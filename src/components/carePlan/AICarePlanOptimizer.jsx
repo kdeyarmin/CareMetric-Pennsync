@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,20 +28,13 @@ export default function AICarePlanOptimizer({
   onModifyCarePlan,
   autoAnalyze = false
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [recommendations, setRecommendations] = useState(null);
   const [dismissedIds, setDismissedIds] = useState(new Set());
 
-  useEffect(() => {
-    if (autoAnalyze && enhancedNote && !recommendations) {
-      analyzeCarePlans();
-    }
-  }, [autoAnalyze, enhancedNote]);
-
-  const analyzeCarePlans = async () => {
+  const analyzeCarePlans = useCallback(async () => {
     if (!enhancedNote) return;
     
-    setIsAnalyzing(true);
     try {
       // Build comprehensive context
       const activeCarePlans = existingCarePlans.filter(cp => cp.status === 'active');
@@ -110,7 +103,8 @@ Return JSON:
   "strengths": ["strength1", "strength2"] // What's working well in current care plans
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -144,15 +138,21 @@ Return JSON:
     } catch (error) {
       console.error('Error analyzing care plans:', error);
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [enhancedNote, existingCarePlans, recentVisits, diagnosis, patientData]);
+
+  useEffect(() => {
+    if (autoAnalyze && enhancedNote && !recommendations) {
+      analyzeCarePlans();
+    }
+  }, [autoAnalyze, enhancedNote, recommendations, analyzeCarePlans]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
       case 'high': return 'bg-red-100 text-red-800 border-red-300';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'low': return 'bg-blue-100 text-blue-800 border-blue-300';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -181,7 +181,9 @@ Return JSON:
           problem: rec.problem,
           goal: rec.goal,
           interventions: rec.interventions,
-          target_date: targetDate.toISOString().split('T')[0],
+          // Local calendar date — toISOString() converts to UTC and, for a plan
+          // created in the evening in any US timezone, rolls target_date a day late.
+          target_date: `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`,
           frequency: 'Each visit',
           baseline_measurement: 'To be established on next visit',
           status: 'active'
@@ -224,11 +226,11 @@ Return JSON:
           {!recommendations && (
             <Button
               onClick={analyzeCarePlans}
-              disabled={isAnalyzing}
+              disabled={ai.loading}
               size="sm"
               className="bg-indigo-600 hover:bg-indigo-700"
             >
-              {isAnalyzing ? (
+              {ai.loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Analyzing...
@@ -244,7 +246,7 @@ Return JSON:
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="flex items-center gap-3 p-4 bg-indigo-50 rounded-lg">
             <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
             <div>
@@ -304,12 +306,12 @@ Return JSON:
             {/* Recommendations */}
             {activeRecommendations.length > 0 && (
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-gray-900">
+                <p className="text-sm font-semibold text-slate-900">
                   Recommendations ({activeRecommendations.length})
                 </p>
                 
                 <Accordion type="single" collapsible className="space-y-2">
-                  {activeRecommendations.map((rec, idx) => {
+                  {activeRecommendations.map((rec, _idx) => {
                     const originalIdx = recommendations.recommendations.indexOf(rec);
                     return (
                       <AccordionItem 
@@ -324,45 +326,45 @@ Return JSON:
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="font-semibold text-sm">{rec.problem}</span>
                                 <Badge variant="outline" className="text-xs">
-                                  {rec.type.replace(/_/g, ' ')}
+                                  {(rec.type || '').replace(/_/g, ' ')}
                                 </Badge>
                                 <Badge className={getSeverityColor(rec.severity)}>
                                   {rec.severity}
                                 </Badge>
                               </div>
-                              <p className="text-xs text-gray-600">{rec.goal}</p>
+                              <p className="text-xs text-slate-600">{rec.goal}</p>
                             </div>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-4 pb-4 space-y-3">
                           {/* Rationale */}
                           <div>
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Why This Matters:</p>
-                            <p className="text-xs text-gray-600">{rec.rationale}</p>
+                            <p className="text-xs font-semibold text-slate-700 mb-1">Why This Matters:</p>
+                            <p className="text-xs text-slate-600">{rec.rationale}</p>
                           </div>
 
                           {/* Evidence Basis */}
                           {rec.evidence_basis && (
                             <div className="bg-white/50 rounded p-2">
-                              <p className="text-xs font-semibold text-gray-700 mb-1">Evidence Basis:</p>
-                              <p className="text-xs text-gray-600 italic">{rec.evidence_basis}</p>
+                              <p className="text-xs font-semibold text-slate-700 mb-1">Evidence Basis:</p>
+                              <p className="text-xs text-slate-600 italic">{rec.evidence_basis}</p>
                             </div>
                           )}
 
                           {/* Goal */}
                           <div>
-                            <p className="text-xs font-semibold text-gray-700 mb-1">SMART Goal:</p>
-                            <p className="text-xs text-gray-800 font-medium">{rec.goal}</p>
+                            <p className="text-xs font-semibold text-slate-700 mb-1">SMART Goal:</p>
+                            <p className="text-xs text-slate-800 font-medium">{rec.goal}</p>
                           </div>
 
                           {/* Interventions */}
                           <div>
-                            <p className="text-xs font-semibold text-gray-700 mb-1">
+                            <p className="text-xs font-semibold text-slate-700 mb-1">
                               Evidence-Based Interventions:
                             </p>
                             <ul className="space-y-1">
                               {rec.interventions?.map((intervention, iIdx) => (
-                                <li key={iIdx} className="text-xs text-gray-700 flex items-start gap-2">
+                                <li key={iIdx} className="text-xs text-slate-700 flex items-start gap-2">
                                   <CheckCircle2 className="w-3 h-3 text-green-600 mt-0.5 flex-shrink-0" />
                                   <span>{intervention}</span>
                                 </li>
@@ -382,7 +384,7 @@ Return JSON:
 
                           {/* Duration */}
                           {rec.estimated_duration_weeks && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-slate-500">
                               Estimated Duration: {rec.estimated_duration_weeks} weeks
                             </p>
                           )}

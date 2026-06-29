@@ -1,0 +1,79 @@
+{
+  "name": "DocumentTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "description": {
+      "type": "string",
+      "description": "What this template is used for"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "consent",
+        "discharge",
+        "admission",
+        "assessment",
+        "plan",
+        "education",
+        "other"
+      ],
+      "description": "Document category"
+    },
+    "content": {
+      "type": "string",
+      "description": "Document content with placeholders like {{patient_name}}, {{date}}, etc."
+    },
+    "placeholders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Placeholder key without braces (e.g., 'patient_name')"
+          },
+          "label": {
+            "type": "string",
+            "description": "Display name for the placeholder"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "description": "List of placeholders used in this template"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether template is available for use"
+    },
+    "created_by_email": {
+      "type": "string",
+      "description": "Email of template creator"
+    }
+  },
+  "required": [
+    "name",
+    "category",
+    "content",
+    "placeholders"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

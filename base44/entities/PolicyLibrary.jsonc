@@ -1,0 +1,78 @@
+{
+  "name": "PolicyLibrary",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Policy title"
+    },
+    "policy_number": {
+      "type": "string",
+      "description": "Policy identifier"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "clinical",
+        "compliance",
+        "safety",
+        "hr",
+        "operations",
+        "infection_control",
+        "documentation"
+      ],
+      "description": "Policy category"
+    },
+    "content": {
+      "type": "string",
+      "description": "Full policy content"
+    },
+    "doc_url": {
+      "type": "string",
+      "description": "URL to policy document"
+    },
+    "version": {
+      "type": "string",
+      "description": "Policy version"
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Effective date"
+    },
+    "review_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Next review date"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Searchable tags"
+    },
+    "applies_to_roles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which roles this policy applies to"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived",
+        "draft"
+      ],
+      "default": "active",
+      "description": "Policy status"
+    }
+  },
+  "required": [
+    "title",
+    "category",
+    "effective_date"
+  ]
+}

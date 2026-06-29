@@ -1,0 +1,91 @@
+{
+  "name": "TrainingQuestion",
+  "type": "object",
+  "properties": {
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "mcq",
+        "multi_select",
+        "true_false",
+        "short_answer",
+        "matching",
+        "scenario_based"
+      ],
+      "description": "Question type"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Question prompt"
+    },
+    "options_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Answer options"
+    },
+    "correct_answer_json": {
+      "type": "object",
+      "description": "Correct answer(s)"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Explanation of correct answer"
+    },
+    "rubric": {
+      "type": "string",
+      "description": "Rubric for short answer or scenario grading"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "default": "medium",
+      "description": "Question difficulty"
+    },
+    "question_bank_tag": {
+      "type": "string",
+      "description": "Question bank grouping tag"
+    },
+    "version": {
+      "type": "number",
+      "default": 1,
+      "description": "Question version number"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the question is active"
+    },
+    "source_citations_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Source citations for this question"
+    },
+    "order_index": {
+      "type": "number",
+      "description": "Display order"
+    },
+    "points": {
+      "type": "number",
+      "default": 1,
+      "description": "Point value"
+    }
+  },
+  "required": [
+    "course_id",
+    "type",
+    "prompt",
+    "correct_answer_json"
+  ]
+}

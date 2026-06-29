@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { logOASISAction, AuditActions } from "../utils/auditLogger";
@@ -6,14 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   CheckCircle2,
   XCircle,
   Edit3,
   ArrowLeft,
   AlertTriangle,
-  TrendingUp,
   FileText,
   Save
 } from "lucide-react";
@@ -146,19 +144,19 @@ export default function OASISComparisonView({
     setEditingItem(null);
   };
 
-  const pendingSuggestions = aiSuggestions.filter(([k, data]) => !data.reviewed);
-  const reviewedSuggestions = aiSuggestions.filter(([k, data]) => data.reviewed);
+  const pendingSuggestions = aiSuggestions.filter(([_k, data]) => !data.reviewed);
+  const reviewedSuggestions = aiSuggestions.filter(([_k, data]) => data.reviewed);
 
   return (
     <div className="space-y-4">
-      <Card className="border-2 border-purple-200">
-        <CardHeader className="py-4 bg-gradient-to-r from-purple-50 to-blue-50">
+      <Card className="border-2 border-navy-200">
+        <CardHeader className="py-4 bg-gradient-to-r from-navy-50 to-blue-50">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-lg">
                 OASIS Review: {patient?.first_name} {patient?.last_name}
               </CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-slate-600 mt-1">
                 {pendingSuggestions.length} pending • {reviewedSuggestions.length} reviewed
               </p>
             </div>
@@ -173,7 +171,7 @@ export default function OASISComparisonView({
       {/* Pending Suggestions */}
       {pendingSuggestions.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-orange-500" />
             Pending Review ({pendingSuggestions.length})
           </h3>
@@ -222,22 +220,22 @@ export default function OASISComparisonView({
                             {data.confidence}% confidence
                           </Badge>
                         </div>
-                        <p className="text-sm font-semibold text-gray-800">AI Suggested Value:</p>
-                        <p className="text-lg font-bold text-gray-900">{data.value}</p>
+                        <p className="text-sm font-semibold text-slate-800">AI Suggested Value:</p>
+                        <p className="text-lg font-bold text-slate-900">{data.value}</p>
                         {data.label && (
-                          <p className="text-sm text-gray-600 italic">{data.label}</p>
+                          <p className="text-sm text-slate-600 italic">{data.label}</p>
                         )}
                       </div>
                     </div>
 
                     {/* Supporting Evidence */}
                     {data.supporting_text && (
-                      <div className="bg-white p-3 rounded border border-gray-200">
-                        <p className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                      <div className="bg-white p-3 rounded border border-slate-200">
+                        <p className="text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
                           <FileText className="w-3 h-3" />
                           Supporting Evidence:
                         </p>
-                        <p className="text-xs text-gray-700 italic">"{data.supporting_text}"</p>
+                        <p className="text-xs text-slate-700 italic">"{data.supporting_text}"</p>
                       </div>
                     )}
 
@@ -291,7 +289,7 @@ export default function OASISComparisonView({
       {/* Reviewed Suggestions */}
       {reviewedSuggestions.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-green-500" />
             Reviewed ({reviewedSuggestions.length})
           </h3>
@@ -317,11 +315,11 @@ export default function OASISComparisonView({
                       )}
                     </div>
                     <p className="text-sm font-semibold">Value: {data.value}</p>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="text-xs text-slate-600 mt-1">
                       Reviewed by {data.reviewed_by} on {new Date(data.reviewed_at).toLocaleDateString()}
                     </p>
                     {(data.review_notes || data.rejection_reason || data.edit_notes) && (
-                      <p className="text-xs text-gray-700 mt-2 italic">
+                      <p className="text-xs text-slate-700 mt-2 italic">
                         Note: {data.review_notes || data.rejection_reason || data.edit_notes}
                       </p>
                     )}

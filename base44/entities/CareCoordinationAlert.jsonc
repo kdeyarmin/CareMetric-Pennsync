@@ -1,0 +1,127 @@
+{
+  "name": "CareCoordinationAlert",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "care_gap",
+        "provider_communication_needed",
+        "medication_discrepancy",
+        "duplicate_services",
+        "missing_specialist_input",
+        "hospitalization_followup",
+        "transition_of_care"
+      ],
+      "description": "Type of coordination alert"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "urgent",
+        "high",
+        "medium",
+        "low"
+      ],
+      "description": "Alert severity"
+    },
+    "title": {
+      "type": "string",
+      "description": "Alert title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the issue"
+    },
+    "identified_gap": {
+      "type": "string",
+      "description": "Specific care gap identified"
+    },
+    "affected_providers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Providers that need coordination"
+    },
+    "recommended_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Suggested actions to address gap"
+    },
+    "team_meeting_suggested": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether interdisciplinary meeting is recommended"
+    },
+    "meeting_attendees": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Suggested meeting attendees"
+    },
+    "communication_summary": {
+      "type": "string",
+      "description": "AI-generated summary for provider communication"
+    },
+    "supporting_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Evidence from patient records"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "in_progress",
+        "resolved",
+        "dismissed"
+      ],
+      "default": "active"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Care coordinator assigned"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When action should be taken by"
+    },
+    "resolution_notes": {
+      "type": "string",
+      "description": "How the gap was addressed"
+    },
+    "resolved_date": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "patient_id",
+    "alert_type",
+    "severity",
+    "title",
+    "description"
+  ]
+}

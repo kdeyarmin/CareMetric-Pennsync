@@ -11,7 +11,7 @@ export const calculateStats = (data) => {
     patients = [],
     incidents = [],
     complianceAudits = [],
-    userActivities = [],
+    _userActivities = [],
     dateRange = 30 // default 30 days
   } = data;
 
@@ -47,9 +47,9 @@ export const calculateStats = (data) => {
     : 0;
 
   // ====================
-  // NOTE CONVERSION STATISTICS
+  // NOTE ENHANCEMENT STATISTICS
   // ====================
-  // Note conversions = times the "enhance note" button was clicked and AI generated a note
+  // Note enhancements = times the "enhance note" button was clicked and AI generated a note
   const totalNoteConversions = noteConversions.length;
   
   const noteConversionsInRange = noteConversions.filter(nc => {
@@ -61,8 +61,8 @@ export const calculateStats = (data) => {
   // ====================
   // TIME SAVINGS CALCULATIONS
   // ====================
-  // Each AI note enhancement saves ~25 minutes
-  const minutesPerNoteEnhancement = 25;
+  // Each AI note enhancement saves 20 minutes
+  const minutesPerNoteEnhancement = 20;
   const totalTimeSavedMinutes = totalNoteConversions * minutesPerNoteEnhancement;
   const totalTimeSavedHours = Math.round(totalTimeSavedMinutes / 60);
   const timeSavedInRangeMinutes = noteConversionsInRange * minutesPerNoteEnhancement;
@@ -122,25 +122,6 @@ export const calculateStats = (data) => {
     : 0;
 
   // ====================
-  // AI ADOPTION METRICS
-  // ====================
-  const visitsWithAI = visits.filter(v => 
-    v.status === 'completed' && (v.audio_url || v.raw_transcription || v.ai_tags?.length > 0)
-  ).length;
-
-  const aiAdoptionRate = completedVisits > 0 
-    ? Math.round((visitsWithAI / completedVisits) * 100)
-    : 0;
-
-  // Count AI feature usage from user activities
-  const aiFeatureUsage = {
-    aiScriber: userActivities.filter(a => a.action === 'ai_scribe_used').length,
-    templateGenerated: userActivities.filter(a => a.action === 'template_generated').length,
-    voiceCommands: userActivities.filter(a => a.action === 'voice_command_used').length,
-    noteEnhanced: totalNoteConversions // This is the primary metric
-  };
-
-  // ====================
   // FINANCIAL ESTIMATES
   // ====================
   const estimatedRevenuePerVisit = 180; // Average Medicare reimbursement
@@ -167,8 +148,8 @@ export const calculateStats = (data) => {
       completionRate
     },
 
-    // Note conversion stats (enhance button clicks)
-    noteConversions: {
+    // Note enhancement stats (enhance button clicks)
+    noteEnhancements: {
       total: totalNoteConversions,
       inRange: noteConversionsInRange
     },
@@ -215,13 +196,6 @@ export const calculateStats = (data) => {
       passedAudits
     },
 
-    // AI adoption
-    aiAdoption: {
-      rate: aiAdoptionRate,
-      visitsWithAI,
-      featureUsage: aiFeatureUsage
-    },
-
     // Financial
     financial: {
       estimatedRevenue,
@@ -262,7 +236,7 @@ export const calculateNurseStats = (nurseEmail, data) => {
     return conversionDate >= startDate;
   }).length;
 
-  const timeSavedMinutes = totalConversions * 25;
+  const timeSavedMinutes = totalConversions * 20;
   const timeSavedHours = Math.round(timeSavedMinutes / 60);
 
   return {

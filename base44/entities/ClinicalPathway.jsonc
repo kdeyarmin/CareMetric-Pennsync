@@ -1,0 +1,190 @@
+{
+  "name": "ClinicalPathway",
+  "type": "object",
+  "properties": {
+    "pathway_name": {
+      "type": "string",
+      "description": "Name of the clinical pathway"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this pathway addresses"
+    },
+    "trigger_conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "diagnosis_code",
+              "diagnosis_keyword",
+              "clinical_condition",
+              "functional_score",
+              "comorbidity"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "equals",
+              "contains",
+              "starts_with",
+              "greater_than",
+              "less_than"
+            ]
+          }
+        }
+      },
+      "description": "Conditions that trigger this pathway"
+    },
+    "pdgm_clinical_group": {
+      "type": "string",
+      "description": "Expected PDGM clinical group for this pathway"
+    },
+    "documentation_prompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "m_items_affected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          }
+        }
+      },
+      "description": "Specific documentation to capture"
+    },
+    "rescore_opportunities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "m_item": {
+            "type": "string"
+          },
+          "typical_score_range": {
+            "type": "string"
+          },
+          "documentation_to_support": {
+            "type": "string"
+          },
+          "revenue_impact": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Common rescore opportunities for this pathway"
+    },
+    "recommended_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "task_title": {
+            "type": "string"
+          },
+          "task_description": {
+            "type": "string"
+          },
+          "task_type": {
+            "type": "string",
+            "enum": [
+              "call",
+              "notify",
+              "schedule",
+              "order",
+              "coordinate",
+              "document",
+              "safety",
+              "followup",
+              "other"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "due_timeframe": {
+            "type": "string",
+            "enum": [
+              "today",
+              "24_hours",
+              "48_hours",
+              "this_week",
+              "next_visit"
+            ]
+          }
+        }
+      },
+      "description": "Auto-generated tasks for this pathway"
+    },
+    "comorbidity_checklist": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Common comorbidities to check for"
+    },
+    "functional_focus_areas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Key functional areas to assess thoroughly"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this pathway is currently active"
+    },
+    "priority_level": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium",
+      "description": "Overall pathway priority"
+    }
+  },
+  "required": [
+    "pathway_name",
+    "trigger_conditions"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

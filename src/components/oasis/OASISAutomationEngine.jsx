@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,11 +28,18 @@ export default function OASISAutomationEngine({
   onTasksCreated,
   autoExecute = true 
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [suggestedActions, setSuggestedActions] = useState([]);
   const [selectedActions, setSelectedActions] = useState([]);
   const [isExpanded, setIsExpanded] = useState(true);
   const queryClient = useQueryClient();
+
+  // Current user — assigned_to is required on Task; without it the bulkCreate
+  // below is rejected and the generated tasks are silently never created.
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
 
   // Fetch active automation rules
   const { data: automationRules = [] } = useQuery({
@@ -47,15 +56,7 @@ export default function OASISAutomationEngine({
     },
   });
 
-  // Analyze results and generate actions
-  useEffect(() => {
-    if (analysisResults && automationRules.length > 0 && autoExecute) {
-      analyzeAndGenerateActions();
-    }
-  }, [analysisResults, automationRules, autoExecute]);
-
-  const analyzeAndGenerateActions = async () => {
-    setIsAnalyzing(true);
+  const analyzeAndGenerateActions = useCallback(async () => {
     
     try {
       // Simplified analysis - extract key issues only
@@ -81,7 +82,8 @@ ${JSON.stringify(automationRules.slice(0, 5), null, 2)}
 
 Generate actionable tasks. Each task must have: title, description, priority (high/medium/low), type, due_in_days (number), reason, impact_category.`;
 
-      const aiSuggestions = await base44.integrations.Core.InvokeLLM({
+      const aiSuggestions = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -123,9 +125,16 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
       console.error("Automation analysis error:", error);
       setSuggestedActions([]);
     }
-    
-    setIsAnalyzing(false);
-  };
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [analysisResults, automationRules]);
+
+  // Analyze results and generate actions
+  useEffect(() => {
+    if (analysisResults && automationRules.length > 0 && autoExecute) {
+      analyzeAndGenerateActions();
+    }
+  }, [analysisResults, automationRules, autoExecute, analyzeAndGenerateActions]);
 
   const handleToggleAction = (index) => {
     setSelectedActions(prev => 
@@ -136,6 +145,13 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
   };
 
   const handleCreateTasks = async () => {
+    // assigned_to is required on Task; abort if the current user isn't resolved yet
+    // rather than attempting a bulkCreate with assigned_to undefined (which the
+    // backend rejects).
+    if (!currentUser?.email) {
+      toast.error('Could not determine the current user. Please refresh and try again.');
+      return;
+    }
     const tasksToCreate = selectedActions.map(idx => {
       const action = suggestedActions[idx];
       const dueDate = new Date();
@@ -143,6 +159,7 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
 
       return {
         patient_id: patientId,
+        assigned_to: currentUser?.email,
         title: action.title,
         description: `${action.description}\n\n📋 Reason: ${action.reason}\n\n⚠️ Impact: ${action.compliance_risk_if_ignored || action.estimated_revenue_impact || 'Important for quality care'}`,
         type: action.type || 'followup',
@@ -154,9 +171,15 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
       };
     });
 
-    await createTasksMutation.mutateAsync(tasksToCreate);
-    setSuggestedActions([]);
-    setSelectedActions([]);
+    try {
+      await createTasksMutation.mutateAsync(tasksToCreate);
+      setSuggestedActions([]);
+      setSelectedActions([]);
+      toast.success(`Created ${tasksToCreate.length} task${tasksToCreate.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      console.error('Failed to create tasks:', err);
+      toast.error('Failed to create tasks. Please try again.');
+    }
   };
 
   const getPriorityColor = (priority) => {
@@ -173,19 +196,19 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
       compliance: <AlertTriangle className="w-4 h-4 text-orange-600" />,
       revenue: <Sparkles className="w-4 h-4 text-green-600" />,
       clinical: <Users className="w-4 h-4 text-blue-600" />,
-      documentation: <FileText className="w-4 h-4 text-purple-600" />
+      documentation: <FileText className="w-4 h-4 text-navy-600" />
     };
     return icons[category] || icons.documentation;
   };
 
   if (!analysisResults) return null;
 
-  if (isAnalyzing) {
+  if (ai.loading) {
     return (
-      <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-indigo-50">
+      <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-indigo-50">
         <CardContent className="p-6 text-center">
-          <Loader2 className="w-8 h-8 text-purple-600 mx-auto mb-3 animate-spin" />
-          <p className="text-sm font-medium text-purple-900">
+          <Loader2 className="w-8 h-8 text-navy-600 mx-auto mb-3 animate-spin" />
+          <p className="text-sm font-medium text-navy-900">
             AI is analyzing results and generating follow-up actions...
           </p>
         </CardContent>
@@ -196,13 +219,13 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
   if (suggestedActions.length === 0) return null;
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-indigo-50">
       <CardHeader className="pb-3 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Zap className="w-5 h-5 text-purple-600" />
+            <Zap className="w-5 h-5 text-navy-600" />
             AI-Suggested Follow-Up Actions
-            <Badge className="bg-purple-600 text-white ml-2">
+            <Badge className="bg-navy-600 text-white ml-2">
               {suggestedActions.length} suggested
             </Badge>
           </CardTitle>
@@ -234,8 +257,8 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
                   key={idx}
                   className={`border-2 rounded-lg p-4 transition-all ${
                     selectedActions.includes(idx)
-                      ? 'bg-white border-purple-400 shadow-md'
-                      : 'bg-white border-gray-200'
+                      ? 'bg-white border-navy-400 shadow-md'
+                      : 'bg-white border-slate-200'
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -248,28 +271,28 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           {getImpactIcon(action.impact_category)}
-                          <h4 className="font-semibold text-gray-900">{action.title}</h4>
+                          <h4 className="font-semibold text-slate-900">{action.title}</h4>
                         </div>
                         <Badge className={getPriorityColor(action.priority)}>
                           {action.priority}
                         </Badge>
                       </div>
 
-                      <p className="text-sm text-gray-700">{action.description}</p>
+                      <p className="text-sm text-slate-700">{action.description}</p>
 
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="flex items-center gap-1 text-gray-600">
+                        <div className="flex items-center gap-1 text-slate-600">
                           <Clock className="w-3 h-3" />
                           Due in {action.due_in_days} days
                         </div>
-                        <div className="flex items-center gap-1 text-gray-600">
+                        <div className="flex items-center gap-1 text-slate-600">
                           <Users className="w-3 h-3" />
                           {action.assign_to_role || 'Clinician'}
                         </div>
                       </div>
 
-                      <div className="bg-purple-50 p-2 rounded text-xs border border-purple-200">
-                        <p className="text-purple-900">
+                      <div className="bg-navy-50 p-2 rounded text-xs border border-navy-200">
+                        <p className="text-navy-900">
                           <strong>Why:</strong> {action.reason}
                         </p>
                       </div>
@@ -290,7 +313,7 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
                         </div>
                       )}
 
-                      <p className="text-xs text-gray-500 italic">
+                      <p className="text-xs text-slate-500 italic">
                         Source: {action.source_finding}
                       </p>
                     </div>
@@ -301,7 +324,7 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
           </ScrollArea>
 
           <div className="flex items-center justify-between pt-4 border-t">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-slate-600">
               <span className="font-medium">{selectedActions.length}</span> action{selectedActions.length !== 1 ? 's' : ''} selected
             </div>
             <div className="flex gap-2">
@@ -317,7 +340,7 @@ Generate actionable tasks. Each task must have: title, description, priority (hi
                 size="sm"
                 onClick={handleCreateTasks}
                 disabled={selectedActions.length === 0 || createTasksMutation.isPending}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="bg-navy-600 hover:bg-navy-700"
               >
                 {createTasksMutation.isPending ? (
                   <>

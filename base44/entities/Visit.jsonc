@@ -1,0 +1,172 @@
+{
+  "name": "Visit",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Client-generated idempotency key for offline-queued creates. Used by OfflineManager to dedupe before re-creating a visit whose prior create may have succeeded but not been confirmed."
+    },
+    "visit_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "visit_time": {
+      "type": "string"
+    },
+    "visit_type": {
+      "type": "string",
+      "enum": [
+        "skilled_nursing",
+        "admission",
+        "recertification",
+        "discharge",
+        "routine_visit",
+        "prn"
+      ],
+      "description": "Type of visit"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "scheduled"
+    },
+    "start_time": {
+      "type": "string",
+      "description": "Actual start time of visit"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "Actual end time of visit"
+    },
+    "nurse_notes": {
+      "type": "string",
+      "description": "AI-generated Medicare-compliant narrative"
+    },
+    "audio_url": {
+      "type": "string",
+      "description": "URL of the dictated audio file"
+    },
+    "raw_transcription": {
+      "type": "string",
+      "description": "Raw transcription before AI formatting"
+    },
+    "vital_signs": {
+      "type": "object",
+      "properties": {
+        "temperature": {
+          "type": "number"
+        },
+        "blood_pressure_systolic": {
+          "type": "number"
+        },
+        "blood_pressure_diastolic": {
+          "type": "number"
+        },
+        "heart_rate": {
+          "type": "number"
+        },
+        "respiratory_rate": {
+          "type": "number"
+        },
+        "oxygen_saturation": {
+          "type": "number"
+        },
+        "pain_level": {
+          "type": "number"
+        },
+        "weight": {
+          "type": "number"
+        }
+      }
+    },
+    "skilled_intervention_documented": {
+      "type": "boolean",
+      "description": "Whether skilled nursing intervention was clearly documented"
+    },
+    "homebound_justification": {
+      "type": "string",
+      "description": "Required documentation of homebound status for Medicare compliance"
+    },
+    "homebound_status_verified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether homebound status meets Medicare criteria"
+    },
+    "checklist_progress": {
+      "type": "object",
+      "description": "Tracking of completed checklist items for diagnosis-specific assessment"
+    },
+    "family_update_sent": {
+      "type": "boolean",
+      "description": "Whether family update was sent",
+      "default": false
+    },
+    "family_update_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When family update was sent"
+    },
+    "family_update_text": {
+      "type": "string",
+      "description": "Text of family update that was sent"
+    },
+    "ai_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "AI-generated tags for searchability and trend analysis"
+    },
+    "compliance_score": {
+      "type": "number",
+      "description": "Medicare compliance score 0-100"
+    },
+    "compliance_issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of identified compliance issues"
+    }
+  },
+  "required": [
+    "patient_id",
+    "visit_date",
+    "visit_type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

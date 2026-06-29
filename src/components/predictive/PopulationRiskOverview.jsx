@@ -1,14 +1,11 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Users,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   Activity,
-  Heart,
   Brain
 } from "lucide-react";
 import {
@@ -175,13 +172,13 @@ export default function PopulationRiskOverview({
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+        <Card className="bg-gradient-to-br from-navy-50 to-gold-50 border-navy-200">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
-              <Activity className="w-5 h-5 text-purple-600" />
+              <Activity className="w-5 h-5 text-navy-600" />
             </div>
-            <p className="text-3xl font-bold text-purple-900">{avgRiskScore}</p>
-            <p className="text-xs text-purple-700">Avg Risk Score</p>
+            <p className="text-3xl font-bold text-navy-900">{avgRiskScore}</p>
+            <p className="text-xs text-navy-700">Avg Risk Score</p>
           </CardContent>
         </Card>
 
@@ -212,7 +209,7 @@ export default function PopulationRiskOverview({
                   innerRadius={50}
                   outerRadius={80}
                   dataKey="value"
-                  label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                  label={({ _name, percent }) => `${(percent * 100).toFixed(0)}%`}
                 >
                   {riskDistribution.map((entry, index) => (
                     <Cell key={index} fill={entry.color} />
@@ -267,13 +264,13 @@ export default function PopulationRiskOverview({
               .map(patient => (
                 <div 
                   key={patient.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full`} style={{ backgroundColor: RISK_COLORS[patient.riskLevel] }} />
                     <div>
                       <p className="text-sm font-medium">{patient.first_name} {patient.last_name}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-slate-500">
                         {patient.riskFactors.slice(0, 2).join(' • ')}
                       </p>
                     </div>

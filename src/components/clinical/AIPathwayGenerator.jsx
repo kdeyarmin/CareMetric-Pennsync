@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,7 @@ export default function AIPathwayGenerator({ onPathwayGenerated }) {
   const [diagnosis, setDiagnosis] = useState("");
   const [careType, setCareType] = useState("home_health");
   const [demographics, setDemographics] = useState("");
-  const [generating, setGenerating] = useState(false);
+  const ai = useAICall();
   const [generatedPathways, setGeneratedPathways] = useState([]);
   const [error, setError] = useState(null);
 
@@ -23,7 +24,6 @@ export default function AIPathwayGenerator({ onPathwayGenerated }) {
       return;
     }
 
-    setGenerating(true);
     setError(null);
     setGeneratedPathways([]);
 
@@ -64,7 +64,8 @@ Base recommendations on current Medicare guidelines, evidence-based practice, an
 
 Return ONLY valid JSON without any markdown formatting or explanations.`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -144,8 +145,6 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
     } catch (err) {
       console.error("Pathway generation error:", err);
       setError(err.message || "Failed to generate pathways");
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -163,9 +162,9 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
   };
 
   return (
-    <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-50">
+    <Card className="border-navy-200 bg-gradient-to-br from-navy-50 to-indigo-50">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-purple-900">
+        <CardTitle className="flex items-center gap-2 text-navy-900">
           <Brain className="w-5 h-5" />
           AI Pathway Generator
         </CardTitle>
@@ -185,7 +184,7 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
           <select
             value={careType}
             onChange={(e) => setCareType(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            className="w-full px-3 py-2 border border-slate-300 rounded-md"
           >
             <option value="home_health">Home Health</option>
             <option value="hospice">Hospice</option>
@@ -211,10 +210,10 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
 
         <Button
           onClick={generatePathways}
-          disabled={generating || !diagnosis.trim()}
-          className="w-full bg-purple-600 hover:bg-purple-700"
+          disabled={ai.loading || !diagnosis.trim()}
+          className="w-full bg-navy-600 hover:bg-navy-700"
         >
-          {generating ? (
+          {ai.loading ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Generating AI Pathways...
@@ -230,7 +229,7 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
         {/* Generated Pathways */}
         {generatedPathways.length > 0 && (
           <div className="space-y-3 mt-6">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-green-600" />
               Generated Pathways ({generatedPathways.length})
             </h3>
@@ -239,10 +238,10 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900">{pathway.pathway_name}</h4>
-                      <p className="text-sm text-gray-600 mt-1">{pathway.description}</p>
+                      <h4 className="font-semibold text-slate-900">{pathway.pathway_name}</h4>
+                      <p className="text-sm text-slate-600 mt-1">{pathway.description}</p>
                     </div>
-                    <Badge className="bg-purple-500">{pathway.priority_level}</Badge>
+                    <Badge className="bg-navy-500">{pathway.priority_level}</Badge>
                   </div>
 
                   <div className="grid grid-cols-4 gap-2 text-xs">
@@ -250,17 +249,17 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
                       <p className="font-bold text-blue-700">{pathway.trigger_conditions?.length || 0}</p>
                       <p className="text-blue-600">Triggers</p>
                     </div>
-                    <div className="bg-purple-50 p-2 rounded text-center">
-                      <p className="font-bold text-purple-700">{pathway.documentation_prompts?.length || 0}</p>
-                      <p className="text-purple-600">Prompts</p>
+                    <div className="bg-navy-50 p-2 rounded text-center">
+                      <p className="font-bold text-navy-700">{pathway.documentation_prompts?.length || 0}</p>
+                      <p className="text-navy-600">Prompts</p>
                     </div>
                     <div className="bg-green-50 p-2 rounded text-center">
                       <p className="font-bold text-green-700">{pathway.rescore_opportunities?.length || 0}</p>
                       <p className="text-green-600">Rescores</p>
                     </div>
-                    <div className="bg-cyan-50 p-2 rounded text-center">
-                      <p className="font-bold text-cyan-700">{pathway.recommended_tasks?.length || 0}</p>
-                      <p className="text-cyan-600">Tasks</p>
+                    <div className="bg-navy-50 p-2 rounded text-center">
+                      <p className="font-bold text-navy-700">{pathway.recommended_tasks?.length || 0}</p>
+                      <p className="text-navy-600">Tasks</p>
                     </div>
                   </div>
 

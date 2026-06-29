@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,16 +23,18 @@ import {
   Target,
   AlertTriangle
 } from "lucide-react";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 export default function PDGMCaseMixForecaster({ compact = false }) {
-  const [isForecasting, setIsForecasting] = useState(false);
+  const ai = useAICall();
   const [forecast, setForecast] = useState(null);
   const [timeframe, setTimeframe] = useState("30");
-  const [selectedPatient, setSelectedPatient] = useState("all");
+  const [_selectedPatient, _setSelectedPatient] = useState("all");
 
   const { data: patients = [] } = useQuery({
-    queryKey: ['patients'],
+    // Namespaced active-only set — see note in PatientAlerts: the bare ['patients']
+    // key collided with all-patients (Patient.list) queries in the shared cache.
+    queryKey: ['patients', 'active'],
     queryFn: () => base44.entities.Patient.filter({ status: 'active' }),
     initialData: []
   });
@@ -42,7 +46,6 @@ export default function PDGMCaseMixForecaster({ compact = false }) {
   });
 
   const generateForecast = async () => {
-    setIsForecasting(true);
 
     try {
       const patientSummaries = patients.slice(0, 20).map(p => ({
@@ -74,7 +77,7 @@ FORECASTING INSTRUCTIONS:
 3. Calculate expected comorbidity adjustments
 4. Factor in episode timing (early vs late)
 5. Account for admission source patterns
-6. Project revenue based on 2024 Medicare base rates (~$2,100)
+6. Project revenue as a ROUGH ESTIMATE using standard CMS PDGM base rates. Do not present figures as exact payment — CMS base rates change annually and must be verified against the agency's current CMS rate table.
 
 Return JSON:
 {
@@ -134,7 +137,8 @@ Return JSON:
   ]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -153,9 +157,9 @@ Return JSON:
       setForecast(result);
     } catch (error) {
       console.error("Forecasting error:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsForecasting(false);
   };
 
   const formatCurrency = (amount) => {
@@ -169,22 +173,22 @@ Return JSON:
   const getTrendIcon = (trend) => {
     if (trend === 'increasing') return <ArrowUpRight className="w-4 h-4 text-green-600" />;
     if (trend === 'decreasing') return <ArrowDownRight className="w-4 h-4 text-red-600" />;
-    return <Minus className="w-4 h-4 text-gray-500" />;
+    return <Minus className="w-4 h-4 text-slate-500" />;
   };
 
-  const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+  const COLORS = ['#264491', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0d9488'];
 
   if (compact) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-purple-600" />
+              <TrendingUp className="w-4 h-4 text-navy-600" />
               PDGM Revenue Forecast
             </div>
-            <Button size="sm" variant="ghost" onClick={generateForecast} disabled={isForecasting}>
-              {isForecasting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            <Button size="sm" variant="ghost" onClick={generateForecast} disabled={ai.loading}>
+              {ai.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             </Button>
           </CardTitle>
         </CardHeader>
@@ -192,14 +196,14 @@ Return JSON:
           {forecast ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">Projected Revenue ({timeframe}d)</span>
-                <span className="text-lg font-bold text-purple-700">
+                <span className="text-xs text-slate-600">Projected Revenue ({timeframe}d)</span>
+                <span className="text-lg font-bold text-navy-700">
                   {formatCurrency(forecast.forecast_summary?.total_projected_revenue)}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-600">Episodes: {forecast.forecast_summary?.total_projected_episodes}</span>
-                <span className="text-gray-600">Avg CMW: {forecast.forecast_summary?.average_case_mix_weight?.toFixed(4)}</span>
+                <span className="text-slate-600">Episodes: {forecast.forecast_summary?.total_projected_episodes}</span>
+                <span className="text-slate-600">Avg CMW: {forecast.forecast_summary?.average_case_mix_weight?.toFixed(4)}</span>
               </div>
               {forecast.trend_analysis && (
                 <div className="flex items-center gap-1 text-xs">
@@ -212,8 +216,8 @@ Return JSON:
               )}
             </div>
           ) : (
-            <Button onClick={generateForecast} disabled={isForecasting} className="w-full" size="sm">
-              {isForecasting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart3 className="w-4 h-4 mr-2" />}
+            <Button onClick={generateForecast} disabled={ai.loading} className="w-full" size="sm">
+              {ai.loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart3 className="w-4 h-4 mr-2" />}
               Generate Forecast
             </Button>
           )}
@@ -223,11 +227,11 @@ Return JSON:
   }
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="pb-3 bg-gradient-to-r from-navy-50 to-indigo-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-purple-600" />
+            <TrendingUp className="w-5 h-5 text-navy-600" />
             PDGM Case-Mix & Revenue Forecaster
           </div>
           <div className="flex items-center gap-2">
@@ -243,11 +247,11 @@ Return JSON:
             </Select>
             <Button
               onClick={generateForecast}
-              disabled={isForecasting}
+              disabled={ai.loading}
               size="sm"
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-navy-600 hover:bg-navy-700"
             >
-              {isForecasting ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Forecasting...</>
               ) : (
                 <><TrendingUp className="w-4 h-4 mr-2" /> Generate Forecast</>
@@ -257,10 +261,10 @@ Return JSON:
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-4 space-y-4">
-        {!forecast && !isForecasting && (
-          <Alert className="bg-purple-50 border-purple-200">
-            <BarChart3 className="w-4 h-4 text-purple-600" />
-            <AlertDescription className="text-purple-800 text-sm">
+        {!forecast && !ai.loading && (
+          <Alert className="bg-navy-50 border-navy-200">
+            <BarChart3 className="w-4 h-4 text-navy-600" />
+            <AlertDescription className="text-navy-800 text-sm">
               Generate predictive forecasts for PDGM case-mix scores and revenue based on patient data and historical patterns.
             </AlertDescription>
           </Alert>
@@ -278,10 +282,10 @@ Return JSON:
             <TabsContent value="summary" className="space-y-4 mt-4">
               {/* Key Metrics */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-center">
-                  <DollarSign className="w-5 h-5 text-purple-600 mx-auto mb-1" />
-                  <p className="text-xs text-purple-600">Projected Revenue</p>
-                  <p className="text-xl font-bold text-purple-800">
+                <div className="bg-navy-50 p-3 rounded-lg border border-navy-200 text-center">
+                  <DollarSign className="w-5 h-5 text-navy-600 mx-auto mb-1" />
+                  <p className="text-xs text-navy-600">Projected Revenue</p>
+                  <p className="text-xl font-bold text-navy-800">
                     {formatCurrency(forecast.forecast_summary?.total_projected_revenue)}
                   </p>
                 </div>
@@ -311,7 +315,7 @@ Return JSON:
               {/* Revenue Chart */}
               {forecast.revenue_by_month?.length > 0 && (
                 <div className="bg-white p-4 rounded-lg border">
-                  <h4 className="font-semibold text-gray-900 mb-3 text-sm">Revenue Projection</h4>
+                  <h4 className="font-semibold text-slate-900 mb-3 text-sm">Revenue Projection</h4>
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={forecast.revenue_by_month}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -327,7 +331,7 @@ Return JSON:
               {/* Clinical Group Distribution */}
               {forecast.clinical_group_distribution?.length > 0 && (
                 <div className="bg-white p-4 rounded-lg border">
-                  <h4 className="font-semibold text-gray-900 mb-3 text-sm">Clinical Group Distribution</h4>
+                  <h4 className="font-semibold text-slate-900 mb-3 text-sm">Clinical Group Distribution</h4>
                   <div className="flex items-center gap-4">
                     <ResponsiveContainer width="40%" height={150}>
                       <PieChart>
@@ -365,28 +369,28 @@ Return JSON:
             <TabsContent value="patients" className="mt-4">
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {forecast.patient_level_forecasts?.map((pf, idx) => (
-                  <div key={idx} className="p-3 bg-gray-50 rounded-lg border">
+                  <div key={idx} className="p-3 bg-slate-50 rounded-lg border">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-sm">{pf.patient_name}</span>
-                      <Badge className="bg-purple-100 text-purple-800">
+                      <Badge className="bg-navy-100 text-navy-800">
                         {formatCurrency(pf.total_predicted_revenue)}
                       </Badge>
                     </div>
                     <div className="grid grid-cols-4 gap-2 text-xs">
                       <div>
-                        <p className="text-gray-500">Clinical</p>
+                        <p className="text-slate-500">Clinical</p>
                         <p className="font-medium">{pf.predicted_clinical_group}</p>
                       </div>
                       <div>
-                        <p className="text-gray-500">Functional</p>
+                        <p className="text-slate-500">Functional</p>
                         <p className="font-medium capitalize">{pf.predicted_functional_level}</p>
                       </div>
                       <div>
-                        <p className="text-gray-500">Comorbidity</p>
+                        <p className="text-slate-500">Comorbidity</p>
                         <p className="font-medium capitalize">{pf.predicted_comorbidity_tier}</p>
                       </div>
                       <div>
-                        <p className="text-gray-500">CMW</p>
+                        <p className="text-slate-500">CMW</p>
                         <p className="font-medium">{pf.predicted_case_mix_weight?.toFixed(4)}</p>
                       </div>
                     </div>
@@ -460,7 +464,7 @@ Return JSON:
                               {rec.implementation_effort} effort
                             </Badge>
                           </div>
-                          <p className="text-sm text-gray-700 mt-1">{rec.recommendation}</p>
+                          <p className="text-sm text-slate-700 mt-1">{rec.recommendation}</p>
                         </div>
                         <span className="text-green-700 font-bold text-sm">
                           +{formatCurrency(rec.potential_revenue_impact)}

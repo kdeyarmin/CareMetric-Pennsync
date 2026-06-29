@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -16,7 +17,7 @@ import {
   RefreshCw,
   Loader2
 } from "lucide-react";
-import { isValid, parseISO } from "date-fns";
+import { isValid } from "date-fns";
 
 export default function AIPatientDashboardSummary({ 
   patient, 
@@ -26,16 +27,9 @@ export default function AIPatientDashboardSummary({
   incidents = []
 }) {
   const [summary, setSummary] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const ai = useAICall();
 
-  useEffect(() => {
-    if (patient) {
-      generateSummary();
-    }
-  }, [patient?.id]);
-
-  const generateSummary = async () => {
-    setIsLoading(true);
+  const generateSummary = useCallback(async () => {
     try {
       // Get recent visits (last 30 days)
       const thirtyDaysAgo = new Date();
@@ -109,7 +103,8 @@ Provide a comprehensive yet concise dashboard summary in JSON:
   "red_flags": ["any concerning patterns or issues requiring immediate attention"]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -132,9 +127,16 @@ Provide a comprehensive yet concise dashboard summary in JSON:
       setSummary(result);
     } catch (error) {
       console.error("Error generating summary:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsLoading(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [patient, visits, carePlans, tasks, incidents]);
+
+  useEffect(() => {
+    if (patient) {
+      generateSummary();
+    }
+  }, [patient, patient?.id, generateSummary]);
 
   const getStatusColor = (status) => {
     const colors = {
@@ -153,12 +155,12 @@ Provide a comprehensive yet concise dashboard summary in JSON:
     return <CheckCircle2 className="w-5 h-5" />;
   };
 
-  if (isLoading) {
+  if (ai.loading) {
     return (
-      <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
+      <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-gold-50">
         <CardContent className="p-6 text-center">
-          <Loader2 className="w-8 h-8 text-purple-600 mx-auto mb-3 animate-spin" />
-          <p className="text-sm font-medium text-purple-900">Generating AI Summary...</p>
+          <Loader2 className="w-8 h-8 text-navy-600 mx-auto mb-3 animate-spin" />
+          <p className="text-sm font-medium text-navy-900">Generating AI Summary...</p>
         </CardContent>
       </Card>
     );
@@ -166,9 +168,9 @@ Provide a comprehensive yet concise dashboard summary in JSON:
 
   if (!summary) {
     return (
-      <Card className="border-2 border-purple-300">
+      <Card className="border-2 border-navy-300">
         <CardContent className="p-4">
-          <Button onClick={generateSummary} className="bg-purple-600 hover:bg-purple-700">
+          <Button onClick={generateSummary} className="bg-navy-600 hover:bg-navy-700">
             <Sparkles className="w-4 h-4 mr-2" />
             Generate AI Summary
           </Button>
@@ -178,11 +180,11 @@ Provide a comprehensive yet concise dashboard summary in JSON:
   }
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-gold-50">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             AI Patient Dashboard Summary
           </CardTitle>
           <Button size="sm" variant="outline" onClick={generateSummary}>
@@ -218,15 +220,15 @@ Provide a comprehensive yet concise dashboard summary in JSON:
         )}
 
         {/* Key Highlights */}
-        <div className="bg-white p-3 rounded-lg border border-purple-200">
+        <div className="bg-white p-3 rounded-lg border border-navy-200">
           <h4 className="font-semibold text-sm mb-2 flex items-center gap-1">
-            <Activity className="w-4 h-4 text-purple-600" />
+            <Activity className="w-4 h-4 text-navy-600" />
             Key Highlights
           </h4>
           <ul className="space-y-1">
             {summary.key_highlights?.map((highlight, idx) => (
-              <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
-                <span className="text-purple-600 font-bold">•</span>
+              <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
+                <span className="text-navy-600 font-bold">•</span>
                 {highlight}
               </li>
             ))}
@@ -248,7 +250,7 @@ Provide a comprehensive yet concise dashboard summary in JSON:
             </h4>
             <ul className="space-y-1">
               {summary.clinical_trends.indicators?.map((indicator, idx) => (
-                <li key={idx} className="text-xs text-gray-600">• {indicator}</li>
+                <li key={idx} className="text-xs text-slate-600">• {indicator}</li>
               ))}
             </ul>
           </div>
@@ -261,7 +263,7 @@ Provide a comprehensive yet concise dashboard summary in JSON:
             {summary.priority_concerns.map((concern, idx) => (
               <div key={idx} className="bg-white p-3 rounded-lg border border-orange-200">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium text-gray-900">{concern.concern}</p>
+                  <p className="text-sm font-medium text-slate-900">{concern.concern}</p>
                   <Badge className={
                     concern.severity === 'high' ? 'bg-red-600' :
                     concern.severity === 'medium' ? 'bg-orange-500' : 'bg-yellow-500'
@@ -269,7 +271,7 @@ Provide a comprehensive yet concise dashboard summary in JSON:
                     {concern.severity}
                   </Badge>
                 </div>
-                <p className="text-xs text-gray-700">Action: {concern.action_needed}</p>
+                <p className="text-xs text-slate-700">Action: {concern.action_needed}</p>
               </div>
             ))}
           </div>
@@ -278,17 +280,17 @@ Provide a comprehensive yet concise dashboard summary in JSON:
         {/* Recent Activity */}
         <div className="bg-white p-3 rounded-lg border">
           <h4 className="font-semibold text-sm mb-2 flex items-center gap-1">
-            <FileText className="w-4 h-4 text-gray-600" />
+            <FileText className="w-4 h-4 text-slate-600" />
             Recent Activity
           </h4>
-          <p className="text-sm text-gray-700">{summary.recent_activity_summary}</p>
+          <p className="text-sm text-slate-700">{summary.recent_activity_summary}</p>
         </div>
 
         {/* Care Plan Progress */}
         {summary.care_plan_progress && (
           <div className="bg-white p-3 rounded-lg border border-green-200">
             <h4 className="font-semibold text-sm mb-2">Care Plan Progress</h4>
-            <p className="text-sm text-gray-700">{summary.care_plan_progress}</p>
+            <p className="text-sm text-slate-700">{summary.care_plan_progress}</p>
           </div>
         )}
 
@@ -311,11 +313,11 @@ Provide a comprehensive yet concise dashboard summary in JSON:
 
         {/* Recommendations */}
         {summary.recommendations?.length > 0 && (
-          <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+          <div className="bg-navy-50 p-3 rounded-lg border border-navy-200">
             <h4 className="font-semibold text-sm mb-2">Recommendations</h4>
             <ul className="space-y-1">
               {summary.recommendations.map((rec, idx) => (
-                <li key={idx} className="text-sm text-purple-900">• {rec}</li>
+                <li key={idx} className="text-sm text-navy-900">• {rec}</li>
               ))}
             </ul>
           </div>
@@ -323,7 +325,7 @@ Provide a comprehensive yet concise dashboard summary in JSON:
 
         {/* Upcoming Focus */}
         {summary.upcoming_focus?.length > 0 && (
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-3 rounded-lg border border-indigo-200">
+          <div className="bg-gradient-to-r from-indigo-50 to-navy-50 p-3 rounded-lg border border-indigo-200">
             <h4 className="font-semibold text-sm mb-2">Upcoming Focus Areas</h4>
             <ul className="space-y-1">
               {summary.upcoming_focus.map((focus, idx) => (

@@ -1,445 +1,697 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { jsPDF } from 'npm:jspdf@2.5.2';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { jsPDF } from 'npm:jspdf@2.5.1';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
+
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { guide_type } = await req.json().catch(() => ({ guide_type: 'full' }));
+    const { guide_type } = await req.json();
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 20;
-    const contentWidth = pageWidth - margin * 2;
-    let y = margin;
+    // Define guide prompts
+    const guidePrompts = {
+      referral_intake: `
+REFERRAL INTAKE PROCESS GUIDE
 
-    const addNewPageIfNeeded = (needed = 30) => {
-      if (y + needed > pageHeight - 25) {
+Create detailed instructions for staff entering and uploading referrals:
+
+**INTRODUCTION**
+- Purpose of the referral intake system
+- Benefits of AI-powered extraction
+- Overview of the workflow
+
+**STEP-BY-STEP INSTRUCTIONS**
+
+1. ACCESSING THE REFERRAL INTAKE PAGE
+   - Navigation from dashboard
+   - What you'll see on the page
+
+2. UPLOADING A REFERRAL DOCUMENT
+   - Click "Upload New Referral" button
+   - Supported file types (PDF, PNG, JPG, TIFF)
+   - File size limits
+   - Drag and drop option
+
+3. AI PROCESSING
+   - What happens during processing (5 stages)
+   - Typical processing time
+   - Progress indicators to watch
+
+4. REVIEWING EXTRACTED DATA
+   - Patient demographics section
+   - Diagnoses and medical history
+   - Medications
+   - Functional status
+   - Insurance information
+   - Clinical summary
+
+5. VERIFYING AI-EXTRACTED FIELDS
+   - Look for confidence indicators
+   - Yellow flags = requires verification
+   - How to edit incorrect data
+   - Using the confidence score
+
+6. PATIENT MATCHING
+   - Automatic patient match detection
+   - Reviewing suggested matches
+   - Confirming existing patient vs creating new
+   - Resolving duplicate warnings
+
+7. COMPLETING THE REFERRAL FORM
+   - Required fields (marked with *)
+   - Referral source
+   - Referral date
+   - Priority level
+   - Assigning to nurse
+
+8. AI FEATURES AVAILABLE
+   - AI-generated admission note
+   - OASIS pre-assessment
+   - Care plan suggestions
+   - How to use each feature
+
+9. GENERATING ADMISSION PACKET
+   - Click "Generate Admission Packet" button
+   - What's included in the packet
+   - Downloading the PDF
+   - Saving the processed referral URL
+
+10. TROUBLESHOOTING
+    - Poor quality scans
+    - Missing information
+    - AI confidence issues
+    - When to manually enter data
+
+**BEST PRACTICES**
+- Quality of source documents
+- When to verify AI suggestions
+- Communication with nursing staff
+
+**TIPS FOR SUCCESS**
+- Use clear, high-resolution scans
+- Review all yellow-flagged fields
+- Double-check patient matching
+- Assign to appropriate nurse based on territory`,
+      
+      admission_documentation: `
+
+ADMISSION VISIT DOCUMENTATION GUIDE
+
+Create detailed instructions for nurses completing admission visits:
+
+**INTRODUCTION**
+- Purpose of admission documentation
+- Medicare compliance requirements
+- AI assistance overview
+
+**STEP-BY-STEP INSTRUCTIONS**
+
+1. PREPARING FOR THE VISIT
+   - Review referral data in patient chart
+   - Check pre-populated admission note
+   - Review AI-generated care plan suggestions
+   - Verify patient demographics
+
+2. ACCESSING SMART NOTE ASSISTANT
+   - Navigate to "Smart Notes" or "Quick Note"
+   - Select the patient
+   - Choose "Admission" as visit type
+   - Pre-populated fields you'll see
+
+3. DURING THE PATIENT VISIT
+   - Using voice dictation (optional)
+   - Recording vital signs
+   - Documenting assessment findings
+   - Taking photos of wounds (if applicable)
+
+4. COMPLETING THE ASSESSMENT
+   - Head-to-toe assessment
+   - Functional status evaluation
+   - Safety assessment
+   - Medication reconciliation
+   - Homebound justification
+
+5. USING AI ASSISTANCE
+   - Real-time suggestions while typing
+   - Compliance checker feedback
+   - Missing element alerts
+   - OASIS alignment indicators
+
+6. DOCUMENTING IN SOAP FORMAT
+   - Subjective: Patient complaints, history
+   - Objective: Vital signs, physical exam
+   - Assessment: Clinical summary, homebound status
+   - Plan: Interventions, frequency, goals
+
+7. REVIEWING AI-GENERATED NOTE
+   - Click "Enhance Note" button
+   - Review AI-formatted SOAP note
+   - Edit as needed for accuracy
+   - Use "Review Quality" feature
+
+8. QUALITY REVIEW FEATURES
+   - Compliance score (aim for 85%+)
+   - Missing elements highlighted
+   - Vague language suggestions
+   - PDGM optimization tips
+   - Quick wins to address
+
+9. ADDRESSING DOCUMENTATION GAPS
+   - Copy suggested text
+   - Add specific measurements
+   - Include homebound justification
+   - Document skilled need clearly
+
+10. COMPLETING OASIS ASSESSMENT
+    - Use AI OASIS pre-assessment
+    - Verify each item against actual findings
+    - Review confidence scores
+    - Flag items needing clarification
+
+11. FINALIZING CARE PLANS
+    - Review AI-suggested care plans
+    - Modify based on actual visit
+    - Set realistic goals
+    - Assign appropriate frequencies
+
+12. SAVING DOCUMENTATION
+    - Click "Save to Patient Chart"
+    - Verify it's saved under correct visit
+    - Send family update if applicable
+    - Close any auto-generated tasks
+
+**MEDICARE COMPLIANCE CHECKLIST**
+□ Homebound status clearly documented
+□ Skilled need justified
+□ Specific functional measurements
+□ Vital signs documented
+□ Safety assessment completed
+□ Medication reconciliation done
+□ Patient/caregiver teaching documented
+□ Goals are SMART (Specific, Measurable, Achievable, Relevant, Time-bound)
+
+**BEST PRACTICES**
+- Review referral data before visit
+- Use voice dictation during visit
+- Be specific with measurements
+- Document skilled nursing interventions
+- Verify AI suggestions against actual findings
+- Use compliance checker before saving
+
+**COMMON PITFALLS TO AVOID**
+- Vague language ("appears," "seems")
+- Missing homebound justification
+- Non-specific functional assessments
+- Incomplete vital signs
+- Weak skilled need documentation
+
+**TIPS FOR SUCCESS**
+- Use AI assistance but verify everything
+- Document what YOU observed
+- Include patient/caregiver quotes
+- Specify assistance levels for ADLs
+- Compare to baseline when possible`,
+
+      smart_notes: `SMART NOTES & QUICK NOTE GUIDE
+
+Comprehensive guide for using AI-powered documentation tools:
+
+**SECTIONS:**
+1. Introduction to Smart Notes
+2. Quick Note for rapid documentation
+3. Voice dictation features
+4. AI enhancement capabilities
+5. Real-time compliance checking
+6. SOAP format documentation
+7. Clinical event extraction
+8. Saving and syncing notes
+9. Offline mode capabilities
+10. Best practices and tips`,
+
+      oasis_assessment: `OASIS ASSESSMENT GUIDE
+
+Complete guide for OASIS documentation with AI assistance:
+
+**SECTIONS:**
+1. OASIS overview and requirements
+2. Starting a new OASIS assessment
+3. Using AI pre-assessment features
+4. Completing OASIS items
+5. Confidence scores and validation
+6. PDGM case mix optimization
+7. Documentation alignment
+8. Quality review process
+9. Submitting assessments
+10. Common errors and solutions`,
+
+      care_plans: `CARE PLAN MANAGEMENT GUIDE
+
+Guide for creating and managing patient care plans:
+
+**SECTIONS:**
+1. Creating new care plans
+2. AI-generated suggestions
+3. Setting SMART goals
+4. Documenting interventions
+5. Tracking progress
+6. Updating care plans
+7. Care plan gaps analysis
+8. Automatic care plan triggers
+9. Interdisciplinary coordination
+10. Best practices`,
+
+      patient_management: `PATIENT MANAGEMENT GUIDE
+
+Complete guide for managing patient records:
+
+**SECTIONS:**
+1. Adding new patients
+2. Searching and filtering patients
+3. Patient 360 view
+4. Updating demographics
+5. Medical history tracking
+6. Medication reconciliation
+7. Document management
+8. Communication with team
+9. Patient education materials
+10. Discharge planning`,
+
+      training_hub: `TRAINING HUB GUIDE
+
+Guide for completing training and professional development:
+
+**SECTIONS:**
+1. Accessing training modules
+2. Required vs optional training
+3. Interactive quizzes and scenarios
+4. Tracking completion
+5. Earning certificates
+6. Personalized recommendations
+7. Skill gap analysis
+8. Micro-learning opportunities
+9. Practice scenarios
+10. Continuing education credits`,
+
+      compliance_quality: `COMPLIANCE & QUALITY GUIDE
+
+Guide for maintaining Medicare compliance and quality standards:
+
+**SECTIONS:**
+1. Compliance dashboard overview
+2. Real-time compliance alerts
+3. Documentation quality scoring
+4. Medicare guidelines library
+5. Regulatory updates
+6. Audit preparation
+7. Quality improvement initiatives
+8. Performance metrics
+9. Best practice alerts
+10. Reporting and analytics`,
+
+      messages: `MESSAGING & COMMUNICATION GUIDE
+
+Guide for team communication and coordination:
+
+**SECTIONS:**
+1. Accessing messages
+2. Creating new messages
+3. Threading and replies
+4. Patient-specific messages
+5. Priority and urgent messages
+6. Attaching files
+7. Message notifications
+8. Team coordination
+9. Care handoffs
+10. Message organization`,
+
+      patient_alerts: `PATIENT ALERTS & MONITORING GUIDE
+
+Guide for managing patient risk alerts:
+
+**SECTIONS:**
+1. Alert dashboard overview
+2. Types of alerts
+3. Severity levels
+4. Reviewing alert details
+5. Acknowledging alerts
+6. Creating action plans
+7. Assigning follow-up
+8. Alert resolution
+9. Predictive analytics
+10. Alert history and trends`,
+
+      all_features: `PENN SYNC - COMPLETE USER GUIDE
+
+Comprehensive guide covering all features of the Penn Sync Healthcare platform:
+
+**CORE MODULES:**
+
+1. DASHBOARD & NAVIGATION
+- Home dashboard overview
+- Navigation menu
+- Quick actions
+- Notifications
+- Favorites
+- User settings
+
+2. REFERRAL INTAKE
+- Uploading referrals
+- AI data extraction
+- Patient matching
+- Admission packets
+- Task assignment
+
+3. PATIENT MANAGEMENT
+- Patient records
+- Patient 360 view
+- Demographics
+- Medical history
+- Documents
+- Communication
+
+4. DOCUMENTATION
+- Smart Notes
+- Quick Note
+- Voice dictation
+- SOAP format
+- AI enhancement
+- Quality review
+- Offline mode
+
+5. OASIS ASSESSMENT
+- Creating assessments
+- AI pre-assessment
+- Item-by-item completion
+- Validation
+- PDGM optimization
+- Submission
+
+6. CARE PLANS
+- Creating care plans
+- AI suggestions
+- SMART goals
+- Progress tracking
+- Gap analysis
+- Updates
+
+7. VISITS & SCHEDULING
+- Scheduling visits
+- Visit documentation
+- Vital signs
+- Incident reporting
+- Family updates
+- Visit history
+
+8. CLINICAL TOOLS
+- Patient alerts
+- Risk assessment
+- Clinical events
+- Medication tracking
+- Wound management
+- Care coordination
+
+9. QUALITY & COMPLIANCE
+- Compliance dashboard
+- Documentation quality
+- Medicare guidelines
+- Regulatory updates
+- Audit tools
+- Performance metrics
+
+10. COMMUNICATION
+- Team messaging
+- Patient education
+- Care team coordination
+- Physician communication
+- Family updates
+
+11. TRAINING & DEVELOPMENT
+- Training modules
+- Skill assessments
+- Certifications
+- Personalized learning
+- Practice scenarios
+- Performance feedback
+
+12. REPORTING & ANALYTICS
+- Dashboard metrics
+- Custom reports
+- Performance analytics
+- Compliance reports
+- PDGM analysis
+- Quality indicators
+
+13. ADMIN FEATURES (Admin Only)
+- User management
+- Agency settings
+- Training management
+- System monitoring
+- Audit trail
+- Configuration
+
+**GETTING STARTED:**
+- Initial login
+- Profile setup
+- Navigation basics
+- Common workflows
+
+**ADVANCED FEATURES:**
+- AI capabilities overview
+- Workflow optimization
+- Integration tips
+- Troubleshooting
+
+**BEST PRACTICES:**
+- Documentation excellence
+- Compliance maintenance
+- Time management
+- Quality improvement
+
+**SUPPORT & RESOURCES:**
+- Help and support
+- Training resources
+- Contact information
+- Feedback submission`
+    };
+
+    // Get the appropriate prompt
+    const promptText = guidePrompts[guide_type] || guidePrompts.all_features;
+
+    // Generate guide content using AI
+    const guideContent = await base44.integrations.Core.InvokeLLM({
+      model: "claude_sonnet_4_6",
+      prompt: `Generate a comprehensive, step-by-step user guide for healthcare staff.
+
+${promptText}
+
+Format this as a clear, professional user guide with:
+- Section headers
+- Numbered steps
+- Bullet points for details
+- Call-out boxes for important notes
+- Tips and warnings
+- Troubleshooting section
+
+Keep language simple and non-technical. Include specific button names and field labels.`,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          sections: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                heading: { type: "string" },
+                content: { type: "string" },
+                subsections: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      subheading: { type: "string" },
+                      steps: {
+                        type: "array",
+                        items: { type: "string" }
+                      },
+                      notes: {
+                        type: "array",
+                        items: { type: "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Create PDF
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter'
+    });
+
+    let yPosition = 20;
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 15;
+    const contentWidth = pageWidth - (margin * 2);
+
+    // Header
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 0, pageWidth, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont(undefined, 'bold');
+    doc.text(guideContent.title || 'User Guide', pageWidth / 2, 20, { align: 'center' });
+
+    yPosition = 45;
+
+    // Helper function to check if we need a new page
+    const checkNewPage = (neededSpace) => {
+      if (yPosition + neededSpace > pageHeight - 20) {
         doc.addPage();
-        y = margin;
-        // Footer
-        doc.setFontSize(8);
-        doc.setTextColor(150, 150, 150);
-        doc.text('CareMetric AI', margin, pageHeight - 10);
-        doc.text(`Page ${doc.getNumberOfPages()}`, pageWidth - margin - 20, pageHeight - 10);
-        doc.setTextColor(0, 0, 0);
+        yPosition = 20;
         return true;
       }
       return false;
     };
 
-    const addTitle = (text, size = 22) => {
-      addNewPageIfNeeded(40);
-      doc.setFontSize(size);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(59, 130, 246);
-      doc.text(text, margin, y);
-      y += size * 0.5 + 4;
-    };
-
-    const addSubtitle = (text, size = 14) => {
-      addNewPageIfNeeded(25);
-      doc.setFontSize(size);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 64, 175);
-      doc.text(text, margin, y);
-      y += size * 0.45 + 3;
-    };
-
-    const addParagraph = (text) => {
-      addNewPageIfNeeded(20);
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
+    // Helper function to add wrapped text
+    const addWrappedText = (text, fontSize, color, isBold = false) => {
+      doc.setFontSize(fontSize);
+      doc.setTextColor(...color);
+      doc.setFont(undefined, isBold ? 'bold' : 'normal');
       const lines = doc.splitTextToSize(text, contentWidth);
-      for (const line of lines) {
-        addNewPageIfNeeded(6);
-        doc.text(line, margin, y);
-        y += 5;
-      }
-      y += 3;
+
+      // Page-break per line so a block taller than a page doesn't draw off the
+      // bottom edge (the single up-front check couldn't catch that).
+      lines.forEach(line => {
+        checkNewPage(fontSize * 0.4);
+        doc.text(line, margin, yPosition);
+        yPosition += fontSize * 0.4;
+      });
     };
 
-    const addBullet = (text) => {
-      addNewPageIfNeeded(10);
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      const lines = doc.splitTextToSize(text, contentWidth - 10);
-      doc.text('•', margin + 2, y);
-      for (let i = 0; i < lines.length; i++) {
-        addNewPageIfNeeded(6);
-        doc.text(lines[i], margin + 10, y);
-        y += 5;
+    // Process sections (guideContent is LLM output — sections may be absent)
+    (guideContent.sections || []).forEach((section, sectionIndex) => {
+      // Section header with background
+      checkNewPage(15);
+      doc.setFillColor(243, 244, 246);
+      doc.rect(margin - 2, yPosition - 5, contentWidth + 4, 12, 'F');
+      addWrappedText(section.heading, 16, [31, 41, 55], true);
+      yPosition += 5;
+
+      // Section content
+      if (section.content) {
+        addWrappedText(section.content, 10, [75, 85, 99]);
+        yPosition += 3;
       }
-      y += 1;
-    };
 
-    const addStep = (number, title, description) => {
-      addNewPageIfNeeded(20);
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(59, 130, 246);
-      doc.text(`Step ${number}:`, margin + 2, y);
-      doc.setTextColor(51, 65, 85);
-      doc.text(title, margin + 22, y);
-      y += 6;
-      if (description) {
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100, 116, 139);
-        const lines = doc.splitTextToSize(description, contentWidth - 10);
-        for (const line of lines) {
-          addNewPageIfNeeded(6);
-          doc.text(line, margin + 10, y);
-          y += 5;
-        }
-      }
-      y += 3;
-    };
+      // Subsections
+      section.subsections?.forEach((subsection, subIndex) => {
+        checkNewPage(20);
+        
+        // Subsection heading
+        doc.setFillColor(219, 234, 254);
+        doc.rect(margin, yPosition - 4, contentWidth, 8, 'F');
+        addWrappedText(subsection.subheading, 12, [30, 64, 175], true);
+        yPosition += 3;
 
-    const addDivider = () => {
-      y += 3;
-      doc.setDrawColor(200, 210, 230);
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 6;
-    };
+        // Steps
+        subsection.steps?.forEach((step, stepIndex) => {
+          checkNewPage(10);
+          doc.setFillColor(59, 130, 246);
+          doc.circle(margin + 3, yPosition - 1.5, 2, 'F');
+          
+          doc.setFontSize(10);
+          doc.setTextColor(55, 65, 81);
+          doc.setFont(undefined, 'normal');
+          const stepLines = doc.splitTextToSize(step, contentWidth - 10);
+          stepLines.forEach((line, lineIndex) => {
+            doc.text(line, margin + 8, yPosition);
+            yPosition += 4;
+          });
+        });
 
-    const addTipBox = (text) => {
-      addNewPageIfNeeded(25);
-      doc.setFillColor(239, 246, 255);
-      doc.setDrawColor(59, 130, 246);
-      const lines = doc.splitTextToSize(text, contentWidth - 16);
-      const boxHeight = lines.length * 5 + 10;
-      doc.roundedRect(margin, y - 2, contentWidth, boxHeight, 3, 3, 'FD');
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'italic');
-      doc.setTextColor(59, 130, 246);
-      doc.text('💡 Tip:', margin + 5, y + 5);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      for (let i = 0; i < lines.length; i++) {
-        doc.text(lines[i], margin + 5, y + 11 + i * 5);
-      }
-      y += boxHeight + 5;
-    };
+        // Notes (call-out boxes)
+        subsection.notes?.forEach((note) => {
+          checkNewPage(15);
+          doc.setFillColor(254, 243, 199);
+          doc.setDrawColor(251, 191, 36);
+          const noteLines = doc.splitTextToSize(note, contentWidth - 10);
+          const boxHeight = (noteLines.length * 4) + 4;
+          doc.rect(margin, yPosition - 2, contentWidth, boxHeight, 'FD');
+          
+          doc.setFontSize(9);
+          doc.setTextColor(146, 64, 14);
+          doc.setFont(undefined, 'bold');
+          doc.text('💡 TIP:', margin + 3, yPosition + 2);
+          
+          doc.setFont(undefined, 'normal');
+          noteLines.forEach((line, idx) => {
+            doc.text(line, margin + 15, yPosition + 2 + (idx * 4));
+          });
+          yPosition += boxHeight + 3;
+        });
 
-    // ============ COVER PAGE ============
-    // Brand color: #3b82f6 = rgb(59, 130, 246), header gradient end #1e40af = rgb(30, 64, 175)
-    doc.setFillColor(59, 130, 246);
-    doc.rect(0, 0, pageWidth, 100, 'F');
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(255, 255, 255);
-    doc.text('CareMetric AI', margin, 40);
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'normal');
-    doc.text(guide_type === 'quick' ? 'Quick Reference Guide' : 'Complete User Guide', margin, 55);
-    doc.setFontSize(11);
-    doc.text(`Version 2.0 | ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}`, margin, 70);
-    doc.text('AI-Powered Clinical Documentation Platform', margin, 82);
+        yPosition += 3;
+      });
 
-    y = 115;
-    doc.setTextColor(0, 0, 0);
+      yPosition += 5;
+    });
 
-    if (guide_type === 'quick') {
-      // ============ QUICK REFERENCE GUIDE ============
-      addTitle('Quick Reference Guide', 18);
-      addParagraph('This quick reference card covers the essential workflows you need to get started with CareMetric AI right away.');
-      addDivider();
-
-      addSubtitle('1. Getting Started (2 Minutes)');
-      addStep(1, 'Sign In & Complete Profile', 'Go to Settings and set your Provider Type (RN, LPN, PT, OT, etc.) and credentials. This helps the AI tailor notes to your discipline.');
-      addStep(2, 'Add Your First Patient', 'Click Patients > Add Patient. Only first and last name are required. Add diagnoses and medications for better AI output.');
-      addStep(3, 'Create Your First Note', 'Go to Smart Note Assistant, select your patient, choose a visit type and diagnosis, type rough notes, and click Enhance Note.');
-      addDivider();
-
-      addSubtitle('2. Smart Note Workflow');
-      addStep(1, 'Select Patient + Visit Type + Diagnosis', '');
-      addStep(2, 'Enter rough notes (bullet points, shorthand, or full sentences)', '');
-      addStep(3, 'Click "Enhance with AI"', 'AI generates a Medicare-compliant note in seconds.');
-      addStep(4, 'Review, edit, and save', 'Always review AI output before finalizing.');
-      addTipBox('The AI learns your writing style over time. The more you use it, the better it matches your preferences.');
-      addDivider();
-
-      addSubtitle('3. Medical Scribe (Voice-to-Note)');
-      addStep(1, 'Go to Medical Scribe page', '');
-      addStep(2, 'Select patient and visit details', '');
-      addStep(3, 'Click Record or Upload Audio', 'Speak naturally about your visit.');
-      addStep(4, 'Review transcription, then Generate Note', 'AI converts audio to structured clinical documentation.');
-      addDivider();
-
-      addSubtitle('4. Care Plans');
-      addBullet('Go to Care Plans page and select a patient');
-      addBullet('Click "Generate AI Care Plan" for automatic creation');
-      addBullet('Or select from the template library for common conditions');
-      addBullet('Track progress with measurable goals and timelines');
-      addDivider();
-
-      addSubtitle('5. Key Navigation');
-      addBullet('Dashboard — Overview of patients, tasks, alerts, and stats');
-      addBullet('Patients — Add, search, and manage patient records');
-      addBullet('Tasks — View AI-generated and manual follow-up tasks');
-      addBullet('Smart Note — Create AI-enhanced clinical notes');
-      addBullet('Medical Scribe — Voice-to-documentation');
-      addBullet('Care Plans — Create and track care plans');
-      addBullet('OASIS — Upload and analyze OASIS assessments');
-      addBullet('Compliance — Monitor documentation compliance scores');
-      addBullet('Analytics — Track time saved and performance');
-      addBullet('Alerts — View AI-generated patient risk alerts');
-      addBullet('Training — Personalized learning modules and quizzes');
-      addBullet('Settings — Profile, preferences, and agency setup');
-      addDivider();
-
-      addSubtitle('6. Keyboard & Voice Tips');
-      addBullet('Use voice dictation in the field for fastest note entry');
-      addBullet('Mention vital signs clearly for auto-extraction');
-      addBullet('Include patient responses and teaching provided');
-      addBullet('Check AI-generated follow-up tasks after each note');
-      addDivider();
-
-      addSubtitle('7. Getting Help');
-      addBullet('In-app Documentation page — Full feature guides');
-      addBullet('Training Hub — Interactive tutorials and quizzes');
-      addBullet('Email: support@caremetricai.com');
-      addBullet('FAQ page — Common questions answered');
-
-    } else {
-      // ============ FULL USER GUIDE ============
-      addTitle('Table of Contents', 16);
-      const tocItems = [
-        '1. Getting Started',
-        '2. Dashboard Overview',
-        '3. Patient Management',
-        '4. Smart Note Assistant',
-        '5. Medical Scribe',
-        '6. Care Plan Management',
-        '7. OASIS Assessment',
-        '8. Compliance Dashboard',
-        '9. Analytics',
-        '10. Patient Alerts',
-        '11. Task Management',
-        '12. Training Hub',
-        '13. Settings & Customization',
-        '14. Tips & Best Practices',
-        '15. FAQ & Support',
-      ];
-      for (const item of tocItems) {
-        addBullet(item);
-      }
-      addDivider();
-
-      // Chapter 1
-      addTitle('1. Getting Started', 16);
-      addParagraph('Welcome to CareMetric AI — the AI-powered clinical documentation platform designed to save home health clinicians 2-3 hours daily on documentation while improving compliance and care quality.');
-      addSubtitle('First-Time Setup', 12);
-      addStep(1, 'Complete Your Profile', 'Navigate to Settings. Set your provider type (RN, LPN, PT, OT, SLP, MSW, etc.), credentials, and care scope. This enables AI personalization.');
-      addStep(2, 'Add Your First Patient', 'Go to Patients > Add Patient. Enter demographics, diagnoses, medications, and allergies. Only first/last name is required.');
-      addStep(3, 'Try the Smart Note Assistant', 'Select a patient, choose visit type and diagnosis, enter rough notes, and click Enhance. See AI transform them into compliant documentation.');
-      addStep(4, 'Explore the Dashboard', 'Your Dashboard shows patients, tasks, alerts, compliance, and time savings all in one place.');
-      addTipBox('Start with Smart Note Assistant — most users save 20-30 minutes on their very first note!');
-      addDivider();
-
-      // Chapter 2
-      addTitle('2. Dashboard', 16);
-      addParagraph('Your command center. The Dashboard provides a real-time snapshot of everything that needs your attention.');
-      addBullet('Patient Summary — Total active, new admissions, high-risk cases');
-      addBullet('Task Overview — Pending, overdue, and completed tasks');
-      addBullet('Compliance Alerts — Open violations needing attention');
-      addBullet('Time Saved Widget — AI time savings (today, week, total)');
-      addBullet('Quick Actions — One-click access to common workflows');
-      addBullet('Announcements — System updates and agency notifications');
-      addDivider();
-
-      // Chapter 3
-      addTitle('3. Patient Management', 16);
-      addParagraph('Centralized hub for all patient records with comprehensive clinical profiles.');
-      addSubtitle('Adding Patients', 12);
-      addStep(1, 'Click "Add Patient"', 'Button in top-right of Patients page.');
-      addStep(2, 'Enter Details', 'Demographics, diagnoses, medications, allergies, contacts, insurance.');
-      addStep(3, 'Save', 'Taken to patient detail page for visits, care plans, and documentation.');
-      addSubtitle('Key Features', 12);
-      addBullet('Search & Filter — Find patients by name, diagnosis, or status');
-      addBullet('AI Risk Assessment — Auto-calculated risk scores');
-      addBullet('Visit History — Complete timeline of visits and documentation');
-      addBullet('Bulk Actions — Update multiple patients at once');
-      addBullet('Duplicate Detection — Auto-finds and merges duplicates');
-      addDivider();
-
-      // Chapter 4
-      addTitle('4. Smart Note Assistant', 16);
-      addParagraph('The core feature of CareMetric AI. Transforms rough notes into Medicare-compliant documentation, saving up to 70% of documentation time.');
-      addSubtitle('Creating a Smart Note', 12);
-      addStep(1, 'Select Patient', 'Choose from dropdown. Clinical context loads automatically.');
-      addStep(2, 'Choose Visit Type & Diagnosis', 'Tailors the AI note format and requirements.');
-      addStep(3, 'Enter Rough Notes', 'Type or dictate. Shorthand, bullets, or full sentences all work.');
-      addStep(4, 'Click "Enhance Note"', 'AI generates compliant narrative with proper structure and terminology.');
-      addStep(5, 'Review & Save', 'Compliance checker runs automatically. Edit as needed.');
-      addSubtitle('Built-in Tools', 12);
-      addBullet('Voice Dictation — Speak your notes');
-      addBullet('Real-Time Compliance — Instant feedback on compliance issues');
-      addBullet('ICD-10 Code Suggestions — AI-recommended diagnosis codes');
-      addBullet('Care Plan Suggestions — Auto-generated from documentation');
-      addBullet('Follow-Up Task Generation — Auto-creates tasks from notes');
-      addBullet('Patient Education — Generate patient-friendly materials');
-      addTipBox('Always review AI-generated notes. While the AI achieves 95%+ accuracy, your clinical judgment guides the final document.');
-      addDivider();
-
-      // Chapter 5
-      addTitle('5. Medical Scribe', 16);
-      addParagraph('Record visits verbally and let AI convert recordings into structured, compliant clinical notes.');
-      addStep(1, 'Navigate to Medical Scribe', 'Select patient, visit type, and diagnosis.');
-      addStep(2, 'Record or Upload Audio', 'Click Record or upload an audio file. Speak naturally about the visit.');
-      addStep(3, 'Review Transcription', 'AI transcribes with speaker diarization and medical term correction.');
-      addStep(4, 'Generate Note', 'Converts transcription into formatted clinical documentation.');
-      addSubtitle('Advanced Features', 12);
-      addBullet('Speaker Diarization — Identifies clinician, patient, and family members');
-      addBullet('Medical Term Correction — AI corrects transcription errors in real-time');
-      addBullet('Safety Alerts — Flags potentially dangerous medication/dosage errors');
-      addBullet('Custom Terminology — Add specialized terms for better accuracy');
-      addDivider();
-
-      // Chapter 6
-      addTitle('6. Care Plan Management', 16);
-      addParagraph('Build, manage, and monitor individualized care plans with AI assistance.');
-      addBullet('AI-Generated Plans — Auto-create from diagnoses and clinical data');
-      addBullet('Template Library — Pre-built templates for common conditions');
-      addBullet('Progress Tracking — Monitor goal achievement with measurable outcomes');
-      addBullet('Review Reminders — Automated reminders when plans need reassessment');
-      addBullet('Collaboration — Share care plans with your team');
-      addBullet('Automatic Triggers — Plans auto-generate based on diagnoses/medications');
-      addDivider();
-
-      // Chapter 7
-      addTitle('7. OASIS Assessment', 16);
-      addParagraph('AI-powered analysis of OASIS assessments for accuracy, compliance, and PDGM optimization.');
-      addStep(1, 'Upload OASIS Document', 'PDF or image format.');
-      addStep(2, 'AI Analysis', 'Scans for errors, inconsistencies, and optimization opportunities.');
-      addStep(3, 'Review Findings', 'Error flags, corrections, PDGM impact, revenue implications.');
-      addBullet('PDGM case-mix weight calculation');
-      addBullet('Multi-report comparison');
-      addBullet('Scenario modeling for what-if analysis');
-      addBullet('Automated QA checks');
-      addDivider();
-
-      // Chapter 8
-      addTitle('8. Compliance Dashboard', 16);
-      addParagraph('Comprehensive view of documentation compliance across all patients and visits.');
-      addBullet('Medicare Documentation Requirements — All required elements checked');
-      addBullet('Homebound Status Justification — Validates documentation');
-      addBullet('Skilled Need Documentation — Confirms proper justification');
-      addBullet('Care Plan Alignment — Visits match established plans');
-      addBullet('Agency-Specific Rules — Custom rules from your administrator');
-      addTipBox('Set your compliance target in Settings. CareMetric AI alerts you when notes fall below your target score.');
-      addDivider();
-
-      // Chapter 9
-      addTitle('9. Analytics', 16);
-      addParagraph('Data-driven insights into documentation quality, productivity, and compliance rates.');
-      addBullet('Time Savings Analysis — Daily, weekly, monthly AI time savings');
-      addBullet('Compliance Trends — Score improvements over time');
-      addBullet('Documentation Quality — Average quality scores and improvement areas');
-      addBullet('AI Feature Usage — Most-used features and their impact');
-      addBullet('Patient Risk Overview — Population-level risk metrics');
-      addDivider();
-
-      // Chapter 10
-      addTitle('10. Patient Alerts', 16);
-      addParagraph('AI continuously analyzes patient data to identify risks before they become emergencies.');
-      addBullet('Vital Deterioration — Trending vital sign changes');
-      addBullet('Medication Risk — Potential interactions or adherence issues');
-      addBullet('Fall Risk — Increased fall risk from assessment data');
-      addBullet('Readmission Risk — Hospital readmission risk identification');
-      addBullet('Care Gaps — Missing assessments, overdue visits, incomplete documentation');
-      addDivider();
-
-      // Chapter 11
-      addTitle('11. Task Management', 16);
-      addParagraph('Track follow-ups, referrals, orders, and action items. Tasks are created manually or auto-generated by AI.');
-      addBullet('AI-Generated Tasks — Auto-created from visit notes');
-      addBullet('Priority Levels — Critical, High, Medium, Low');
-      addBullet('Due Dates & Reminders — Set deadlines with notifications');
-      addBullet('Recurring Tasks — Daily, weekly, or monthly schedules');
-      addBullet('Task Assignment — Assign to yourself or team members');
-      addDivider();
-
-      // Chapter 12
-      addTitle('12. Training Hub', 16);
-      addParagraph('Personalized learning modules, compliance training, and skill assessments.');
-      addBullet('Interactive Training Modules — Documentation, compliance, clinical skills');
-      addBullet('AI Skill Assessment — Identify strengths and improvement areas');
-      addBullet('Personalized Recommendations — Based on your actual performance');
-      addBullet('Compliance Quizzes — Test Medicare requirement knowledge');
-      addBullet('Progress Tracking — Learning journey and certifications');
-      addDivider();
-
-      // Chapter 13
-      addTitle('13. Settings & Customization', 16);
-      addBullet('Provider Type & Credentials — Set professional role for tailored AI');
-      addBullet('AI Preferences — Control note length, tone, and complexity');
-      addBullet('Notification Preferences — Choose how/when you receive alerts');
-      addBullet('Compliance Targets — Set minimum compliance score');
-      addBullet('Practice Information — Configure practice details for documents');
-      addBullet('Agency Code — Join your agency for shared templates and rules');
-      addDivider();
-
-      // Chapter 14
-      addTitle('14. Tips & Best Practices', 16);
-      addBullet('Be detailed in rough notes — more detail = better AI output');
-      addBullet('Always review AI output before finalizing');
-      addBullet('Use voice dictation in the field immediately after visits');
-      addBullet('Check tasks daily — start each day reviewing your task list');
-      addBullet('Use patient education generator for condition-specific handouts');
-      addBullet('Set your provider type in Settings for dramatically improved AI quality');
-      addDivider();
-
-      // Chapter 15
-      addTitle('15. FAQ & Support', 16);
-      addSubtitle('Common Questions', 12);
-      addBullet('Is data HIPAA compliant? — Yes, fully HIPAA compliant with encryption');
-      addBullet('Works on mobile? — Yes, fully responsive on phones and tablets');
-      addBullet('AI accuracy? — 95%+ compliance accuracy, always review output');
-      addBullet('Offline support? — Yes, draft notes offline and sync when connected');
-      addBullet('Support? — Email support@caremetricai.com or use in-app help');
-      y += 5;
-      addSubtitle('Contact Us', 12);
-      addBullet('Email: support@caremetricai.com');
-      addBullet('In-app: Documentation page and Training Hub');
-      addBullet('Website: www.caremetricai.com');
-    }
-
-    // Final footer on all pages
-    const totalPages = doc.getNumberOfPages();
+    // Footer on each page
+    const totalPages = doc.internal.pages.length - 1;
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text('CareMetric AI — AI-Powered Clinical Documentation', margin, pageHeight - 8);
-      doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 25, pageHeight - 8);
+      doc.setTextColor(156, 163, 175);
+      doc.text(
+        `Penn Sync Healthcare - ${guideContent.title} | Page ${i} of ${totalPages}`,
+        pageWidth / 2,
+        pageHeight - 10,
+        { align: 'center' }
+      );
+      doc.text(
+        `Generated: ${new Date().toLocaleDateString()}`,
+        pageWidth - margin,
+        pageHeight - 10,
+        { align: 'right' }
+      );
+      
+      // Copyright notice
+      doc.setFontSize(7);
+      doc.text(
+        '© Copyright Kevin Deyarmin 2025. All rights reserved.',
+        pageWidth / 2,
+        pageHeight - 5,
+        { align: 'center' }
+      );
     }
 
     const pdfBytes = doc.output('arraybuffer');
 
-    // Upload to file storage
-    const fileName = guide_type === 'quick' ? 'CareMetric-AI-Quick-Reference-Guide.pdf' : 'CareMetric-AI-User-Guide.pdf';
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const file = new File([blob], fileName, { type: 'application/pdf' });
-    
-    const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file });
-
-    return Response.json({
-      success: true,
-      file_url: uploadResult.file_url,
-      file_name: fileName,
-      guide_type
+    return new Response(pdfBytes, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${guide_type}_guide.pdf"`
+      }
     });
 
   } catch (error) {
-    console.error('Error generating guide PDF:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Error generating user guide:', error);
+    return Response.json({ 
+      error: error.message,
+    }, { status: 500 });
   }
 });

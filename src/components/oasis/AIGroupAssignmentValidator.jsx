@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,10 +29,10 @@ import {
   Brain,
   Shield,
   Loader2,
-  Edit,
   Save,
   TrendingUp
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function AIGroupAssignmentValidator({ 
   oasisData, 
@@ -40,7 +41,7 @@ export default function AIGroupAssignmentValidator({
   patientId,
   autoValidate = true 
 }) {
-  const [isValidating, setIsValidating] = useState(false);
+  const ai = useAICall();
   const [assignment, setAssignment] = useState(null);
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
@@ -56,16 +57,9 @@ export default function AIGroupAssignmentValidator({
 
   const isAdmin = currentUser?.role === 'admin';
 
-  useEffect(() => {
-    if (autoValidate && oasisData && pdgmData && !assignment) {
-      performValidation();
-    }
-  }, [oasisData?.id, autoValidate]);
-
-  const performValidation = async () => {
+  const performValidation = useCallback(async () => {
     if (!oasisData || !pdgmData) return;
 
-    setIsValidating(true);
     try {
       const prompt = `You are a PDGM classification expert. Analyze this OASIS data and assign the patient to the correct PDGM Clinical Group and Functional Impairment Level.
 
@@ -110,7 +104,8 @@ PROVIDE:
 5. Clinical reasoning for the assignments
 6. Red flags or concerns requiring supervisor review`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -187,40 +182,49 @@ PROVIDE:
       console.error('Group assignment validation error:', error);
       setAssignment({ error: 'Failed to validate group assignment' });
     }
-    setIsValidating(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [oasisData, pdgmData, analysisResults]);
+
+  useEffect(() => {
+    if (autoValidate && oasisData && pdgmData && !assignment) {
+      performValidation();
+    }
+  }, [oasisData, pdgmData, autoValidate, assignment, performValidation]);
 
   const saveOverrideMutation = useMutation({
     mutationFn: async (overrideData) => {
       return await base44.entities.OASISAudit.create({
         oasis_upload_id: oasisData.id,
         patient_id: patientId,
-        audit_type: 'group_assignment_override',
-        auditor_email: currentUser.email,
-        auditor_name: currentUser.full_name,
-        audit_date: new Date().toISOString(),
-        findings: {
+        reviewed_by: currentUser.email,
+        reviewed_at: new Date().toISOString(),
+        // 'manual_flag' is the valid flag_reason enum member for a human override;
+        // the specific "group assignment override" semantics live in auditor_findings
+        // below. (The literal 'group_assignment_override' is not in the enum and was
+        // being silently dropped, leaving the audit row's flag_reason empty.)
+        flag_reason: 'manual_flag',
+        auditor_findings: JSON.stringify({
           original_clinical_group: pdgmData?.clinical_group,
           original_functional_level: pdgmData?.functional_level,
           overridden_clinical_group: overrideData.clinical_group,
           overridden_functional_level: overrideData.functional_level,
           override_reason: overrideData.reason,
           ai_recommendation: assignment
-        },
-        status: 'completed',
-        severity: 'medium'
+        }),
+        status: 'reviewed',
+        priority: 'medium'
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasisAudits'] });
       setShowOverrideDialog(false);
-      alert('Group assignment override saved successfully');
+      toast.success('Group assignment override saved successfully');
     },
   });
 
   const handleOverride = () => {
     if (!overrideReason.trim()) {
-      alert('Please provide a reason for the override');
+      toast.error('Please provide a reason for the override');
       return;
     }
 
@@ -244,7 +248,7 @@ PROVIDE:
       case 'medium':
       case 'moderate': return 'bg-yellow-600 text-white';
       case 'low': return 'bg-red-600 text-white';
-      default: return 'bg-gray-600 text-white';
+      default: return 'bg-slate-600 text-white';
     }
   };
 
@@ -254,7 +258,7 @@ PROVIDE:
       case 'high': return 'border-orange-500 bg-orange-50';
       case 'medium': return 'border-yellow-500 bg-yellow-50';
       case 'low': return 'border-blue-500 bg-blue-50';
-      default: return 'border-gray-500 bg-gray-50';
+      default: return 'border-slate-500 bg-slate-50';
     }
   };
 
@@ -262,7 +266,7 @@ PROVIDE:
 
   return (
     <Card className="border-2 border-indigo-400 shadow-lg">
-      <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Brain className="w-6 h-6 text-indigo-600" />
@@ -277,14 +281,14 @@ PROVIDE:
       </CardHeader>
 
       <CardContent className="pt-6">
-        {isValidating && (
+        {ai.loading && (
           <div className="text-center py-12">
             <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto mb-4" />
             <p className="text-indigo-700 font-medium">AI analyzing PDGM group assignments...</p>
           </div>
         )}
 
-        {!isValidating && !assignment && (
+        {!ai.loading && !assignment && (
           <div className="text-center py-8">
             <Button onClick={performValidation} className="bg-indigo-600 hover:bg-indigo-700">
               <Brain className="w-4 h-4 mr-2" />
@@ -329,7 +333,7 @@ PROVIDE:
               <CardContent className="pt-4">
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm text-gray-600">Current Assignment:</p>
+                    <p className="text-sm text-slate-600">Current Assignment:</p>
                     <Badge variant="outline" className="text-base">
                       {pdgmData?.clinical_group || 'Not Set'}
                     </Badge>
@@ -373,13 +377,13 @@ PROVIDE:
 
                 {/* Alternative Groups */}
                 {assignment.clinical_group_assignment?.alternative_groups_considered?.length > 0 && (
-                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                    <p className="text-xs text-gray-700 font-semibold mb-2">Alternative Groups Considered:</p>
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <p className="text-xs text-slate-700 font-semibold mb-2">Alternative Groups Considered:</p>
                     <div className="space-y-2">
                       {assignment.clinical_group_assignment.alternative_groups_considered.map((alt, idx) => (
                         <div key={idx} className="text-sm">
                           <Badge variant="outline" className="mb-1">{alt.group}</Badge>
-                          <p className="text-xs text-gray-600 ml-2">→ {alt.why_not_selected}</p>
+                          <p className="text-xs text-slate-600 ml-2">→ {alt.why_not_selected}</p>
                         </div>
                       ))}
                     </div>
@@ -389,11 +393,11 @@ PROVIDE:
             </Card>
 
             {/* Functional Level Assignment */}
-            <Card className="border-2 border-purple-400">
-              <CardHeader className="bg-purple-50 pb-3">
+            <Card className="border-2 border-navy-400">
+              <CardHeader className="bg-navy-50 pb-3">
                 <CardTitle className="text-sm flex items-center justify-between">
                   <span className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-purple-600" />
+                    <TrendingUp className="w-5 h-5 text-navy-600" />
                     Functional Impairment Level
                   </span>
                   <Badge className={getConfidenceColor(assignment.functional_level_assignment?.confidence_level)}>
@@ -404,18 +408,18 @@ PROVIDE:
               <CardContent className="pt-4">
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm text-gray-600">Current Assignment:</p>
+                    <p className="text-sm text-slate-600">Current Assignment:</p>
                     <Badge variant="outline" className="text-base">
                       {pdgmData?.functional_level || 'Not Set'}
                     </Badge>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg border-2 border-purple-400">
+                  <div className="flex items-center justify-between p-4 bg-navy-50 rounded-lg border-2 border-navy-400">
                     <div>
-                      <p className="text-sm text-purple-700 mb-1">AI Recommended:</p>
-                      <p className="text-2xl font-bold text-purple-900 uppercase">
+                      <p className="text-sm text-navy-700 mb-1">AI Recommended:</p>
+                      <p className="text-2xl font-bold text-navy-900 uppercase">
                         {assignment.functional_level_assignment?.assigned_level}
                       </p>
-                      <p className="text-xs text-purple-700 mt-1">
+                      <p className="text-xs text-navy-700 mt-1">
                         Total Points: {assignment.functional_level_assignment?.total_points}
                       </p>
                     </div>
@@ -429,16 +433,16 @@ PROVIDE:
 
                 {/* Functional Item Breakdown */}
                 {assignment.functional_level_assignment?.key_functional_items?.length > 0 && (
-                  <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 mb-3">
-                    <p className="text-xs text-purple-700 font-semibold mb-2">Functional Score Breakdown:</p>
+                  <div className="bg-navy-50 p-3 rounded-lg border border-navy-200 mb-3">
+                    <p className="text-xs text-navy-700 font-semibold mb-2">Functional Score Breakdown:</p>
                     <div className="space-y-2">
                       {assignment.functional_level_assignment.key_functional_items.map((item, idx) => (
                         <div key={idx} className="flex items-center justify-between bg-white p-2 rounded border">
                           <div className="flex items-center gap-2">
                             <Badge variant="outline" className="font-mono text-xs">{item.m_item}</Badge>
-                            <span className="text-sm text-gray-800">{item.contribution}</span>
+                            <span className="text-sm text-slate-800">{item.contribution}</span>
                           </div>
-                          <Badge className="bg-purple-600 text-white">{item.score} pts</Badge>
+                          <Badge className="bg-navy-600 text-white">{item.score} pts</Badge>
                         </div>
                       ))}
                     </div>
@@ -463,7 +467,7 @@ PROVIDE:
                     {assignment.discrepancies.map((disc, idx) => (
                       <div key={idx} className={`p-3 rounded-lg border-2 ${getSeverityColor(disc.severity)}`}>
                         <div className="flex items-center justify-between mb-2">
-                          <Badge className="bg-gray-800 text-white">{disc.type}</Badge>
+                          <Badge className="bg-slate-800 text-white">{disc.type}</Badge>
                           <Badge className={
                             disc.severity === 'critical' ? 'bg-red-600 text-white' :
                             disc.severity === 'high' ? 'bg-orange-500 text-white' :
@@ -475,15 +479,15 @@ PROVIDE:
                         </div>
                         <div className="grid grid-cols-2 gap-2 mb-2 text-sm">
                           <div>
-                            <p className="text-xs text-gray-600">Current:</p>
+                            <p className="text-xs text-slate-600">Current:</p>
                             <p className="font-semibold">{disc.current_value}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-600">Recommended:</p>
+                            <p className="text-xs text-slate-600">Recommended:</p>
                             <p className="font-semibold text-green-700">{disc.recommended_value}</p>
                           </div>
                         </div>
-                        <p className="text-sm text-gray-700">{disc.explanation}</p>
+                        <p className="text-sm text-slate-700">{disc.explanation}</p>
                       </div>
                     ))}
                   </div>
@@ -523,11 +527,11 @@ PROVIDE:
             <div className="flex gap-3 pt-4 border-t">
               <Button
                 onClick={performValidation}
-                disabled={isValidating}
+                disabled={ai.loading}
                 variant="outline"
                 className="flex-1"
               >
-                {isValidating ? (
+                {ai.loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Revalidating...</>
                 ) : (
                   'Re-run Validation'

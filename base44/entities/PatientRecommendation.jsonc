@@ -1,0 +1,115 @@
+{
+  "name": "PatientRecommendation",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "oasis_analysis",
+        "visit_note",
+        "compliance_audit",
+        "ai_prediction",
+        "care_plan",
+        "clinical_pathway"
+      ],
+      "description": "Where this recommendation came from"
+    },
+    "source_id": {
+      "type": "string",
+      "description": "ID of source entity (OASISUpload, Visit, etc.)"
+    },
+    "recommendation_type": {
+      "type": "string",
+      "enum": [
+        "documentation",
+        "care_plan",
+        "clinical_action",
+        "compliance",
+        "revenue_optimization",
+        "risk_mitigation",
+        "functional_goal"
+      ],
+      "description": "Type of recommendation"
+    },
+    "title": {
+      "type": "string",
+      "description": "Brief recommendation title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed recommendation"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "rejected",
+        "completed",
+        "expired"
+      ],
+      "default": "pending"
+    },
+    "ai_rationale": {
+      "type": "string",
+      "description": "AI explanation for why this is recommended"
+    },
+    "expected_impact": {
+      "type": "string",
+      "description": "Expected outcome if implemented"
+    },
+    "implementation_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Specific steps to implement"
+    },
+    "suggested_by_user": {
+      "type": "string",
+      "description": "Email of user who created (AI or specific user)"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of user who reviewed"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "implemented_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "implementation_notes": {
+      "type": "string",
+      "description": "Notes from implementation"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this recommendation expires if not acted upon"
+    }
+  },
+  "required": [
+    "patient_id",
+    "source_type",
+    "recommendation_type",
+    "title",
+    "description"
+  ]
+}

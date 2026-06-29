@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +9,8 @@ export default function PersonalizedTrainingRecommender({ skillGaps, onStartTrai
       <Card className="border-green-200">
         <CardContent className="p-8 text-center">
           <Target className="w-12 h-12 mx-auto mb-3 text-green-500" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Skill Gaps Detected</h3>
-          <p className="text-gray-600">
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">No Skill Gaps Detected</h3>
+          <p className="text-slate-600">
             Great work! Our AI analysis hasn't identified any significant skill gaps. Keep up the excellent performance!
           </p>
         </CardContent>
@@ -20,25 +19,25 @@ export default function PersonalizedTrainingRecommender({ skillGaps, onStartTrai
   }
 
   return (
-    <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-navy-200 bg-gradient-to-r from-navy-50 to-gold-50">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-purple-900">
+        <CardTitle className="flex items-center gap-2 text-navy-900">
           <Brain className="w-5 h-5" />
           AI-Recommended Training
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-purple-800 mb-4">
+        <p className="text-navy-800 mb-4">
           Based on your recent performance data, we've identified {skillGaps.length} skill area{skillGaps.length > 1 ? 's' : ''} where targeted training could help you improve.
         </p>
         
         <div className="space-y-3">
           {skillGaps.slice(0, 3).map((gap, idx) => (
-            <div key={idx} className="bg-white rounded-lg p-4 border border-purple-200 shadow-sm">
+            <div key={idx} className="bg-white rounded-lg p-4 border border-navy-200 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <h4 className="font-semibold text-gray-900">{gap.skill}</h4>
+                    <h4 className="font-semibold text-slate-900">{gap.skill}</h4>
                     <Badge 
                       variant="destructive" 
                       className={
@@ -50,8 +49,8 @@ export default function PersonalizedTrainingRecommender({ skillGaps, onStartTrai
                       {gap.gap_severity} priority
                     </Badge>
                   </div>
-                  <p className="text-sm text-gray-600 mb-3">{gap.recommendation}</p>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <p className="text-sm text-slate-600 mb-3">{gap.recommendation}</p>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
                     <Sparkles className="w-3 h-3" />
                     <span>AI will generate personalized interactive training</span>
                   </div>
@@ -60,7 +59,7 @@ export default function PersonalizedTrainingRecommender({ skillGaps, onStartTrai
                   onClick={() => onStartTraining(gap.skill)}
                   disabled={isGenerating}
                   size="sm"
-                  className="bg-purple-600 hover:bg-purple-700 flex-shrink-0"
+                  className="bg-navy-600 hover:bg-navy-700 flex-shrink-0"
                 >
                   Start Training
                 </Button>

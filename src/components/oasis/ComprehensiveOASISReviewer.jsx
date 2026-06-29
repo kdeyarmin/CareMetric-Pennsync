@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,6 @@ import {
   BookOpen,
   TrendingUp,
   Shield,
-  Target,
   Info,
   ChevronDown,
   ChevronUp
@@ -28,20 +28,13 @@ export default function ComprehensiveOASISReviewer({
   patientData,
   autoReview = true
 }) {
-  const [isReviewing, setIsReviewing] = useState(false);
+  const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
   const [expandedSections, setExpandedSections] = useState(['compliance', 'quality', 'inconsistencies']);
 
-  useEffect(() => {
-    if (autoReview && oasisData && analysisResults) {
-      performComprehensiveReview();
-    }
-  }, [oasisData?.id, autoReview]);
-
-  const performComprehensiveReview = async () => {
+  const performComprehensiveReview = useCallback(async () => {
     if (!oasisData || !analysisResults) return;
 
-    setIsReviewing(true);
     try {
       const prompt = `You are a Medicare OASIS compliance expert. Perform a COMPREHENSIVE review of this OASIS assessment.
 
@@ -122,7 +115,8 @@ For EACH inconsistency, provide:
 
 Return detailed JSON with all findings.`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -210,9 +204,16 @@ Return detailed JSON with all findings.`;
       setReviewResults(result);
     } catch (error) {
       console.error('Comprehensive review error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsReviewing(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [analysisResults, oasisData, patientData]);
+
+  useEffect(() => {
+    if (autoReview && oasisData && analysisResults) {
+      performComprehensiveReview();
+    }
+  }, [oasisData?.id, autoReview, analysisResults, oasisData, performComprehensiveReview]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -220,7 +221,7 @@ Return detailed JSON with all findings.`;
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-400';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-400';
       case 'low': return 'bg-blue-100 text-blue-800 border-blue-400';
-      default: return 'bg-gray-100 text-gray-800 border-gray-400';
+      default: return 'bg-slate-100 text-slate-800 border-slate-400';
     }
   };
 
@@ -231,7 +232,7 @@ Return detailed JSON with all findings.`;
       case 'moderate': return 'bg-yellow-600 text-white';
       case 'low': return 'bg-green-600 text-white';
       case 'minimal': return 'bg-green-700 text-white';
-      default: return 'bg-gray-600 text-white';
+      default: return 'bg-slate-600 text-white';
     }
   };
 
@@ -252,7 +253,7 @@ Return detailed JSON with all findings.`;
           <CardTitle className="flex items-center gap-2">
             <FileSearch className="w-6 h-6 text-indigo-600" />
             Comprehensive OASIS Review
-            {isReviewing && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
+            {ai.loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
           </CardTitle>
           {reviewResults && (
             <Badge className={getRiskLevelColor(reviewResults.overall_risk_level)} size="lg">
@@ -263,18 +264,18 @@ Return detailed JSON with all findings.`;
       </CardHeader>
 
       <CardContent>
-        {isReviewing && (
+        {ai.loading && (
           <div className="text-center py-12">
             <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto mb-4" />
             <p className="text-indigo-700 font-medium mb-2">AI performing comprehensive OASIS review...</p>
-            <p className="text-sm text-gray-600">Analyzing compliance, quality measures, and documentation consistency</p>
+            <p className="text-sm text-slate-600">Analyzing compliance, quality measures, and documentation consistency</p>
           </div>
         )}
 
-        {!isReviewing && !reviewResults && (
+        {!ai.loading && !reviewResults && (
           <div className="text-center py-8">
             <FileSearch className="w-16 h-16 text-indigo-300 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">Click below to perform a comprehensive AI review</p>
+            <p className="text-slate-600 mb-4">Click below to perform a comprehensive AI review</p>
             <Button onClick={performComprehensiveReview} className="bg-indigo-600 hover:bg-indigo-700">
               <FileSearch className="w-4 h-4 mr-2" />
               Start Comprehensive Review
@@ -294,10 +295,10 @@ Return detailed JSON with all findings.`;
             }>
               <AlertDescription>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="font-semibold text-gray-900">Review Summary</p>
+                  <p className="font-semibold text-slate-900">Review Summary</p>
                   <Badge variant="outline">{reviewResults.total_findings} findings</Badge>
                 </div>
-                <p className="text-sm text-gray-800">{reviewResults.review_summary}</p>
+                <p className="text-sm text-slate-800">{reviewResults.review_summary}</p>
               </AlertDescription>
             </Alert>
 
@@ -317,7 +318,7 @@ Return detailed JSON with all findings.`;
                           <p className="font-semibold text-red-900">{item.action}</p>
                         </div>
                         <Badge className="text-xs mb-2">{item.urgency}</Badge>
-                        <p className="text-sm text-gray-700">{item.expected_outcome}</p>
+                        <p className="text-sm text-slate-700">{item.expected_outcome}</p>
                       </div>
                     ))}
                   </div>
@@ -371,7 +372,7 @@ Return detailed JSON with all findings.`;
                               </div>
                             </div>
 
-                            <p className="text-sm text-gray-800 mb-3">{risk.description}</p>
+                            <p className="text-sm text-slate-800 mb-3">{risk.description}</p>
 
                             {/* Plain Language Explanation */}
                             <div className="bg-blue-50 p-3 rounded-lg border border-blue-300 mb-3">
@@ -440,11 +441,11 @@ Return detailed JSON with all findings.`;
               </AccordionItem>
 
               {/* Quality Measure Opportunities */}
-              <AccordionItem value="quality" className="border-2 border-purple-400 rounded-lg bg-purple-50">
+              <AccordionItem value="quality" className="border-2 border-navy-400 rounded-lg bg-navy-50">
                 <AccordionTrigger className="px-4 hover:no-underline">
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-purple-600" />
-                    <span className="font-semibold text-purple-900">
+                    <TrendingUp className="w-5 h-5 text-navy-600" />
+                    <span className="font-semibold text-navy-900">
                       Quality Measure Opportunities ({reviewResults.quality_measure_opportunities?.length || 0})
                     </span>
                   </div>
@@ -458,10 +459,10 @@ Return detailed JSON with all findings.`;
                   ) : (
                     <div className="space-y-4">
                       {reviewResults.quality_measure_opportunities?.map((measure, idx) => (
-                        <div key={idx} className="bg-white rounded-lg border-2 border-purple-300 p-4">
+                        <div key={idx} className="bg-white rounded-lg border-2 border-navy-300 p-4">
                           <div className="flex items-start justify-between mb-3">
                             <div>
-                              <h4 className="font-semibold text-purple-900">{measure.measure_name}</h4>
+                              <h4 className="font-semibold text-navy-900">{measure.measure_name}</h4>
                               {measure.nqf_number && (
                                 <Badge variant="outline" className="text-xs mt-1">
                                   {measure.nqf_number}
@@ -537,7 +538,7 @@ Return detailed JSON with all findings.`;
                               </Badge>
                             )}
                             {measure.discharge_data_needed && (
-                              <Badge className="bg-purple-600 text-white text-xs">
+                              <Badge className="bg-navy-600 text-white text-xs">
                                 Discharge Data Required
                               </Badge>
                             )}
@@ -589,7 +590,7 @@ Return detailed JSON with all findings.`;
                             {/* Data Points Involved */}
                             {inconsistency.data_points_involved?.length > 0 && (
                               <div className="mb-3">
-                                <p className="text-xs text-gray-600 mb-1">Data Points Involved:</p>
+                                <p className="text-xs text-slate-600 mb-1">Data Points Involved:</p>
                                 <div className="flex flex-wrap gap-1">
                                   {inconsistency.data_points_involved.map((point, i) => (
                                     <Badge key={i} variant="outline" className="text-xs font-mono bg-white">
@@ -600,7 +601,7 @@ Return detailed JSON with all findings.`;
                               </div>
                             )}
 
-                            <p className="text-sm text-gray-800 mb-3">{inconsistency.description}</p>
+                            <p className="text-sm text-slate-800 mb-3">{inconsistency.description}</p>
 
                             {/* Plain Language Explanation */}
                             <div className="bg-blue-50 p-3 rounded-lg border border-blue-300 mb-3">
@@ -626,9 +627,9 @@ Return detailed JSON with all findings.`;
                                 </div>
                               )}
                               {inconsistency.impact_on_quality && (
-                                <div className="bg-purple-50 p-2 rounded border border-purple-200">
-                                  <p className="text-xs text-purple-700 font-semibold mb-1">⭐ Quality</p>
-                                  <p className="text-xs text-purple-800">{inconsistency.impact_on_quality}</p>
+                                <div className="bg-navy-50 p-2 rounded border border-navy-200">
+                                  <p className="text-xs text-navy-700 font-semibold mb-1">⭐ Quality</p>
+                                  <p className="text-xs text-navy-800">{inconsistency.impact_on_quality}</p>
                                 </div>
                               )}
                               {inconsistency.impact_on_audit && (
@@ -714,10 +715,10 @@ Return detailed JSON with all findings.`;
               <Button
                 onClick={performComprehensiveReview}
                 variant="outline"
-                disabled={isReviewing}
+                disabled={ai.loading}
                 className="flex-1"
               >
-                {isReviewing ? (
+                {ai.loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Re-reviewing...</>
                 ) : (
                   'Re-run Comprehensive Review'

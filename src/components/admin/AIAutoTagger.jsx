@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Brain, Tag, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Brain, Tag, Loader2, CheckCircle2 } from "lucide-react";
+import { hasSemanticTags, mergeAiTags } from "@/components/smartNote/compliance/reportingFields";
 
 export default function AIAutoTagger() {
   const [isTagging, setIsTagging] = useState(false);
@@ -50,7 +51,10 @@ export default function AIAutoTagger() {
         const batch = visits.slice(i, i + 5);
         
         for (const visit of batch) {
-          if (!visit.nurse_notes || visit.ai_tags) {
+          // Skip only when the visit already has *semantic* tags; a visit that
+          // carries only SmartNote system tags (trend:/chart_flag:) still needs
+          // clinical tagging, and the merge below preserves those system tags.
+          if (!visit.nurse_notes || hasSemanticTags(visit.ai_tags)) {
             processed++;
             continue;
           }
@@ -70,7 +74,8 @@ Generate 3-7 specific tags covering:
 Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...]`;
 
           try {
-            const tags = await base44.integrations.Core.InvokeLLM({
+            const tags = await invokeLLM({
+              model: "claude_sonnet_4_6",
               prompt,
               response_json_schema: {
                 type: "array",
@@ -78,7 +83,7 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
               }
             });
 
-            await updateVisitMutation.mutateAsync({ id: visit.id, tags });
+            await updateVisitMutation.mutateAsync({ id: visit.id, tags: mergeAiTags(visit.ai_tags, tags) });
             tagged.visits++;
           } catch (error) {
             console.error(`Error tagging visit ${visit.id}:`, error);
@@ -113,7 +118,8 @@ Generate 3-5 specific tags covering:
 Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...]`;
 
         try {
-          const tags = await base44.integrations.Core.InvokeLLM({
+          const tags = await invokeLLM({
+            model: "claude_sonnet_4_6",
             prompt,
             response_json_schema: {
               type: "array",
@@ -140,10 +146,10 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
   };
 
   return (
-    <Card className="border-2 border-purple-200">
+    <Card className="border-2 border-navy-200">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Brain className="w-5 h-5 text-purple-600" />
+          <Brain className="w-5 h-5 text-navy-600" />
           AI Auto-Tagger
         </CardTitle>
       </CardHeader>
@@ -158,7 +164,7 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
         {isTagging && (
           <div className="space-y-2">
             <Progress value={progress} className="h-2" />
-            <p className="text-sm text-gray-600 text-center">
+            <p className="text-sm text-slate-600 text-center">
               Processing... {Math.round(progress)}%
             </p>
           </div>
@@ -176,7 +182,7 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
         <Button
           onClick={autoTagAll}
           disabled={isTagging}
-          className="w-full bg-purple-600 hover:bg-purple-700"
+          className="w-full bg-navy-600 hover:bg-navy-700"
         >
           {isTagging ? (
             <>

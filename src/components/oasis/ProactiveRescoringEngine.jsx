@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,19 +22,20 @@ export default function ProactiveRescoringEngine({
   autoAnalyze = false,
   onOpportunitiesFound
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [opportunities, setOpportunities] = useState(null);
+  // Keep the parent callback out of analyze's identity so an inline
+  // onOpportunitiesFound prop doesn't change the callback every render and
+  // re-fire the (expensive) rescoring LLM call. The ref always holds the latest.
+  const onFoundRef = useRef(onOpportunitiesFound);
+  onFoundRef.current = onOpportunitiesFound;
+  // Tracks the oasisData we've already auto-analyzed, so the auto-run fires once
+  // per OASIS document rather than on every re-render.
+  const autoRanForRef = useRef(null);
 
-  useEffect(() => {
-    if (autoAnalyze && oasisData) {
-      analyzeRescoringOpportunities();
-    }
-  }, [autoAnalyze, oasisData]);
-
-  const analyzeRescoringOpportunities = async () => {
+  const analyzeRescoringOpportunities = useCallback(async () => {
     if (!oasisData) return;
 
-    setIsAnalyzing(true);
     try {
       const prompt = `Analyze OASIS data for rescoring opportunities with revenue impact.
 
@@ -61,7 +63,8 @@ For each opportunity, calculate:
 - Required documentation to support change
 - Audit risk assessment`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -121,14 +124,24 @@ For each opportunity, calculate:
       });
 
       setOpportunities(result);
-      if (onOpportunitiesFound) {
-        onOpportunitiesFound(result);
+      if (onFoundRef.current) {
+        onFoundRef.current(result);
       }
     } catch (error) {
       console.error('Rescoring analysis error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object and onOpportunitiesFound (via onFoundRef) are intentionally omitted; including them would re-fire the call every render
+  }, [oasisData, patientData, clinicalContext]);
+
+  useEffect(() => {
+    // Guard on oasisData identity so a parent re-render doesn't re-trigger the
+    // expensive rescoring LLM call for an already-analyzed OASIS document.
+    if (autoAnalyze && oasisData && autoRanForRef.current !== oasisData) {
+      autoRanForRef.current = oasisData;
+      analyzeRescoringOpportunities();
+    }
+  }, [autoAnalyze, oasisData, analyzeRescoringOpportunities]);
 
   const getCategoryIcon = (category) => {
     const icons = {
@@ -145,11 +158,11 @@ For each opportunity, calculate:
     const colors = {
       functional: 'bg-blue-100 text-blue-800 border-blue-300',
       comorbidity: 'bg-green-100 text-green-800 border-green-300',
-      clinical: 'bg-purple-100 text-purple-800 border-purple-300',
+      clinical: 'bg-navy-100 text-navy-800 border-navy-300',
       episode_timing: 'bg-orange-100 text-orange-800 border-orange-300',
-      therapy: 'bg-pink-100 text-pink-800 border-pink-300'
+      therapy: 'bg-gold-100 text-gold-800 border-gold-300'
     };
-    return colors[category] || 'bg-gray-100 text-gray-800 border-gray-300';
+    return colors[category] || 'bg-slate-100 text-slate-800 border-slate-300';
   };
 
   return (
@@ -160,7 +173,7 @@ For each opportunity, calculate:
             <TrendingUp className="w-5 h-5 text-green-600" />
             Proactive Rescoring Engine
           </CardTitle>
-          {!opportunities && !isAnalyzing && (
+          {!opportunities && !ai.loading && (
             <Button
               onClick={analyzeRescoringOpportunities}
               className="bg-green-600 hover:bg-green-700"
@@ -173,7 +186,7 @@ For each opportunity, calculate:
       </CardHeader>
 
       <CardContent>
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="text-center py-12">
             <Loader2 className="w-12 h-12 animate-spin text-green-600 mx-auto mb-4" />
             <p className="text-green-700">Analyzing rescoring opportunities and revenue impact...</p>
@@ -233,7 +246,7 @@ For each opportunity, calculate:
                           <span className="text-2xl">{getCategoryIcon(opp.category)}</span>
                           <div>
                             <Badge className={getCategoryColor(opp.category)}>
-                              {opp.category.replace(/_/g, ' ')}
+                              {(opp.category || '').replace(/_/g, ' ')}
                             </Badge>
                             <Badge variant="outline" className="ml-2 font-mono text-xs">
                               {opp.m_item_code}
@@ -244,7 +257,7 @@ For each opportunity, calculate:
                           <Badge className="bg-green-600 text-white text-lg">
                             +${opp.revenue_impact?.toLocaleString()}
                           </Badge>
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-slate-500 mt-1">
                             {opp.confidence}% confidence
                           </p>
                         </div>
@@ -268,9 +281,9 @@ For each opportunity, calculate:
                         <p className="text-blue-800">{opp.clinical_justification}</p>
                       </div>
 
-                      <div className="bg-purple-50 p-3 rounded mb-2 text-sm">
-                        <p className="font-medium text-purple-900 mb-1">Supporting Evidence:</p>
-                        <p className="text-purple-800 italic">"{opp.supporting_evidence}"</p>
+                      <div className="bg-navy-50 p-3 rounded mb-2 text-sm">
+                        <p className="font-medium text-navy-900 mb-1">Supporting Evidence:</p>
+                        <p className="text-navy-800 italic">"{opp.supporting_evidence}"</p>
                       </div>
 
                       <div className="bg-yellow-50 p-3 rounded mb-2 text-sm border border-yellow-200">
@@ -278,7 +291,7 @@ For each opportunity, calculate:
                         <p className="text-yellow-900">{opp.narrative_addition}</p>
                       </div>
 
-                      <div className="bg-gray-50 p-2 rounded text-xs text-gray-700 mb-2">
+                      <div className="bg-slate-50 p-2 rounded text-xs text-slate-700 mb-2">
                         <strong>Documentation Required:</strong> {opp.documentation_required}
                       </div>
 
@@ -321,7 +334,7 @@ For each opportunity, calculate:
                         </span>
                         <div className="flex-1">
                           <p className="font-semibold text-sm text-blue-900">{step.step}</p>
-                          <p className="text-xs text-gray-700 mt-1">{step.action}</p>
+                          <p className="text-xs text-slate-700 mt-1">{step.action}</p>
                           <div className="flex items-center gap-4 mt-2 text-xs">
                             <Badge variant="outline">Impact: {step.expected_impact}</Badge>
                             <Badge variant="outline">Time: {step.time_required}</Badge>
@@ -345,7 +358,7 @@ For each opportunity, calculate:
                   {opportunities.risk_mitigation.map((item, idx) => (
                     <div key={idx} className="bg-white p-3 rounded border text-sm">
                       <p className="font-medium text-orange-900">{item.risk}</p>
-                      <p className="text-gray-700 mt-1">
+                      <p className="text-slate-700 mt-1">
                         <strong className="text-green-700">Strategy:</strong> {item.mitigation_strategy}
                       </p>
                     </div>

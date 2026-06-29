@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { twMerge } from 'tailwind-merge'
 
 export default function VisualEditAgent() {
@@ -20,7 +20,7 @@ export default function VisualEditAgent() {
 	const selectedElementIdRef = useRef(null); // Store the visual selector ID
 
 	// Create overlay element
-	const createOverlay = (isSelected = false) => {
+	const createOverlay = useCallback((isSelected = false) => {
 		const overlay = document.createElement('div');
 		overlay.style.position = 'absolute';
 		overlay.style.pointerEvents = 'none';
@@ -29,17 +29,17 @@ export default function VisualEditAgent() {
 
 		// Use different styles for hover vs selected
 		if (isSelected) {
-			overlay.style.border = '2px solid #2563EB';
+			overlay.style.border = '2px solid #264491';
 		} else {
 			overlay.style.border = '2px solid #95a5fc';
 			overlay.style.backgroundColor = 'rgba(99, 102, 241, 0.05)';
 		}
 
 		return overlay;
-	};
+	}, []);
 
 	// Position overlay relative to element
-	const positionOverlay = (overlay, element, isSelected = false) => {
+	const positionOverlay = useCallback((overlay, element, isSelected = false) => {
 		if (!element || !isVisualEditModeRef.current) return;
 
 		// Force layout recalculation
@@ -73,20 +73,20 @@ export default function VisualEditAgent() {
 			overlay.appendChild(label);
 		}
 		// If label exists, we preserve its existing styling (don't recreate or modify)
-	};
+	}, []);
 
 	// Find elements by ID - first try data-source-location, fallback to data-visual-selector-id
-	const findElementsById = (id) => {
+	const findElementsById = useCallback((id) => {
 		if (!id) return [];
 		const sourceElements = [...document.querySelectorAll(`[data-source-location="${id}"]`)];
 		if (sourceElements.length > 0) {
 			return sourceElements;
 		}
 		return [...document.querySelectorAll(`[data-visual-selector-id="${id}"]`)];
-	};
+	}, []);
 
 	// Clear hover overlays
-	const clearHoverOverlays = () => {
+	const clearHoverOverlays = useCallback(() => {
 		hoverOverlaysRef.current.forEach(overlay => {
 			if (overlay && overlay.parentNode) {
 				overlay.remove();
@@ -94,10 +94,10 @@ export default function VisualEditAgent() {
 		});
 		hoverOverlaysRef.current = [];
 		currentHighlightedElementsRef.current = [];
-	};
+	}, []);
 
 	// Handle mouse over event
-	const handleMouseOver = (e) => {
+	const handleMouseOver = useCallback((e) => {
 		if (!isVisualEditModeRef.current || isPopoverDraggingRef.current) return;
 
 		// Prevent hover effects when a dropdown is open
@@ -144,16 +144,16 @@ export default function VisualEditAgent() {
 		});
 
 		currentHighlightedElementsRef.current = elements;
-	};
+	}, [clearHoverOverlays, findElementsById, createOverlay, positionOverlay]);
 
 	// Handle mouse out event
-	const handleMouseOut = () => {
+	const handleMouseOut = useCallback(() => {
 		if (isPopoverDraggingRef.current) return;
 		clearHoverOverlays();
-	};
+	}, [clearHoverOverlays]);
 
 	// Handle element click
-	const handleElementClick = (e) => {
+	const handleElementClick = useCallback((e) => {
 		if (!isVisualEditModeRef.current) return;
 
 		// Close dropdowns when clicking anywhere in iframe if a dropdown is open
@@ -240,10 +240,10 @@ export default function VisualEditAgent() {
 			position: elementPosition // Add position data for popover
 		};
 		window.parent.postMessage(elementData, '*');
-	};
+	}, [findElementsById, createOverlay, positionOverlay, clearHoverOverlays]);
 
 	// Unselect the current element
-	const unselectElement = () => {
+	const unselectElement = useCallback(() => {
 		// Clear selected overlays
 		selectedOverlaysRef.current.forEach(overlay => {
 			if (overlay && overlay.parentNode) {
@@ -253,10 +253,10 @@ export default function VisualEditAgent() {
 		selectedOverlaysRef.current = [];
 
 		selectedElementIdRef.current = null;
-	};
+	}, []);
 
 	// Update element classes by visual selector ID
-	const updateElementClasses = (visualSelectorId, classes, replace = false) => {
+	const updateElementClasses = useCallback((visualSelectorId, classes, replace = false) => {
 		// Find all elements with the same visual selector ID
 		const elements = findElementsById(visualSelectorId);
 
@@ -299,10 +299,10 @@ export default function VisualEditAgent() {
 				}
 			}
 		}, 50); // Small delay to ensure the browser has time to recalculate layout
-	};
+	}, [findElementsById, positionOverlay]);
 
 	// Update element content by visual selector ID
-	const updateElementContent = (visualSelectorId, content) => {
+	const updateElementContent = useCallback((visualSelectorId, content) => {
 		// Find all elements with the same visual selector ID
 		const elements = findElementsById(visualSelectorId);
 
@@ -326,10 +326,10 @@ export default function VisualEditAgent() {
 				});
 			}
 		}, 50); // Small delay to ensure the browser has time to recalculate layout
-	};
+	}, [findElementsById, positionOverlay]);
 
 	// Toggle visual edit mode
-	const toggleVisualEditMode = (isEnabled) => {
+	const toggleVisualEditMode = useCallback((isEnabled) => {
 		setIsVisualEditMode(isEnabled);
 		isVisualEditModeRef.current = isEnabled;
 
@@ -360,7 +360,7 @@ export default function VisualEditAgent() {
 			document.addEventListener('mouseout', handleMouseOut);
 			document.addEventListener('click', handleElementClick, true); // Use capture mode
 		}
-	};
+	}, [clearHoverOverlays, handleMouseOver, handleMouseOut, handleElementClick]);
 
 	// Listen for messages from parent window
 	useEffect(() => {
@@ -550,7 +550,7 @@ export default function VisualEditAgent() {
 				}
 			});
 		};
-	}, []);
+	}, [clearHoverOverlays, findElementsById, handleElementClick, handleMouseOut, handleMouseOver, toggleVisualEditMode, unselectElement, updateElementClasses, updateElementContent]);
 
 	// Keep the refs in sync with state changes
 	useEffect(() => {
@@ -641,7 +641,7 @@ export default function VisualEditAgent() {
 			window.removeEventListener('scroll', handleResize);
 			mutationObserver.disconnect();
 		};
-	}, []);
+	}, [findElementsById, positionOverlay]);
 
 	// No visible UI - all functionality is handled through event listeners and message passing
 	return null;

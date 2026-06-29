@@ -1,17 +1,17 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Brain, Loader2, Lightbulb, AlertCircle } from "lucide-react";
+import { Brain, Loader2, Lightbulb, RefreshCw } from "lucide-react";
+import { toast } from 'sonner';
 
-export default function AIErrorInterpreter({ errors, onApplySuggestions }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+export default function AIErrorInterpreter({ errors, _onApplySuggestions }) {
+  const ai = useAICall();
   const [analysis, setAnalysis] = useState(null);
 
   const analyzeErrors = async () => {
-    setIsAnalyzing(true);
     
     try {
       // Group errors by type for more efficient analysis
@@ -39,7 +39,8 @@ For each error pattern, provide:
 
 Focus on the most common errors first.`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt,
         response_json_schema: {
           type: "object",
@@ -66,16 +67,15 @@ Focus on the most common errors first.`;
       setAnalysis(response);
     } catch (error) {
       console.error('AI analysis error:', error);
-      alert('Failed to analyze errors: ' + error.message);
+      toast.error('Failed to analyze errors: ' + error.message);
     }
     
-    setIsAnalyzing(false);
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-indigo-50">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-purple-900">
+        <CardTitle className="flex items-center gap-2 text-navy-900">
           <Brain className="w-5 h-5" />
           AI Error Interpreter
         </CardTitle>
@@ -83,16 +83,16 @@ Focus on the most common errors first.`;
       <CardContent>
         {!analysis ? (
           <div className="text-center py-6">
-            <Brain className="w-12 h-12 text-purple-400 mx-auto mb-3" />
-            <p className="text-sm text-gray-700 mb-4">
+            <Brain className="w-12 h-12 text-navy-400 mx-auto mb-3" />
+            <p className="text-sm text-slate-700 mb-4">
               Let AI analyze your import errors and provide intelligent solutions
             </p>
             <Button
               onClick={analyzeErrors}
-              disabled={isAnalyzing || errors.length === 0}
-              className="bg-purple-600 hover:bg-purple-700"
+              disabled={ai.loading || errors.length === 0}
+              className="bg-navy-600 hover:bg-navy-700"
             >
-              {isAnalyzing ? (
+              {ai.loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Analyzing {errors.length} errors...
@@ -119,7 +119,7 @@ Focus on the most common errors first.`;
                 <Card key={idx} className="bg-white">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-3">
-                      <h4 className="font-semibold text-gray-900">{pattern.error_type}</h4>
+                      <h4 className="font-semibold text-slate-900">{pattern.error_type}</h4>
                       <Badge className="bg-red-100 text-red-800">
                         {pattern.affected_rows?.length || 0} rows
                       </Badge>
@@ -127,13 +127,13 @@ Focus on the most common errors first.`;
 
                     <div className="space-y-3">
                       <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-1">ROOT CAUSE</p>
-                        <p className="text-sm text-gray-700">{pattern.root_cause}</p>
+                        <p className="text-xs font-semibold text-slate-500 mb-1">ROOT CAUSE</p>
+                        <p className="text-sm text-slate-700">{pattern.root_cause}</p>
                       </div>
 
                       <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-1">HOW TO FIX</p>
-                        <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                        <p className="text-xs font-semibold text-slate-500 mb-1">HOW TO FIX</p>
+                        <ol className="list-decimal list-inside space-y-1 text-sm text-slate-700">
                           {pattern.fix_instructions?.map((instruction, iIdx) => (
                             <li key={iIdx}>{instruction}</li>
                           ))}
@@ -142,8 +142,8 @@ Focus on the most common errors first.`;
 
                       {pattern.common_reasons && pattern.common_reasons.length > 0 && (
                         <div>
-                          <p className="text-xs font-semibold text-gray-500 mb-1">COMMON CAUSES</p>
-                          <ul className="space-y-1 text-xs text-gray-600">
+                          <p className="text-xs font-semibold text-slate-500 mb-1">COMMON CAUSES</p>
+                          <ul className="space-y-1 text-xs text-slate-600">
                             {pattern.common_reasons.map((reason, rIdx) => (
                               <li key={rIdx}>• {reason}</li>
                             ))}

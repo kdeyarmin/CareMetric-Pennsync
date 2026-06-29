@@ -1,0 +1,95 @@
+{
+  "name": "OASISAssessment",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Reference to Visit entity"
+    },
+    "visit_type": {
+      "type": "string",
+      "enum": [
+        "Start of Care",
+        "Resumption of Care",
+        "Recertification",
+        "Discharge",
+        "Transfer"
+      ],
+      "description": "Type of OASIS assessment"
+    },
+    "assessment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date assessment was completed"
+    },
+    "oasis_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item_number": {
+            "type": "string"
+          },
+          "item_name": {
+            "type": "string"
+          },
+          "response": {
+            "type": "string"
+          },
+          "confidence_level": {
+            "type": "string"
+          },
+          "ai_suggested": {
+            "type": "boolean"
+          },
+          "manually_edited": {
+            "type": "boolean"
+          },
+          "rationale": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "OASIS items with responses"
+    },
+    "clinical_summary": {
+      "type": "string",
+      "description": "Overall clinical summary"
+    },
+    "estimated_pdgm_group": {
+      "type": "string",
+      "description": "Estimated PDGM case mix group"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "in_progress",
+        "completed",
+        "submitted"
+      ],
+      "default": "draft"
+    },
+    "completion_percentage": {
+      "type": "number",
+      "description": "Percentage of items completed"
+    },
+    "completed_by": {
+      "type": "string",
+      "description": "Email of user who completed"
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When assessment was completed"
+    }
+  },
+  "required": [
+    "patient_id",
+    "visit_type"
+  ]
+}

@@ -1,21 +1,16 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Bell,
-  Shield,
-  AlertTriangle,
   CheckCircle2,
   GraduationCap,
-  ExternalLink,
   ChevronDown,
   ChevronUp,
-  BookOpen,
   Calendar
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
@@ -25,13 +20,10 @@ import { createPageUrl } from "@/utils";
 export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
   const [expanded, setExpanded] = useState(!compact);
   const [acknowledgedUpdates, setAcknowledgedUpdates] = useState(() => {
-    const saved = localStorage.getItem(`acknowledged_updates_${nurseEmail}`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
+    try {
+      const saved = localStorage.getItem(`acknowledged_updates_${nurseEmail}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
   });
 
   const { data: updates = [] } = useQuery({
@@ -41,30 +33,16 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
     }, '-effective_date'),
   });
 
-  // Filter to recent, unacknowledged, AND relevant to provider type/service type
+  // Filter to recent and unacknowledged updates
   const relevantUpdates = (updates || []).filter(u => {
     const daysSinceImplemented = differenceInDays(new Date(), new Date(u.reviewed_at || u.created_date));
-    const isRecent = daysSinceImplemented <= 30;
-    const isUnacknowledged = !acknowledgedUpdates.includes(u.id);
-    
-    // Filter by provider type
-    const affectedAreas = u.affected_areas || [];
-    const isRelevantToProvider = affectedAreas.length === 0 || 
-      affectedAreas.includes(currentUser?.credential_type) ||
-      affectedAreas.includes('all');
-    
-    // Filter by care setting
-    const careType = u.care_type || 'both';
-    const isRelevantToCareType = careType === 'both' || 
-      careType === currentUser?.service_type;
-    
-    return isRecent && isUnacknowledged && isRelevantToProvider && isRelevantToCareType;
+    return daysSinceImplemented <= 30 && !acknowledgedUpdates.includes(u.id);
   });
 
   const handleAcknowledge = (updateId) => {
     const newAcknowledged = [...acknowledgedUpdates, updateId];
     setAcknowledgedUpdates(newAcknowledged);
-    localStorage.setItem(`acknowledged_updates_${nurseEmail}`, JSON.stringify(newAcknowledged));
+    try { localStorage.setItem(`acknowledged_updates_${nurseEmail}`, JSON.stringify(newAcknowledged)); } catch {}
   };
 
   const getImpactColor = (level) => {
@@ -87,7 +65,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
         <AlertDescription className="text-indigo-900">
           <span className="font-semibold">{relevantUpdates.length} New Regulation Update(s)</span>
           <span className="ml-2">requiring your attention.</span>
-          <Link to={createPageUrl("ComplianceDashboard")} className="ml-2 text-indigo-700 underline">
+          <Link to={createPageUrl("ComplianceCenter")} className="ml-2 text-indigo-700 underline">
             Review Now →
           </Link>
         </AlertDescription>
@@ -98,7 +76,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
   return (
     <Card className="border-indigo-200">
       <CardHeader 
-        className="py-3 bg-gradient-to-r from-indigo-50 to-purple-50 cursor-pointer"
+        className="py-3 bg-gradient-to-r from-indigo-50 to-navy-50 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center justify-between">
@@ -120,7 +98,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
           {relevantUpdates.length === 0 ? (
             <div className="text-center py-4">
               <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
-              <p className="text-sm text-gray-600">You're up to date on all regulations!</p>
+              <p className="text-sm text-slate-600">You're up to date on all regulations!</p>
             </div>
           ) : (
             (relevantUpdates || []).map(update => (
@@ -129,7 +107,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
                 className={`p-3 rounded-lg border ${
                   update.impact_level === 'critical' ? 'bg-red-50 border-red-200' :
                   update.impact_level === 'high' ? 'bg-orange-50 border-orange-200' :
-                  'bg-white border-gray-200'
+                  'bg-white border-slate-200'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -144,7 +122,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
                       </Badge>
                       <span className="font-medium text-sm">{update.title}</span>
                     </div>
-                    <p className="text-xs text-gray-600 mb-2">{update.summary}</p>
+                    <p className="text-xs text-slate-600 mb-2">{update.summary}</p>
                     
                     {/* Key Changes */}
                     {update.compliance_check_updates?.length > 0 && (
@@ -161,14 +139,14 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
                     {/* Required Training */}
                     {update.suggested_training?.length > 0 && (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <GraduationCap className="w-3 h-3 text-purple-600" />
-                        <span className="text-xs text-purple-700">Training:</span>
+                        <GraduationCap className="w-3 h-3 text-navy-600" />
+                        <span className="text-xs text-navy-700">Training:</span>
                         {update.suggested_training.slice(0, 2).map((t, i) => (
                           <Link 
                             key={i} 
                             to={`${createPageUrl("NurseTraining")}?topic=${encodeURIComponent(t)}`}
                           >
-                            <Badge variant="outline" className="text-xs cursor-pointer hover:bg-purple-100">
+                            <Badge variant="outline" className="text-xs cursor-pointer hover:bg-navy-100">
                               {t}
                             </Badge>
                           </Link>
@@ -176,7 +154,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                    <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
                       <Calendar className="w-3 h-3" />
                       Effective: {update.effective_date ? format(new Date(update.effective_date), 'MMM d, yyyy') : 'Now'}
                     </div>
@@ -186,7 +164,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
             ))
           )}
 
-          <p className="text-xs text-gray-500 text-center">
+          <p className="text-xs text-slate-500 text-center">
             ✓ Check to acknowledge you've reviewed each update
           </p>
         </CardContent>

@@ -1,0 +1,111 @@
+{
+  "name": "PatientAlert",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "vital_deterioration",
+        "medication_risk",
+        "fall_risk",
+        "readmission_risk",
+        "infection_risk",
+        "symptom_escalation",
+        "care_gap",
+        "urgent_intervention",
+        "hospice_transition",
+        "caregiver_burnout",
+        "documentation_risk"
+      ],
+      "description": "Type of alert"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "description": "Alert severity level"
+    },
+    "title": {
+      "type": "string",
+      "description": "Brief alert title"
+    },
+    "message": {
+      "type": "string",
+      "description": "Detailed alert message"
+    },
+    "contributing_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Factors that triggered this alert"
+    },
+    "recommended_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Recommended actions to address the alert"
+    },
+    "risk_score": {
+      "type": "number",
+      "description": "Calculated risk score (0-100)"
+    },
+    "data_sources": {
+      "type": "object",
+      "description": "Data points that contributed to the alert"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "acknowledged",
+        "in_progress",
+        "resolved",
+        "dismissed"
+      ],
+      "default": "active"
+    },
+    "flagged_urgent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Flagged for immediate nurse attention"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Email of assigned nurse"
+    },
+    "acknowledged_by": {
+      "type": "string",
+      "description": "Email of nurse who acknowledged"
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolution_notes": {
+      "type": "string",
+      "description": "Notes on how alert was resolved"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When alert auto-expires if not addressed"
+    }
+  },
+  "required": [
+    "patient_id",
+    "alert_type",
+    "severity",
+    "title",
+    "message"
+  ]
+}

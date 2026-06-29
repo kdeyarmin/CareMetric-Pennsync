@@ -1,4 +1,3 @@
-import React from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -24,17 +23,28 @@ async function autoFlagOASIS(oasisUpload, analysisResults) {
   let flagReason = 'low_accuracy';
   let priority = 'medium';
 
+  // Each arm must line up with a shouldFlag trigger, otherwise a record flagged
+  // for one reason falls through to the generic default and is mislabeled.
   if (analysisResults.accuracy_score < 60) {
     flagReason = 'low_accuracy';
     priority = 'critical';
-  } else if (analysisResults.compliance_score < 70) {
+  } else if (analysisResults.compliance_score < THRESHOLDS.compliance) {
+    // Was < 70 while the trigger uses < 80, so a compliance shortfall in [70, 80)
+    // fell through to the default low_accuracy/medium labels.
     flagReason = 'low_compliance';
     priority = 'high';
-  } else if (analysisResults.specific_rescore_opportunities?.length > 3) {
+  } else if (analysisResults.specific_rescore_opportunities?.length > 2) {
+    // Must match the shouldFlag trigger above (> 2). Previously > 3, so a record
+    // flagged solely for having exactly 3 rescore opportunities fell through to
+    // the default low_accuracy/medium labels instead of revenue_opportunity/high.
     flagReason = 'revenue_opportunity';
     priority = 'high';
   } else if (analysisResults.audit_risk_areas?.some(r => r.risk_level === 'high')) {
     flagReason = 'high_audit_risk';
+    priority = 'high';
+  } else if (analysisResults.accuracy_score < THRESHOLDS.accuracy) {
+    // Accuracy in [60, 75) — a genuine accuracy flag, not the generic default.
+    flagReason = 'low_accuracy';
     priority = 'high';
   }
 

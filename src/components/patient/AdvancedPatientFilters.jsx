@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +18,41 @@ import {
 } from "@/components/ui/popover";
 import { Search, Filter, X, Calendar } from "lucide-react";
 
+// Fuzzy search: checks if all chars in query appear in order in target
+function fuzzyMatch(target, query) {
+  if (!query) return true;
+  if (!target) return false;
+  target = target.toLowerCase();
+  query = query.toLowerCase().trim();
+  // First try simple substring match (faster and more intuitive)
+  if (target.includes(query)) return true;
+  // Then fuzzy: every char in query must appear in order
+  let qi = 0;
+  for (let i = 0; i < target.length && qi < query.length; i++) {
+    if (target[i] === query[qi]) qi++;
+  }
+  return qi === query.length;
+}
+
+export function patientMatchesSearch(patient, searchTerm) {
+  if (!searchTerm || !searchTerm.trim()) return true;
+  const q = searchTerm.trim();
+  const fullName = `${patient.first_name || ""} ${patient.last_name || ""}`.trim();
+  const reverseName = `${patient.last_name || ""} ${patient.first_name || ""}`.trim();
+  return (
+    fuzzyMatch(fullName, q) ||
+    fuzzyMatch(reverseName, q) ||
+    fuzzyMatch(patient.first_name, q) ||
+    fuzzyMatch(patient.last_name, q) ||
+    fuzzyMatch(patient.medical_record_number, q) ||
+    fuzzyMatch(patient.phone, q) ||
+    fuzzyMatch(patient.primary_diagnosis, q)
+  );
+}
+
 export default function AdvancedPatientFilters({ onFilterChange, activeFilters = {} }) {
   const [isOpen, setIsOpen] = useState(false);
+  const searchRef = useRef(null);
   const [filters, setFilters] = useState({
     search: activeFilters.search || "",
     status: activeFilters.status || "all",
@@ -63,13 +96,25 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
             <Input
-              placeholder="Search by name, MRN, phone, address..."
+              ref={searchRef}
+              placeholder="Search name, MRN, phone, diagnosis…"
               value={filters.search}
               onChange={(e) => handleFilterChange("search", e.target.value)}
-              className="pl-10"
+              className="pl-10 h-11 sm:h-10 text-base sm:text-sm"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
             />
+            {filters.search && (
+              <button
+                onClick={() => handleFilterChange("search", "")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           <Popover open={isOpen} onOpenChange={setIsOpen}>

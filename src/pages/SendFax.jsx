@@ -1,584 +1,252 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Send, Phone, Loader2, CheckCircle2, WifiOff, Wifi, FileText, Users, Clock, Save } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { base44 } from "@/api/base44Client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Smartphone,
+  FileText,
+  History,
+  Search,
+  Upload,
+  BookTemplate,
+  Layers,
+  Activity,
+  Send,
+  BookUser,
+  Archive,
+  BarChart3,
+  Loader2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
+import PageContainer from "@/components/ui/PageContainer";
+import EmbeddedPage from "@/components/ui/embeddedPage";
+import PageHeader from "@/components/ui/PageHeader";
+import EnhancedCameraFaxSender from "../components/fax/EnhancedCameraFaxSender";
+import DocumentFaxSender from "../components/fax/DocumentFaxSender";
+import PhotoUploadFaxSender from "../components/fax/PhotoUploadFaxSender";
+import EnhancedFaxHistory from "../components/fax/EnhancedFaxHistory";
+import FaxSearchInterface from "../components/fax/FaxSearchInterface";
+import FaxTemplateManager from "../components/fax/FaxTemplateManager";
+import BatchFaxSender from "../components/fax/BatchFaxSender";
+import RealtimeFaxStatusTracker from "../components/fax/RealtimeFaxStatusTracker";
+import { isSuperAdmin } from "@/lib/superAdmin";
 
-import FaxInstructions from "@/components/fax/FaxInstructions";
-import FaxAddressBook from "@/components/fax/FaxAddressBook";
-import FaxCoverSheet from "@/components/fax/FaxCoverSheet";
-import FaxDocumentUploader from "@/components/fax/FaxDocumentUploader";
-import FaxHistoryList from "@/components/fax/FaxHistory";
-import AIFaxAssistant from "@/components/fax/AIFaxAssistant";
-import BatchFaxDialog from "@/components/fax/BatchFaxDialog";
-import ScheduleFaxDialog from "@/components/fax/ScheduleFaxDialog";
-import FaxDraftsManager from "@/components/fax/FaxDraftsManager";
-import FaxActivityFeed from "@/components/fax/FaxActivityFeed";
-import SmartPriorityRules from "@/components/fax/SmartPriorityRules";
-import ContactGroupManager from "@/components/fax/ContactGroupManager";
-import RecurringFaxManager from "@/components/fax/RecurringFaxManager";
-import FaxTemplateManager from "@/components/fax/FaxTemplateManager";
-import DocumentTemplateBuilder from "@/components/fax/DocumentTemplateBuilder";
-import DeliveryStatusTracker from "@/components/fax/DeliveryStatusTracker";
-import { generateCoverSheetPDF } from "@/components/fax/CoverSheetPDFGenerator";
-import PremiumFeatureGate from "@/components/subscription/PremiumFeatureGate";
+const FaxContacts = lazy(() => import("@/components/hub-tabs/FaxContacts"));
+const FaxLogsDashboard = lazy(() => import("@/components/hub-tabs/FaxLogsDashboard"));
+const FaxAnalytics = lazy(() => import("@/components/hub-tabs/FaxAnalytics"));
+
+// Tab keys, kept in sync with the TabsTrigger values below. Used to validate the
+// ?tab= deep-link so the retired standalone pages (Contacts, Address Book, Logs,
+// Analytics) redirect to the right tab. "analytics" is admin-only and part of the
+// set so admins can deep-link to it; non-admins who request it fall through to the
+// default tab below.
+const TAB_KEYS = [
+  "upload",
+  "camera",
+  "documents",
+  "batch",
+  "templates",
+  "status",
+  "search",
+  "history",
+  "contacts",
+  "logs",
+  "analytics",
+];
+// Tabs whose source page was admin-only — gated to admins (defense in depth;
+// server RLS remains the real boundary). Non-admins requesting these via ?tab=
+// fall through to the default tab.
+const ADMIN_TABS = ["analytics"];
+
+const tabLoader = (
+  <div className="flex justify-center py-12">
+    <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+  </div>
+);
+
+// Core "Send" actions — always visible as a segmented control.
+const SEND_TABS = [
+  { value: "upload",    Icon: Upload,     label: "Photo"  },
+  { value: "camera",    Icon: Smartphone, label: "Camera" },
+  { value: "documents", Icon: FileText,   label: "Doc"    },
+  { value: "batch",     Icon: Layers,     label: "Batch"  },
+];
+
+// Management tools — tucked into the "Manage" dropdown. Analytics is admin-only.
+const MANAGE_TABS = [
+  { value: "templates", Icon: BookTemplate, label: "Templates", adminOnly: false },
+  { value: "status",    Icon: Activity,     label: "Status",    adminOnly: false },
+  { value: "search",    Icon: Search,       label: "Search",    adminOnly: false },
+  { value: "history",   Icon: History,      label: "History",   adminOnly: false },
+  { value: "contacts",  Icon: BookUser,     label: "Contacts",  adminOnly: false },
+  { value: "logs",      Icon: Archive,      label: "Logs",      adminOnly: false },
+  { value: "analytics", Icon: BarChart3,    label: "Analytics", adminOnly: true  },
+];
 
 export default function SendFax() {
-  const queryClient = useQueryClient();
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [sending, setSending] = useState(false);
-  const [recipientName, setRecipientName] = useState("");
-  const [recipientFax, setRecipientFax] = useState("");
-  const [usePersonalFaxNumber, setUsePersonalFaxNumber] = useState(false);
-  const [documents, setDocuments] = useState([]);
-  const [includeCover, setIncludeCover] = useState(true);
-  const [showBatchDialog, setShowBatchDialog] = useState(false);
-  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
-  const [showDocumentTemplates, setShowDocumentTemplates] = useState(false);
-  const [lastSentFaxId, setLastSentFaxId] = useState(null);
-  const [coverData, setCoverData] = useState({
-    sender_name: "",
-    sender_company: "",
-    sender_phone: "",
-    subject: "",
-    message: "",
-    urgency: "normal",
-    include_hipaa: true
-  });
-
-  const { data: currentUser } = useQuery({
+  const { data: currentUser, isLoading: isUserLoading } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
+    queryFn: () => base44.auth.me(),
   });
 
-  // Auto-fill sender from user profile and set default sending fax number
+  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin(currentUser);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  // Resolve the active tab, defaulting to the first. The analytics tab is
+  // admin-only, so a non-admin requesting ?tab=analytics resolves to the default.
+  // Wait for auth to resolve before downgrading an admin tab so an admin
+  // deep-linking to ?tab=analytics isn't bounced before currentUser loads.
+  let activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "upload";
+  if (!isUserLoading && ADMIN_TABS.includes(activeTab) && !isAdmin) {
+    activeTab = "upload";
+  }
+
+  const manageTabs = MANAGE_TABS.filter((t) => !t.adminOnly || isAdmin);
+
+  const [prefilledData, setPrefilledData] = useState(null);
+
+  const handleApplyTemplate = (tpl) => {
+    setPrefilledData(tpl);
+    setSearchParams({});
+  };
+
+  // Reflect the active tab in the URL so tabs are shareable/bookmarkable and
+  // redirects from the retired pages deep-link correctly. "upload" is the
+  // default, so it stays a clean /SendFax with no query string.
+  const handleTabChange = (value) => {
+    setSearchParams(value === "upload" ? {} : { tab: value });
+  };
+
+  // Converge on the canonical URL: strip a redundant or unknown ?tab= (e.g. a
+  // bookmarked ?tab=upload, a stale tab key, or ?tab=analytics for a non-admin)
+  // so the default tab is plain /SendFax. Only fires when the param resolved to
+  // the default tab, so a valid deep-link like ?tab=contacts is left untouched.
   useEffect(() => {
-    if (currentUser) {
-      setCoverData(prev => ({
-        ...prev,
-        sender_name: prev.sender_name || currentUser.full_name || "",
-      }));
-      if (currentUser.sending_fax_number) {
-        setUsePersonalFaxNumber(true);
-      }
+    if (!isUserLoading && requestedTab !== null && activeTab === "upload") {
+      setSearchParams({}, { replace: true });
     }
-  }, [currentUser]);
-
-  // Online/offline detection
-  useEffect(() => {
-    const goOnline = () => { setIsOnline(true); processQueue(); };
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
-    return () => {
-      window.removeEventListener('online', goOnline);
-      window.removeEventListener('offline', goOffline);
-    };
-  }, []);
-
-  // Process queued faxes when coming online
-  const processQueue = async () => {
-    if (!currentUser?.email) return;
-    try {
-      const queued = await base44.entities.FaxHistory.filter({ user_email: currentUser.email, status: 'queued' });
-      for (const fax of queued) {
-        if (fax.document_urls?.length > 0) {
-          try {
-            await base44.functions.invoke('sendFax', {
-              to_fax_number: fax.recipient_fax_number,
-              media_urls: fax.document_urls,
-              fax_history_id: fax.id
-            });
-            toast.success(`Queued fax to ${fax.recipient_name || fax.recipient_fax_number} is now sending`);
-          } catch (err) {
-            console.error("Failed to send queued fax:", err);
-          }
-        }
-      }
-      queryClient.invalidateQueries({ queryKey: ['faxHistory'] });
-    } catch (err) {
-      console.error("Error processing queue:", err);
-    }
-  };
-
-  const handleSelectContact = (contact) => {
-    setRecipientName(contact.name);
-    setRecipientFax(contact.fax_number);
-    if (contact.company) {
-      setRecipientName(`${contact.name} - ${contact.company}`);
-    }
-  };
-
-  const handleSendToGroup = (contacts) => {
-    // Pre-populate batch dialog with group contacts
-    setShowBatchDialog(true);
-    // Note: BatchFaxDialog will handle group contacts internally
-  };
-
-  const handleLoadTemplate = (template) => {
-    setCoverData({
-      sender_name: template.sender_name || coverData.sender_name,
-      sender_company: template.sender_company || coverData.sender_company,
-      sender_phone: template.sender_phone || coverData.sender_phone,
-      subject: template.subject_line || coverData.subject,
-      message: template.message_body || coverData.message,
-      urgency: template.urgency || "normal",
-      include_hipaa: template.include_hipaa_notice !== false
-    });
-    toast.success(`Template "${template.name}" loaded`);
-  };
-
-  const handleUseDocumentTemplate = (doc) => {
-    setDocuments([...documents, {
-      name: doc.name,
-      url: doc.url,
-      size: 0
-    }]);
-  };
-
-  const handleSendFax = async () => {
-    if (!recipientFax.trim()) {
-      toast.error("Please enter a fax number");
-      return;
-    }
-    if (documents.length === 0 && !includeCover) {
-      toast.error("Please attach at least one document or include a cover sheet");
-      return;
-    }
-
-    setSending(true);
-
-    try {
-      // Build media URLs
-      let mediaUrls = [];
-
-      // Generate cover sheet PDF if included
-      if (includeCover) {
-        const coverPDF = await generateCoverSheetPDF(coverData, recipientName, recipientFax);
-        const { file_url } = await base44.integrations.Core.UploadFile({ file: coverPDF });
-        mediaUrls.push(file_url);
-      }
-
-      // Add document URLs
-      documents.forEach(doc => mediaUrls.push(doc.url));
-
-      // Create fax history record
-      const historyRecord = await base44.entities.FaxHistory.create({
-        user_email: currentUser.email,
-        recipient_name: recipientName,
-        recipient_fax_number: recipientFax,
-        subject: coverData.subject,
-        cover_sheet_message: coverData.message,
-        document_urls: mediaUrls,
-        page_count: mediaUrls.length,
-        status: isOnline ? 'sending' : 'queued'
-      });
-
-      // Save each analyzed document to Document Library
-      for (const doc of documents) {
-        const a = doc.analysis || {};
-        base44.entities.FaxDocument.create({
-          user_email: currentUser.email,
-          file_url: doc.url,
-          file_name: doc.name,
-          original_name: doc.originalName || doc.name,
-          file_size: doc.size || 0,
-          patient_name: a.patient_name || "",
-          patient_dob: a.patient_dob || "",
-          mrn: a.mrn || "",
-          provider_name: a.provider_name || "",
-          document_type: a.document_type || "",
-          category: doc.category || a.category || "",
-          date_of_service: a.date_of_service || "",
-          diagnosis: a.diagnosis || "",
-          tags: doc.tags || a.tags || [],
-          summary: a.summary || "",
-          confidence: a.confidence || 0,
-          fax_history_id: historyRecord.id,
-          recipient_name: recipientName,
-          recipient_fax_number: recipientFax
-        }).catch(err => console.error("Failed to save doc to library:", err));
-      }
-
-      if (!isOnline) {
-        toast.info("You're offline. Fax has been queued and will send when you reconnect.");
-        resetForm();
-        setSending(false);
-        queryClient.invalidateQueries({ queryKey: ['faxHistory'] });
-        return;
-      }
-
-      // Send via backend
-      const { data } = await base44.functions.invoke('sendFax', {
-        to_fax_number: recipientFax,
-        media_urls: mediaUrls,
-        fax_history_id: historyRecord.id,
-        from_fax_number: usePersonalFaxNumber ? currentUser.sending_fax_number : undefined
-      });
-
-      setSending(false);
-      setLastSentFaxId(data.fax_id || historyRecord.id);
-      setRecipientName("");
-      setRecipientFax("");
-      setDocuments([]);
-      setCoverData({ ...coverData, subject: "", message: "" });
-      await queryClient.invalidateQueries({ queryKey: ['faxHistory'] });
-      toast.success('Fax queued successfully!', {
-        description: "Track delivery status in the sidebar",
-        duration: 5000
-      });
-    } catch (error) {
-      console.error("Fax send error:", error);
-      toast.error("Failed to send fax: " + (error.message || "Unknown error"));
-      setSending(false);
-    }
-  };
-
-  const resetForm = () => {
-    setRecipientName("");
-    setRecipientFax("");
-    setDocuments([]);
-    setCoverData(prev => ({ ...prev, subject: "", message: "" }));
-  };
-
-  // Count queued faxes
-  const { data: queuedCount = 0 } = useQuery({
-    queryKey: ['queuedFaxCount', currentUser?.email],
-    queryFn: async () => {
-      const queued = await base44.entities.FaxHistory.filter({ user_email: currentUser.email, status: 'queued' });
-      return queued.length;
-    },
-    enabled: !!currentUser?.email,
-    refetchInterval: 15000
-  });
-
-  const agencyId = currentUser?.agency_id;
+  }, [isUserLoading, requestedTab, activeTab, setSearchParams]);
 
   return (
-    <PremiumFeatureGate featureName="Send a Fax" featureDescription="Send faxes directly from the app with camera-to-PDF conversion and address book." allowTrial={true}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Send className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-            Send a Fax
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">Send documents via fax directly from CareMetric AI</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {queuedCount > 0 && (
-            <Badge className="bg-yellow-100 text-yellow-800 text-xs">
-              {queuedCount} queued
-            </Badge>
-          )}
-          <Badge className={`text-xs ${isOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {isOnline ? <><Wifi className="w-3 h-3 mr-1" /> Online</> : <><WifiOff className="w-3 h-3 mr-1" /> Offline</>}
-          </Badge>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={Send}
+        eyebrow="Communication"
+        title="Fax Center"
+        description="Send, review, and track faxes from one professional workspace."
+        favoritePage="SendFax"
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Main Form */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Quick Actions */}
-          <div className="flex gap-2 mb-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 text-xs gap-1"
-              onClick={() => setShowTemplateManager(true)}
-            >
-              <FileText className="w-3 h-3" /> Cover Templates
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 text-xs gap-1"
-              onClick={() => setShowDocumentTemplates(true)}
-            >
-              <FileText className="w-3 h-3" /> Documents
-            </Button>
-          </div>
-
-          {/* Address Book at Top */}
-          <FaxAddressBook
-            userEmail={currentUser?.email}
-            agencyId={agencyId}
-            onSelectContact={handleSelectContact}
-          />
-
-          {/* Contact Groups */}
-          <ContactGroupManager 
-            userEmail={currentUser?.email}
-            onSendToGroup={handleSendToGroup}
-          />
-
-          {/* Recipient */}
-          <Card>
-            <CardHeader className="pb-2 p-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Phone className="w-4 h-4" />
-                Recipient
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">Recipient Name</Label>
-                  <Input
-                    value={recipientName}
-                    onChange={e => setRecipientName(e.target.value)}
-                    placeholder="Dr. Smith - Memorial Hospital"
-                    className="h-10 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Fax Number *</Label>
-                  <Input
-                    value={recipientFax}
-                    onChange={e => setRecipientFax(e.target.value)}
-                    placeholder="(555) 123-4567"
-                    className="h-10 text-sm"
-                    type="tel"
-                  />
-                </div>
-              </div>
-              {currentUser?.sending_fax_number && (
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                  <input
-                    type="checkbox"
-                    checked={usePersonalFaxNumber}
-                    onChange={e => setUsePersonalFaxNumber(e.target.checked)}
-                    className="rounded"
-                  />
-                  <Label className="text-xs text-slate-600">
-                    Send from my fax number: <span className="font-semibold">{currentUser.sending_fax_number}</span>
-                  </Label>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Cover Sheet */}
-          <div className="flex items-center gap-2 mb-1">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={includeCover} onChange={e => setIncludeCover(e.target.checked)} className="rounded" />
-              Include Cover Sheet
-            </label>
-          </div>
-          {includeCover && (
-            <FaxCoverSheet
-              userEmail={currentUser?.email}
-              coverData={coverData}
-              onCoverDataChange={setCoverData}
-              recipientName={recipientName}
-              recipientFax={recipientFax}
-            />
-          )}
-
-          {/* Document Upload */}
-          <FaxDocumentUploader
-            documents={documents}
-            onDocumentsChange={setDocuments}
-            onDocumentAnalysis={(index, analysis) => {
-              // Auto-fill cover sheet subject from first analyzed document if empty
-              if (includeCover && !coverData.subject && analysis.document_type) {
-                const parts = [];
-                if (analysis.document_type) parts.push(analysis.document_type);
-                if (analysis.patient_name) parts.push(`Patient: ${analysis.patient_name}`);
-                if (analysis.date_of_service) parts.push(analysis.date_of_service);
-                setCoverData(prev => ({
-                  ...prev,
-                  subject: prev.subject || parts.join(' - ')
-                }));
-              }
-            }}
-          />
-
-          {/* AI Assistant */}
-          <AIFaxAssistant
-            documents={documents}
-            coverData={coverData}
-            onCoverDataChange={setCoverData}
-            recipientName={recipientName}
-            recipientFax={recipientFax}
-          />
-
-          {/* Send Buttons */}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="h-12 px-4"
-              onClick={async () => {
-                await base44.entities.FaxDraft.create({
-                  user_email: currentUser?.email,
-                  recipient_name: recipientName,
-                  recipient_fax_number: recipientFax,
-                  subject: coverData.subject,
-                  cover_data: coverData,
-                  document_urls: documents.map(d => d.url),
-                  document_names: documents.map(d => d.name),
-                  include_cover: includeCover,
-                  notes: ""
-                });
-                toast.success("Draft saved");
-              }}
-              disabled={!currentUser?.email}
-              title="Save as draft"
-            >
-              <Save className="w-5 h-5" />
-            </Button>
-            <Button
-              onClick={handleSendFax}
-              disabled={sending || (!recipientFax.trim()) || (documents.length === 0 && !includeCover)}
-              className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-white text-base"
-              size="lg"
-            >
-              {sending ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  {isOnline ? 'Sending Fax...' : 'Queuing Fax...'}
-                </>
-              ) : (
-                <>
-                  <Send className="w-5 h-5 mr-2" />
-                  {isOnline ? 'Send Fax' : 'Queue Fax (Offline)'}
-                </>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              className="h-12 px-4"
-              onClick={() => setShowScheduleDialog(true)}
-              disabled={!recipientFax.trim() || documents.length === 0}
-              title="Schedule for later"
-            >
-              <Clock className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="outline"
-              className="h-12 px-4"
-              onClick={() => setShowBatchDialog(true)}
-              disabled={documents.length === 0}
-              title="Send to multiple recipients"
-            >
-              <Users className="w-5 h-5" />
-            </Button>
-          </div>
-
-          {/* Batch & Schedule Dialogs */}
-          <BatchFaxDialog
-            open={showBatchDialog}
-            onOpenChange={setShowBatchDialog}
-            documents={documents}
-            coverData={coverData}
-            userEmail={currentUser?.email}
-            fromFaxNumber={usePersonalFaxNumber ? currentUser?.sending_fax_number : undefined}
-          />
-          <ScheduleFaxDialog
-            open={showScheduleDialog}
-            onOpenChange={setShowScheduleDialog}
-            recipientName={recipientName}
-            recipientFax={recipientFax}
-            documents={documents}
-            coverData={coverData}
-            userEmail={currentUser?.email}
-            fromFaxNumber={usePersonalFaxNumber ? currentUser?.sending_fax_number : undefined}
-          />
-          
-          {/* Template Dialogs */}
-          {showTemplateManager && (
-            <FaxTemplateManager
-              userEmail={currentUser?.email}
-              open={showTemplateManager}
-              onOpenChange={setShowTemplateManager}
-              onSelectTemplate={handleLoadTemplate}
-            />
-          )}
-          {showDocumentTemplates && (
-            <DocumentTemplateBuilder
-              userEmail={currentUser?.email}
-              open={showDocumentTemplates}
-              onOpenChange={setShowDocumentTemplates}
-              onUseTemplate={handleUseDocumentTemplate}
-            />
-          )}
-
-          {!isOnline && (
-            <Alert className="bg-amber-50 border-amber-200">
-              <WifiOff className="w-4 h-4 text-amber-600" />
-              <AlertDescription className="text-xs text-amber-800">
-                Your fax will be saved and sent automatically when you're back online.
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-4">
-          {lastSentFaxId && (
-            <DeliveryStatusTracker 
-              faxId={lastSentFaxId}
-              userEmail={currentUser?.email}
-            />
-          )}
-          
-          <RecurringFaxManager userEmail={currentUser?.email} />
-          
-          <Tabs defaultValue="history">
-            <TabsList className="grid w-full grid-cols-4 mb-2">
-              <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
-              <TabsTrigger value="drafts" className="text-xs">Drafts</TabsTrigger>
-              <TabsTrigger value="activity" className="text-xs">Feed</TabsTrigger>
-              <TabsTrigger value="help" className="text-xs">Help</TabsTrigger>
+        <EmbeddedPage>
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+          {/* Streamlined for mobile/tablet: the four core "Send" actions stay as a
+              segmented control, and the management tools fold into a single
+              "Manage" dropdown so the bar never overflows the screen. */}
+          <div className="flex items-stretch gap-2">
+            <TabsList className="grid grid-cols-4 flex-1 gap-1 h-auto p-1">
+              {SEND_TABS.map(({ value, Icon, label }) => (
+                <TabsTrigger key={value} value={value} className="flex flex-col sm:flex-row items-center justify-center gap-1 px-2 py-2 min-h-[52px] sm:min-h-[44px] text-xs sm:text-sm whitespace-nowrap">
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span>{label}</span>
+                </TabsTrigger>
+              ))}
             </TabsList>
 
-            <TabsContent value="history">
-              <FaxHistoryList userEmail={currentUser?.email} />
-            </TabsContent>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={manageTabs.some((t) => t.value === activeTab) ? "default" : "outline"}
+                  className="h-auto min-h-[52px] sm:min-h-[44px] px-3 flex flex-col sm:flex-row items-center justify-center gap-1 text-xs sm:text-sm"
+                >
+                  {(() => {
+                    const current = manageTabs.find((t) => t.value === activeTab);
+                    const Icon = current?.Icon || Layers;
+                    return <Icon className="w-4 h-4 flex-shrink-0" />;
+                  })()}
+                  <span>{manageTabs.find((t) => t.value === activeTab)?.label || "Manage"}</span>
+                  <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {manageTabs.map(({ value, Icon, label }) => (
+                  <DropdownMenuItem
+                    key={value}
+                    onSelect={() => handleTabChange(value)}
+                    className={`gap-2 ${activeTab === value ? "bg-accent font-medium" : ""}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
-            <TabsContent value="drafts">
-              <FaxDraftsManager
-                userEmail={currentUser?.email}
-                onLoadDraft={(draft) => {
-                  setRecipientName(draft.recipient_name || "");
-                  setRecipientFax(draft.recipient_fax_number || "");
-                  if (draft.cover_data) setCoverData(prev => ({ ...prev, ...draft.cover_data }));
-                  setIncludeCover(draft.include_cover !== false);
-                  if (draft.document_urls?.length > 0) {
-                    setDocuments(draft.document_urls.map((url, i) => ({
-                      url,
-                      name: draft.document_names?.[i] || `Document ${i + 1}`,
-                      size: 0
-                    })));
-                  }
-                  toast.success("Draft loaded");
-                }}
-              />
-            </TabsContent>
+          <TabsContent value="upload" className="mt-4 sm:mt-6">
+            <PhotoUploadFaxSender prefilledData={prefilledData} />
+          </TabsContent>
 
-            <TabsContent value="activity">
-              <FaxActivityFeed userEmail={currentUser?.email} />
-            </TabsContent>
+          <TabsContent value="camera" className="mt-4 sm:mt-6">
+            <EnhancedCameraFaxSender />
+          </TabsContent>
 
-            <TabsContent value="help">
-              <FaxInstructions isOnline={isOnline} />
-            </TabsContent>
-          </Tabs>
+          <TabsContent value="documents" className="mt-4 sm:mt-6">
+            <DocumentFaxSender prefilledData={prefilledData} />
+          </TabsContent>
 
-          <SmartPriorityRules userEmail={currentUser?.email} />
-        </div>
-      </div>
-    </div>
-    </PremiumFeatureGate>
+          <TabsContent value="batch" className="mt-4 sm:mt-6">
+            <BatchFaxSender prefilledData={prefilledData} />
+          </TabsContent>
+
+          <TabsContent value="templates" className="mt-4 sm:mt-6">
+            <FaxTemplateManager onApplyTemplate={handleApplyTemplate} />
+          </TabsContent>
+
+          <TabsContent value="status" className="mt-4 sm:mt-6">
+            <RealtimeFaxStatusTracker />
+          </TabsContent>
+
+          <TabsContent value="search" className="mt-4 sm:mt-6">
+            <FaxSearchInterface onSelectFaxForAI={(faxId) => {
+              toast.info(`Fax selected for AI analysis: ${faxId || 'Unknown'}`);
+            }} />
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4 sm:mt-6">
+            <EnhancedFaxHistory />
+          </TabsContent>
+
+          <TabsContent value="contacts" className="mt-4 sm:mt-6">
+            <Suspense fallback={tabLoader}>
+              <FaxContacts />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="logs" className="mt-4 sm:mt-6">
+            <Suspense fallback={tabLoader}>
+              <FaxLogsDashboard />
+            </Suspense>
+          </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="analytics" className="mt-4 sm:mt-6">
+              <Suspense fallback={tabLoader}>
+                <FaxAnalytics />
+              </Suspense>
+            </TabsContent>
+          )}
+        </Tabs>
+        </EmbeddedPage>
+    </PageContainer>
   );
 }

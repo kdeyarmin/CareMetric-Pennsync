@@ -1,0 +1,310 @@
+{
+  "name": "TrainingCourse",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Course title"
+    },
+    "short_description": {
+      "type": "string",
+      "description": "Short summary shown in listings"
+    },
+    "description": {
+      "type": "string",
+      "description": "Course description"
+    },
+    "training_type": {
+      "type": "string",
+      "enum": [
+        "course",
+        "in_service",
+        "annual_mandatory"
+      ],
+      "default": "course",
+      "description": "Whether this is a standard course, AI compliance in-service, or annual mandatory education"
+    },
+    "annual_cycle_year": {
+      "type": "number",
+      "description": "Annual education cycle year when applicable"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "compliance",
+        "clinical",
+        "safety",
+        "documentation",
+        "hospice",
+        "home_health",
+        "dme",
+        "onboarding",
+        "leadership"
+      ],
+      "description": "Course category"
+    },
+    "business_line_scope": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "all"
+      ],
+      "default": "all",
+      "description": "Which business line(s) can access this course"
+    },
+    "employee_audience": {
+      "type": "string",
+      "description": "Audience description for employee view"
+    },
+    "purpose": {
+      "type": "string",
+      "description": "Purpose of this training"
+    },
+    "reading_level": {
+      "type": "string",
+      "description": "Recommended reading level"
+    },
+    "role_targets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Target roles for this course"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Searchable tags"
+    },
+    "estimated_minutes": {
+      "type": "number",
+      "description": "Estimated completion time in minutes"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "pending_review",
+        "published",
+        "archived"
+      ],
+      "default": "draft",
+      "description": "Course status"
+    },
+    "version": {
+      "type": "string",
+      "default": "1.0",
+      "description": "Course version"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Creator email"
+    },
+    "published_by": {
+      "type": "string",
+      "description": "Publisher email"
+    },
+    "published_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When course was published"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "Approver email"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Approval timestamp"
+    },
+    "learning_objectives": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Learning objectives"
+    },
+    "passing_score": {
+      "type": "number",
+      "default": 80,
+      "description": "Minimum passing score percentage"
+    },
+    "certificate_valid_months": {
+      "type": "number",
+      "description": "Certificate expiration in months (null = no expiration)"
+    },
+    "is_mandatory": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether course is mandatory"
+    },
+    "recurrence_rule": {
+      "type": "string",
+      "enum": [
+        "none",
+        "annual",
+        "quarterly",
+        "on_hire"
+      ],
+      "default": "none",
+      "description": "Recurrence rule"
+    },
+    "ai_generated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether course was AI-generated"
+    },
+    "needs_sme_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "Flagged for subject matter expert review"
+    },
+    "policy_references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of referenced policy documents"
+    },
+    "citation_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of citations included"
+    },
+    "enable_certificate": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to issue certificate upon completion"
+    },
+    "requires_attestation": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether course requires attestation"
+    },
+    "attestation_text": {
+      "type": "string",
+      "description": "Required acknowledgement language"
+    },
+    "ceu_hours": {
+      "type": "number",
+      "description": "CEU hours awarded"
+    },
+    "allow_answer_review": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to show correct answers after submission"
+    },
+    "include_case_scenarios": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether course includes case scenarios"
+    },
+    "include_key_takeaways": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether course includes key takeaways"
+    },
+    "certificate_wording": {
+      "type": "string",
+      "description": "Custom certificate wording"
+    },
+    "references_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Reference objects used in the course"
+    },
+    "ai_prompt_json": {
+      "type": "object",
+      "description": "Original AI generation settings"
+    },
+    "retake_settings_json": {
+      "type": "object",
+      "description": "Retake settings for the course"
+    },
+    "test_settings_json": {
+      "type": "object",
+      "description": "Testing configuration for the course"
+    },
+    "attachment_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "External policy PDFs, regulatory documents, or images attached to the course"
+    },
+    "attachment_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Display names for attached course files"
+    },
+    "archived_status": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the course is archived"
+    },
+    "real_world_relevance": {
+      "type": "string",
+      "description": "Short 'why this matters right now' framing shown on the course intro screen"
+    },
+    "regulatory_crosswalk_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Regulations this course addresses — each item: { regulation, title, how_this_course_addresses_it }"
+    },
+    "competency_skills_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Observable skills the learner will demonstrate — each item: { skill, criteria }"
+    },
+    "pre_assessment_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Pre-assessment (test-out / baseline) questions generated for the course"
+    },
+    "brain_sparks_json": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Brain-spark memory boosters (spaced-recall prompts) generated for the course"
+    }
+  },
+  "required": [
+    "title",
+    "category",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "status": "published"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

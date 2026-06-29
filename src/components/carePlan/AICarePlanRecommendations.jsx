@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,10 +12,9 @@ import {
   TrendingUp,
   AlertTriangle,
   Target,
-  ThumbsUp,
-  ThumbsDown,
   Plus
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function AICarePlanRecommendations({
   patient,
@@ -23,14 +22,19 @@ export default function AICarePlanRecommendations({
   existingCarePlans = [],
   onAcceptRecommendation
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [recommendations, setRecommendations] = useState(null);
   const [acceptedIds, setAcceptedIds] = useState(new Set());
+  const [dismissedIds, setDismissedIds] = useState(new Set());
 
   const analyzeAndRecommend = async () => {
     if (!patient) return;
 
-    setIsAnalyzing(true);
+    // accepted/dismissed are keyed by array index, so a fresh result must start with
+    // a clean slate or the new item at a reused index inherits the prior state.
+    setAcceptedIds(new Set());
+    setDismissedIds(new Set());
+
     try {
       // Get recent visits for context
       const recentVisits = visits.slice(0, 5);
@@ -50,7 +54,8 @@ export default function AICarePlanRecommendations({
         created: cp.created_date
       }));
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert clinical care coordinator analyzing patient data to recommend new care plan goals.
 
 PATIENT PROFILE:
@@ -115,9 +120,8 @@ Return JSON:`,
       setRecommendations(result);
     } catch (error) {
       console.error("Analysis error:", error);
-      alert("Failed to generate recommendations. Please try again.");
+      toast.error("Failed to generate recommendations. Please try again.");
     }
-    setIsAnalyzing(false);
   };
 
   const handleAcceptRecommendation = async (recommendation, index) => {
@@ -133,31 +137,31 @@ Return JSON:`,
       medium: "bg-yellow-100 text-yellow-800 border-yellow-300",
       low: "bg-blue-100 text-blue-800 border-blue-300"
     };
-    return colors[priority] || "bg-gray-100 text-gray-800";
+    return colors[priority] || "bg-slate-100 text-slate-800";
   };
 
   return (
-    <Card className="border-2 border-purple-300">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-300">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-purple-600" />
+          <Sparkles className="w-5 h-5 text-navy-600" />
           AI Care Plan Recommendations
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-4 space-y-4">
         {!recommendations ? (
           <div className="space-y-3">
-            <Alert className="bg-purple-50 border-purple-200">
-              <AlertDescription className="text-sm text-purple-900">
+            <Alert className="bg-navy-50 border-navy-200">
+              <AlertDescription className="text-sm text-navy-900">
                 AI will analyze patient diagnosis, visit history, functional status, and existing care plans to recommend personalized care plan goals.
               </AlertDescription>
             </Alert>
             <Button
               onClick={analyzeAndRecommend}
-              disabled={isAnalyzing || !patient}
-              className="w-full bg-purple-600 hover:bg-purple-700"
+              disabled={ai.loading || !patient}
+              className="w-full bg-navy-600 hover:bg-navy-700"
             >
-              {isAnalyzing ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing Patient Data...</>
               ) : (
                 <><Sparkles className="w-4 h-4 mr-2" /> Generate Recommendations</>
@@ -190,11 +194,12 @@ Return JSON:`,
               <div className="space-y-3">
                 {recommendations.recommendations?.map((rec, idx) => {
                   const isAccepted = acceptedIds.has(idx);
-                  
+                  const isDismissed = dismissedIds.has(idx);
+
                   return (
-                    <Card 
-                      key={idx} 
-                      className={`border-2 ${isAccepted ? 'border-green-300 bg-green-50' : 'border-purple-200'}`}
+                    <Card
+                      key={idx}
+                      className={`border-2 ${isAccepted ? 'border-green-300 bg-green-50' : isDismissed ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-navy-200'}`}
                     >
                       <CardContent className="p-4 space-y-3">
                         {/* Header */}
@@ -209,15 +214,20 @@ Return JSON:`,
                                   <CheckCircle2 className="w-3 h-3 mr-1" /> Accepted
                                 </Badge>
                               )}
+                              {isDismissed && (
+                                <Badge className="bg-slate-400 text-white">
+                                  Dismissed
+                                </Badge>
+                              )}
                             </div>
-                            <h4 className="font-semibold text-gray-900">{rec.problem}</h4>
+                            <h4 className="font-semibold text-slate-900">{rec.problem}</h4>
                           </div>
                         </div>
 
                         {/* Goal */}
                         <div className="bg-white p-3 rounded-lg border">
-                          <p className="text-xs font-medium text-gray-500 mb-1">SMART Goal:</p>
-                          <p className="text-sm text-gray-900 font-medium">{rec.goal}</p>
+                          <p className="text-xs font-medium text-slate-500 mb-1">SMART Goal:</p>
+                          <p className="text-sm text-slate-900 font-medium">{rec.goal}</p>
                         </div>
 
                         {/* Rationale */}
@@ -247,8 +257,8 @@ Return JSON:`,
 
                         {/* Interventions */}
                         <div>
-                          <p className="text-xs font-medium text-gray-600 mb-2">Recommended Interventions:</p>
-                          <ul className="text-sm text-gray-700 space-y-1">
+                          <p className="text-xs font-medium text-slate-600 mb-2">Recommended Interventions:</p>
+                          <ul className="text-sm text-slate-700 space-y-1">
                             {rec.interventions?.map((intervention, i) => (
                               <li key={i} className="flex items-start gap-2">
                                 <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
@@ -276,20 +286,20 @@ Return JSON:`,
                         )}
 
                         {/* Metadata */}
-                        <div className="flex gap-3 text-xs text-gray-500 pt-2 border-t">
+                        <div className="flex gap-3 text-xs text-slate-500 pt-2 border-t">
                           <span><strong>Baseline:</strong> {rec.baseline_measurement}</span>
                           <span><strong>Frequency:</strong> {rec.frequency}</span>
                           <span><strong>Target:</strong> {rec.target_days} days</span>
                         </div>
 
                         {rec.evidence_source && (
-                          <p className="text-xs text-gray-500 italic">
+                          <p className="text-xs text-slate-500 italic">
                             Evidence: {rec.evidence_source}
                           </p>
                         )}
 
                         {/* Actions */}
-                        {!isAccepted && (
+                        {!isAccepted && !isDismissed && (
                           <div className="flex gap-2 pt-3 border-t">
                             <Button
                               size="sm"
@@ -301,7 +311,7 @@ Return JSON:`,
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => setAcceptedIds(prev => new Set([...prev, idx]))}
+                              onClick={() => setDismissedIds(prev => new Set([...prev, idx]))}
                             >
                               Dismiss
                             </Button>
@@ -320,6 +330,7 @@ Return JSON:`,
                 onClick={() => {
                   setRecommendations(null);
                   setAcceptedIds(new Set());
+                  setDismissedIds(new Set());
                 }}
                 className="flex-1"
               >

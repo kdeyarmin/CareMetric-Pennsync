@@ -1,5 +1,4 @@
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
-import { format as dateFnsFormat } from 'date-fns';
 
 const EASTERN_TIMEZONE = 'America/New_York';
 
@@ -12,8 +11,22 @@ const EASTERN_TIMEZONE = 'America/New_York';
 export const formatEastern = (date, formatStr = 'MMM d, yyyy HH:mm') => {
   if (!date) return '';
   try {
-    // Parse the date and ensure it's treated as UTC before converting to Eastern
-    const utcDate = typeof date === 'string' ? new Date(date + (date.includes('Z') ? '' : 'Z')) : new Date(date);
+    let utcDate;
+    if (typeof date === 'string') {
+      // A bare calendar date (YYYY-MM-DD, no time component) has no timezone and
+      // must render as that exact day. Anchoring it at UTC midnight would convert
+      // to the *previous* day in Eastern (UTC-4/-5), so anchor at noon UTC (7-8 AM
+      // ET) which stays on the same calendar day in any US timezone.
+      const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(date.trim());
+      if (dateOnly) {
+        utcDate = new Date(date.trim() + 'T12:00:00Z');
+      } else {
+        // Datetime strings: ensure they're treated as UTC before converting.
+        utcDate = new Date(date + (date.includes('Z') ? '' : 'Z'));
+      }
+    } else {
+      utcDate = new Date(date);
+    }
     return formatInTimeZone(utcDate, EASTERN_TIMEZONE, formatStr);
   } catch (error) {
     console.error('Error formatting date:', error);
@@ -60,12 +73,12 @@ export const todayEastern = () => {
 export const formatRelativeEastern = (date) => {
   if (!date) return '';
   try {
-    // Convert both dates to Eastern Time for accurate comparison
+    // Elapsed time is timezone-independent: subtract the raw UTC instants
+    // directly. Converting both to a zoned wall-clock first would skew the
+    // result by an hour when the two instants straddle a DST transition.
     const utcDate = new Date(date);
     const utcNow = new Date();
-    const easternDate = toZonedTime(utcDate, EASTERN_TIMEZONE);
-    const easternNow = toZonedTime(utcNow, EASTERN_TIMEZONE);
-    const diffMs = easternNow - easternDate;
+    const diffMs = utcNow - utcDate;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);

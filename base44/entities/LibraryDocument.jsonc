@@ -1,0 +1,50 @@
+{
+  "name": "LibraryDocument",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Document title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Document description"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "policy",
+        "procedure",
+        "form",
+        "education",
+        "other"
+      ],
+      "default": "other",
+      "description": "Document category"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL of the uploaded file"
+    },
+    "file_type": {
+      "type": "string",
+      "description": "Type of the file (e.g., pdf, docx)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Searchable tags"
+    }
+  },
+  "required": [
+    "title",
+    "category",
+    "file_url"
+  ]
+}

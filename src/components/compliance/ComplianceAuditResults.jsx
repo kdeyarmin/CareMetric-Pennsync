@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +41,7 @@ export default function ComplianceAuditResults({ users = [] }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedAudit, setSelectedAudit] = useState(null);
 
-  const { data: audits = [], isLoading } = useQuery({
+  const { data: audits = [] } = useQuery({
     queryKey: ['complianceAudits'],
     queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 200),
   });
@@ -131,7 +131,7 @@ export default function ComplianceAuditResults({ users = [] }) {
               <TableBody>
                 {filteredAudits.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
                       No audit results found
                     </TableCell>
                   </TableRow>
@@ -142,14 +142,14 @@ export default function ComplianceAuditResults({ users = [] }) {
                       <TableRow key={audit.id}>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-gray-400" />
+                            <User className="w-4 h-4 text-slate-400" />
                             <span className="text-sm font-medium">
                               {user?.full_name || audit.nurse_email?.split('@')[0]}
                             </span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <div className="flex items-center gap-1 text-sm text-slate-600">
                             <Calendar className="w-3 h-3" />
                             {format(new Date(audit.audit_date), 'MMM d, yyyy')}
                           </div>
@@ -198,13 +198,13 @@ export default function ComplianceAuditResults({ users = [] }) {
           {selectedAudit && (
             <div className="space-y-4">
               {/* Summary */}
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <div>
-                  <p className="text-sm text-gray-600">Nurse</p>
+                  <p className="text-sm text-slate-600">Nurse</p>
                   <p className="font-medium">{selectedAudit.nurse_email}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-gray-600">Score</p>
+                  <p className="text-sm text-slate-600">Score</p>
                   <p className={`text-2xl font-bold ${getScoreColor(selectedAudit.compliance_score)}`}>
                     {selectedAudit.compliance_score}%
                   </p>
@@ -225,11 +225,25 @@ export default function ComplianceAuditResults({ users = [] }) {
                         </div>
                         <p className="text-sm">{issue.problem}</p>
                         {issue.suggestion && (
-                          <p className="text-xs text-gray-600 mt-1 italic">💡 {issue.suggestion}</p>
+                          <p className="text-xs text-slate-600 mt-1 italic">💡 {issue.suggestion}</p>
                         )}
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Nurse acknowledgment trail for a knowingly-accepted critical conflict */}
+              {selectedAudit.acknowledgment?.acknowledged_by && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-amber-900 mb-1">Conflict acknowledged at documentation</p>
+                  <p className="text-xs text-amber-800">
+                    {selectedAudit.acknowledgment.acknowledged_by}
+                    {selectedAudit.acknowledgment.acknowledged_at && ` · ${new Date(selectedAudit.acknowledgment.acknowledged_at).toLocaleString()}`}
+                  </p>
+                  {selectedAudit.acknowledgment.justification && (
+                    <p className="text-sm text-amber-900 mt-1 italic">“{selectedAudit.acknowledgment.justification}”</p>
+                  )}
                 </div>
               )}
 

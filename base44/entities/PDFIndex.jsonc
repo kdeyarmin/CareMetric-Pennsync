@@ -1,0 +1,77 @@
+{
+  "name": "PDFIndex",
+  "type": "object",
+  "properties": {
+    "pdf_url": {
+      "type": "string",
+      "description": "URL of the indexed PDF"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Name of the document"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "consent",
+        "assessment",
+        "visit",
+        "care_plan",
+        "signature",
+        "template",
+        "other"
+      ],
+      "description": "Type of document"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Associated patient ID"
+    },
+    "extracted_text": {
+      "type": "string",
+      "description": "Full text extracted from PDF"
+    },
+    "page_contents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "page_number": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Text content by page"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "page_count": {
+          "type": "number"
+        },
+        "file_size": {
+          "type": "number"
+        },
+        "indexed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Extracted keywords for faster searching"
+    }
+  },
+  "required": [
+    "pdf_url",
+    "document_name",
+    "extracted_text"
+  ]
+}

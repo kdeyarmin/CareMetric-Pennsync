@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,8 +10,6 @@ import { Progress } from "@/components/ui/progress";
 import {
   GraduationCap,
   TrendingUp,
-  AlertTriangle,
-  CheckCircle2,
   Clock,
   BookOpen,
   ChevronRight,
@@ -32,7 +32,7 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
     enabled: !!nurseEmail,
   });
 
-  const analyzeAndSuggest = async () => {
+  const analyzeAndSuggest = useCallback(async () => {
     if (recommendations.length === 0) return;
     
     setIsAnalyzing(true);
@@ -85,33 +85,33 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
 
     setSuggestedModules(sorted);
     setIsAnalyzing(false);
-  };
+  }, [recommendations, compact]);
 
   useEffect(() => {
     if (recommendations.length > 0) {
       analyzeAndSuggest();
     }
-  }, [recommendations]);
+  }, [recommendations, analyzeAndSuggest]);
 
   const getPriorityColor = (priority) => {
     switch (priority) {
       case 'high': return 'bg-red-100 text-red-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'low': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
   const getCategoryColor = (category) => {
     const colors = {
-      documentation: 'bg-purple-100 text-purple-800',
+      documentation: 'bg-navy-100 text-navy-800',
       compliance: 'bg-orange-100 text-orange-800',
       clinical: 'bg-blue-100 text-blue-800',
       safety: 'bg-red-100 text-red-800',
       communication: 'bg-green-100 text-green-800',
       technology: 'bg-indigo-100 text-indigo-800'
     };
-    return colors[category] || 'bg-gray-100 text-gray-800';
+    return colors[category] || 'bg-slate-100 text-slate-800';
   };
 
   // Summary stats
@@ -128,8 +128,8 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
     return (
       <Card>
         <CardContent className="p-6 text-center">
-          <Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" />
-          <p className="text-sm text-gray-500 mt-2">Loading recommendations...</p>
+          <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
+          <p className="text-sm text-slate-500 mt-2">Loading recommendations...</p>
         </CardContent>
       </Card>
     );
@@ -137,7 +137,7 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
 
   if (compact) {
     return (
-      <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50">
+      <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-navy-50">
         <CardHeader className="py-3">
           <CardTitle className="text-sm flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
         </CardHeader>
         <CardContent className="py-2 space-y-2">
           {suggestedModules.length === 0 ? (
-            <p className="text-xs text-gray-500 text-center py-2">No training suggestions yet</p>
+            <p className="text-xs text-slate-500 text-center py-2">No training suggestions yet</p>
           ) : (
             suggestedModules.slice(0, 3).map((module, idx) => (
               <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border">
@@ -194,26 +194,26 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-blue-50 p-3 rounded-lg text-center">
             <p className="text-2xl font-bold text-blue-700">{totalRecs}</p>
-            <p className="text-xs text-gray-600">Total Recommendations</p>
+            <p className="text-xs text-slate-600">Total Recommendations</p>
           </div>
           <div className="bg-orange-50 p-3 rounded-lg text-center">
             <p className="text-2xl font-bold text-orange-700">{unaddressedRecs}</p>
-            <p className="text-xs text-gray-600">Unaddressed</p>
+            <p className="text-xs text-slate-600">Unaddressed</p>
           </div>
-          <div className="bg-purple-50 p-3 rounded-lg text-center">
-            <p className="text-lg font-bold text-purple-700 capitalize">{topCategory?.[0] || '—'}</p>
-            <p className="text-xs text-gray-600">Top Area</p>
+          <div className="bg-navy-50 p-3 rounded-lg text-center">
+            <p className="text-lg font-bold text-navy-700 capitalize">{topCategory?.[0] || '—'}</p>
+            <p className="text-xs text-slate-600">Top Area</p>
           </div>
         </div>
 
         {/* Suggested Modules */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Recommended Training Modules</h3>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Recommended Training Modules</h3>
           {suggestedModules.length === 0 ? (
-            <div className="text-center py-6 bg-gray-50 rounded-lg">
-              <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No training suggestions yet</p>
-              <p className="text-xs text-gray-400">Recommendations will appear as you use the system</p>
+            <div className="text-center py-6 bg-slate-50 rounded-lg">
+              <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">No training suggestions yet</p>
+              <p className="text-xs text-slate-400">Recommendations will appear as you use the system</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -229,7 +229,7 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
                         <Badge className={getCategoryColor(module.category)} variant="outline">
                           {module.category}
                         </Badge>
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
                           <Clock className="w-3 h-3" /> {module.duration} min
                         </span>
                       </div>
@@ -241,10 +241,12 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
                         <TrendingUp className="w-3 h-3 text-indigo-500" />
                         <span className="text-sm font-semibold text-indigo-600">{module.relevanceScore}%</span>
                       </div>
-                      <p className="text-xs text-gray-500">{module.recommendationCount} recs</p>
+                      <p className="text-xs text-slate-500">{module.recommendationCount} recs</p>
                     </div>
-                    <Button size="sm" variant="outline">
-                      Start <ChevronRight className="w-4 h-4 ml-1" />
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={createPageUrl('NurseTrainingHub')}>
+                        Start <ChevronRight className="w-4 h-4 ml-1" />
+                      </Link>
                     </Button>
                   </div>
                 </div>
@@ -256,7 +258,7 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
         {/* Recommendation Breakdown */}
         {totalRecs > 0 && (
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Skill Gap Analysis</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Skill Gap Analysis</h3>
             <div className="space-y-2">
               {Object.entries(
                 recommendations.reduce((acc, r) => {
@@ -269,7 +271,7 @@ export default function NurseTrainingSuggestions({ nurseEmail, compact = false }
                   <div key={type} className="flex items-center gap-3">
                     <span className="text-xs font-medium capitalize w-24">{type}</span>
                     <Progress value={(count / totalRecs) * 100} className="flex-1 h-2" />
-                    <span className="text-xs text-gray-500 w-8">{count}</span>
+                    <span className="text-xs text-slate-500 w-8">{count}</span>
                   </div>
                 ))}
             </div>

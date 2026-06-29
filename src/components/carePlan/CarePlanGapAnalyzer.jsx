@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,19 +22,12 @@ export default function CarePlanGapAnalyzer({
   patientData,
   autoAnalyze = false 
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [analysis, setAnalysis] = useState(null);
 
-  useEffect(() => {
-    if (autoAnalyze && diagnosis) {
-      analyzeCarePlanGaps();
-    }
-  }, [autoAnalyze, patientId]);
-
-  const analyzeCarePlanGaps = async () => {
+  const analyzeCarePlanGaps = useCallback(async () => {
     if (!diagnosis) return;
 
-    setIsAnalyzing(true);
     try {
       const activePlans = carePlans?.filter(cp => cp.status === 'active') || [];
       const recentProgress = recentVisits?.slice(0, 3).map(v => ({
@@ -42,7 +35,8 @@ export default function CarePlanGapAnalyzer({
         notes: v.nurse_notes?.substring(0, 300)
       })) || [];
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a clinical care planning expert. Analyze this patient's care plan for gaps, deviations from best practices, and evidence-based recommendations.
 
 PRIMARY DIAGNOSIS: ${diagnosis}
@@ -150,12 +144,18 @@ Return comprehensive analysis including:
       console.error('Care plan analysis error:', error);
       setAnalysis({ error: error.message });
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [carePlans, diagnosis, patientData, recentVisits]);
+
+  useEffect(() => {
+    if (autoAnalyze && diagnosis) {
+      analyzeCarePlanGaps();
+    }
+  }, [autoAnalyze, patientId, analyzeCarePlanGaps, diagnosis]);
 
   return (
     <Card className="border-2 border-blue-300">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 pb-3">
+      <CardHeader className="bg-gradient-to-r from-blue-50 to-navy-50 pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Target className="w-5 h-5 text-blue-600" />
           AI Care Plan Gap Analysis
@@ -171,7 +171,7 @@ Return comprehensive analysis including:
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-4">
-        {!analysis && !isAnalyzing && (
+        {!analysis && !ai.loading && (
           <Button
             onClick={analyzeCarePlanGaps}
             className="w-full bg-blue-600 hover:bg-blue-700"
@@ -181,10 +181,10 @@ Return comprehensive analysis including:
           </Button>
         )}
 
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="text-center py-6">
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Comparing against clinical guidelines...</p>
+            <p className="text-sm text-slate-600">Comparing against clinical guidelines...</p>
           </div>
         )}
 
@@ -217,7 +217,7 @@ Return comprehensive analysis including:
                       <p className="text-sm font-medium">{elem.element}</p>
                       <p className="text-xs mt-1">{elem.rationale}</p>
                       {elem.guideline_reference && (
-                        <p className="text-xs text-gray-600 mt-1">
+                        <p className="text-xs text-slate-600 mt-1">
                           <BookOpen className="w-3 h-3 inline mr-1" />
                           {elem.guideline_reference}
                         </p>
@@ -243,7 +243,7 @@ Return comprehensive analysis including:
                       </p>
                       <div className="flex items-center gap-2 mt-2">
                         <Badge variant="outline" className="text-xs">{dev.evidence_level}</Badge>
-                        <span className="text-xs text-gray-600">{dev.source}</span>
+                        <span className="text-xs text-slate-600">{dev.source}</span>
                       </div>
                     </div>
                   ))}

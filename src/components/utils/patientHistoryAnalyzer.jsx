@@ -122,7 +122,7 @@ function analyzePatientTrends(patient, visits, carePlans) {
   // Clinical changes detection
   if (visits?.length >= 2) {
     const latestNote = visits[0]?.nurse_notes || '';
-    const previousNote = visits[1]?.nurse_notes || '';
+    const _previousNote = visits[1]?.nurse_notes || '';
     
     // Detect mentions of changes
     const changeKeywords = ['worse', 'better', 'improved', 'deteriorat', 'decline', 'increase', 'decrease', 'new onset'];
@@ -163,13 +163,18 @@ function generateContinuityInsights(visits, carePlans, incidents) {
   // Care plan alignment
   if (visits?.length > 0 && carePlans?.length > 0) {
     const latestNote = visits[0]?.nurse_notes?.toLowerCase() || '';
-    const carePlanProblems = carePlans.map(cp => cp.problem.toLowerCase());
-    
-    const mentionedProblems = carePlanProblems.filter(problem => 
+    const carePlanProblems = carePlans
+      .map(cp => (cp.problem || '').toLowerCase())
+      .filter(Boolean);
+
+    const mentionedProblems = carePlanProblems.filter(problem =>
       latestNote.includes(problem.split(' ')[0])
     );
-    
-    const alignmentRate = mentionedProblems.length / carePlanProblems.length;
+
+    // Guard against divide-by-zero when no care plan has a usable problem string.
+    const alignmentRate = carePlanProblems.length
+      ? mentionedProblems.length / carePlanProblems.length
+      : 0;
     insights.care_plan_alignment = alignmentRate >= 0.7 ? 'aligned' : 'partial_alignment';
   }
 
@@ -306,7 +311,7 @@ export function extractKeyInsights(history) {
   if (!history) return [];
 
   const insights = [];
-  const { trends, continuityInsights, visits, incidents } = history;
+  const { trends, continuityInsights, _visits, _incidents } = history;
 
   // Trending vital signs
   if (trends?.vital_trends) {

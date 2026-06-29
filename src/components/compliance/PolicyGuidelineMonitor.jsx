@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,6 @@ import {
   BookOpen,
   Bell,
   RefreshCw,
-  ExternalLink,
   Calendar,
   AlertTriangle,
   CheckCircle2,
@@ -18,29 +18,31 @@ import {
   ChevronUp,
   Sparkles
 } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
+import { format } from "date-fns";
 
-export default function PolicyGuidelineMonitor({ nurseEmail, onTrainingRecommended }) {
-  const [isLoading, setIsLoading] = useState(false);
+export default function PolicyGuidelineMonitor({ _nurseEmail, onTrainingRecommended }) {
+  const ai = useAICall();
   const [updates, setUpdates] = useState(null);
   const [expanded, setExpanded] = useState(true);
   const [lastChecked, setLastChecked] = useState(null);
 
   useEffect(() => {
     // Load cached updates
-    const cached = localStorage.getItem('policy_updates_cache');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      setUpdates(parsed.updates);
-      setLastChecked(new Date(parsed.lastChecked));
-    }
+    try {
+      const cached = localStorage.getItem('policy_updates_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        setUpdates(parsed.updates);
+        setLastChecked(new Date(parsed.lastChecked));
+      }
+    } catch {}
   }, []);
 
   const checkForUpdates = async () => {
-    setIsLoading(true);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a healthcare regulatory compliance AI that monitors and summarizes recent changes to Medicare/Medicaid regulations, CMS guidelines, and home health/hospice compliance requirements.
 
 Generate a realistic summary of current regulatory landscape and any recent updates a home health nurse should be aware of.
@@ -152,10 +154,10 @@ Return JSON:
       setLastChecked(new Date());
 
       // Cache the results
-      localStorage.setItem('policy_updates_cache', JSON.stringify({
+      try { localStorage.setItem('policy_updates_cache', JSON.stringify({
         updates: result,
         lastChecked: new Date().toISOString()
-      }));
+      })); } catch {}
 
       // Trigger training recommendations for updates that need it
       const trainingNeeded = result.regulatory_updates?.filter(u => u.training_needed);
@@ -165,9 +167,9 @@ Return JSON:
 
     } catch (error) {
       console.error("Error checking for updates:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsLoading(false);
   };
 
   const getPriorityColor = (priority) => {
@@ -176,7 +178,7 @@ Return JSON:
       case 'high': return 'bg-orange-500 text-white';
       case 'medium': return 'bg-yellow-500 text-white';
       case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
@@ -193,7 +195,7 @@ Return JSON:
   return (
     <Card className="border-indigo-200">
       <CardHeader 
-        className="py-3 bg-gradient-to-r from-indigo-50 to-purple-50 cursor-pointer"
+        className="py-3 bg-gradient-to-r from-indigo-50 to-navy-50 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center justify-between">
@@ -216,7 +218,7 @@ Return JSON:
         <CardContent className="p-4 space-y-4">
           {/* Last Checked */}
           {lastChecked && (
-            <p className="text-xs text-gray-500 flex items-center gap-1">
+            <p className="text-xs text-slate-500 flex items-center gap-1">
               <Calendar className="w-3 h-3" />
               Last checked: {format(lastChecked, 'MMM d, yyyy h:mm a')}
             </p>
@@ -225,15 +227,15 @@ Return JSON:
           {!updates ? (
             <div className="text-center py-4">
               <Bell className="w-12 h-12 mx-auto mb-3 text-indigo-300" />
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-slate-600 mb-3">
                 Stay updated on Medicare/CMS guideline changes
               </p>
               <Button
                 onClick={checkForUpdates}
-                disabled={isLoading}
+                disabled={ai.loading}
                 className="bg-indigo-600 hover:bg-indigo-700"
               >
-                {isLoading ? (
+                {ai.loading ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                     Checking Updates...
@@ -251,14 +253,14 @@ Return JSON:
               {/* Regulatory Updates */}
               {updates.regulatory_updates?.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-700">Recent Regulatory Updates:</p>
+                  <p className="text-sm font-semibold text-slate-700">Recent Regulatory Updates:</p>
                   {updates.regulatory_updates.slice(0, 5).map((update) => (
                     <div 
                       key={update.id}
                       className={`p-3 rounded-lg border ${
                         update.priority === 'critical' ? 'bg-red-50 border-red-200' :
                         update.priority === 'high' ? 'bg-orange-50 border-orange-200' :
-                        'bg-white border-gray-200'
+                        'bg-white border-slate-200'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -266,14 +268,14 @@ Return JSON:
                           {getCategoryIcon(update.category)}
                           <div>
                             <p className="font-medium text-sm">{update.title}</p>
-                            <p className="text-xs text-gray-500">{update.source} • Effective: {update.effective_date}</p>
+                            <p className="text-xs text-slate-500">{update.source} • Effective: {update.effective_date}</p>
                           </div>
                         </div>
                         <Badge className={getPriorityColor(update.priority)}>
                           {update.priority}
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-700 mt-2">{update.summary}</p>
+                      <p className="text-xs text-slate-700 mt-2">{update.summary}</p>
                       <p className="text-xs text-indigo-700 mt-1">
                         <strong>Action:</strong> {update.action_required}
                       </p>
@@ -342,10 +344,10 @@ Return JSON:
                 variant="outline"
                 size="sm"
                 onClick={checkForUpdates}
-                disabled={isLoading}
+                disabled={ai.loading}
                 className="w-full"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 mr-2 ${ai.loading ? 'animate-spin' : ''}`} />
                 Refresh Updates
               </Button>
             </>

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,6 @@ import {
   Sparkles,
   Loader2,
   CheckCircle2,
-  AlertTriangle,
   User,
   MessageSquare,
   FileText,
@@ -65,24 +65,24 @@ const simulationScenarios = [
   }
 ];
 
-export default function ClinicalSimulationModule({ nurseEmail, onSimulationCompleted }) {
+export default function ClinicalSimulationModule({ _nurseEmail, onSimulationCompleted }) {
   const [selectedScenario, setSelectedScenario] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const generatingAi = useAICall();
   const [simulation, setSimulation] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [userResponses, setUserResponses] = useState([]);
   const [currentResponse, setCurrentResponse] = useState("");
   const [feedback, setFeedback] = useState(null);
-  const [isEvaluating, setIsEvaluating] = useState(false);
+  const evaluatingAi = useAICall();
   const [completed, setCompleted] = useState(false);
   const [finalScore, setFinalScore] = useState(null);
 
   const generateSimulation = async (scenario) => {
-    setIsGenerating(true);
     setSelectedScenario(scenario);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await generatingAi.run({
+        model: "claude_opus_4_8",
         prompt: `Create an interactive clinical simulation for home health nurses.
 
 SCENARIO: ${scenario.title}
@@ -140,7 +140,22 @@ Make it realistic, educational, and clinically accurate.`,
         }
       });
 
-      setSimulation(result);
+      // The LLM schema doesn't *require* patient_profile/steps, so a partial
+      // response could otherwise crash the simulation UI on first render.
+      // Validate the essentials and normalize the optional arrays up front.
+      const steps = Array.isArray(result?.steps) ? result.steps : [];
+      if (!result?.patient_profile || steps.length === 0) {
+        toast.error("The simulation couldn't be generated. Please try again.");
+        return;
+      }
+      setSimulation({
+        ...result,
+        patient_profile: result.patient_profile || {},
+        steps: steps.map((s) => ({
+          ...s,
+          ideal_response_elements: Array.isArray(s?.ideal_response_elements) ? s.ideal_response_elements : [],
+        })),
+      });
       setCurrentStep(0);
       setUserResponses([]);
       setFeedback(null);
@@ -148,18 +163,18 @@ Make it realistic, educational, and clinically accurate.`,
       setFinalScore(null);
     } catch (error) {
       console.error("Error generating simulation:", error);
+      toast.error("The simulation couldn't be generated. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const evaluateResponse = async () => {
     if (!currentResponse.trim()) return;
     
-    setIsEvaluating(true);
     const step = simulation.steps[currentStep];
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await evaluatingAi.run({
+        model: "claude_opus_4_8",
         prompt: `Evaluate this nurse's response in a clinical simulation.
 
 SCENARIO CONTEXT:
@@ -204,7 +219,6 @@ Be constructive and educational.`,
     } catch (error) {
       console.error("Error evaluating response:", error);
     }
-    setIsEvaluating(false);
   };
 
   const nextStep = () => {
@@ -219,7 +233,11 @@ Be constructive and educational.`,
 
   const completeSimulation = async () => {
     const totalScore = userResponses.reduce((sum, r) => sum + (r.feedback?.score || 0), 0);
-    const avgScore = Math.round(totalScore / simulation.steps.length);
+    // Average over actually-recorded responses, not total steps: a step whose
+    // evaluation failed isn't in userResponses, and dividing by 0 yields NaN.
+    const avgScore = userResponses.length
+      ? Math.round(totalScore / userResponses.length)
+      : 0;
     
     setFinalScore(avgScore);
     setCompleted(true);
@@ -248,26 +266,26 @@ Be constructive and educational.`,
     return (
       <div className="space-y-4">
         <div className="text-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Clinical Simulations</h2>
-          <p className="text-sm text-gray-600">Practice real-world scenarios with AI-powered feedback</p>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Clinical Simulations</h2>
+          <p className="text-sm text-slate-600">Practice real-world scenarios with AI-powered feedback</p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {simulationScenarios.map((scenario) => (
             <Card
               key={scenario.id}
-              className="cursor-pointer hover:shadow-lg transition-all hover:border-purple-300 overflow-hidden"
+              className="cursor-pointer hover:shadow-lg transition-all hover:border-navy-300"
               onClick={() => generateSimulation(scenario)}
             >
-              <CardContent className="p-4 sm:p-5">
+              <CardContent className="p-5">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Play className="w-5 h-5 text-purple-600" />
+                  <div className="w-10 h-10 bg-navy-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Play className="w-5 h-5 text-navy-600" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-gray-900 text-sm sm:text-base break-words">{scenario.title}</h3>
-                      <Badge variant="outline" className={`text-xs flex-shrink-0 w-fit ${
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold text-slate-900">{scenario.title}</h3>
+                      <Badge variant="outline" className={`text-xs ${
                         scenario.difficulty === 'Hard' ? 'bg-red-50 text-red-700' :
                         scenario.difficulty === 'Medium' ? 'bg-yellow-50 text-yellow-700' :
                         'bg-green-50 text-green-700'
@@ -275,8 +293,8 @@ Be constructive and educational.`,
                         {scenario.difficulty}
                       </Badge>
                     </div>
-                    <p className="text-xs sm:text-sm text-gray-600 break-words">{scenario.description}</p>
-                    <Badge variant="outline" className="mt-2 text-xs w-fit">{scenario.category}</Badge>
+                    <p className="text-sm text-slate-600">{scenario.description}</p>
+                    <Badge variant="outline" className="mt-2 text-xs">{scenario.category}</Badge>
                   </div>
                 </div>
               </CardContent>
@@ -288,13 +306,13 @@ Be constructive and educational.`,
   }
 
   // Loading
-  if (isGenerating) {
+  if (generatingAi.loading) {
     return (
-      <Card className="border-2 border-purple-200 bg-purple-50">
+      <Card className="border-2 border-navy-200 bg-navy-50">
         <CardContent className="p-12 text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-          <p className="text-lg font-medium text-purple-900">Creating Simulation...</p>
-          <p className="text-sm text-purple-700 mt-2">Building a realistic {selectedScenario.title} scenario</p>
+          <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+          <p className="text-lg font-medium text-navy-900">Creating Simulation...</p>
+          <p className="text-sm text-navy-700 mt-2">Building a realistic {selectedScenario.title} scenario</p>
         </CardContent>
       </Card>
     );
@@ -313,14 +331,14 @@ Be constructive and educational.`,
             <Star className={`w-10 h-10 ${passed ? 'text-green-600' : 'text-orange-600'}`} />
           </div>
           
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Simulation Complete!</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Simulation Complete!</h2>
           
           <Badge className={`text-xl px-6 py-2 mb-4 ${passed ? 'bg-green-600' : 'bg-orange-600'}`}>
             Final Score: {finalScore}%
           </Badge>
 
           <div className="text-left bg-white rounded-lg p-4 mb-6 max-h-60 overflow-auto">
-            <h3 className="font-semibold text-gray-900 mb-3">Step-by-Step Review:</h3>
+            <h3 className="font-semibold text-slate-900 mb-3">Step-by-Step Review:</h3>
             {userResponses.map((r, idx) => (
               <div key={idx} className="mb-3 pb-3 border-b last:border-0">
                 <div className="flex items-center justify-between mb-1">
@@ -329,7 +347,7 @@ Be constructive and educational.`,
                     {r.feedback?.score}%
                   </Badge>
                 </div>
-                <p className="text-xs text-gray-600">{r.feedback?.teaching_point}</p>
+                <p className="text-xs text-slate-600">{r.feedback?.teaching_point}</p>
               </div>
             ))}
           </div>
@@ -358,20 +376,20 @@ Be constructive and educational.`,
               <User className="w-6 h-6 text-blue-700" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">{simulation?.patient_profile.name}, {simulation?.patient_profile.age} y/o</h3>
-              <p className="text-sm text-gray-700">{simulation?.patient_profile.diagnosis}</p>
-              <p className="text-xs text-gray-600 mt-1">{simulation?.patient_profile.history}</p>
+              <h3 className="font-semibold text-slate-900">{simulation?.patient_profile.name}, {simulation?.patient_profile.age} y/o</h3>
+              <p className="text-sm text-slate-700">{simulation?.patient_profile.diagnosis}</p>
+              <p className="text-xs text-slate-600 mt-1">{simulation?.patient_profile.history}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Current Step */}
-      <Card className="border-2 border-purple-200">
-        <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+      <Card className="border-2 border-navy-200">
+        <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-purple-600" />
+              <MessageSquare className="w-4 h-4 text-navy-600" />
               Step {currentStep + 1} of {simulation?.steps.length}
             </CardTitle>
             <Badge variant="outline">{step?.response_type}</Badge>
@@ -380,14 +398,14 @@ Be constructive and educational.`,
         
         <CardContent className="p-4 space-y-4">
           {/* Situation */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-800">{step?.situation}</p>
+          <div className="bg-slate-50 p-4 rounded-lg">
+            <p className="text-sm text-slate-800">{step?.situation}</p>
           </div>
 
           {/* Prompt */}
-          <Alert className="bg-purple-50 border-purple-200">
-            <FileText className="w-4 h-4 text-purple-600" />
-            <AlertDescription className="text-purple-900 font-medium">
+          <Alert className="bg-navy-50 border-navy-200">
+            <FileText className="w-4 h-4 text-navy-600" />
+            <AlertDescription className="text-navy-900 font-medium">
               {step?.prompt}
             </AlertDescription>
           </Alert>
@@ -395,10 +413,10 @@ Be constructive and educational.`,
           {/* Available Info */}
           {step?.available_info?.length > 0 && (
             <div className="text-sm">
-              <p className="font-medium text-gray-700 mb-1">Available Information:</p>
+              <p className="font-medium text-slate-700 mb-1">Available Information:</p>
               <ul className="space-y-1">
                 {step.available_info.map((info, idx) => (
-                  <li key={idx} className="text-xs text-gray-600">• {info}</li>
+                  <li key={idx} className="text-xs text-slate-600">• {info}</li>
                 ))}
               </ul>
             </div>
@@ -416,10 +434,10 @@ Be constructive and educational.`,
               />
               <Button
                 onClick={evaluateResponse}
-                disabled={!currentResponse.trim() || isEvaluating}
-                className="w-full bg-purple-600 hover:bg-purple-700"
+                disabled={!currentResponse.trim() || evaluatingAi.loading}
+                className="w-full bg-navy-600 hover:bg-navy-700"
               >
-                {isEvaluating ? (
+                {evaluatingAi.loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Evaluating...</>
                 ) : (
                   <><Sparkles className="w-4 h-4 mr-2" /> Submit Response</>
@@ -432,7 +450,7 @@ Be constructive and educational.`,
           {feedback && (
             <div className="space-y-4 mt-4">
               <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-900">Feedback</h4>
+                <h4 className="font-semibold text-slate-900">Feedback</h4>
                 <Badge className={feedback.score >= 70 ? 'bg-green-600' : 'bg-orange-600'}>
                   Score: {feedback.score}%
                 </Badge>

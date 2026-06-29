@@ -1,0 +1,130 @@
+{
+  "name": "NurseGoal",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse"
+    },
+    "goal_type": {
+      "type": "string",
+      "enum": [
+        "compliance_score",
+        "documentation_time",
+        "visits_per_day",
+        "ai_adoption",
+        "patient_outcomes",
+        "training_completion",
+        "custom"
+      ],
+      "description": "Type of goal"
+    },
+    "title": {
+      "type": "string",
+      "description": "Goal title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed goal description"
+    },
+    "target_value": {
+      "type": "number",
+      "description": "Target value to achieve"
+    },
+    "current_value": {
+      "type": "number",
+      "description": "Current progress value"
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unit of measurement (%, minutes, count, etc.)"
+    },
+    "target_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date by which to achieve the goal"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "achieved",
+        "missed",
+        "paused"
+      ],
+      "default": "active",
+      "description": "Current status of the goal"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium",
+      "description": "Priority level"
+    },
+    "progress_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": "number"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Historical progress tracking"
+    },
+    "achieved_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date goal was achieved"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes or reflections"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "goal_type",
+    "title",
+    "target_value",
+    "target_date"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

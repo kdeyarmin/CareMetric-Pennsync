@@ -1,14 +1,14 @@
 import React from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  FileText,
   Send,
   Loader2,
   CheckCircle2,
@@ -35,13 +35,12 @@ const PRACTICE_SCENARIOS = [
 export default function PracticeNoteSubmission({ userEmail, onSubmit }) {
   const [selectedScenario, setSelectedScenario] = React.useState(null);
   const [practiceNote, setPracticeNote] = React.useState("");
-  const [isAnalyzing, setIsAnalyzing] = React.useState(false);
+  const ai = useAICall();
   const [feedback, setFeedback] = React.useState(null);
 
   const handleSubmitPractice = async () => {
     if (!practiceNote.trim() || !selectedScenario) return;
 
-    setIsAnalyzing(true);
     try {
       const prompt = `You are an expert clinical documentation instructor. A nurse has written a practice visit note for the following scenario. Provide detailed, constructive feedback.
 
@@ -83,7 +82,8 @@ Return JSON with:
   "summary": "Brief overall assessment"
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -128,8 +128,8 @@ Return JSON with:
       onSubmit?.();
     } catch (error) {
       console.error('Error analyzing practice note:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
   };
 
   if (!selectedScenario) {
@@ -159,11 +159,11 @@ Return JSON with:
                       <h3 className="text-lg font-semibold">{scenario.title}</h3>
                       <Badge>{scenario.difficulty}</Badge>
                     </div>
-                    <div className="text-sm text-gray-600 whitespace-pre-line">
+                    <div className="text-sm text-slate-600 whitespace-pre-line">
                       {scenario.scenario.split('\n').slice(0, 3).join('\n')}...
                     </div>
                   </div>
-                  <Button>
+                  <Button onClick={() => setSelectedScenario(scenario)}>
                     Start Practice
                   </Button>
                 </div>
@@ -196,10 +196,10 @@ Return JSON with:
           </div>
         </CardHeader>
         <CardContent>
-          <Card className="bg-gray-50 border-gray-200 mb-4">
+          <Card className="bg-slate-50 border-slate-200 mb-4">
             <CardContent className="p-4">
-              <p className="text-sm font-medium text-gray-900 mb-2">Scenario:</p>
-              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">
+              <p className="text-sm font-medium text-slate-900 mb-2">Scenario:</p>
+              <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">
                 {selectedScenario.scenario}
               </pre>
             </CardContent>
@@ -207,24 +207,25 @@ Return JSON with:
 
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Write Your Visit Note:</label>
+              <label htmlFor="practice-note" className="text-sm font-medium mb-2 block">Write Your Visit Note:</label>
               <Textarea
+                id="practice-note"
                 value={practiceNote}
                 onChange={(e) => setPracticeNote(e.target.value)}
                 placeholder="Document this visit as if you were writing a real visit note in your EHR..."
                 className="min-h-[300px] font-mono text-sm"
                 disabled={!!feedback}
               />
-              <p className="text-xs text-gray-500 mt-1">{practiceNote.length} characters</p>
+              <p className="text-xs text-slate-500 mt-1">{practiceNote.length} characters</p>
             </div>
 
             {!feedback && (
               <Button
                 onClick={handleSubmitPractice}
-                disabled={isAnalyzing || practiceNote.length < 100}
+                disabled={ai.loading || practiceNote.length < 100}
                 className="w-full bg-indigo-600 hover:bg-indigo-700"
               >
-                {isAnalyzing ? (
+                {ai.loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing Your Note...</>
                 ) : (
                   <><Send className="w-4 h-4 mr-2" /> Submit for AI Feedback</>
@@ -258,10 +259,10 @@ Return JSON with:
                   <p className="text-3xl font-bold text-green-900">{Math.round(feedback.compliance_score)}%</p>
                 </CardContent>
               </Card>
-              <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+              <Card className="bg-gradient-to-br from-navy-50 to-gold-50 border-navy-200">
                 <CardContent className="p-4 text-center">
-                  <p className="text-sm text-purple-600 mb-1">Clinical Detail</p>
-                  <p className="text-3xl font-bold text-purple-900">{Math.round(feedback.clinical_detail_score)}%</p>
+                  <p className="text-sm text-navy-600 mb-1">Clinical Detail</p>
+                  <p className="text-3xl font-bold text-navy-900">{Math.round(feedback.clinical_detail_score)}%</p>
                 </CardContent>
               </Card>
             </div>
@@ -302,15 +303,15 @@ Return JSON with:
                     {feedback.weaknesses.map((weakness, idx) => (
                       <Card key={idx} className="bg-orange-50 border-orange-200">
                         <CardContent className="p-4 space-y-2">
-                          <Badge className="bg-orange-600">{weakness.category.replace(/_/g, ' ')}</Badge>
-                          <p className="text-sm font-medium text-gray-900">{weakness.issue}</p>
+                          <Badge className="bg-orange-600">{(weakness.category || '').replace(/_/g, ' ')}</Badge>
+                          <p className="text-sm font-medium text-slate-900">{weakness.issue}</p>
                           <div className="bg-white p-3 rounded border border-orange-200">
-                            <p className="text-xs font-medium text-gray-700 mb-1">💡 Suggestion:</p>
-                            <p className="text-xs text-gray-800">{weakness.suggestion}</p>
+                            <p className="text-xs font-medium text-slate-700 mb-1">💡 Suggestion:</p>
+                            <p className="text-xs text-slate-800">{weakness.suggestion}</p>
                           </div>
                           <div className="bg-white p-3 rounded border border-green-200">
                             <p className="text-xs font-medium text-green-700 mb-1">✏️ Example:</p>
-                            <p className="text-xs text-gray-800 italic">{weakness.example}</p>
+                            <p className="text-xs text-slate-800 italic">{weakness.example}</p>
                           </div>
                         </CardContent>
                       </Card>

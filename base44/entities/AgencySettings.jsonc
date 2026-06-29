@@ -1,0 +1,204 @@
+{
+  "name": "AgencySettings",
+  "type": "object",
+  "properties": {
+    "office_zip_code": {
+      "type": "string",
+      "description": "Agency office ZIP code for wage index calculation"
+    },
+    "wage_index": {
+      "type": "number",
+      "default": 1.0,
+      "description": "CMS wage index for the agency's geographic area"
+    },
+    "office_name": {
+      "type": "string",
+      "description": "Agency office name"
+    },
+    "office_address": {
+      "type": "string",
+      "description": "Agency office address"
+    },
+    "office_phone": {
+      "type": "string",
+      "description": "Agency office phone number shown to patients/families on communications"
+    },
+    "office_email": {
+      "type": "string",
+      "description": "Agency office contact email shown to patients/families on communications"
+    },
+    "avg_staff_hourly_rate": {
+      "type": "number",
+      "default": 45,
+      "description": "Average staff hourly rate for cost calculations"
+    },
+    "training_cost_per_hour": {
+      "type": "number",
+      "default": 35,
+      "description": "Training cost per hour"
+    },
+    "documentation_time_per_episode": {
+      "type": "number",
+      "default": 0.5,
+      "description": "Average documentation time per episode in hours"
+    },
+    "audit_staff_hourly_rate": {
+      "type": "number",
+      "default": 50,
+      "description": "Audit staff hourly rate"
+    },
+    "avg_episodes_per_year": {
+      "type": "number",
+      "default": 50,
+      "description": "Average similar episodes per year"
+    },
+    "tcpa_quiet_hours_enabled": {
+      "type": "boolean",
+      "description": "Whether TCPA quiet-hours gating is enforced on outbound SMS"
+    },
+    "tcpa_quiet_start_hour": {
+      "type": "number",
+      "default": 8,
+      "description": "Earliest allowed contact hour (local, inclusive). The code treats [start, end) as the ALLOWED outbound window, not the blocked window — default 8 = 8:00am."
+    },
+    "tcpa_quiet_end_hour": {
+      "type": "number",
+      "default": 21,
+      "description": "Latest allowed contact hour (local, exclusive). End of the ALLOWED outbound window — default 21 = up to 9:00pm; outside [start, end) is blocked."
+    },
+    "monthly_sms_cap": {
+      "type": "number",
+      "description": "Maximum outbound SMS messages allowed per billing period"
+    },
+    "sms_messaging_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether outbound SMS messaging is enabled for the agency"
+    },
+    "blocked_area_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "NANP area codes blocked from outbound calls/texts/faxes"
+    },
+    "business_hours_enabled": {
+      "type": "boolean",
+      "description": "Whether agency business-hours gating is enabled"
+    },
+    "business_hours_timezone": {
+      "type": "string",
+      "description": "IANA timezone used to evaluate business hours"
+    },
+    "business_hours_holidays": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Holiday date keys (YYYY-MM-DD) treated as closed"
+    },
+    "after_hours_call_action": {
+      "type": "string",
+      "description": "Action for inbound calls after hours (e.g. transfer, voicemail)"
+    },
+    "after_hours_call_greeting": {
+      "type": "string",
+      "description": "Greeting played to callers after hours"
+    },
+    "after_hours_sms_auto_reply": {
+      "type": "string",
+      "description": "Auto-reply text sent for inbound SMS after hours"
+    },
+    "after_hours_sms_auto_reply_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the after-hours SMS auto-reply is sent"
+    },
+    "after_hours_transfer_number_e164": {
+      "type": "string",
+      "description": "E.164 number to transfer after-hours calls to"
+    },
+    "duty_timezone": {
+      "type": "string",
+      "description": "IANA timezone used for on-call/duty scheduling"
+    },
+    "ringdown_max": {
+      "type": "number",
+      "description": "Maximum number of ringdown targets to attempt for on-call routing"
+    },
+    "office_fax_number_e164": {
+      "type": "string",
+      "description": "E.164 office fax number used as the outbound fax sender"
+    },
+    "fax_receiving_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether inbound fax receiving is enabled"
+    },
+    "a2p_10dlc_status": {
+      "type": "string",
+      "enum": [
+        "not_registered",
+        "pending",
+        "registered"
+      ],
+      "default": "not_registered",
+      "description": "A2P 10DLC SMS brand/campaign registration status"
+    },
+    "a2p_brand_id": {
+      "type": "string",
+      "description": "A2P 10DLC brand id from the messaging provider"
+    },
+    "a2p_campaign_id": {
+      "type": "string",
+      "description": "A2P 10DLC campaign id from the messaging provider"
+    },
+    "main_office_number_e164": {
+      "type": "string",
+      "description": "E.164 main office phone number used for office transfers"
+    },
+    "default_off_duty_template": {
+      "type": "string",
+      "description": "Default auto-reply template used when staff are off duty"
+    },
+    "sms_quick_replies": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Configured SMS quick-reply options (label/text)"
+    },
+    "sms_templates": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Configured reusable SMS message templates"
+    },
+    "voicemail_enabled": {
+      "type": "boolean",
+      "description": "Whether voicemail capture is enabled for unanswered calls"
+    },
+    "voicemail_greeting": {
+      "type": "string",
+      "description": "Greeting played before recording a voicemail"
+    },
+    "allow_international": {
+      "type": "boolean",
+      "description": "Whether outbound SMS/voice to international numbers is allowed"
+    },
+    "business_hours": {
+      "type": "object",
+      "description": "Per-day business-hours schedule (keyed by weekday, each with start/end/enabled) used by calling-hours routing"
+    }
+  },
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "required": []
+}

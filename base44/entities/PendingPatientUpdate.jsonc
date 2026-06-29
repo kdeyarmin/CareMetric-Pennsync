@@ -1,0 +1,100 @@
+{
+  "name": "PendingPatientUpdate",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "source_file_url": {
+      "type": "string",
+      "description": "URL of the uploaded file that triggered this update"
+    },
+    "change_type": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "moderate",
+        "minor"
+      ],
+      "description": "Severity of the change requiring different approval levels"
+    },
+    "field_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "old_value": {
+            "type": "string"
+          },
+          "new_value": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "is_critical": {
+            "type": "boolean"
+          }
+        }
+      },
+      "description": "List of field changes detected"
+    },
+    "proposed_updates": {
+      "type": "object",
+      "description": "Full object of proposed changes"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "auto_applied"
+      ],
+      "default": "pending",
+      "description": "Status of the update"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of user who reviewed"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_notes": {
+      "type": "string",
+      "description": "Notes from the reviewer"
+    },
+    "conflict_detected": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether a data conflict was detected"
+    },
+    "conflict_details": {
+      "type": "string",
+      "description": "Details about the conflict"
+    }
+  },
+  "required": [
+    "patient_id",
+    "field_changes",
+    "change_type"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

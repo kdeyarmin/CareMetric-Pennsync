@@ -1,0 +1,61 @@
+{
+  "name": "SentEducationMaterial",
+  "type": "object",
+  "properties": {
+    "material_id": {
+      "type": "string",
+      "description": "Reference to EducationMaterial template"
+    },
+    "material_title": {
+      "type": "string",
+      "description": "Title of material sent"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Patient who received the material"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "personalized_content": {
+      "type": "string",
+      "description": "Content after personalization"
+    },
+    "sent_by": {
+      "type": "string",
+      "description": "Nurse who sent the material"
+    },
+    "sent_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivery_method": {
+      "type": "string",
+      "enum": [
+        "printed",
+        "email",
+        "patient_portal",
+        "text_message"
+      ],
+      "description": "How material was delivered"
+    },
+    "patient_acknowledged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether patient confirmed receipt"
+    },
+    "acknowledgment_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Delivery notes or patient questions"
+    }
+  },
+  "required": [
+    "material_id",
+    "patient_id",
+    "personalized_content"
+  ]
+}

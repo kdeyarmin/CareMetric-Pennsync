@@ -1,0 +1,56 @@
+{
+  "name": "FaxRetryConfig",
+  "type": "object",
+  "properties": {
+    "max_retries": {
+      "type": "number",
+      "default": 3,
+      "description": "Maximum number of retry attempts"
+    },
+    "retry_delay_minutes": {
+      "type": "number",
+      "default": 15,
+      "description": "Minutes to wait between retries"
+    },
+    "auto_retry_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether automatic retry is enabled"
+    },
+    "priority_multiplier": {
+      "type": "object",
+      "properties": {
+        "urgent": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Delay multiplier for urgent faxes (0.5 = half delay)"
+        },
+        "high": {
+          "type": "number",
+          "default": 1,
+          "description": "Delay multiplier for high priority"
+        },
+        "normal": {
+          "type": "number",
+          "default": 1,
+          "description": "Delay multiplier for normal priority"
+        },
+        "low": {
+          "type": "number",
+          "default": 2,
+          "description": "Delay multiplier for low priority (2 = double delay)"
+        }
+      }
+    },
+    "notify_on_final_failure": {
+      "type": "boolean",
+      "default": true,
+      "description": "Send notification when all retries exhausted"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": []
+}

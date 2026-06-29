@@ -1,4 +1,3 @@
-import React from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +7,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertTriangle,
   CheckCircle2,
-  X,
   Eye,
   Users
 } from "lucide-react";
@@ -42,11 +40,17 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
   });
 
   const acknowledgeMutation = useMutation({
-    mutationFn: (alertId) => base44.entities.PatientAlert.update(alertId, {
-      status: 'acknowledged',
-      acknowledged_by: base44.auth.me().then(u => u.email),
-      acknowledged_at: new Date().toISOString()
-    }),
+    mutationFn: async (alertId) => {
+      // base44.auth.me() is async — awaiting it here records the actual user
+      // email. Previously the unresolved Promise was stored as acknowledged_by,
+      // losing the audit trail of who acknowledged the alert.
+      const user = await base44.auth.me();
+      return base44.entities.PatientAlert.update(alertId, {
+        status: 'acknowledged',
+        acknowledged_by: user?.email,
+        acknowledged_at: new Date().toISOString()
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ 
         queryKey: showAllPatients ? ['allPatientRiskAlerts'] : ['patientRiskAlerts', patientId] 
@@ -76,7 +80,7 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
   if (isLoading) {
     return (
       <Card className={compact ? 'border-yellow-200' : ''}>
-        <CardContent className="p-4 text-center text-sm text-gray-500">
+        <CardContent className="p-4 text-center text-sm text-slate-500">
           Loading alerts...
         </CardContent>
       </Card>
@@ -89,7 +93,7 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
         <CardContent className="p-4 text-center">
           <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
           <p className="text-sm text-green-700 font-medium">No active risk alerts</p>
-          <p className="text-xs text-gray-500 mt-1">Patient risk profile is within normal range</p>
+          <p className="text-xs text-slate-500 mt-1">Patient risk profile is within normal range</p>
         </CardContent>
       </Card>
     );
@@ -153,21 +157,17 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
                           </Link>
                         </Button>
                       )}
-                      <p className="text-xs text-gray-700">{alert.message}</p>
+                      <p className="text-xs text-slate-700">{alert.message}</p>
                       {alert.risk_score && (
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-slate-500 mt-1">
                           Risk Score: <strong>{alert.risk_score}/100</strong>
                         </p>
                       )}
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 w-6 p-0"
-                      onClick={() => resolveMutation.mutate(alert.id)}
-                    >
-                      <X className="w-4 h-4 text-gray-400" />
-                    </Button>
+                    {/* The top-right "X" used to call resolveMutation, so a
+                        glance-and-dismiss click permanently resolved the alert for
+                        EVERYONE. Removed — use the explicit Acknowledge / Resolve
+                        actions below, which carry the right intent and audit. */}
                   </div>
 
                   {alert.recommended_actions?.length > 0 && (
@@ -178,7 +178,7 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
                           <li key={i}>✓ {action}</li>
                         ))}
                         {alert.recommended_actions.length > 3 && (
-                          <li className="text-gray-500">...and {alert.recommended_actions.length - 3} more</li>
+                          <li className="text-slate-500">...and {alert.recommended_actions.length - 3} more</li>
                         )}
                       </ul>
                     </div>

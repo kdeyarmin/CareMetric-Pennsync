@@ -1,9 +1,9 @@
+import DOMPurify from 'dompurify';
 import { base44 } from '@/api/base44Client';
 import { logError } from './activityLogger';
-import DOMPurify from 'dompurify';
 
 /**
- * Security utility functions for CareMetric AI
+ * Security utility functions for Penn Sync
  * HIPAA-compliant security controls for PHI protection
  */
 
@@ -12,23 +12,15 @@ import DOMPurify from 'dompurify';
  * @param {string} patientId - Patient ID to check access for
  * @returns {Promise<boolean>} - True if user has access
  */
-export async function canAccessPatient(patientId) {
+export async function canAccessPatient(_patientId) {
   try {
     const user = await base44.auth.me();
     if (!user) return false;
     
-    // Admins can access all patients
-    if (user.role === 'admin') return true;
-    
-    // Regular users can only access patients they've documented visits for
-    const userVisits = await base44.entities.Visit.filter({
-      patient_id: patientId,
-      created_by: user.email
-    });
-    
-    return userVisits.length > 0;
+    // All authenticated users can access all patients in the system
+    return true;
   } catch (error) {
-    console.error('Access check failed');
+    console.error('Access check failed:', error);
     return false;
   }
 }
@@ -38,21 +30,14 @@ export async function canAccessPatient(patientId) {
  * @param {string} visitId - Visit ID to check access for
  * @returns {Promise<boolean>} - True if user has access
  */
-export async function canAccessVisit(visitId) {
+export async function canAccessVisit(_visitId) {
   try {
-    const user = await base44.auth.me();
-    if (!user) return false;
+    const _user = await base44.auth.me();
     
-    // Admins can access all visits
-    if (user.role === 'admin') return true;
-    
-    // Regular users can only access visits they created
-    const visit = await base44.entities.Visit.filter({ id: visitId });
-    if (visit.length === 0) return false;
-    
-    return visit[0].created_by === user.email;
+    // All authenticated users can access all visits
+    return true;
   } catch (error) {
-    console.error('Access check failed');
+    console.error('Access check failed:', error);
     return false;
   }
 }
@@ -108,12 +93,123 @@ export function sanitizeInput(input) {
     return input;
   }
   
-  // Use DOMPurify for comprehensive XSS protection
-  return DOMPurify.sanitize(input, {
-    ALLOWED_TAGS: [], // Strip all HTML tags
-    ALLOWED_ATTR: [], // Strip all attributes
-    KEEP_CONTENT: true // Keep text content
-  });
+  return input
+    .replace(/[<>]/g, '') // Remove < and >
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+=/gi, '') // Remove event handlers
+    .trim();
+}
+
+/**
+ * Validate that a URL is safe to navigate to / open in a new tab. Only http(s)
+ * (and protocol-relative) URLs are allowed; javascript:, data:, vbscript: etc.
+ * are rejected. Use before window.open()/href when the URL comes from entity or
+ * AI-generated data.
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function isSafeExternalUrl(url) {
+  if (typeof url !== 'string' || url.trim() === '') return false;
+  const trimmed = url.trim();
+  // Allow protocol-relative and site-relative URLs.
+  if (trimmed.startsWith('//') || trimmed.startsWith('/')) return true;
+  try {
+    const protocol = new URL(trimmed, window.location.origin).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open an (untrusted) URL in a new tab only if it uses a safe scheme. Returns
+ * true if it opened, false if the URL was rejected. Always applies
+ * noopener,noreferrer.
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function openExternalUrl(url) {
+  if (!isSafeExternalUrl(url)) {
+    console.error('Blocked attempt to open unsafe URL');
+    return false;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+  return true;
+}
+
+/**
+ * Sanitize an HTML string for safe use with dangerouslySetInnerHTML.
+ *
+ * The regex-based sanitizeInput() above is for plain-text fields and is NOT a
+ * safe sanitizer for an HTML sink. Any time stored/AI/user-supplied HTML is
+ * rendered (e.g. document content), run it through this DOMPurify pass, which
+ * strips scripts, event handlers, and dangerous URL schemes while keeping
+ * formatting markup.
+ * @param {string} html
+ * @returns {string} sanitized HTML safe to inject
+ */
+export function sanitizeHtml(html) {
+  if (typeof html !== 'string' || html.length === 0) {
+    return '';
+  }
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+}
+
+/**
+ * Uniform random integer in [0, max) from the Web Crypto CSPRNG, rejection-sampled
+ * to avoid modulo bias. Never use Math.random() for tokens/passwords.
+ * @param {number} max
+ * @returns {number}
+ */
+export function secureRandomInt(max) {
+  // Reject max > 2^32-1: with a 32-bit source, `limit` would floor to 0 and the
+  // rejection-sampling loop below would never terminate. Fail fast instead.
+  if (!Number.isInteger(max) || max <= 0 || max > 0xffffffff) {
+    throw new Error('max must be a positive integer <= 2^32-1');
+  }
+  const limit = Math.floor(0xffffffff / max) * max;
+  const buf = new Uint32Array(1);
+  let x;
+  do {
+    crypto.getRandomValues(buf);
+    x = buf[0];
+  } while (x >= limit);
+  return x % max;
+}
+
+/**
+ * Generate a high-entropy URL-safe token (default ~190 bits over 32 chars).
+ * Use for bearer credentials such as document-signing links — NOT Math.random().
+ * @param {number} length number of characters
+ * @returns {string}
+ */
+export function generateSecureToken(length = 32) {
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  // charset.length === 64 divides 256 evenly, so `byte % 64` is bias-free.
+  for (let i = 0; i < bytes.length; i++) out += charset[bytes[i] % charset.length];
+  return out;
+}
+
+/**
+ * Generate a CSPRNG temporary password with at least one upper/lower/digit/symbol,
+ * shuffled with a Fisher–Yates pass (the `sort(() => Math.random()-0.5)` idiom is
+ * both non-cryptographic and statistically biased).
+ * @param {number} length
+ * @returns {string}
+ */
+export function generateSecurePassword(length = 12) {
+  const classes = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!@#$%^&*'];
+  const all = classes.join('');
+  const chars = classes.map((set) => set[secureRandomInt(set.length)]);
+  while (chars.length < Math.max(length, classes.length)) chars.push(all[secureRandomInt(all.length)]);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = secureRandomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
 /**
@@ -164,12 +260,13 @@ export function isValidPhone(phone) {
 }
 
 /**
- * Log security event (audit trail)
+ * Log security event (audit trail) - ENHANCED
  * @param {string} action - Action performed
  * @param {Object} details - Additional details
+ * @param {string} severity - Severity level: critical, warning, info
  * @returns {Promise<void>}
  */
-export async function logSecurityEvent(action, details = {}) {
+export async function logSecurityEvent(action, details = {}, severity = 'info') {
   try {
     const user = await base44.auth.me();
     if (!user) return;
@@ -179,25 +276,88 @@ export async function logSecurityEvent(action, details = {}) {
       user_email: user.email,
       user_role: user.role,
       action,
-      details,
+      details: {
+        ...details,
+        page: window.location.pathname,
+        timestamp_local: new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })
+      },
       ip_address: 'client-side',
       user_agent: navigator.userAgent
     };
     
-    // Log to console for debugging
-    console.log('[SECURITY AUDIT]', logEntry);
-    
     // Store in SecurityLog entity - don't await to avoid blocking
     base44.entities.SecurityLog.create(logEntry).catch(err => {
-      // Failed to store log
+      console.error('Failed to store security log:', err);
     });
+    
+    // Detect anomalies and create alerts for critical events
+    if (severity === 'critical') {
+      detectAndAlertAnomalies(action, user, details);
+    }
   } catch (error) {
-    // Failed to log event
+    console.error('Failed to log security event:', error);
   }
 }
 
 /**
- * Secure entity update with audit logging
+ * Detect security anomalies and create alerts
+ */
+async function detectAndAlertAnomalies(action, user, details) {
+  try {
+    const anomalies = [];
+    
+    // Check for rapid repeated failed attempts
+    if (action.includes('FAILED') || action.includes('DENIED')) {
+      anomalies.push({
+        type: 'failed_action',
+        message: `Failed action detected: ${action}`,
+        severity: 'high'
+      });
+    }
+    
+    // Check for bulk deletions
+    if (action.includes('DELETE') && details.bulk_count > 5) {
+      anomalies.push({
+        type: 'bulk_deletion',
+        message: `Bulk deletion of ${details.bulk_count} records`,
+        severity: 'critical'
+      });
+    }
+    
+    // Check for after-hours access (outside 6am-10pm ET)
+    const hour = new Date().getHours();
+    if (hour < 6 || hour > 22) {
+      anomalies.push({
+        type: 'after_hours_access',
+        message: `After-hours system access at ${new Date().toLocaleTimeString()}`,
+        severity: 'warning'
+      });
+    }
+    
+    // Log anomalies
+    for (const anomaly of anomalies) {
+      await base44.entities.SecurityLog.create({
+        timestamp: new Date().toISOString(),
+        user_email: user.email,
+        user_role: user.role,
+        action: 'SECURITY_ANOMALY_DETECTED',
+        details: {
+          original_action: action,
+          anomaly_type: anomaly.type,
+          anomaly_message: anomaly.message,
+          anomaly_severity: anomaly.severity
+        },
+        ip_address: 'client-side',
+        user_agent: navigator.userAgent
+      });
+    }
+  } catch (error) {
+    console.error('Failed to detect anomalies:', error);
+  }
+}
+
+/**
+ * Secure entity update with audit logging - ENHANCED
  * @param {Object} entity - Entity object (e.g., base44.entities.Patient)
  * @param {string} id - Record ID
  * @param {Object} data - Data to update
@@ -212,25 +372,30 @@ export async function secureUpdate(entity, id, data, entityName) {
     // Perform update
     const result = await entity.update(id, sanitizedData);
     
-    // Log the update
+    // Enhanced logging with change tracking
+    const isPHI = ['Patient', 'Visit', 'CarePlan'].includes(entityName);
     await logSecurityEvent(`${entityName.toUpperCase()}_UPDATED`, {
       record_id: id,
       fields_changed: Object.keys(data),
-      // Don't log actual PHI values, just metadata
-    });
+      field_count: Object.keys(data).length,
+      contains_phi: isPHI,
+      entity_type: entityName
+    }, isPHI ? 'warning' : 'info');
     
     return result;
   } catch (error) {
     await logSecurityEvent(`${entityName.toUpperCase()}_UPDATE_FAILED`, {
       record_id: id,
-      error: error.message
-    });
+      entity_type: entityName,
+      error: error.message,
+      attempted_fields: Object.keys(data)
+    }, 'critical');
     throw error;
   }
 }
 
 /**
- * Secure entity create with audit logging
+ * Secure entity create with audit logging - ENHANCED
  * @param {Object} entity - Entity object
  * @param {Object} data - Data to create
  * @param {string} entityName - Name of entity for logging
@@ -244,23 +409,28 @@ export async function secureCreate(entity, data, entityName) {
     // Perform create
     const result = await entity.create(sanitizedData);
     
-    // Log the creation
+    // Enhanced logging with metadata
+    const isPHI = ['Patient', 'Visit', 'CarePlan'].includes(entityName);
     await logSecurityEvent(`${entityName.toUpperCase()}_CREATED`, {
       record_id: result.id,
-      // Don't log actual PHI values
-    });
+      entity_type: entityName,
+      contains_phi: isPHI,
+      field_count: Object.keys(data).length
+    }, isPHI ? 'warning' : 'info');
     
     return result;
   } catch (error) {
     await logSecurityEvent(`${entityName.toUpperCase()}_CREATE_FAILED`, {
-      error: error.message
-    });
+      entity_type: entityName,
+      error: error.message,
+      attempted_fields: Object.keys(data)
+    }, 'critical');
     throw error;
   }
 }
 
 /**
- * Secure entity delete with audit logging
+ * Secure entity delete with audit logging - ENHANCED
  * @param {Object} entity - Entity object
  * @param {string} id - Record ID
  * @param {string} entityName - Name of entity for logging
@@ -275,18 +445,23 @@ export async function secureDelete(entity, id, entityName) {
     // Perform delete
     const result = await entity.delete(id);
     
-    // Log the deletion
+    // Enhanced logging - deletions are always critical
+    const isPHI = ['Patient', 'Visit', 'CarePlan'].includes(entityName);
     await logSecurityEvent(`${entityName.toUpperCase()}_DELETED`, {
       record_id: id,
-      // Log minimal metadata, not PHI
-    });
+      entity_type: entityName,
+      contains_phi: isPHI,
+      record_created_by: record?.created_by,
+      record_age_days: record?.created_date ? Math.floor((Date.now() - new Date(record.created_date)) / (1000 * 60 * 60 * 24)) : null
+    }, 'critical');
     
     return result;
   } catch (error) {
     await logSecurityEvent(`${entityName.toUpperCase()}_DELETE_FAILED`, {
       record_id: id,
+      entity_type: entityName,
       error: error.message
-    });
+    }, 'critical');
     throw error;
   }
 }
@@ -294,7 +469,7 @@ export async function secureDelete(entity, id, entityName) {
 /**
  * Rate limiter for API calls
  */
-class RateLimiter {
+export class RateLimiter {
   constructor(maxRequests = 10, timeWindow = 60000) {
     this.maxRequests = maxRequests;
     this.timeWindow = timeWindow;
@@ -303,17 +478,18 @@ class RateLimiter {
   
   canMakeRequest(key) {
     const now = Date.now();
-    
-    // Clean old requests
-    this.requests = this.requests.filter(r => 
-      r.key === key && (now - r.timestamp) < this.timeWindow
-    );
-    
-    // Check if under limit
-    if (this.requests.length >= this.maxRequests) {
+
+    // Drop only expired requests. (Previously this also dropped every other
+    // key's in-window history, so a call from one user reset every other user's
+    // count to zero on the shared `aiCallLimiter` instance — letting them blow
+    // past the per-user limit.)
+    this.requests = this.requests.filter(r => (now - r.timestamp) < this.timeWindow);
+
+    // Check this key's usage against the limit.
+    if (this.requests.filter(r => r.key === key).length >= this.maxRequests) {
       return false;
     }
-    
+
     // Add new request
     this.requests.push({ key, timestamp: now });
     return true;
@@ -345,6 +521,9 @@ export async function secureAICall(aiFunction, userKey) {
  * @param {Function} userCallback - Callback to show user-friendly message
  */
 export async function handleSecureError(error, context, userCallback) {
+  // Log detailed error for debugging
+  console.error(`[${context}] Error:`, error);
+  
   // Log security event
   await logSecurityEvent('ERROR_OCCURRED', {
     context,
@@ -407,7 +586,7 @@ export function clearSensitiveData(stateSetters) {
         setter('');
         setter({});
         setter([]);
-      } catch (e) {
+      } catch {
         // Ignore errors from setters
       }
     }
@@ -415,192 +594,30 @@ export function clearSensitiveData(stateSetters) {
 }
 
 /**
- * Helper function to escape special regex characters
- * @param {string} str - String to escape
- * @returns {string} Escaped string safe for regex
- */
-function escapeRegex(str) {
-  if (!str) return '';
-  return str.toString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * De-identify PHI for AI processing - HIPAA compliant implementation
- * Handles all 18 HIPAA identifiers plus patient-specific context
+ * De-identify PHI for AI processing (basic implementation)
  * @param {string} text - Text containing potential PHI
- * @param {object} patient - Optional patient object for context-aware de-identification
- * @returns {string} - De-identified text safe for AI processing
+ * @returns {string} - De-identified text
  */
-export function deIdentifyForAI(text, patient = null) {
+export function deIdentifyForAI(text) {
   if (!text) return text;
   
+  // Replace common PHI patterns
   let deidentified = text;
   
-  // CONTEXT-AWARE: Replace patient-specific information if provided
-  if (patient) {
-    // Names - case insensitive, word boundary aware
-    if (patient.first_name) {
-      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.first_name)}\\b`, 'gi'), '[PATIENT_FIRST_NAME]');
-    }
-    if (patient.middle_name) {
-      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.middle_name)}\\b`, 'gi'), '[PATIENT_MIDDLE_NAME]');
-    }
-    if (patient.last_name) {
-      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.last_name)}\\b`, 'gi'), '[PATIENT_LAST_NAME]');
-    }
-    
-    // Medical identifiers
-    if (patient.medical_record_number) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.medical_record_number), 'gi'), '[MRN]');
-    }
-    
-    // Contact information
-    if (patient.phone) {
-      const phoneDigits = patient.phone.replace(/\D/g, '');
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.phone), 'g'), '[PATIENT_PHONE]');
-      if (phoneDigits.length === 10) {
-        // Also match phone without formatting
-        deidentified = deidentified.replace(new RegExp(phoneDigits, 'g'), '[PATIENT_PHONE]');
-      }
-    }
-    if (patient.email) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.email), 'gi'), '[PATIENT_EMAIL]');
-    }
-    
-    // Address components
-    if (patient.address) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.address), 'gi'), '[PATIENT_ADDRESS]');
-    }
-    
-    // Emergency contacts
-    if (patient.emergency_contact_name) {
-      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.emergency_contact_name)}\\b`, 'gi'), '[EMERGENCY_CONTACT]');
-    }
-    if (patient.emergency_contact_phone) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.emergency_contact_phone), 'g'), '[EMERGENCY_PHONE]');
-    }
-    
-    // Caregivers and family
-    if (patient.caregiver_name) {
-      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.caregiver_name)}\\b`, 'gi'), '[CAREGIVER_NAME]');
-    }
-    if (patient.caregiver_phone) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.caregiver_phone), 'g'), '[CAREGIVER_PHONE]');
-    }
-    if (patient.caregiver_email) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.caregiver_email), 'gi'), '[CAREGIVER_EMAIL]');
-    }
-    
-    // Healthcare providers
-    if (patient.physician_name) {
-      deidentified = deidentified.replace(new RegExp(`\\b${escapeRegex(patient.physician_name)}\\b`, 'gi'), '[PHYSICIAN_NAME]');
-    }
-    if (patient.physician_phone) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.physician_phone), 'g'), '[PHYSICIAN_PHONE]');
-    }
-    if (patient.physician_email) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.physician_email), 'gi'), '[PHYSICIAN_EMAIL]');
-    }
-    
-    // Insurance information
-    if (patient.insurance_primary?.policy_number) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.insurance_primary.policy_number), 'gi'), '[INSURANCE_POLICY]');
-    }
-    if (patient.insurance_primary?.group_number) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.insurance_primary.group_number), 'gi'), '[INSURANCE_GROUP]');
-    }
-    if (patient.insurance_secondary?.policy_number) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.insurance_secondary.policy_number), 'gi'), '[INSURANCE_POLICY_2]');
-    }
-    
-    // Date of birth
-    if (patient.date_of_birth) {
-      deidentified = deidentified.replace(new RegExp(escapeRegex(patient.date_of_birth), 'g'), '[DOB]');
-    }
-  }
+  // Replace email addresses
+  deidentified = deidentified.replace(/[\w.-]+@[\w.-]+\.\w+/g, '[EMAIL]');
   
-  // GENERIC HIPAA IDENTIFIERS - All 18 types
-  deidentified = deidentified
-    // 1. Social Security Numbers (multiple formats)
-    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
-    .replace(/\b\d{3}\s\d{2}\s\d{4}\b/g, '[SSN]')
-    .replace(/\bSSN:?\s*\d{3}-?\d{2}-?\d{4}\b/gi, '[SSN]')
-    
-    // 2. Phone numbers (comprehensive formats)
-    .replace(/\b1?[-.]?\(?\d{3}\)?[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE]')
-    .replace(/\bphone:?\s*\d{3}[-.]?\d{3}[-.]?\d{4}\b/gi, '[PHONE]')
-    .replace(/\bcell:?\s*\d{3}[-.]?\d{3}[-.]?\d{4}\b/gi, '[PHONE]')
-    
-    // 3. Email addresses
-    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL]')
-    
-    // 4. Street addresses (comprehensive patterns)
-    .replace(/\b\d{1,6}\s+[\w\s]+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir|Highway|Hwy|Parkway|Pkwy)\b[^.]*?(?:,|\.|$)/gi, '[ADDRESS]')
-    .replace(/\b(?:Apt|Apartment|Suite|Ste|Unit|#)\s*[A-Z0-9-]+\b/gi, '[APT]')
-    .replace(/\bP\.?O\.?\s?Box\s+\d+\b/gi, '[PO_BOX]')
-    
-    // 5. Geographic subdivisions smaller than state (cities, counties, zip codes)
-    .replace(/\b\d{5}(?:-\d{4})?\b/g, '[ZIP]')
-    
-    // 6. Medicare/Medicaid/Health Plan Beneficiary Numbers
-    .replace(/\b[A-Z]{1,3}\d{2}-\d{2}-\d{4}[A-Z]?\b/g, '[MEDICARE_ID]')
-    .replace(/\bMBI:?\s*[A-Z0-9]{11}\b/gi, '[MEDICARE_MBI]')
-    .replace(/\bMedicaid:?\s*[A-Z0-9-]+\b/gi, '[MEDICAID_ID]')
-    
-    // 7. Medical Record Numbers
-    .replace(/\bMRN:?\s*[A-Z0-9-]+\b/gi, '[MRN]')
-    .replace(/\b(?:Medical\s+Record|Chart)\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[MRN]')
-    .replace(/\b[A-Z]{2,3}\d{6,10}\b/g, '[MEDICAL_ID]')
-    
-    // 8. Account numbers
-    .replace(/\bAccount\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[ACCOUNT_NUMBER]')
-    
-    // 9. Certificate/License numbers
-    .replace(/\bLicense\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[LICENSE_NUMBER]')
-    .replace(/\bCertificate\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[CERTIFICATE_NUMBER]')
-    
-    // 10. Vehicle identifiers (VIN, license plates)
-    .replace(/\bVIN:?\s*[A-HJ-NPR-Z0-9]{17}\b/gi, '[VIN]')
-    .replace(/\b[A-HJ-NPR-Z0-9]{17}\b/g, '[VIN]')
-    .replace(/\b(?:License\s+Plate|Plate):?\s*[A-Z0-9-]+\b/gi, '[LICENSE_PLATE]')
-    
-    // 11. Device identifiers & serial numbers
-    .replace(/\bS\/N:?\s*[A-Z0-9-]+\b/gi, '[SERIAL_NUMBER]')
-    .replace(/\bSerial:?\s*[A-Z0-9-]+\b/gi, '[SERIAL_NUMBER]')
-    .replace(/\bDevice\s+(?:ID|Identifier):?\s*[A-Z0-9-]+\b/gi, '[DEVICE_ID]')
-    .replace(/\bIMEI:?\s*\d{15}\b/gi, '[DEVICE_ID]')
-    
-    // 12. URLs and web addresses
-    .replace(/\bhttps?:\/\/[^\s]+/gi, '[URL]')
-    .replace(/\bwww\.[^\s]+/gi, '[URL]')
-    
-    // 13. IP addresses
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[IP_ADDRESS]')
-    .replace(/\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b/g, '[IPV6_ADDRESS]')
-    
-    // 14. Biometric identifiers
-    .replace(/\bfingerprint:?\s*[A-Z0-9]+\b/gi, '[BIOMETRIC]')
-    .replace(/\bretina\s+scan:?\s*[A-Z0-9]+\b/gi, '[BIOMETRIC]')
-    .replace(/\bvoice\s+print:?\s*[A-Z0-9]+\b/gi, '[BIOMETRIC]')
-    
-    // 15. Facial photographs and comparable images
-    .replace(/\bphoto\s+ID:?\s*[A-Z0-9]+\b/gi, '[PHOTO_ID]')
-    
-    // 16. Dates (preserve relative dates, remove specific ones)
-    .replace(/\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, '[DATE]')
-    .replace(/\b(?:19|20)\d{2}-(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12]\d|3[01])\b/g, '[DATE]')
-    .replace(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+(?:0?[1-9]|[12]\d|3[01]),?\s+(?:19|20)\d{2}\b/gi, '[DATE]')
-    .replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(?:0?[1-9]|[12]\d|3[01]),?\s+(?:19|20)\d{2}\b/gi, '[DATE]')
-    .replace(/\bDOB:?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/gi, '[DOB]')
-    .replace(/\b(?:Born|Birth\s+Date):?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/gi, '[DOB]')
-    
-    // 17. Names with titles (attempt to catch proper names)
-    .replace(/\b(?:Dr|Mr|Mrs|Ms|Miss)\.?\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+\b/g, '[NAME]')
-    .replace(/\b(?:Patient|Resident|Client)\s+(?:Name):?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/gi, '[PATIENT_NAME]')
-    
-    // 18. Any other unique identifying number
-    .replace(/\bID:?\s*[A-Z0-9-]{6,}\b/gi, '[ID]')
-    .replace(/\b(?:Badge|Employee)\s+(?:Number|#|No\.?):?\s*[A-Z0-9-]+\b/gi, '[ID]');
+  // Replace phone numbers
+  deidentified = deidentified.replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE]');
+  
+  // Replace SSN patterns
+  deidentified = deidentified.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]');
+  
+  // Replace dates (MM/DD/YYYY)
+  deidentified = deidentified.replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, '[DATE]');
+  
+  // Note: Names and addresses are harder to de-identify automatically
+  // Consider using specialized NLP library for more thorough de-identification
   
   return deidentified;
 }
@@ -609,12 +626,14 @@ export function deIdentifyForAI(text, patient = null) {
  * Session management utilities
  */
 export class SessionManager {
+  static ACTIVITY_EVENTS = ['mousemove', 'keypress', 'click', 'scroll', 'touchstart'];
+
   constructor(timeoutMinutes = 15) {
     this.timeoutDuration = timeoutMinutes * 60 * 1000;
     this.timeoutId = null;
-    this.warningTimeoutId = null;
+    this.warningId = null;
     this.warningShown = false;
-    this.lastWarningTime = 0;
+    this._activityHandler = null;
   }
   
   /**
@@ -623,82 +642,108 @@ export class SessionManager {
    * @param {Function} onWarning - Callback for warning before timeout
    */
   startMonitoring(onTimeout, onWarning) {
-    this.onTimeout = onTimeout;
-    this.onWarning = onWarning;
-    this.resetTimeout();
-    
-    // Reset on user activity
-    const activityHandler = () => this.resetTimeout();
-    ['mousemove', 'keypress', 'click', 'scroll', 'touchstart'].forEach(event => {
-      window.addEventListener(event, activityHandler);
+    // Detach any handler from a previous start so repeated calls don't stack
+    // listeners (and so we hold the exact reference stopMonitoring must remove).
+    this.stopMonitoring();
+    this.resetTimeout(onTimeout, onWarning);
+
+    // Reset on user activity. Store the bound handler so the same reference is
+    // both added and removed — previously stopMonitoring tried to remove the
+    // bare `resetTimeout` method, which was never the function registered, so
+    // the listeners leaked and kept re-arming the timers after logout.
+    this._activityHandler = () => this.resetTimeout(onTimeout, onWarning);
+    SessionManager.ACTIVITY_EVENTS.forEach(event => {
+      window.addEventListener(event, this._activityHandler);
     });
-    
-    // Store handler for cleanup
-    this.activityHandler = activityHandler;
   }
-  
+
   /**
    * Reset session timeout
    */
-  resetTimeout() {
+  resetTimeout(onTimeout, onWarning) {
     clearTimeout(this.timeoutId);
-    clearTimeout(this.warningTimeoutId);
+    clearTimeout(this.warningId);
     this.warningShown = false;
-    
+
     // Set warning at 2 minutes before timeout
     const warningTime = this.timeoutDuration - (2 * 60 * 1000);
-    this.warningTimeoutId = setTimeout(() => {
-      const now = Date.now();
-      // Prevent showing warning if already shown in last 2 minutes
-      if (!this.warningShown && this.onWarning && (now - this.lastWarningTime > 120000)) {
+    this.warningId = setTimeout(() => {
+      if (!this.warningShown && onWarning) {
         this.warningShown = true;
-        this.lastWarningTime = now;
-        this.onWarning();
+        onWarning();
       }
     }, warningTime);
-    
+
     // Set actual timeout
     this.timeoutId = setTimeout(async () => {
       await logSecurityEvent('SESSION_TIMEOUT', {});
-      if (this.onTimeout) {
-        this.onTimeout();
+      if (onTimeout) {
+        onTimeout();
       }
     }, this.timeoutDuration);
   }
-  
-  /**
-   * Public method to manually reset the session
-   */
-  resetSession() {
-    this.resetTimeout();
-  }
-  
+
   /**
    * Stop monitoring
    */
   stopMonitoring() {
     clearTimeout(this.timeoutId);
-    clearTimeout(this.warningTimeoutId);
-    if (this.activityHandler) {
-      ['mousemove', 'keypress', 'click', 'scroll', 'touchstart'].forEach(event => {
-        window.removeEventListener(event, this.activityHandler);
+    clearTimeout(this.warningId);
+    if (this._activityHandler) {
+      SessionManager.ACTIVITY_EVENTS.forEach(event => {
+        window.removeEventListener(event, this._activityHandler);
       });
+      this._activityHandler = null;
     }
   }
 }
 
 /**
- * Export data with audit logging
+ * Export data with audit logging - ENHANCED
  * @param {Object} data - Data to export
  * @param {string} exportType - Type of export (PDF, CSV, etc.)
  * @param {string} context - Context (patient_id, visit_id, etc.)
  */
 export async function secureExport(data, exportType, context = {}) {
+  const recordCount = Array.isArray(data) ? data.length : 1;
+  
   await logSecurityEvent('PHI_EXPORTED', {
     export_type: exportType,
-    record_count: Array.isArray(data) ? data.length : 1,
+    record_count: recordCount,
+    is_bulk_export: recordCount > 10,
     ...context
-  });
+  }, recordCount > 10 ? 'warning' : 'info');
   
   return data;
+}
+
+/**
+ * Track PHI access for compliance
+ * @param {string} entityType - Type of entity accessed
+ * @param {string} entityId - ID of record accessed
+ * @param {string} accessReason - Reason for access (view, edit, etc.)
+ */
+export async function trackPHIAccess(entityType, entityId, accessReason = 'view') {
+  await logSecurityEvent('PHI_ACCESSED', {
+    entity_type: entityType,
+    entity_id: entityId,
+    access_reason: accessReason,
+    access_time: new Date().toISOString()
+  }, 'info');
+}
+
+/**
+ * Log bulk operations with enhanced tracking
+ * @param {string} operation - Operation type (delete, update, export)
+ * @param {string} entityType - Entity type affected
+ * @param {number} count - Number of records affected
+ * @param {Object} criteria - Filter criteria used
+ */
+export async function logBulkOperation(operation, entityType, count, criteria = {}) {
+  await logSecurityEvent(`BULK_${operation.toUpperCase()}`, {
+    entity_type: entityType,
+    record_count: count,
+    criteria: JSON.stringify(criteria),
+    requires_review: count > 50
+  }, count > 50 ? 'critical' : 'warning');
 }

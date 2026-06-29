@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,24 +15,24 @@ import {
 } from "lucide-react";
 
 export default function OptimalCommunicationAdvisor({ 
-  patientId,
+  _patientId,
   patientData,
   recentVisits,
   upcomingVisits,
   outreachPurpose
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [recommendation, setRecommendation] = useState(null);
 
   const analyzeCommunicationStrategy = async () => {
     if (!patientData) return;
 
-    setIsAnalyzing(true);
     try {
       const lastVisit = recentVisits?.[0];
       const nextVisit = upcomingVisits?.[0];
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `You are a patient communication expert. Recommend optimal communication strategy for patient outreach.
 
 PATIENT PROFILE:
@@ -89,7 +89,6 @@ Consider patient preferences, accessibility needs, and likelihood of successful 
       console.error('Communication analysis error:', error);
       setRecommendation({ error: error.message });
     }
-    setIsAnalyzing(false);
   };
 
   const getChannelIcon = (channel) => {
@@ -100,35 +99,35 @@ Consider patient preferences, accessibility needs, and likelihood of successful 
   };
 
   return (
-    <Card className="border-2 border-teal-300">
-      <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 pb-3">
+    <Card className="border-2 border-navy-300">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-navy-50 pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-teal-600" />
+          <MessageSquare className="w-5 h-5 text-navy-600" />
           AI Communication Strategy Advisor
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-4">
-        <Alert className="bg-teal-50 border-teal-200">
-          <Brain className="w-4 h-4 text-teal-600" />
-          <AlertDescription className="text-sm text-teal-900">
+        <Alert className="bg-navy-50 border-navy-200">
+          <Brain className="w-4 h-4 text-navy-600" />
+          <AlertDescription className="text-sm text-navy-900">
             Get AI-powered recommendations for optimal patient contact timing and method
           </AlertDescription>
         </Alert>
 
-        {!recommendation && !isAnalyzing && (
+        {!recommendation && !ai.loading && (
           <Button
             onClick={analyzeCommunicationStrategy}
-            className="w-full bg-teal-600 hover:bg-teal-700"
+            className="w-full bg-navy-600 hover:bg-navy-700"
           >
             <Brain className="w-4 h-4 mr-2" />
             Analyze Communication Strategy
           </Button>
         )}
 
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="text-center py-6">
-            <Loader2 className="w-8 h-8 text-teal-600 animate-spin mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Analyzing optimal outreach strategy...</p>
+            <Loader2 className="w-8 h-8 text-navy-600 animate-spin mx-auto mb-2" />
+            <p className="text-sm text-slate-600">Analyzing optimal outreach strategy...</p>
           </div>
         )}
 
@@ -144,16 +143,16 @@ Consider patient preferences, accessibility needs, and likelihood of successful 
             )}
 
             {/* Primary Channel */}
-            <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg">
-              <p className="text-xs font-semibold text-teal-900 mb-2">Recommended Channel</p>
+            <div className="p-3 bg-navy-50 border border-navy-200 rounded-lg">
+              <p className="text-xs font-semibold text-navy-900 mb-2">Recommended Channel</p>
               <div className="flex items-center gap-2">
                 {React.createElement(getChannelIcon(recommendation.primary_channel), { 
-                  className: "w-5 h-5 text-teal-600" 
+                  className: "w-5 h-5 text-navy-600" 
                 })}
-                <span className="font-semibold text-teal-900">{recommendation.primary_channel}</span>
+                <span className="font-semibold text-navy-900">{recommendation.primary_channel}</span>
               </div>
               {recommendation.alternative_channel && (
-                <p className="text-xs text-teal-700 mt-1">
+                <p className="text-xs text-navy-700 mt-1">
                   Backup: {recommendation.alternative_channel}
                 </p>
               )}
@@ -161,10 +160,10 @@ Consider patient preferences, accessibility needs, and likelihood of successful 
 
             {/* Timing */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                <Clock className="w-4 h-4 text-purple-600 mb-1" />
-                <p className="text-xs font-semibold text-purple-900">Best Time</p>
-                <p className="text-xs text-purple-800">{recommendation.best_time_of_day}</p>
+              <div className="p-3 bg-navy-50 border border-navy-200 rounded-lg">
+                <Clock className="w-4 h-4 text-navy-600 mb-1" />
+                <p className="text-xs font-semibold text-navy-900">Best Time</p>
+                <p className="text-xs text-navy-800">{recommendation.best_time_of_day}</p>
               </div>
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <Calendar className="w-4 h-4 text-blue-600 mb-1" />
@@ -208,7 +207,7 @@ Consider patient preferences, accessibility needs, and likelihood of successful 
 
             {/* Accessibility Notes */}
             {recommendation.accessibility_notes && (
-              <div className="p-2 bg-gray-50 border rounded text-xs text-gray-700">
+              <div className="p-2 bg-slate-50 border rounded text-xs text-slate-700">
                 <strong>Accessibility:</strong> {recommendation.accessibility_notes}
               </div>
             )}

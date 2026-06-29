@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,8 @@ import {
   Loader2,
   Copy,
   Download,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -19,12 +21,11 @@ export default function OASISDraftGenerator({
   visitType = "admission",
   onDraftGenerated
 }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [draftDocumentation, setDraftDocumentation] = useState(null);
   const [activeTab, setActiveTab] = useState("narrative");
 
   const generateDraft = async () => {
-    setIsGenerating(true);
     try {
       const prompt = `Generate comprehensive OASIS documentation based on patient context.
 
@@ -53,7 +54,8 @@ Make documentation:
 - Supportive of skilled need
 - Defensible in audit`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -118,8 +120,8 @@ Make documentation:
       }
     } catch (error) {
       console.error('Draft generation error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const copyToClipboard = (text) => {
@@ -129,7 +131,11 @@ Make documentation:
   const exportAllDocumentation = () => {
     if (!draftDocumentation) return;
     
-    const fullDoc = `OASIS DRAFT DOCUMENTATION
+    const fullDoc = `OASIS DRAFT DOCUMENTATION — AI-GENERATED, REQUIRES CLINICIAN REVIEW
+*** This is an AI-generated DRAFT. A licensed clinician must verify every item
+*** against the actual assessment before it is used in the medical record.
+*** It is NOT a vetted or attested clinical document. ***
+
 Generated: ${new Date().toLocaleString()}
 Patient: ${patientData?.first_name} ${patientData?.last_name}
 Visit Type: ${visitType}
@@ -181,20 +187,20 @@ ${draftDocumentation.caregiver_support}`;
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-gold-50">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             OASIS Draft Documentation Generator
           </CardTitle>
           {!draftDocumentation && (
             <Button
               onClick={generateDraft}
-              disabled={isGenerating}
-              className="bg-purple-600 hover:bg-purple-700"
+              disabled={ai.loading}
+              className="bg-navy-600 hover:bg-navy-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Generating...
@@ -211,22 +217,26 @@ ${draftDocumentation.caregiver_support}`;
       </CardHeader>
 
       <CardContent>
-        {!draftDocumentation && !isGenerating && (
-          <div className="text-center py-8 text-gray-600">
-            <FileText className="w-12 h-12 text-purple-400 mx-auto mb-3" />
+        {!draftDocumentation && !ai.loading && (
+          <div className="text-center py-8 text-slate-600">
+            <FileText className="w-12 h-12 text-navy-400 mx-auto mb-3" />
             <p>Click "Generate Draft" to create comprehensive OASIS documentation</p>
           </div>
         )}
 
-        {isGenerating && (
+        {ai.loading && (
           <div className="text-center py-12">
-            <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-            <p className="text-purple-700">Generating Medicare-compliant documentation...</p>
+            <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+            <p className="text-navy-700">Generating Medicare-compliant documentation...</p>
           </div>
         )}
 
         {draftDocumentation && (
           <div className="space-y-4">
+            <div className="flex items-start gap-2 rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800"><strong>AI-generated draft.</strong> A licensed clinician must verify every item against the actual assessment before it is used in the medical record. This is not a vetted or attested clinical document.</p>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 size="sm"
@@ -239,7 +249,7 @@ ${draftDocumentation.caregiver_support}`;
               <Button
                 size="sm"
                 onClick={generateDraft}
-                disabled={isGenerating}
+                disabled={ai.loading}
               >
                 Regenerate
               </Button>
@@ -289,7 +299,7 @@ ${draftDocumentation.caregiver_support}`;
                         <Copy className="w-3 h-3" />
                       </Button>
                     </div>
-                    <p className="text-sm text-gray-700">{value}</p>
+                    <p className="text-sm text-slate-700">{value}</p>
                   </div>
                 ))}
               </TabsContent>
@@ -309,7 +319,7 @@ ${draftDocumentation.caregiver_support}`;
                         <Copy className="w-3 h-3" />
                       </Button>
                     </div>
-                    <p className="text-sm text-gray-700">{value}</p>
+                    <p className="text-sm text-slate-700">{value}</p>
                   </div>
                 ))}
 
@@ -317,10 +327,10 @@ ${draftDocumentation.caregiver_support}`;
                   <h4 className="font-semibold mb-2">Cognitive/Behavioral</h4>
                   {Object.entries(draftDocumentation.cognitive_behavioral || {}).map(([key, value]) => (
                     <div key={key} className="mb-3">
-                      <p className="text-xs text-gray-500 font-medium">
+                      <p className="text-xs text-slate-500 font-medium">
                         {key.replace(/_/g, ' ').toUpperCase()}
                       </p>
-                      <p className="text-sm text-gray-700">{value}</p>
+                      <p className="text-sm text-slate-700">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -355,17 +365,17 @@ ${draftDocumentation.caregiver_support}`;
                   <p className="text-sm text-blue-900">{draftDocumentation.skilled_need_justification}</p>
                 </div>
 
-                <div className="bg-purple-50 p-4 rounded-lg border border-purple-300">
-                  <h4 className="font-semibold text-purple-900 mb-3">Goals & Interventions</h4>
+                <div className="bg-navy-50 p-4 rounded-lg border border-navy-300">
+                  <h4 className="font-semibold text-navy-900 mb-3">Goals & Interventions</h4>
                   {draftDocumentation.goals_and_interventions?.map((goal, idx) => (
                     <div key={idx} className="bg-white p-3 rounded mb-2">
                       <Badge className="mb-2">Goal {idx + 1}</Badge>
-                      <p className="text-sm font-medium text-purple-900 mb-1">{goal.goal}</p>
-                      <p className="text-xs text-gray-600 mb-2">Problem: {goal.problem}</p>
-                      <p className="text-xs text-gray-700 mb-1">
+                      <p className="text-sm font-medium text-navy-900 mb-1">{goal.goal}</p>
+                      <p className="text-xs text-slate-600 mb-2">Problem: {goal.problem}</p>
+                      <p className="text-xs text-slate-700 mb-1">
                         <strong>Interventions:</strong> {goal.interventions.join('; ')}
                       </p>
-                      <p className="text-xs text-gray-500">Timeframe: {goal.timeframe}</p>
+                      <p className="text-xs text-slate-500">Timeframe: {goal.timeframe}</p>
                     </div>
                   ))}
                 </div>

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
@@ -16,8 +16,19 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'User email is required' }, { status: 400 });
     }
 
-    // Generate a temporary password (8 characters, alphanumeric)
-    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+    // Generate a cryptographically-secure temporary password. Math.random() is
+    // NOT a CSPRNG and must never be used for credentials. Indices are
+    // rejection-sampled to avoid the modulo bias of `byte % alphabetLength`
+    // (the alphabet length does not divide 256).
+    const PW_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    const randomIndex = (max) => {
+      const limit = Math.floor(256 / max) * max;
+      const buf = new Uint8Array(1);
+      let x;
+      do { crypto.getRandomValues(buf); x = buf[0]; } while (x >= limit);
+      return x % max;
+    };
+    const tempPassword = Array.from({ length: 14 }, () => PW_ALPHABET[randomIndex(PW_ALPHABET.length)]).join('');
 
     // Get user details
     const users = await base44.asServiceRole.entities.User.filter({ email: userEmail });
@@ -30,15 +41,19 @@ Deno.serve(async (req) => {
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
 
+    const appUrl = `https://hub.base44.app/apps/68ee80d98929370f9e8f2932`;
+
     // Send email with temporary password
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: userEmail,
-      subject: 'Your Password Has Been Reset',
+      subject: 'Your Penn Sync Password Has Been Reset',
       body: `Hello ${targetUser.full_name || 'User'},
 
-Your password has been reset by an administrator.
+Your password has been reset by an administrator. Here are your login details:
 
-Your temporary password is: ${tempPassword}
+🔗 Login URL: ${appUrl}
+👤 Username: ${userEmail}
+🔑 Temporary Password: ${tempPassword}
 
 Please log in and change your password immediately for security purposes.
 
@@ -63,17 +78,17 @@ Penn Sync Team`
       entity_id: targetUser.id
     });
 
+    // SECURITY: do NOT echo the temporary password in the HTTP response. Email is
+    // the only delivery channel; returning it here would expose the credential to
+    // browser/proxy/APM network logs.
     return Response.json({
       success: true,
-      message: 'Password reset successfully. Temporary password sent via email.',
-      tempPassword // Return for admin to see (optional, can be removed for security)
+      message: 'Password reset successfully. Temporary password sent via email.'
     });
 
   } catch (error) {
     console.error('Password reset error:', error);
-    return Response.json({ 
-      error: 'Failed to reset password',
-      details: error.message 
-    }, { status: 500 });
+    // Generic message — don't leak internals to the client.
+    return Response.json({ error: 'Failed to reset password' }, { status: 500 });
   }
 });

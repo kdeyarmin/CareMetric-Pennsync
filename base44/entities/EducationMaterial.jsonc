@@ -1,0 +1,112 @@
+{
+  "name": "EducationMaterial",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Education material title"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "medication_management",
+        "wound_care",
+        "diabetes_education",
+        "heart_failure",
+        "fall_prevention",
+        "nutrition",
+        "exercise_therapy",
+        "pain_management",
+        "infection_control",
+        "copd_management",
+        "stroke_recovery",
+        "post_surgical_care",
+        "general_health"
+      ],
+      "description": "Category of education material"
+    },
+    "content": {
+      "type": "string",
+      "description": "Rich text content with variable placeholders like {{patient_name}}, {{diagnosis}}, {{medications}}"
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "patient_chart",
+              "manual_entry"
+            ]
+          }
+        }
+      },
+      "description": "List of variables that can be personalized"
+    },
+    "reading_level": {
+      "type": "string",
+      "enum": [
+        "elementary",
+        "middle_school",
+        "high_school",
+        "college"
+      ],
+      "default": "middle_school",
+      "description": "Target reading level"
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "english",
+        "spanish"
+      ],
+      "default": "english"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Search keywords"
+    },
+    "is_template": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this is a reusable template"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Creator email"
+    },
+    "last_used_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0
+    },
+    "is_published": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether material is available for use"
+    },
+    "version": {
+      "type": "number",
+      "default": 1
+    }
+  },
+  "required": [
+    "title",
+    "category",
+    "content"
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "name": "CitationLibrary",
+  "type": "object",
+  "properties": {
+    "source_name": {
+      "type": "string",
+      "description": "Citation source name"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "regulation",
+        "guideline",
+        "research",
+        "industry_standard",
+        "internal_policy"
+      ],
+      "description": "Type of source"
+    },
+    "url": {
+      "type": "string",
+      "description": "Source URL"
+    },
+    "snippet": {
+      "type": "string",
+      "description": "Relevant text snippet"
+    },
+    "full_citation": {
+      "type": "string",
+      "description": "Formatted citation"
+    },
+    "publication_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Publication date"
+    },
+    "last_verified_at": {
+      "type": "string",
+      "format": "date",
+      "description": "Last verification date"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Searchable tags"
+    },
+    "applies_to_state": {
+      "type": "string",
+      "description": "State-specific citation"
+    },
+    "relevance_score": {
+      "type": "number",
+      "description": "AI-assigned relevance score"
+    }
+  },
+  "required": [
+    "source_name",
+    "source_type"
+  ]
+}

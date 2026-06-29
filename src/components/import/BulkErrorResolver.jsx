@@ -124,7 +124,7 @@ export default function BulkErrorResolver({
             
             <div className="space-y-2">
               {Object.entries(commonFields).map(([field, data]) => (
-                <div key={field} className="p-3 bg-gray-50 rounded-lg">
+                <div key={field} className="p-3 bg-slate-50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-sm">{field}</span>
                     <Badge variant="outline">{data.count} error{data.count !== 1 ? 's' : ''}</Badge>
@@ -142,7 +142,7 @@ export default function BulkErrorResolver({
                     />
                   )}
                   
-                  <div className="mt-2 text-xs text-gray-600">
+                  <div className="mt-2 text-xs text-slate-600">
                     <p className="font-medium mb-1">Example errors:</p>
                     {data.examples.slice(0, 2).map((example, idx) => (
                       <p key={idx} className="text-xs">• {example}</p>
@@ -161,11 +161,11 @@ export default function BulkErrorResolver({
             {selectedErrorDetails.slice(0, 5).map((error, idx) => (
               <div key={idx} className="p-2 bg-red-50 border border-red-200 rounded text-sm">
                 <p className="font-medium">Row {error.row}: {error.patient}</p>
-                <p className="text-xs text-gray-600">{error.errors.length} error{error.errors.length !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-slate-600">{error.errors.length} error{error.errors.length !== 1 ? 's' : ''}</p>
               </div>
             ))}
             {selectedErrorDetails.length > 5 && (
-              <p className="text-xs text-gray-500 text-center py-2">
+              <p className="text-xs text-slate-500 text-center py-2">
                 + {selectedErrorDetails.length - 5} more rows
               </p>
             )}

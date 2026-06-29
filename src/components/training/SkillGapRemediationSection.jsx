@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,29 +31,21 @@ export default function SkillGapRemediationSection({
   const [completedItems, setCompletedItems] = useState(new Set());
   const [complianceModules, setComplianceModules] = useState([]);
 
-  useEffect(() => {
-    loadDeficitAnalysis();
-  }, [nurseEmail]);
-
-  useEffect(() => {
-    mapComplianceRisksToTraining();
-  }, [complianceRisks, pdgmWarnings]);
-
-  const loadDeficitAnalysis = async () => {
+  const loadDeficitAnalysis = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await analyzeNurseDeficits({ 
-        nurseEmail, 
-        daysPeriod: 30 
+      const response = await analyzeNurseDeficits({
+        nurseEmail,
+        daysPeriod: 30
       });
       setAnalysis(response.data);
     } catch (error) {
       console.error("Error loading deficit analysis:", error);
     }
     setIsLoading(false);
-  };
+  }, [nurseEmail]);
 
-  const mapComplianceRisksToTraining = () => {
+  const mapComplianceRisksToTraining = useCallback(() => {
     const modules = [];
     const riskToTrainingMap = {
       'homebound': { quiz: 'homebound', scenario: 'homebound_justification', priority: 'critical' },
@@ -125,7 +116,15 @@ export default function SkillGapRemediationSection({
     });
 
     setComplianceModules(uniqueModules);
-  };
+  }, [complianceRisks, pdgmWarnings]);
+
+  useEffect(() => {
+    loadDeficitAnalysis();
+  }, [loadDeficitAnalysis]);
+
+  useEffect(() => {
+    mapComplianceRisksToTraining();
+  }, [mapComplianceRisksToTraining]);
 
   const handleScenarioComplete = (scenarioId) => {
     setCompletedItems(prev => new Set([...prev, scenarioId]));
@@ -144,7 +143,7 @@ export default function SkillGapRemediationSection({
       <Card>
         <CardContent className="p-12 text-center">
           <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-600">Analyzing your skill gaps...</p>
+          <p className="text-slate-600">Analyzing your skill gaps...</p>
         </CardContent>
       </Card>
     );
@@ -231,7 +230,7 @@ export default function SkillGapRemediationSection({
                       }>
                         {module.priority} priority
                       </Badge>
-                      <p className="text-sm font-medium text-gray-900 mt-2">{module.description}</p>
+                      <p className="text-sm font-medium text-slate-900 mt-2">{module.description}</p>
                       <Badge variant="outline" className="text-xs mt-1">
                         Source: {module.source.replace(/_/g, ' ')}
                       </Badge>
@@ -254,7 +253,7 @@ export default function SkillGapRemediationSection({
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-purple-600 hover:bg-purple-700"
+                      className="bg-navy-600 hover:bg-navy-700"
                       onClick={() => setActiveQuiz(module.quiz)}
                     >
                       <Brain className="w-3 h-3 mr-1" />
@@ -269,15 +268,15 @@ export default function SkillGapRemediationSection({
       )}
 
       {/* Header with Progress */}
-      <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+      <Card className="bg-gradient-to-r from-indigo-50 to-navy-50 border-indigo-200">
         <CardContent className="p-6">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                 <Target className="w-6 h-6 text-indigo-600" />
                 Personalized Skill Gap Remediation
               </h2>
-              <p className="text-gray-600 mt-1">
+              <p className="text-slate-600 mt-1">
                 Complete these modules to address your identified areas of improvement
               </p>
             </div>
@@ -288,7 +287,7 @@ export default function SkillGapRemediationSection({
           
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-700 font-medium">Overall Progress</span>
+              <span className="text-slate-700 font-medium">Overall Progress</span>
               <span className="text-indigo-600 font-bold">{progress}%</span>
             </div>
             <Progress value={progress} className="h-3" />
@@ -340,13 +339,13 @@ export default function SkillGapRemediationSection({
                       {recommendation.severity} priority
                     </Badge>
                   </CardTitle>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <p className="text-sm text-slate-600 mt-1">
                     {recommendation.count} AI suggestions identified in this area
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">{categoryProgress}%</p>
-                  <p className="text-xs text-gray-500">complete</p>
+                  <p className="text-2xl font-bold text-slate-900">{categoryProgress}%</p>
+                  <p className="text-xs text-slate-500">complete</p>
                 </div>
               </div>
               <Progress value={categoryProgress} className="mt-2 h-2" />
@@ -356,7 +355,7 @@ export default function SkillGapRemediationSection({
               {/* Practice Scenarios */}
               {recommendation.suggestedScenarios.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-700 flex items-center gap-1">
+                  <p className="text-sm font-semibold text-slate-700 flex items-center gap-1">
                     <BookOpen className="w-4 h-4 text-blue-600" />
                     Practice Scenarios
                   </p>
@@ -393,8 +392,8 @@ export default function SkillGapRemediationSection({
               {/* Knowledge Quizzes */}
               {recommendation.suggestedQuizzes.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-700 flex items-center gap-1">
-                    <Brain className="w-4 h-4 text-purple-600" />
+                  <p className="text-sm font-semibold text-slate-700 flex items-center gap-1">
+                    <Brain className="w-4 h-4 text-navy-600" />
                     Knowledge Quizzes
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -405,7 +404,7 @@ export default function SkillGapRemediationSection({
                           key={quizId}
                           variant={isCompleted ? "outline" : "default"}
                           className={`justify-between h-auto py-3 ${
-                            isCompleted ? 'bg-green-50 border-green-300' : 'bg-purple-600 hover:bg-purple-700'
+                            isCompleted ? 'bg-green-50 border-green-300' : 'bg-navy-600 hover:bg-navy-700'
                           }`}
                           onClick={() => setActiveQuiz(quizId)}
                         >
@@ -428,7 +427,7 @@ export default function SkillGapRemediationSection({
               )}
 
               <div className="pt-3 border-t">
-                <p className="text-xs text-gray-600 italic">
+                <p className="text-xs text-slate-600 italic">
                   <strong>Rationale:</strong> {recommendation.rationale}
                 </p>
               </div>

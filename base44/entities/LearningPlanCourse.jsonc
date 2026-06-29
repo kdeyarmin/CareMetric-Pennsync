@@ -1,0 +1,40 @@
+{
+  "name": "LearningPlanCourse",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "Reference to LearningPlan"
+    },
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "course_title": {
+      "type": "string",
+      "description": "Course title at time of addition"
+    },
+    "order_index": {
+      "type": "number",
+      "description": "Display order in plan"
+    },
+    "due_date_offset_days": {
+      "type": "number",
+      "description": "Days from enrollment to complete (if relative due dates)"
+    },
+    "specific_due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Specific due date for this course (overrides global)"
+    },
+    "is_required": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether course is required for plan completion"
+    }
+  },
+  "required": [
+    "plan_id",
+    "course_id"
+  ]
+}

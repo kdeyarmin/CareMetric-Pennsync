@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,8 +24,6 @@ import {
 import {
   Ambulance,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   Activity,
   Heart,
   Shield,
@@ -37,11 +36,12 @@ import {
   Lightbulb,
   Users
 } from "lucide-react";
-import { differenceInDays, parseISO, subDays, isValid } from "date-fns";
+import { differenceInDays, parseISO, isValid } from "date-fns";
+import { toast } from 'sonner';
 
 export default function HospitalReadmissionRisk({ patient }) {
   const [showInterventions, setShowInterventions] = useState(false);
-  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const ai = useAICall();
   const [interventionPlan, setInterventionPlan] = useState(null);
 
   const { data: visits = [] } = useQuery({
@@ -71,10 +71,14 @@ export default function HospitalReadmissionRisk({ patient }) {
     });
     
     if (recentHospitalizations.length > 0) {
-      const mostRecent = recentHospitalizations[0];
-      const mostRecentDate = parseISO(mostRecent.incident_date);
-      const daysSince = isValid(mostRecentDate) ? differenceInDays(today, mostRecentDate) : 0;
-      
+      // Use the genuinely most-recent hospitalization (smallest days-since).
+      // The query returns rows in unspecified order, so indexing [0] could pick
+      // an older event and under-score the 30-day vs 90-day tier. Every entry
+      // here already passed isValid() in the filter above.
+      const daysSince = Math.min(
+        ...recentHospitalizations.map(h => differenceInDays(today, parseISO(h.incident_date)))
+      );
+
       if (daysSince <= 30) {
         totalScore += 25;
         riskFactors.push({
@@ -129,7 +133,7 @@ export default function HospitalReadmissionRisk({ patient }) {
 
     // Comorbidities - analyze diagnosis
     const diagnosis = patient.primary_diagnosis?.toLowerCase() || '';
-    let comorbidityCount = 0;
+    let _comorbidityCount = 0;
     
     const highRiskDiagnoses = [
       { terms: ['chf', 'heart failure', 'cardiomyopathy'], name: 'Congestive Heart Failure' },
@@ -144,7 +148,7 @@ export default function HospitalReadmissionRisk({ patient }) {
     
     highRiskDiagnoses.forEach(dx => {
       if (dx.terms.some(term => diagnosis.includes(term))) {
-        comorbidityCount++;
+        _comorbidityCount++;
         totalScore += 5;
         riskFactors.push({
           factor: `High-Risk Diagnosis: ${dx.name}`,
@@ -168,30 +172,34 @@ export default function HospitalReadmissionRisk({ patient }) {
       });
     }
 
-    // Age factor (65+ at higher risk)
+    // Age factor (65+ at higher risk). An unparseable date_of_birth must only
+    // skip the age component — it must NOT discard the risk already accumulated
+    // above (recent hospitalizations, comorbidities, falls, etc.), which a prior
+    // early-return did, mislabeling genuinely high-risk patients as "Low".
     if (patient.date_of_birth) {
       const dob = parseISO(patient.date_of_birth);
-      if (!isValid(dob)) return { totalScore, riskLevel: 'Low', riskColor: 'green', riskPercentage: '< 10%', riskFactors: [] };
-      const age = differenceInDays(today, dob) / 365;
-      
-      if (age >= 85) {
-        totalScore += 10;
-        riskFactors.push({
-          factor: 'Advanced Age',
-          impact: 'Medium',
-          details: `Age ${Math.floor(age)} - increased frailty risk`,
-          score: 10,
-          intervention: 'Fall prevention, functional assessment, caregiver support'
-        });
-      } else if (age >= 75) {
-        totalScore += 5;
-        riskFactors.push({
-          factor: 'Advanced Age',
-          impact: 'Low',
-          details: `Age ${Math.floor(age)}`,
-          score: 5,
-          intervention: 'Regular monitoring, fall risk assessment'
-        });
+      if (isValid(dob)) {
+        const age = differenceInDays(today, dob) / 365;
+
+        if (age >= 85) {
+          totalScore += 10;
+          riskFactors.push({
+            factor: 'Advanced Age',
+            impact: 'Medium',
+            details: `Age ${Math.floor(age)} - increased frailty risk`,
+            score: 10,
+            intervention: 'Fall prevention, functional assessment, caregiver support'
+          });
+        } else if (age >= 75) {
+          totalScore += 5;
+          riskFactors.push({
+            factor: 'Advanced Age',
+            impact: 'Low',
+            details: `Age ${Math.floor(age)}`,
+            score: 5,
+            intervention: 'Regular monitoring, fall risk assessment'
+          });
+        }
       }
     }
 
@@ -337,7 +345,6 @@ export default function HospitalReadmissionRisk({ patient }) {
 
   // Generate AI-powered intervention plan
   const generateInterventionPlan = async () => {
-    setIsGeneratingPlan(true);
     
     try {
       const prompt = `You are a home health clinical expert. Generate a comprehensive intervention plan to reduce hospital readmission risk for this patient.
@@ -385,7 +392,8 @@ Return JSON format:
   "expected_outcomes": "string describing expected improvements"
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -422,15 +430,27 @@ Return JSON format:
         }
       });
 
-      setInterventionPlan(result);
+      // The response schema marks none of these arrays as required, so the model
+      // may legally omit any of them. Normalize to arrays up front so the dialog's
+      // unconditional .map()/.length renders can't crash.
+      const asArray = (v) => (Array.isArray(v) ? v : []);
+      setInterventionPlan({
+        ...result,
+        immediate_actions: asArray(result?.immediate_actions),
+        short_term: asArray(result?.short_term),
+        ongoing: asArray(result?.ongoing),
+        monitoring: asArray(result?.monitoring),
+        education: asArray(result?.education),
+        red_flags: asArray(result?.red_flags),
+        referrals: asArray(result?.referrals),
+      });
       setShowInterventions(true);
       
     } catch (error) {
       console.error('Error generating intervention plan:', error);
-      alert('Error generating plan. Please try again.');
+      toast.error('Error generating plan. Please try again.');
     }
     
-    setIsGeneratingPlan(false);
   };
 
   const getRiskIcon = () => {
@@ -463,12 +483,12 @@ Return JSON format:
       'Medium': 'bg-yellow-500',
       'Low': 'bg-blue-500'
     };
-    return colors[impact] || 'bg-gray-500';
+    return colors[impact] || 'bg-slate-500';
   };
 
   return (
     <>
-      <Card className={`border-2 border-${riskAssessment.riskColor}-300`}>
+      <Card className={`border-2 ${{red: 'border-red-300', orange: 'border-orange-300', yellow: 'border-yellow-300', green: 'border-green-300'}[riskAssessment.riskColor] || 'border-slate-300'}`}>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
@@ -478,10 +498,10 @@ Return JSON format:
             <Button
               size="sm"
               onClick={generateInterventionPlan}
-              disabled={isGeneratingPlan}
+              disabled={ai.loading}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
-              {isGeneratingPlan ? (
+              {ai.loading ? (
                 <>
                   <Clock className="w-4 h-4 mr-2 animate-spin" />
                   Generating...
@@ -523,7 +543,7 @@ Return JSON format:
           {/* Risk Factors */}
           {riskAssessment.riskFactors.length > 0 && (
             <div className="space-y-2">
-              <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+              <h4 className="font-semibold text-slate-900 flex items-center gap-2">
                 <Target className="w-4 h-4" />
                 Contributing Risk Factors
               </h4>
@@ -550,7 +570,7 @@ Return JSON format:
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-4">
                       <div className="space-y-2 text-sm">
-                        <p className="text-gray-600">{factor.details}</p>
+                        <p className="text-slate-600">{factor.details}</p>
                         <Alert className="bg-blue-50 border-blue-200">
                           <Lightbulb className="w-4 h-4 text-blue-600" />
                           <AlertDescription className="text-blue-900">
@@ -566,7 +586,7 @@ Return JSON format:
           )}
 
           {/* Quick Actions */}
-          {riskAssessment.riskLevel === 'Critical' || riskAssessment.riskLevel === 'High' && (
+          {(riskAssessment.riskLevel === 'Critical' || riskAssessment.riskLevel === 'High') && (
             <Alert className="bg-orange-50 border-orange-300">
               <AlertTriangle className="w-5 h-5 text-orange-600" />
               <AlertDescription className="text-orange-900">
@@ -650,18 +670,18 @@ Return JSON format:
               {/* Monitoring */}
               <div>
                 <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-purple-600" />
+                  <Eye className="w-5 h-5 text-navy-600" />
                   Monitoring Parameters
                 </h3>
                 <div className="grid gap-3">
                   {interventionPlan.monitoring.map((param, i) => (
-                    <div key={i} className="p-3 bg-purple-50 border border-purple-200 rounded">
+                    <div key={i} className="p-3 bg-navy-50 border border-navy-200 rounded">
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="font-medium">{param.parameter}</p>
-                          <p className="text-sm text-gray-600">Target: {param.target}</p>
+                          <p className="text-sm text-slate-600">Target: {param.target}</p>
                         </div>
-                        <Badge className="bg-purple-600">{param.frequency}</Badge>
+                        <Badge className="bg-navy-600">{param.frequency}</Badge>
                       </div>
                     </div>
                   ))}
@@ -713,7 +733,7 @@ Return JSON format:
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-medium">{ref.discipline}</p>
-                            <p className="text-sm text-gray-600">{ref.reason}</p>
+                            <p className="text-sm text-slate-600">{ref.reason}</p>
                           </div>
                           <Badge className={
                             ref.priority === 'high' ? 'bg-red-600' :
@@ -750,7 +770,7 @@ Return JSON format:
             <Button 
               onClick={() => {
                 // Could add functionality to add to care plan or print
-                alert('Plan saved to patient record');
+                toast.success('Plan saved to patient record');
               }}
               className="bg-indigo-600 hover:bg-indigo-700"
             >

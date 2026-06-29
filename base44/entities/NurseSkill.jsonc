@@ -1,0 +1,59 @@
+{
+  "name": "NurseSkill",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse"
+    },
+    "skill_name": {
+      "type": "string",
+      "description": "Name of the skill or certification"
+    },
+    "skill_category": {
+      "type": "string",
+      "enum": [
+        "clinical",
+        "documentation",
+        "technology",
+        "communication",
+        "specialty",
+        "certification"
+      ],
+      "description": "Category of the skill"
+    },
+    "proficiency_level": {
+      "type": "string",
+      "enum": [
+        "beginner",
+        "intermediate",
+        "advanced",
+        "expert"
+      ],
+      "description": "Current proficiency level"
+    },
+    "certification_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of certification or skill acquisition"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Expiration date for certifications"
+    },
+    "certificate_url": {
+      "type": "string",
+      "description": "URL to uploaded certificate"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "skill_name",
+    "skill_category"
+  ]
+}

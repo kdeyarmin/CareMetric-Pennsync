@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,15 +7,13 @@ import {
   TrendingDown,
   Activity,
   AlertTriangle,
-  CheckCircle2,
-  FileText,
   Target
 } from "lucide-react";
 
 export default function PatientHistoryTimeline({ history }) {
   if (!history) return null;
 
-  const { visits, carePlans, incidents, trends, continuityInsights } = history;
+  const { visits, _carePlans, _incidents, trends, continuityInsights } = history;
 
   const getTrendIcon = (trend) => {
     if (trend === 'increasing' || trend === 'improving') return <TrendingUp className="w-4 h-4 text-green-600" />;
@@ -37,7 +34,7 @@ export default function PatientHistoryTimeline({ history }) {
           </CardHeader>
           <CardContent className="py-2 space-y-2">
             {Object.entries(trends.vital_trends).map(([vital, data]) => (
-              <div key={vital} className={`p-2 rounded border ${data.concern ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200'}`}>
+              <div key={vital} className={`p-2 rounded border ${data.concern ? 'bg-red-50 border-red-300' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {getTrendIcon(data.trend)}
@@ -49,7 +46,7 @@ export default function PatientHistoryTimeline({ history }) {
                     <Badge variant="outline" className="text-xs">
                       {data.change > 0 ? '+' : ''}{data.change}
                     </Badge>
-                    <Badge className={`text-xs ${data.concern ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                    <Badge className={`text-xs ${data.concern ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-800'}`}>
                       {data.trend}
                     </Badge>
                   </div>
@@ -87,7 +84,7 @@ export default function PatientHistoryTimeline({ history }) {
               </div>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600">Success Rate</span>
+              <span className="text-slate-600">Success Rate</span>
               <Badge className={`${trends.care_plan_progress.success_rate >= 70 ? 'bg-green-600' : 'bg-yellow-600'} text-white`}>
                 {trends.care_plan_progress.success_rate}%
               </Badge>
@@ -116,7 +113,7 @@ export default function PatientHistoryTimeline({ history }) {
                     {pattern.frequency}x
                   </Badge>
                 </div>
-                <p className="text-xs text-gray-900">{pattern.message}</p>
+                <p className="text-xs text-slate-900">{pattern.message}</p>
               </div>
             ))}
           </CardContent>
@@ -124,33 +121,33 @@ export default function PatientHistoryTimeline({ history }) {
       )}
 
       {/* Recent Visit Timeline */}
-      <Card className="border-gray-200">
+      <Card className="border-slate-200">
         <CardHeader className="py-3">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-600" />
+            <Clock className="w-4 h-4 text-slate-600" />
             Recent Visit History
           </CardTitle>
         </CardHeader>
         <CardContent className="py-2">
           <ScrollArea className="h-48">
             <div className="space-y-3 pr-4">
-              {visits?.slice(0, 5).map((visit, idx) => (
+              {visits?.slice(0, 5).map((visit, _idx) => (
                 <div key={visit.id} className="relative pl-6 pb-3 border-l-2 border-blue-200 last:border-transparent">
                   <div className="absolute left-0 top-0 -translate-x-1/2 w-3 h-3 rounded-full bg-blue-600"></div>
-                  <div className="bg-gray-50 p-2 rounded">
+                  <div className="bg-slate-50 p-2 rounded">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-gray-900">{visit.visit_date}</span>
+                      <span className="text-xs font-medium text-slate-900">{visit.visit_date}</span>
                       <Badge variant="outline" className="text-xs">{visit.visit_type}</Badge>
                     </div>
                     {visit.vital_signs && (
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-slate-600">
                         BP {visit.vital_signs.blood_pressure_systolic}/{visit.vital_signs.blood_pressure_diastolic}, 
                         HR {visit.vital_signs.heart_rate}, 
                         O2 {visit.vital_signs.oxygen_saturation}%
                       </p>
                     )}
                     {visit.nurse_notes && (
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                         {visit.nurse_notes.substring(0, 100)}...
                       </p>
                     )}

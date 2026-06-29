@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,15 +9,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sparkles, Loader2, FileText, CheckCircle2, Copy } from "lucide-react";
 
 export default function AIAssessmentDrafter({ visitNotes, patientData, onDraftComplete }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [draftedAssessment, setDraftedAssessment] = useState(null);
   const [customNotes, setCustomNotes] = useState(visitNotes || "");
 
   const generateAssessment = async () => {
-    setIsGenerating(true);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a comprehensive OASIS assessment draft based on the following patient visit notes and data:
 
 VISIT NOTES:
@@ -97,8 +98,8 @@ Format the response professionally for OASIS documentation. Be specific and use 
       onDraftComplete?.(result);
     } catch (error) {
       console.error("Error generating assessment:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const copyToClipboard = (text) => {
@@ -107,19 +108,20 @@ Format the response professionally for OASIS documentation. Be specific and use 
 
   return (
     <div className="space-y-4">
-      <Card className="border-2 border-purple-200">
-        <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50">
+      <Card className="border-2 border-navy-200">
+        <CardHeader className="bg-gradient-to-r from-navy-50 to-indigo-50">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             AI OASIS Assessment Drafter
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
+            <label htmlFor="visit-notes" className="text-sm font-medium text-slate-700 mb-2 block">
               Visit Notes / Clinical Information
             </label>
             <Textarea
+              id="visit-notes"
               value={customNotes}
               onChange={(e) => setCustomNotes(e.target.value)}
               placeholder="Enter visit notes, observations, or patient information to generate OASIS assessment..."
@@ -130,10 +132,10 @@ Format the response professionally for OASIS documentation. Be specific and use 
 
           <Button
             onClick={generateAssessment}
-            disabled={isGenerating || !customNotes.trim()}
-            className="w-full bg-purple-600 hover:bg-purple-700"
+            disabled={ai.loading || !customNotes.trim()}
+            className="w-full bg-navy-600 hover:bg-navy-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Generating OASIS Assessment...
@@ -164,52 +166,52 @@ Format the response professionally for OASIS documentation. Be specific and use 
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => copyToClipboard(draftedAssessment.homebound_status.justification)}
+                  onClick={() => copyToClipboard(draftedAssessment.homebound_status?.justification)}
                 >
                   <Copy className="w-3 h-3" />
                 </Button>
               </div>
-              <Badge className="mb-2">{draftedAssessment.homebound_status.status}</Badge>
-              <p className="text-sm text-gray-700 mb-2">{draftedAssessment.homebound_status.justification}</p>
-              <ul className="text-sm text-gray-600 space-y-1">
-                {draftedAssessment.homebound_status.supporting_details?.map((detail, idx) => (
+              <Badge className="mb-2">{draftedAssessment.homebound_status?.status}</Badge>
+              <p className="text-sm text-slate-700 mb-2">{draftedAssessment.homebound_status?.justification}</p>
+              <ul className="text-sm text-slate-600 space-y-1">
+                {draftedAssessment.homebound_status?.supporting_details?.map((detail, idx) => (
                   <li key={idx}>• {detail}</li>
                 ))}
               </ul>
             </div>
 
             {/* Clinical Findings */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-gray-900 mb-2">Clinical Findings</h3>
+            <div className="bg-slate-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-slate-900 mb-2">Clinical Findings</h3>
               <div className="space-y-2">
                 {draftedAssessment.clinical_findings?.map((finding, idx) => (
                   <div key={idx} className="bg-white p-2 rounded border">
                     <Badge className="text-xs mb-1">{finding.category}</Badge>
-                    <p className="text-sm text-gray-700">{finding.finding}</p>
+                    <p className="text-sm text-slate-700">{finding.finding}</p>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Functional Status */}
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-              <h3 className="font-semibold text-purple-900 mb-2">Functional Status</h3>
+            <div className="bg-navy-50 p-4 rounded-lg border border-navy-200">
+              <h3 className="font-semibold text-navy-900 mb-2">Functional Status</h3>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="font-medium text-purple-800">Ambulation:</p>
-                  <p className="text-gray-700">{draftedAssessment.functional_status.ambulation}</p>
+                  <p className="font-medium text-navy-800">Ambulation:</p>
+                  <p className="text-slate-700">{draftedAssessment.functional_status?.ambulation}</p>
                 </div>
                 <div>
-                  <p className="font-medium text-purple-800">Transfers:</p>
-                  <p className="text-gray-700">{draftedAssessment.functional_status.transfers}</p>
+                  <p className="font-medium text-navy-800">Transfers:</p>
+                  <p className="text-slate-700">{draftedAssessment.functional_status?.transfers}</p>
                 </div>
                 <div>
-                  <p className="font-medium text-purple-800">ADL Independence:</p>
-                  <p className="text-gray-700">{draftedAssessment.functional_status.adl_independence}</p>
+                  <p className="font-medium text-navy-800">ADL Independence:</p>
+                  <p className="text-slate-700">{draftedAssessment.functional_status?.adl_independence}</p>
                 </div>
                 <div>
-                  <p className="font-medium text-purple-800">Assistive Devices:</p>
-                  <p className="text-gray-700">{draftedAssessment.functional_status.assistive_devices}</p>
+                  <p className="font-medium text-navy-800">Assistive Devices:</p>
+                  <p className="text-slate-700">{draftedAssessment.functional_status?.assistive_devices}</p>
                 </div>
               </div>
             </div>
@@ -219,13 +221,13 @@ Format the response professionally for OASIS documentation. Be specific and use 
               <h3 className="font-semibold text-orange-900 mb-2">Skilled Need Justification</h3>
               <ul className="mb-2 space-y-1">
                 {draftedAssessment.skilled_need?.primary_reasons?.map((reason, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                     {reason}
                   </li>
                 ))}
               </ul>
-              <p className="text-sm text-gray-700">{draftedAssessment.skilled_need?.justification}</p>
+              <p className="text-sm text-slate-700">{draftedAssessment.skilled_need?.justification}</p>
             </div>
 
             {/* Suggested M-Items */}
@@ -239,7 +241,7 @@ Format the response professionally for OASIS documentation. Be specific and use 
                         <Badge className="text-xs">{item.m_item}</Badge>
                         <span className="text-sm font-medium">{item.suggested_value}</span>
                       </div>
-                      <p className="text-xs text-gray-600">{item.rationale}</p>
+                      <p className="text-xs text-slate-600">{item.rationale}</p>
                     </div>
                   ))}
                 </div>
@@ -263,7 +265,7 @@ Format the response professionally for OASIS documentation. Be specific and use 
             {/* Care Recommendations */}
             <div className="bg-green-50 p-4 rounded-lg">
               <h3 className="font-semibold text-green-900 mb-2">Care Recommendations</h3>
-              <ul className="text-sm text-gray-700 space-y-1">
+              <ul className="text-sm text-slate-700 space-y-1">
                 {draftedAssessment.care_recommendations?.map((rec, idx) => (
                   <li key={idx}>• {rec}</li>
                 ))}

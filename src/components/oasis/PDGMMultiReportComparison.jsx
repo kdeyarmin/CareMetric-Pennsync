@@ -1,5 +1,4 @@
-import React, { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +12,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DollarSign,
   TrendingUp,
   TrendingDown,
   ArrowRight,
@@ -338,7 +336,7 @@ export default function PDGMMultiReportComparison({
   // Bar chart for functional scores
   const functionalBarData = comparisonResult?.functionalChanges?.length > 0 
     ? comparisonResult.functionalChanges.map(fc => ({
-        name: fc.label.replace('M18', 'M18').split(' ')[0],
+        name: (fc.label || '').replace('M18', 'M18').split(' ')[0],
         [comparisonResult.labelA]: fc.valueA,
         [comparisonResult.labelB]: fc.valueB
       }))
@@ -346,7 +344,7 @@ export default function PDGMMultiReportComparison({
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="text-lg flex items-center gap-2">
           <GitCompare className="w-5 h-5 text-indigo-600" />
           Multi-Report PDGM Comparison
@@ -375,9 +373,9 @@ export default function PDGMMultiReportComparison({
             </Alert>
 
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Select Report to Compare</label>
+              <label htmlFor="pdgm-baseline-report" className="text-xs font-medium text-slate-700 mb-1 block">Select Report to Compare</label>
               <Select value={selectedReportA || 'current'} onValueChange={setSelectedReportA}>
-                <SelectTrigger>
+                <SelectTrigger id="pdgm-baseline-report">
                   <SelectValue placeholder="Select a report" />
                 </SelectTrigger>
                 <SelectContent>
@@ -396,18 +394,18 @@ export default function PDGMMultiReportComparison({
           </TabsContent>
 
           <TabsContent value="reports" className="mt-4 space-y-3">
-            <Alert className="bg-purple-50 border-purple-200">
-              <Info className="w-4 h-4 text-purple-600" />
-              <AlertDescription className="text-purple-800 text-sm">
+            <Alert className="bg-navy-50 border-navy-200">
+              <Info className="w-4 h-4 text-navy-600" />
+              <AlertDescription className="text-navy-800 text-sm">
                 Compare two OASIS analysis reports side-by-side to identify differences.
               </AlertDescription>
             </Alert>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1 block">Report A</label>
+                <label htmlFor="pdgm-report-a" className="text-xs font-medium text-slate-700 mb-1 block">Report A</label>
                 <Select value={selectedReportA || ''} onValueChange={setSelectedReportA}>
-                  <SelectTrigger>
+                  <SelectTrigger id="pdgm-report-a">
                     <SelectValue placeholder="Select first report" />
                   </SelectTrigger>
                   <SelectContent>
@@ -420,9 +418,9 @@ export default function PDGMMultiReportComparison({
                 </Select>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1 block">Report B</label>
+                <label htmlFor="pdgm-report-b" className="text-xs font-medium text-slate-700 mb-1 block">Report B</label>
                 <Select value={selectedReportB || ''} onValueChange={setSelectedReportB}>
-                  <SelectTrigger>
+                  <SelectTrigger id="pdgm-report-b">
                     <SelectValue placeholder="Select second report" />
                   </SelectTrigger>
                   <SelectContent>
@@ -463,13 +461,13 @@ export default function PDGMMultiReportComparison({
           <div className="space-y-4 pt-2">
             {/* Revenue Summary */}
             <div className="grid grid-cols-3 gap-2">
-              <div className="p-3 bg-gray-50 rounded-lg border text-center">
-                <p className="text-xs text-gray-500 mb-1">{comparisonResult.labelA}</p>
-                <p className="text-lg font-bold text-gray-700">{formatCurrency(comparisonResult.revenueA)}</p>
-                <p className="text-xs text-gray-400">CMW: {comparisonResult.caseMixA?.toFixed(4)}</p>
+              <div className="p-3 bg-slate-50 rounded-lg border text-center">
+                <p className="text-xs text-slate-500 mb-1">{comparisonResult.labelA}</p>
+                <p className="text-lg font-bold text-slate-700">{formatCurrency(comparisonResult.revenueA)}</p>
+                <p className="text-xs text-slate-400">CMW: {comparisonResult.caseMixA?.toFixed(4)}</p>
               </div>
               <div className="p-3 flex items-center justify-center">
-                <ArrowRight className="w-6 h-6 text-gray-400" />
+                <ArrowRight className="w-6 h-6 text-slate-400" />
               </div>
               <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200 text-center">
                 <p className="text-xs text-indigo-600 mb-1">{comparisonResult.labelB}</p>
@@ -484,21 +482,21 @@ export default function PDGMMultiReportComparison({
                 ? 'bg-green-50 border-green-300' 
                 : comparisonResult.revenueDifference < 0 
                   ? 'bg-red-50 border-red-300'
-                  : 'bg-gray-50 border-gray-300'
+                  : 'bg-slate-50 border-slate-300'
             }`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-gray-600 mb-1">Revenue Difference</p>
+                  <p className="text-xs text-slate-600 mb-1">Revenue Difference</p>
                   <p className={`text-2xl font-bold ${
                     comparisonResult.revenueDifference > 0 ? 'text-green-700' : 
-                    comparisonResult.revenueDifference < 0 ? 'text-red-700' : 'text-gray-700'
+                    comparisonResult.revenueDifference < 0 ? 'text-red-700' : 'text-slate-700'
                   }`}>
                     {comparisonResult.revenueDifference > 0 ? '+' : ''}{formatCurrency(comparisonResult.revenueDifference)}
                   </p>
                 </div>
                 <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${
                   comparisonResult.revenueDifference > 0 ? 'bg-green-600 text-white' :
-                  comparisonResult.revenueDifference < 0 ? 'bg-red-600 text-white' : 'bg-gray-400 text-white'
+                  comparisonResult.revenueDifference < 0 ? 'bg-red-600 text-white' : 'bg-slate-400 text-white'
                 }`}>
                   {comparisonResult.revenueDifference > 0 ? <TrendingUp className="w-4 h-4" /> : 
                    comparisonResult.revenueDifference < 0 ? <TrendingDown className="w-4 h-4" /> : null}
@@ -508,15 +506,15 @@ export default function PDGMMultiReportComparison({
             </div>
 
             {/* Radar Chart Comparison */}
-            <div className="bg-gray-50 rounded-lg p-3 border">
-              <p className="text-xs font-medium text-gray-700 mb-2">Case-Mix Component Comparison</p>
+            <div className="bg-slate-50 rounded-lg p-3 border">
+              <p className="text-xs font-medium text-slate-700 mb-2">Case-Mix Component Comparison</p>
               <ResponsiveContainer width="100%" height={200}>
                 <RadarChart data={radarData}>
                   <PolarGrid stroke="#e5e7eb" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
                   <PolarRadiusAxis angle={90} domain={[0.8, 1.4]} tick={{ fontSize: 9 }} />
                   <Radar name={comparisonResult.labelA} dataKey="A" stroke="#9ca3af" fill="#9ca3af" fillOpacity={0.3} />
-                  <Radar name={comparisonResult.labelB} dataKey="B" stroke="#6366f1" fill="#6366f1" fillOpacity={0.3} />
+                  <Radar name={comparisonResult.labelB} dataKey="B" stroke="#264491" fill="#264491" fillOpacity={0.3} />
                   <Tooltip formatter={(value) => value.toFixed(4)} />
                   <Legend />
                 </RadarChart>
@@ -526,7 +524,7 @@ export default function PDGMMultiReportComparison({
             {/* Diagnosis Changes */}
             {comparisonResult.diagnosisChanges.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                   <Stethoscope className="w-4 h-4 text-green-600" />
                   Diagnosis Changes
                 </p>
@@ -540,11 +538,11 @@ export default function PDGMMultiReportComparison({
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs mb-2">
                       <div className="bg-white/50 p-2 rounded">
-                        <span className="text-gray-500">Before: </span>
+                        <span className="text-slate-500">Before: </span>
                         <span className="font-medium">{change.valueA}</span>
                       </div>
                       <div className="bg-white/50 p-2 rounded">
-                        <span className="text-gray-500">After: </span>
+                        <span className="text-slate-500">After: </span>
                         <span className="font-medium">{change.valueB}</span>
                       </div>
                     </div>
@@ -554,7 +552,7 @@ export default function PDGMMultiReportComparison({
                     {change.removed?.length > 0 && (
                       <p className="text-xs text-red-700">- Removed: {change.removed.slice(0, 3).join(', ')}{change.removed.length > 3 ? ` (+${change.removed.length - 3} more)` : ''}</p>
                     )}
-                    <p className="text-xs text-gray-700 mt-1">{change.explanation}</p>
+                    <p className="text-xs text-slate-700 mt-1">{change.explanation}</p>
                   </div>
                 ))}
               </div>
@@ -563,7 +561,7 @@ export default function PDGMMultiReportComparison({
             {/* Functional Score Changes */}
             {comparisonResult.functionalChanges.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                   <Activity className="w-4 h-4 text-blue-600" />
                   Functional Score Changes
                   {comparisonResult.functionalLevelChanged && (
@@ -583,7 +581,7 @@ export default function PDGMMultiReportComparison({
 
                 {/* Bar Chart for functional scores */}
                 {functionalBarData.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg p-3 border">
+                  <div className="bg-slate-50 rounded-lg p-3 border">
                     <ResponsiveContainer width="100%" height={150}>
                       <BarChart data={functionalBarData} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" />
@@ -592,7 +590,7 @@ export default function PDGMMultiReportComparison({
                         <Tooltip />
                         <Legend />
                         <Bar dataKey={comparisonResult.labelA} fill="#9ca3af" />
-                        <Bar dataKey={comparisonResult.labelB} fill="#6366f1" />
+                        <Bar dataKey={comparisonResult.labelB} fill="#264491" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -624,18 +622,18 @@ export default function PDGMMultiReportComparison({
             {/* Admin/Timing Changes */}
             {comparisonResult.adminChanges.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-purple-600" />
+                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  <Heart className="w-4 h-4 text-navy-600" />
                   Admission & Timing Changes
                 </p>
                 {comparisonResult.adminChanges.map((change, idx) => (
-                  <div key={idx} className="p-2 rounded border bg-purple-50 border-purple-200 text-xs">
+                  <div key={idx} className="p-2 rounded border bg-navy-50 border-navy-200 text-xs">
                     <span className="font-medium">{change.label}: </span>
                     <span className="capitalize">{change.valueA}</span>
-                    <span className="text-gray-400 mx-1">(×{change.multiplierA?.toFixed(2)})</span>
+                    <span className="text-slate-400 mx-1">(×{change.multiplierA?.toFixed(2)})</span>
                     <ArrowRight className="w-3 h-3 inline mx-1" />
-                    <span className="capitalize font-medium text-purple-700">{change.valueB}</span>
-                    <span className="text-purple-500 mx-1">(×{change.multiplierB?.toFixed(2)})</span>
+                    <span className="capitalize font-medium text-navy-700">{change.valueB}</span>
+                    <span className="text-navy-500 mx-1">(×{change.multiplierB?.toFixed(2)})</span>
                   </div>
                 ))}
               </div>
@@ -644,7 +642,7 @@ export default function PDGMMultiReportComparison({
             {/* Explanations */}
             {comparisonResult.explanations.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <p className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                   <Info className="w-4 h-4 text-indigo-600" />
                   Key Insights & Explanations
                 </p>
@@ -653,7 +651,7 @@ export default function PDGMMultiReportComparison({
                     <AlertTriangle className={`w-4 h-4 ${exp.severity === 'high' ? 'text-red-600' : 'text-yellow-600'}`} />
                     <AlertDescription>
                       <p className="font-semibold text-sm">{exp.title}</p>
-                      <p className="text-xs text-gray-700 mt-1">{exp.description}</p>
+                      <p className="text-xs text-slate-700 mt-1">{exp.description}</p>
                       <p className="text-xs text-indigo-700 mt-2 font-medium">
                         💡 {exp.recommendation}
                       </p>

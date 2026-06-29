@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,9 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { X, Save, AlertCircle, AlertTriangle, Info } from "lucide-react";
-import { isValidEmail, isValidPhone, sanitizeObject, handleSecureError, logSecurityEvent } from "../utils/security";
+import { sanitizeObject, handleSecureError, logSecurityEvent } from "../utils/security";
 import { validatePatient, formatPhoneNumber, SEVERITY } from "../utils/patientValidation";
+import { findDuplicatesForCandidate } from "./patientDuplicateUtils";
 import ValidationOverrideDialog from "./ValidationOverrideDialog";
+import PotentialDuplicateDialog from "./PotentialDuplicateDialog";
+import OCRDocumentExtractor from "./OCRDocumentExtractor";
+import { toast } from 'sonner';
 
 export default function PatientForm({ patient, onSuccess, onCancel }) {
   const [formData, setFormData] = useState({
@@ -28,11 +33,51 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     status: 'active'
   });
 
+  // Keep a live ref to the latest formData so real-time validation always sees
+  // every field's current value. The old handleChange validated
+  // `{ ...formData, [field]: value }` off the render closure, so every field
+  // except the one being edited was the stale pre-keystroke value (cross-field
+  // checks and "did I fix it?" feedback were wrong). The timer ref also debounces.
+  const formDataRef = useRef(formData);
+  useEffect(() => { formDataRef.current = formData; }, [formData]);
+  const validationTimerRef = useRef(null);
+  // Clear the debounced-validation timer on unmount so it can't fire setState
+  // after the component is gone (and leak the pending timeout).
+  useEffect(() => () => clearTimeout(validationTimerRef.current), []);
+
   const [secondaryDiagnosisInput, setSecondaryDiagnosisInput] = useState('');
   const [validationErrors, setValidationErrors] = useState([]);
   const [overriddenWarnings, setOverriddenWarnings] = useState({});
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [currentWarning, setCurrentWarning] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState([]);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+
+  // Existing roster, used to catch duplicates at entry time. Reuses the same
+  // ['patients'] cache the Patients page populates, so this is usually instant
+  // and adds no extra round-trip. Only needed when adding a brand-new patient.
+  const { data: existingPatients = [] } = useQuery({
+    queryKey: ['patients'],
+    queryFn: async () => {
+      const all = await base44.entities.Patient.list('-created_date', 2000);
+      return all.filter((p) => !p.is_archived);
+    },
+    enabled: !patient,
+    staleTime: 60000,
+  });
+
+  const handleOCRDataExtracted = (extractedData) => {
+    setFormData(prev => ({
+      ...prev,
+      ...extractedData,
+      secondary_diagnoses: extractedData.secondary_diagnoses || prev.secondary_diagnoses || []
+    }));
+    
+    // Trigger validation on extracted data
+    const errors = validatePatient({ ...formData, ...extractedData });
+    setValidationErrors(errors);
+  };
 
   useEffect(() => {
     if (patient) {
@@ -45,15 +90,14 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
   }, [patient]);
 
   const handleChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-    
-    // Real-time validation
-    setTimeout(() => {
-      const errors = validatePatient({ ...formData, [field]: value });
-      setValidationErrors(errors);
+    const next = { ...formDataRef.current, [field]: value };
+    formDataRef.current = next; // sync so rapid successive edits accumulate
+    setFormData(next);
+
+    // Real-time validation against the authoritative next state, debounced.
+    clearTimeout(validationTimerRef.current);
+    validationTimerRef.current = setTimeout(() => {
+      setValidationErrors(validatePatient(next));
     }, 500);
   };
   
@@ -94,39 +138,22 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Enhanced validation
-    const errors = validatePatient(formData);
-    const blockingErrors = errors.filter(e => 
-      e.severity === SEVERITY.ERROR || 
-      (e.severity === SEVERITY.WARNING && e.canOverride && !overriddenWarnings[e.field])
-    );
-    
-    if (blockingErrors.length > 0) {
-      setValidationErrors(errors);
-      
-      const unovverriddenWarnings = blockingErrors.filter(e => e.severity === SEVERITY.WARNING && e.canOverride);
-      if (unovverriddenWarnings.length > 0) {
-        alert(`Please review and override the following warnings:\n${unovverriddenWarnings.map(w => `• ${w.message}`).join('\n')}`);
-        return;
-      }
-      
-      alert('Please fix validation errors before saving');
-      return;
-    }
-
+  // Actually create/update the patient. Split out from handleSubmit so the
+  // duplicate-warning dialog's "Add as new anyway" can persist directly,
+  // bypassing the duplicate check it just dismissed.
+  const persistPatient = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       // Include override justifications in form data
       const dataWithOverrides = {
         ...formData,
         validation_overrides: overriddenWarnings
       };
-      
+
       // Sanitize all input data before submission using the new sanitizeObject
       const sanitizedData = sanitizeObject(dataWithOverrides);
-      
+
       if (patient) {
         // Update existing patient
         await base44.entities.Patient.update(patient.id, sanitizedData);
@@ -141,16 +168,60 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
           // Don't log PHI as per outline
         });
       }
-      
+
       if (onSuccess) onSuccess();
     } catch (error) {
       // Use the new handleSecureError for robust error handling and user feedback
       await handleSecureError(
         error,
         'patient_form_submit',
-        (msg) => alert(msg)
+        (msg) => toast.error(msg)
       );
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // Prevent double-submit: a second click before the create resolves would
+    // create a duplicate patient record.
+    if (isSubmitting) return;
+
+    // Enhanced validation
+    const errors = validatePatient(formData);
+    const blockingErrors = errors.filter(e =>
+      e.severity === SEVERITY.ERROR ||
+      (e.severity === SEVERITY.WARNING && e.canOverride && !overriddenWarnings[e.field])
+    );
+
+    if (blockingErrors.length > 0) {
+      setValidationErrors(errors);
+
+      const unovverriddenWarnings = blockingErrors.filter(e => e.severity === SEVERITY.WARNING && e.canOverride);
+      if (unovverriddenWarnings.length > 0) {
+        toast.error('Please review and override the highlighted warnings before saving.');
+        return;
+      }
+
+      toast.error('Please fix validation errors before saving');
+      return;
+    }
+
+    // Duplicate guard — only when adding a new patient. If the entered record
+    // looks like one already in the system, warn and offer to open that chart
+    // instead of silently creating another duplicate.
+    if (!patient) {
+      const matches = findDuplicatesForCandidate(formData, existingPatients, { limit: 5 });
+      if (matches.length > 0) {
+        setDuplicateMatches(matches);
+        setShowDuplicateDialog(true);
+        return;
+      }
+    }
+
+    await persistPatient();
   };
 
   // Filter and group validation messages
@@ -162,12 +233,17 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
   
   return (
     <>
-      <Card className="mb-6 border-blue-200 shadow-lg">
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
+      <Card className="mb-6 modern-card-elevated animate-fade-in border-slate-200">
+        <CardHeader className="bg-slate-50 border-b border-slate-100 rounded-t-xl">
           <CardTitle>{patient ? 'Edit Patient' : 'Add New Patient'}</CardTitle>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="p-6 space-y-4">
+            {/* OCR Document Extractor - Only show for new patients */}
+            {!patient && (
+              <OCRDocumentExtractor onDataExtracted={handleOCRDataExtracted} />
+            )}
+            
             {/* Validation Summary */}
             {errorMessages.length > 0 && (
               <Alert variant="destructive">
@@ -305,7 +381,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
                 <p className="text-xs text-red-600 mt-1">{getFieldError('phone').message}</p>
               )}
               {formData.phone && !getFieldError('phone') && (
-                <p className="text-xs text-gray-500 mt-1">Formatted: {formatPhoneNumber(formData.phone)}</p>
+                <p className="text-xs text-slate-500 mt-1">Formatted: {formatPhoneNumber(formData.phone)}</p>
               )}
             </div>
             <div>
@@ -336,7 +412,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
                 <SelectTrigger>
                   <SelectValue placeholder="Select care type" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent style={{ zIndex: 9999 }}>
                   <SelectItem value="home_health">Home Health</SelectItem>
                   <SelectItem value="hospice">Hospice</SelectItem>
                 </SelectContent>
@@ -351,7 +427,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent style={{ zIndex: 9999 }}>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="discharged">Discharged</SelectItem>
                   <SelectItem value="hospitalized">Hospitalized</SelectItem>
@@ -385,12 +461,12 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
             </div>
             <div className="flex flex-wrap gap-2">
               {formData.secondary_diagnoses?.map((diagnosis, index) => (
-                <div key={index} className="flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+                <div key={index} className="flex items-center gap-1 bg-navy-100 text-navy-800 px-3 py-1 rounded-full">
                   <span className="text-sm">{diagnosis}</span>
                   <button
                     type="button"
                     onClick={() => removeSecondaryDiagnosis(index)}
-                    className="hover:bg-blue-200 rounded-full p-1"
+                    className="hover:bg-navy-200 rounded-full p-1"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -410,13 +486,13 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
             />
           </div>
         </CardContent>
-        <CardFooter className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={onCancel}>
+        <CardFooter className="flex justify-end gap-3 pt-4 border-t border-slate-100 bg-slate-50/50 rounded-b-xl">
+          <Button type="button" className="btn-ghost text-slate-600" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+          <Button type="submit" className="btn-primary" disabled={isSubmitting}>
             <Save className="w-4 h-4 mr-2" />
-            {patient ? 'Update Patient' : 'Add Patient'}
+            {isSubmitting ? 'Saving…' : (patient ? 'Update Patient' : 'Add Patient')}
           </Button>
         </CardFooter>
       </form>
@@ -427,6 +503,13 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
       onClose={() => setShowOverrideDialog(false)}
       warning={currentWarning}
       onOverride={handleOverrideWarning}
+    />
+
+    <PotentialDuplicateDialog
+      open={showDuplicateDialog}
+      onOpenChange={setShowDuplicateDialog}
+      matches={duplicateMatches}
+      onProceedAnyway={persistPatient}
     />
     </>
   );

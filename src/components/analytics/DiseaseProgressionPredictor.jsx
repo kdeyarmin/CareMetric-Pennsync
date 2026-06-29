@@ -1,16 +1,17 @@
-import React, { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useMemo } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { TrendingUp, TrendingDown, Brain, Activity, AlertTriangle, Loader2 } from "lucide-react";
-import { differenceInDays, format } from "date-fns";
+import { format } from "date-fns";
+import { toast } from 'sonner';
 
 export default function DiseaseProgressionPredictor({ patients, visits }) {
-  const [analyzing, setAnalyzing] = useState(false);
+  const ai = useAICall();
   const [progressionData, setProgressionData] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
 
@@ -101,7 +102,6 @@ export default function DiseaseProgressionPredictor({ patients, visits }) {
   };
 
   const generateProgressionPrediction = async (patientData) => {
-    setAnalyzing(true);
     setSelectedPatient(patientData);
 
     try {
@@ -131,7 +131,8 @@ Provide:
 4. Monitoring frequency recommendation
 5. Care plan adjustments needed`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -148,10 +149,9 @@ Provide:
       setProgressionData(result);
     } catch (error) {
       console.error("Progression prediction error:", error);
-      alert("Failed to generate prediction");
+      toast.error("Failed to generate prediction");
     }
 
-    setAnalyzing(false);
   };
 
   const getTrendColor = (trend) => {
@@ -167,12 +167,12 @@ Provide:
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-purple-600" />
+            <Activity className="w-5 h-5 text-navy-600" />
             Disease Progression Monitoring
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-slate-600 mb-4">
             AI-powered analysis of patient vital signs trends to predict disease progression and identify intervention opportunities.
           </p>
           <div className="space-y-3">
@@ -212,11 +212,11 @@ Provide:
                   </div>
                   <Button
                     onClick={() => generateProgressionPrediction(data)}
-                    disabled={analyzing}
+                    disabled={ai.loading}
                     size="sm"
-                    className="bg-purple-600 hover:bg-purple-700"
+                    className="bg-navy-600 hover:bg-navy-700"
                   >
-                    {analyzing && selectedPatient?.patient.id === data.patient.id ? (
+                    {ai.loading && selectedPatient?.patient.id === data.patient.id ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Brain className="w-4 h-4" />
@@ -231,13 +231,13 @@ Provide:
 
       {/* AI Prediction Results */}
       {progressionData && selectedPatient && (
-        <Card className="border-purple-300">
+        <Card className="border-navy-300">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Brain className="w-5 h-5 text-purple-600" />
+              <Brain className="w-5 h-5 text-navy-600" />
               30-Day Progression Prediction
             </CardTitle>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600">
               {selectedPatient.patient.first_name} {selectedPatient.patient.last_name} - {selectedPatient.patient.primary_diagnosis}
             </p>
           </CardHeader>
@@ -261,14 +261,14 @@ Provide:
                 <h4 className="font-semibold mb-2">Expected Complications:</h4>
                 <ul className="list-disc list-inside space-y-1 text-sm">
                   {progressionData.expected_complications?.map((comp, i) => (
-                    <li key={i} className="text-gray-700">{comp}</li>
+                    <li key={i} className="text-slate-700">{comp}</li>
                   ))}
                 </ul>
               </div>
 
               <div>
                 <h4 className="font-semibold mb-2">Monitoring Frequency:</h4>
-                <p className="text-sm text-gray-700">{progressionData.monitoring_frequency}</p>
+                <p className="text-sm text-slate-700">{progressionData.monitoring_frequency}</p>
               </div>
             </div>
 
@@ -277,7 +277,7 @@ Provide:
               <div className="space-y-2">
                 {progressionData.interventions?.map((intervention, i) => (
                   <div key={i} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm text-gray-700">{intervention}</p>
+                    <p className="text-sm text-slate-700">{intervention}</p>
                   </div>
                 ))}
               </div>
@@ -287,8 +287,8 @@ Provide:
               <h4 className="font-semibold mb-2">Care Plan Adjustments:</h4>
               <div className="space-y-2">
                 {progressionData.care_plan_adjustments?.map((adjustment, i) => (
-                  <div key={i} className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                    <p className="text-sm text-gray-700">{adjustment}</p>
+                  <div key={i} className="p-3 bg-navy-50 rounded-lg border border-navy-200">
+                    <p className="text-sm text-slate-700">{adjustment}</p>
                   </div>
                 ))}
               </div>
@@ -309,7 +309,7 @@ Provide:
                   <YAxis yAxisId="right" orientation="right" />
                   <Tooltip />
                   <Legend />
-                  <Line yAxisId="left" type="monotone" dataKey="bp" stroke="#3b82f6" name="Blood Pressure" />
+                  <Line yAxisId="left" type="monotone" dataKey="bp" stroke="#3557b0" name="Blood Pressure" />
                   <Line yAxisId="right" type="monotone" dataKey="o2" stroke="#10b981" name="O2 Saturation" />
                 </LineChart>
               </ResponsiveContainer>

@@ -1,11 +1,28 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    
-    // Service role for monitoring all patients
-    const patients = await base44.asServiceRole.entities.Patient.filter({ status: 'active' });
+
+    // Opt-in auth gate (mirrors checkExpiredInvitations): this cron reads every
+    // active patient's PHI and writes PatientAlerts, so when INTERNAL_FN_SECRET is
+    // set require admin OR the internal secret header (the trusted scheduler sends
+    // x-internal-secret). Unset => the no-identity cron path stays allowed; an
+    // authenticated non-admin is rejected.
+    const me = await base44.auth.me().catch(() => null);
+    const isAdmin = me?.role === 'admin';
+    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
+    if (internalSecret) {
+      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else if (me && !isAdmin) {
+      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    }
+
+    // Service role for monitoring all patients (bounded — an unbounded list would
+    // silently truncate at the SDK page default and time out at scale).
+    const patients = await base44.asServiceRole.entities.Patient.filter({ status: 'active' }, '-created_date', 5000);
     const alerts = [];
     const currentDate = new Date();
     
@@ -116,31 +133,37 @@ Deno.serve(async (req) => {
         v.visit_type?.toLowerCase().includes('ot')
       );
       
-      const admissionDate = new Date(patient.admission_date);
-      const daysInEpisode = Math.floor((currentDate - admissionDate) / (1000 * 60 * 60 * 24));
-      
-      if (daysInEpisode < 60 && daysInEpisode > 7 && therapyVisits.length < 4) {
-        patientAlerts.push({
-          patient_id: patient.id,
-          alert_type: 'readmission_risk',
-          severity: 'high',
-          title: 'Potential LUPA Risk - Low Therapy Utilization',
-          message: `Only ${therapyVisits.length} therapy visits documented ${daysInEpisode} days into episode.`,
-          contributing_factors: [
-            `Episode day: ${daysInEpisode}`,
-            `Therapy visits: ${therapyVisits.length}`,
-            'Medicare LUPA threshold is typically 4 visits in 60-day episode',
-            'Low utilization may trigger payment adjustment'
-          ],
-          recommended_actions: [
-            'Review therapy orders and appropriateness',
-            'Schedule additional PT/OT visits if clinically indicated',
-            'Document medical necessity for therapy',
-            'Consider therapy consultation for assessment'
-          ],
-          risk_score: 75,
-          data_sources: { episode_day: daysInEpisode, therapy_visits: therapyVisits.length }
-        });
+      // Gate ONLY the episode-day (LUPA) check on a valid admission_date — do not
+      // `continue`, or RISK 5/6 and the alert-persistence block below would be
+      // skipped for any patient missing/with an unparseable admission_date,
+      // silently discarding the RISK 1-3 alerts already queued for them.
+      const admissionDate = patient.admission_date ? new Date(patient.admission_date) : null;
+      if (admissionDate && !isNaN(admissionDate.getTime())) {
+        const daysInEpisode = Math.floor((currentDate - admissionDate) / (1000 * 60 * 60 * 24));
+
+        if (daysInEpisode < 60 && daysInEpisode > 7 && therapyVisits.length < 4) {
+          patientAlerts.push({
+            patient_id: patient.id,
+            alert_type: 'readmission_risk',
+            severity: 'high',
+            title: 'Potential LUPA Risk - Low Therapy Utilization',
+            message: `Only ${therapyVisits.length} therapy visits documented ${daysInEpisode} days into episode.`,
+            contributing_factors: [
+              `Episode day: ${daysInEpisode}`,
+              `Therapy visits: ${therapyVisits.length}`,
+              'Medicare LUPA threshold is typically 4 visits in 60-day episode',
+              'Low utilization may trigger payment adjustment'
+            ],
+            recommended_actions: [
+              'Review therapy orders and appropriateness',
+              'Schedule additional PT/OT visits if clinically indicated',
+              'Document medical necessity for therapy',
+              'Consider therapy consultation for assessment'
+            ],
+            risk_score: 75,
+            data_sources: { episode_day: daysInEpisode, therapy_visits: therapyVisits.length }
+          });
+        }
       }
       
       // RISK 5: Homebound status not documented in recent notes

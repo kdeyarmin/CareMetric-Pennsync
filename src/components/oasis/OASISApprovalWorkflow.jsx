@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { logOASISAction, AuditActions } from "../utils/auditLogger";
@@ -10,11 +10,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   Shield,
-  Clock,
   User
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) {
   const queryClient = useQueryClient();
@@ -68,6 +67,9 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
       setSelectedItem(null);
       setApprovalNotes("");
     },
+    onError: (error) => {
+      toast.error(`Couldn't record the review: ${error?.message || 'please try again.'}`);
+    },
   });
 
   const handleApprove = (item) => {
@@ -81,7 +83,7 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
 
   const handleReject = (item) => {
     if (!approvalNotes) {
-      alert("Please provide rejection notes");
+      toast.error("Please provide rejection notes");
       return;
     }
     approveMutation.mutate({
@@ -105,16 +107,16 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
 
   return (
     <div className="space-y-4">
-      <Alert className="bg-purple-50 border-purple-200">
-        <Shield className="w-4 h-4 text-purple-600" />
-        <AlertDescription className="text-sm text-purple-800">
+      <Alert className="bg-navy-50 border-navy-200">
+        <Shield className="w-4 h-4 text-navy-600" />
+        <AlertDescription className="text-sm text-navy-800">
           <strong>Supervisor Review Queue:</strong> Review and approve nurse-completed OASIS reviews before final submission.
         </AlertDescription>
       </Alert>
 
       {pendingItems.map((item) => (
-        <Card key={item.patientId} className="border-2 border-purple-200">
-          <CardHeader className="py-4 bg-gradient-to-r from-purple-50 to-blue-50">
+        <Card key={item.patientId} className="border-2 border-navy-200">
+          <CardHeader className="py-4 bg-gradient-to-r from-navy-50 to-blue-50">
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-lg">
@@ -145,7 +147,7 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
             <CardContent className="p-6 space-y-4">
               {/* Approved Items */}
               {item.aiSuggestions
-                .filter(([k, d]) => d.approved)
+                .filter(([_k, d]) => d.approved)
                 .map(([itemNumber, data]) => (
                   <div key={itemNumber} className="bg-green-50 p-4 rounded-lg border border-green-200">
                     <div className="flex items-start justify-between mb-2">
@@ -154,12 +156,12 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
                         <p className="text-sm">
                           <strong>Value:</strong> {data.value} {data.label && `(${data.label})`}
                         </p>
-                        <p className="text-xs text-gray-600 mt-1">
+                        <p className="text-xs text-slate-600 mt-1">
                           <User className="w-3 h-3 inline mr-1" />
                           Approved by {data.reviewed_by} on {new Date(data.reviewed_at).toLocaleDateString()}
                         </p>
                         {data.review_notes && (
-                          <p className="text-xs text-gray-700 mt-2 italic">Notes: {data.review_notes}</p>
+                          <p className="text-xs text-slate-700 mt-2 italic">Notes: {data.review_notes}</p>
                         )}
                       </div>
                       <Badge className="bg-green-600 text-white">Approved</Badge>
@@ -169,7 +171,7 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
 
               {/* Rejected Items */}
               {item.aiSuggestions
-                .filter(([k, d]) => d.rejected)
+                .filter(([_k, d]) => d.rejected)
                 .map(([itemNumber, data]) => (
                   <div key={itemNumber} className="bg-red-50 p-4 rounded-lg border border-red-200">
                     <div className="flex items-start justify-between mb-2">
@@ -178,7 +180,7 @@ export default function OASISApprovalWorkflow({ pendingItems = [], onApprove }) 
                         <p className="text-sm">
                           <strong>Original AI Suggestion:</strong> {data.value}
                         </p>
-                        <p className="text-xs text-gray-600 mt-1">
+                        <p className="text-xs text-slate-600 mt-1">
                           <User className="w-3 h-3 inline mr-1" />
                           Rejected by {data.reviewed_by} on {new Date(data.reviewed_at).toLocaleDateString()}
                         </p>

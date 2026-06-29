@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
@@ -10,6 +10,13 @@ Deno.serve(async (req) => {
     }
 
     const { skill_gap, nurse_email } = await req.json();
+    // Only admins may build training from another nurse's PHI/performance data.
+    // Mirrors the guard in generatePersonalizedLearningPath; without it any
+    // authenticated user could read another nurse's ComplianceAudit /
+    // TrainingRecommendation / UserActivity via the service-role reads below.
+    if (nurse_email && nurse_email !== user.email && user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const targetEmail = nurse_email || user.email;
 
     // Fetch nurse performance data
@@ -71,6 +78,7 @@ Generate a complete training module with the following components:
 Make content specific, practical, and immediately applicable to home health nursing.`;
 
     const trainingContent = await base44.asServiceRole.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
       prompt: trainingPrompt,
       response_json_schema: {
         type: 'object',
@@ -162,7 +170,6 @@ Make content specific, practical, and immediately applicable to home health nurs
     console.error('Error generating training:', error);
     return Response.json({ 
       error: error.message,
-      stack: error.stack 
     }, { status: 500 });
   }
 });

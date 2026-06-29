@@ -1,0 +1,109 @@
+{
+  "name": "PatientEducationDelivery",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "topic": {
+      "type": "string",
+      "description": "Educational topic (e.g., 'Wound Care', 'Medication Management', 'Fall Prevention')"
+    },
+    "diagnosis_related": {
+      "type": "string",
+      "description": "Primary diagnosis this education relates to"
+    },
+    "education_content": {
+      "type": "string",
+      "description": "Generated educational material content"
+    },
+    "content_type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "pdf",
+        "video_link",
+        "interactive"
+      ],
+      "default": "text",
+      "description": "Type of educational content"
+    },
+    "reading_level": {
+      "type": "string",
+      "enum": [
+        "basic",
+        "intermediate",
+        "advanced"
+      ],
+      "default": "basic",
+      "description": "Complexity level of material"
+    },
+    "generated_from_visit_id": {
+      "type": "string",
+      "description": "Visit that triggered this education generation"
+    },
+    "generated_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "delivered",
+        "not_delivered",
+        "declined"
+      ],
+      "default": "pending",
+      "description": "Whether education was delivered to patient"
+    },
+    "delivered_by": {
+      "type": "string",
+      "description": "Clinician who delivered the education"
+    },
+    "delivery_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When education was delivered"
+    },
+    "delivery_method": {
+      "type": "string",
+      "enum": [
+        "in_person",
+        "phone",
+        "email",
+        "video_call",
+        "written_material"
+      ],
+      "description": "How education was delivered"
+    },
+    "teach_back_confirmation": {
+      "type": "boolean",
+      "default": false,
+      "description": "Patient demonstrated understanding via teach-back method"
+    },
+    "teach_back_notes": {
+      "type": "string",
+      "description": "Nurse notes on teach-back confirmation"
+    },
+    "patient_understood": {
+      "type": "boolean",
+      "description": "Nurse assessment of patient understanding"
+    },
+    "follow_up_needed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether follow-up education is needed"
+    },
+    "follow_up_notes": {
+      "type": "string",
+      "description": "Notes about what follow-up is needed"
+    }
+  },
+  "required": [
+    "patient_id",
+    "topic",
+    "education_content"
+  ]
+}

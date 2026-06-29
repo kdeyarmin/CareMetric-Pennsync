@@ -1,21 +1,22 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Target, Sparkles, Plus, CheckCircle2 } from "lucide-react";
+import { Loader2, Target, Sparkles, CheckCircle2 } from "lucide-react";
 
 export default function AICarePlanGenerator({ patientDiagnosis, patientNeeds, onCarePlanGenerated }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [generatedPlan, setGeneratedPlan] = useState(null);
   const [diagnosis, setDiagnosis] = useState(patientDiagnosis || "");
   const [needs, setNeeds] = useState(patientNeeds || "");
 
   const generateCarePlan = async () => {
-    setIsGenerating(true);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a comprehensive home health care plan based on the following patient information:
 
 PRIMARY DIAGNOSIS:
@@ -96,8 +97,8 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
       onCarePlanGenerated?.(result);
     } catch (error) {
       console.error("Error generating care plan:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   return (
@@ -111,10 +112,11 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
         </CardHeader>
         <CardContent className="p-4 space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
+            <label htmlFor="primary-diagnosis" className="text-sm font-medium text-slate-700 mb-2 block">
               Primary Diagnosis
             </label>
             <input
+              id="primary-diagnosis"
               type="text"
               value={diagnosis}
               onChange={(e) => setDiagnosis(e.target.value)}
@@ -124,10 +126,11 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
+            <label htmlFor="patient-needs" className="text-sm font-medium text-slate-700 mb-2 block">
               Patient Needs / Clinical Situation (Optional)
             </label>
             <textarea
+              id="patient-needs"
               value={needs}
               onChange={(e) => setNeeds(e.target.value)}
               placeholder="Additional information about patient's condition, limitations, support system..."
@@ -138,10 +141,10 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
 
           <Button
             onClick={generateCarePlan}
-            disabled={isGenerating || !diagnosis.trim()}
+            disabled={ai.loading || !diagnosis.trim()}
             className="w-full bg-green-600 hover:bg-green-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Generating Care Plan...
@@ -176,14 +179,14 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
           </CardHeader>
           <CardContent className="p-4 space-y-4">
             {/* Nursing Diagnoses */}
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-              <h3 className="font-semibold text-purple-900 mb-3">Nursing Diagnoses</h3>
+            <div className="bg-navy-50 p-4 rounded-lg border border-navy-200">
+              <h3 className="font-semibold text-navy-900 mb-3">Nursing Diagnoses</h3>
               <div className="space-y-3">
                 {generatedPlan.nursing_diagnoses?.map((dx, idx) => (
                   <div key={idx} className="bg-white p-3 rounded border">
-                    <p className="font-medium text-gray-900 mb-1">{dx.diagnosis}</p>
-                    <p className="text-xs text-gray-600">Related to: {dx.related_to}</p>
-                    <p className="text-xs text-gray-600">Evidenced by: {dx.evidenced_by}</p>
+                    <p className="font-medium text-slate-900 mb-1">{dx.diagnosis}</p>
+                    <p className="text-xs text-slate-600">Related to: {dx.related_to}</p>
+                    <p className="text-xs text-slate-600">Evidenced by: {dx.evidenced_by}</p>
                   </div>
                 ))}
               </div>
@@ -198,10 +201,10 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
                     <div className="flex items-start gap-2">
                       <Target className="w-4 h-4 text-blue-600 mt-1 flex-shrink-0" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{goal.goal}</p>
+                        <p className="text-sm font-medium text-slate-900">{goal.goal}</p>
                         <div className="flex gap-3 mt-1">
                           <Badge className="text-xs">{goal.timeframe}</Badge>
-                          <span className="text-xs text-gray-600">{goal.measurement}</span>
+                          <span className="text-xs text-slate-600">{goal.measurement}</span>
                         </div>
                       </div>
                     </div>
@@ -220,8 +223,8 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
                       <Badge className="text-xs">{intervention.category}</Badge>
                       <Badge variant="outline" className="text-xs">{intervention.frequency}</Badge>
                     </div>
-                    <p className="text-sm font-medium text-gray-900 mb-1">{intervention.intervention}</p>
-                    <p className="text-xs text-gray-600 italic">{intervention.rationale}</p>
+                    <p className="text-sm font-medium text-slate-900 mb-1">{intervention.intervention}</p>
+                    <p className="text-xs text-slate-600 italic">{intervention.rationale}</p>
                   </div>
                 ))}
               </div>
@@ -232,7 +235,7 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
               <h3 className="font-semibold text-yellow-900 mb-2">Patient Education Topics</h3>
               <ul className="space-y-1">
                 {generatedPlan.patient_education_topics?.map((topic, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                     {topic}
                   </li>
@@ -247,7 +250,7 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
                 {generatedPlan.monitoring_parameters?.map((param, idx) => (
                   <div key={idx} className="bg-white p-2 rounded border text-sm">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-gray-900">{param.parameter}</span>
+                      <span className="font-medium text-slate-900">{param.parameter}</span>
                       <Badge className="text-xs">{param.frequency}</Badge>
                     </div>
                     <p className="text-xs text-red-700">Alert if: {param.alert_criteria}</p>
@@ -261,7 +264,7 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
               <h3 className="font-semibold text-red-900 mb-2">Safety Measures</h3>
               <ul className="space-y-1">
                 {generatedPlan.safety_measures?.map((measure, idx) => (
-                  <li key={idx} className="text-sm text-gray-700">• {measure}</li>
+                  <li key={idx} className="text-sm text-slate-700">• {measure}</li>
                 ))}
               </ul>
             </div>
@@ -271,7 +274,7 @@ Make the care plan specific to home health nursing, focusing on skilled nursing 
               <h3 className="font-semibold text-indigo-900 mb-2">Discharge Criteria</h3>
               <ul className="space-y-1">
                 {generatedPlan.discharge_criteria?.map((criteria, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-indigo-600 mt-0.5 flex-shrink-0" />
                     {criteria}
                   </li>

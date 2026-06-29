@@ -1,0 +1,157 @@
+{
+  "name": "TelehealthSession",
+  "type": "object",
+  "properties": {
+    "room_name": {
+      "type": "string",
+      "description": "Twilio Video room name (unique)"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Associated patient"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "host_email": {
+      "type": "string",
+      "description": "Clinician who created the session"
+    },
+    "host_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "active",
+        "completed",
+        "cancelled"
+      ],
+      "default": "scheduled"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_minutes": {
+      "type": "number"
+    },
+    "participant_list": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Names or identities of participants in the session"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Post-visit clinical notes"
+    },
+    "visit_type": {
+      "type": "string",
+      "enum": [
+        "routine_followup",
+        "urgent_care",
+        "medication_review",
+        "care_plan_review",
+        "admission_assessment",
+        "discharge_planning"
+      ],
+      "default": "routine_followup"
+    },
+    "invite_link": {
+      "type": "string",
+      "description": "Patient-facing join link"
+    },
+    "recording_url": {
+      "type": "string",
+      "description": "URL to session recording (if enabled)"
+    },
+    "vitals_captured": {
+      "type": "object",
+      "description": "Vital signs captured during telehealth visit"
+    },
+    "medications_reviewed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Medications reviewed during session"
+    },
+    "chief_complaint": {
+      "type": "string",
+      "description": "Patient's chief complaint for the visit"
+    },
+    "assessment": {
+      "type": "string",
+      "description": "Clinical assessment"
+    },
+    "plan": {
+      "type": "string",
+      "description": "Treatment plan from session"
+    },
+    "follow_up_needed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether follow-up visit is needed"
+    },
+    "follow_up_timeframe": {
+      "type": "string",
+      "description": "When follow-up should occur"
+    },
+    "prescriptions_sent": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Prescriptions sent during visit"
+    },
+    "patient_satisfaction": {
+      "type": "number",
+      "description": "Patient satisfaction rating 1-5"
+    },
+    "linked_visit_id": {
+      "type": "string",
+      "description": "Associated Visit record created from the telehealth session"
+    }
+  },
+  "required": [
+    "room_name",
+    "host_email"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "host_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "host_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

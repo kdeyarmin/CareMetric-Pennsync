@@ -1,158 +1,670 @@
+@import "tailwindcss";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-
-/* :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-} */
-
-
+/* Tailwind v4 consumes the existing v3 theme/plugins via the legacy JS config
+   (colors, keyframes, darkMode class strategy, tailwindcss-animate). */
+@config "../tailwind.config.js";
 
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --popover-foreground: 222 47% 11%;
+    /* Brand navy (primary) + gold accent. Kept in sync with the navy/gold
+       Tailwind ramps in tailwind.config.js. */
+    --primary: 223 58% 36%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 16% 47%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 223 44% 96%;
+    --accent-foreground: 223 47% 20%;
+    --gold: 40 73% 45%;
+    --gold-foreground: 223 50% 16%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 223 58% 42%;
+    --chart-1: 223 58% 40%;
+    --chart-2: 40 73% 45%;
+    --chart-3: 222 54% 57%;
+    --chart-4: 160 60% 39%;
+    --chart-5: 223 50% 20%;
     --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-  .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 223 58% 36%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 223 44% 96%;
+    --sidebar-accent-foreground: 223 47% 20%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 223 58% 42%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased font-sans selection:bg-navy-100 selection:text-navy-900;
+    min-width: 320px;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+
+  * {
+    @apply border-slate-200;
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Accessibility: honor the OS "reduce motion" preference app-wide by
+     near-instantly resolving animations/transitions (skeleton sheen, fades,
+     hover lifts, smooth scroll). */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Prevent zoom on input focus (iOS Safari) */
+  input, select, textarea {
+    font-size: max(16px, 1em);
+  }
+
+  /* Global dialog responsiveness */
+  [role="dialog"] [data-radix-dialog-content],
+  .dialog-content {
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+
+  /* Prevent body scroll when dialog is open */
+  body[data-radix-dialog-open] {
+    overflow: hidden;
+  }
+
+  /* Responsive table wrapper — tables inside .table-responsive scroll horizontally */
+  .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure images never overflow their containers */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Prevent long words/URLs from breaking layouts on small screens */
+  p, li, td, th, span {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* Non-content UI elements should not be selectable */
+  button, a[href], nav, header, [role="button"], [role="tab"], [role="tablist"],
+  .sidebar, .mobile-header, .navigation {
+    @apply select-none;
+  }
+
+  /* Refined, unobtrusive scrollbars on pointer devices for a more polished,
+     professional feel. Touch devices keep their native overlay scrollbars
+     (better on mobile), and `.scrollbar-hide` still wins where used. */
+  @media (pointer: fine) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgb(203 213 225) transparent; /* slate-300 on transparent */
+    }
+    *::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    *::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    *::-webkit-scrollbar-thumb {
+      background-color: rgb(203 213 225); /* slate-300 */
+      border-radius: 9999px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: rgb(148 163 184); /* slate-400 */
+    }
   }
 }
 
-
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
+/* Modern Card Styles */
+@layer components {
+  .modern-card {
+    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 ease-out;
   }
-  body {
-    @apply bg-background text-foreground;
+  
+  .modern-card-elevated {
+    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-md hover:shadow-lg transition-all duration-300 ease-out;
+  }
+  
+  .modern-card-interactive {
+    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 ease-out cursor-pointer;
+  }
+  
+  /* AI Feature Cards with Gradient */
+  .ai-card {
+    @apply bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl border border-slate-700 shadow-md hover:shadow-lg transition-all duration-300 text-white;
+  }
+  
+  .ai-badge {
+    @apply bg-gradient-to-r from-blue-700 to-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-md;
+  }
+  
+  /* Color Hierarchy Badges (retained critical only) */
+  .badge-critical {
+    @apply bg-red-700 text-red-50 border border-red-600 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-md;
+  }
+  
+  /* Smooth Transitions & Micro-interactions (retained smooth-transition) */
+  .smooth-transition {
+    @apply transition-all duration-300 ease-in-out;
+  }
+  
+  /* Button Enhancements (retained btn-ai only) */
+  .btn-ai {
+    @apply bg-gradient-to-r from-blue-700 to-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 active:scale-95;
+  }
+  
+  /* Animated Pulse for Loading */
+  .pulse-loader {
+    @apply animate-pulse bg-gradient-to-r from-slate-200 via-slate-300 to-slate-200 bg-[length:200%_100%];
+    animation: pulse-shimmer 1.5s infinite;
+  }
+  
+  @keyframes pulse-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  
+  /* Avatar Styles (retained original avatar-circle) */
+  .avatar-circle {
+    @apply w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-semibold shadow-md;
+  }
+  
+  /* Risk Indicators (retained original distinct styles) */
+  .risk-indicator-critical {
+    @apply w-3 h-3 rounded-full bg-red-600 animate-pulse shadow-sm;
+  }
+  
+  .risk-indicator-high {
+    @apply w-3 h-3 rounded-full bg-amber-600 shadow-sm;
+  }
+  
+  .risk-indicator-moderate {
+    @apply w-3 h-3 rounded-full bg-yellow-500 shadow-sm;
+  }
+  
+  .risk-indicator-low {
+    @apply w-3 h-3 rounded-full bg-green-600 shadow-sm;
+  }
+}
+
+@layer utilities {
+  /* Navigation and button selection prevention */
+  nav, button, [role="button"], a[href], .touch-target {
+    @apply select-none;
+  }
+
+  /* Modern animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  
+  @keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+  
+  .animate-slide-in {
+    animation: slideIn 0.4s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+  
+  /* Card variants with refined shadows */
+  .card-elevated {
+    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-md hover:shadow-lg transition-all duration-300 ease-out transform hover:-translate-y-0.5;
+  }
+
+  .card-interactive {
+    @apply bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300 ease-out cursor-pointer;
+  }
+
+  /* Badge variants with modern styling */
+  .badge-success {
+    @apply bg-emerald-700 text-emerald-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-md border border-emerald-600;
+  }
+
+  .badge-warning {
+    @apply bg-amber-700 text-amber-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-md border border-amber-600;
+  }
+  
+  .badge-danger {
+    @apply bg-red-700 text-red-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-md border border-red-600;
+  }
+  
+  .badge-info {
+    @apply bg-blue-700 text-blue-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-md border border-blue-600;
+  }
+
+  /* ---- Brand gold accents (restrained, never a warning signal) ---- */
+  .text-gold {
+    @apply text-gold-600;
+  }
+
+  .bg-gold {
+    @apply bg-gold-400 text-navy-900;
+  }
+
+  .border-gold {
+    @apply border-gold-400;
+  }
+
+  .ring-gold {
+    @apply ring-2 ring-gold-400;
+  }
+
+  /* Thin gold rule used to accent section / page headings */
+  .accent-rule {
+    @apply inline-block h-1 w-10 rounded-full bg-gradient-to-r from-gold-400 to-gold-500;
+  }
+
+  /* Eyebrow label above a heading: small uppercase navy text with gold flourish */
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-gold-600;
+  }
+
+  /* Gold-accented brand badge (e.g. "AI", "Pro") on light surfaces */
+  .badge-gold {
+    @apply bg-gold-100 text-gold-700 border border-gold-300 px-2.5 py-1 rounded-lg text-xs font-semibold;
+  }
+
+  /* Progress bar styles */
+  .progress-bar {
+    @apply bg-slate-200 rounded-full h-2 overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply bg-indigo-600 h-full transition-all duration-500 ease-out rounded-full shadow-sm;
+  }
+
+  /* Avatar styles */
+  .avatar {
+    @apply rounded-full bg-slate-200 flex items-center justify-center;
+  }
+
+  .avatar-sm {
+    @apply w-8 h-8 text-xs;
+  }
+
+  .avatar-md {
+    @apply w-10 h-10 text-sm;
+  }
+
+  .avatar-lg {
+    @apply w-16 h-16 text-lg;
+  }
+
+  /* Risk indicators */
+  .risk-low {
+    @apply text-emerald-50 bg-emerald-700 border-emerald-600;
+  }
+
+  .risk-medium {
+    @apply text-amber-50 bg-amber-700 border-amber-600;
+  }
+
+  .risk-high {
+    @apply text-red-50 bg-red-700 border-red-600;
+  }
+
+  /* Status indicators */
+  .status-active {
+    @apply bg-green-500 text-white;
+  }
+
+  .status-pending {
+    @apply bg-yellow-500 text-white;
+  }
+
+  .status-inactive {
+    @apply bg-slate-400 text-white;
+  }
+
+  /* Smooth transitions for interactive elements */
+  .transition-smooth {
+    @apply transition-all duration-300 ease-out;
+  }
+  
+  .transition-fast {
+    @apply transition-all duration-150 ease-out;
+  }
+  
+  .transition-slow {
+    @apply transition-all duration-500 ease-out;
+  }
+
+  /* Modern button styles */
+  .btn-primary {
+    @apply bg-navy-600 text-white px-4 py-2.5 rounded-lg font-semibold shadow-sm hover:bg-navy-700 hover:shadow-md active:bg-navy-800 active:scale-[0.98] transition-all duration-200 min-h-[44px] flex items-center justify-center;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-100 text-slate-800 border border-slate-200 px-4 py-2.5 rounded-lg font-semibold shadow-sm hover:bg-slate-200 active:bg-slate-300 active:scale-[0.98] transition-all duration-200;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white px-4 py-2.5 rounded-lg font-semibold shadow-sm hover:bg-red-700 hover:shadow-md active:bg-red-800 active:scale-[0.98] transition-all duration-200;
+  }
+
+  .btn-ghost {
+    @apply text-slate-700 px-4 py-2.5 rounded-lg font-semibold hover:bg-slate-100 hover:text-navy-800 active:bg-slate-200 active:scale-[0.98] transition-all duration-200;
+  }
+
+  /* Modern input styles */
+  .input-modern {
+    @apply border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-navy-500 focus:border-navy-500 focus:shadow-md transition-all duration-200 bg-white;
+  }
+
+  .input-elevated {
+    @apply border-slate-200 rounded-lg px-4 py-2.5 shadow-sm focus:ring-2 focus:ring-navy-500 focus:border-navy-500 focus:shadow-lg transition-all duration-200 bg-white;
+  }
+
+  /* Touch-optimized for mobile and tablet */
+    .touch-target {
+      @apply min-h-[48px] min-w-[48px] md:min-h-[44px] md:min-w-[44px];
+    }
+
+  /* Global: ensure all select triggers and items are touch-friendly on mobile */
+  @media (max-width: 640px) {
+    [data-radix-select-trigger],
+    button[role="combobox"] {
+      min-height: 48px;
+    }
+    [data-radix-select-item],
+    [role="option"] {
+      min-height: 48px;
+      padding-top: 12px;
+      padding-bottom: 12px;
+    }
+    [data-radix-select-viewport] {
+      max-height: 55vh;
+    }
+    [data-radix-dropdown-menu-content],
+    [data-radix-popover-content] {
+      max-height: 60vh;
+    }
+    /* Tabs scroll horizontally instead of wrapping/truncating */
+    [role="tablist"] {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    [role="tab"] {
+      min-height: 48px;
+      white-space: nowrap;
+    }
+    /* Many pages render tab bars as `grid grid-cols-N w-full`, which crams N
+       equal columns onto one row regardless of screen width — on a phone the
+       triggers shrink below their (whitespace-nowrap) label width, so the text
+       clips or spills. Override grid tab bars to a content-sized, wrapping flex
+       row on small screens: each trigger keeps at least its label width
+       (min-width: max-content) and grows to share leftover space, so few tabs
+       fill the row and many tabs wrap to additional rows instead of clipping. */
+    [role="tablist"].grid {
+      display: flex !important;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      height: auto;
+    }
+    [role="tablist"].grid > * {
+      flex: 1 1 auto;
+      min-width: max-content;
+    }
+    /* Dialogs take full screen on mobile */
+    [data-radix-dialog-content] {
+      max-height: 95dvh;
+      overflow-y: auto;
+      width: calc(100vw - 24px) !important;
+      max-width: 100% !important;
+      margin: 12px;
+      border-radius: 1rem;
+    }
+
+    /* Prevent horizontal scroll on mobile */
+    main, .main-content {
+      overflow-x: hidden;
+      max-width: 100vw;
+    }
+
+    /* Cards stack vertically on tiny screens */
+    .grid-cols-2, .grid-cols-3, .grid-cols-4 {
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+  }
+
+    /* iPad-specific optimizations */
+    @media (min-width: 768px) and (max-width: 1024px) {
+      /* Improve button/input sizing for touch */
+      button, input, select, textarea {
+        min-height: 44px;
+      }
+
+      /* Optimize card spacing */
+      .modern-card, .card-elevated {
+        @apply rounded-2xl;
+      }
+
+      /* Dialogs on tablet */
+      [data-radix-dialog-content] {
+        max-width: 90vw !important;
+        width: auto !important;
+        margin: auto;
+      }
+    }
+
+    /* Very small screens (< 375px) */
+    @media (max-width: 374px) {
+      h1 { font-size: 1.4rem !important; }
+      h2 { font-size: 1.2rem !important; }
+      .text-2xl { font-size: 1.25rem !important; }
+      .text-3xl { font-size: 1.5rem !important; }
+      .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+    }
+
+  /* Prevent text selection on buttons/links */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Professional Typography Scale */
+  h1 {
+    @apply text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight;
+  }
+
+  h2 {
+    @apply text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight;
+  }
+
+  h3 {
+    @apply text-xl sm:text-2xl font-semibold text-slate-900;
+  }
+
+  h4 {
+    @apply text-lg font-semibold text-slate-900;
+  }
+
+  h5 {
+    @apply text-base font-semibold text-slate-900;
+  }
+
+  p {
+    @apply text-slate-700 leading-relaxed;
+  }
+
+  /* Enhanced focus states */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-navy-500 ring-offset-2;
+  }
+
+  /* Smooth scrolling */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Force solid modal panels across the app */
+  [role="dialog"] {
+    background-image: none;
+  }
+
+  [role="dialog"] > div {
+    background-image: none;
+  }
+
+  /* Prevent zoom on input focus (iOS) */
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe area insets for notched devices */
+  .safe-area-inset {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Hover effects */
+  .hover-lift {
+    @apply hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300;
+  }
+
+  /* Micro-interactions */
+  .scale-on-hover {
+    @apply hover:scale-105 transition-transform duration-200;
+  }
+
+  /* Loading states */
+  .skeleton {
+    @apply animate-pulse bg-slate-200 rounded;
+  }
+
+  .shimmer {
+    @apply bg-gradient-to-r from-slate-200 via-slate-300 to-slate-200;
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  /* Mobile-first optimizations */
+  @media (max-width: 640px) {
+    .mobile-stack {
+      @apply flex-col;
+    }
+
+    .mobile-full {
+      @apply w-full;
+    }
+  }
+
+  /* Safe area for mobile devices with notches */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Print styles */
+  @media print {
+    .no-print { /* Replaces print\:hidden */
+      @apply hidden;
+    }
+
+    .print-full-width {
+      @apply w-full;
+    }
+
+    body {
+      @apply bg-white text-black;
+    }
+    
+    .modern-card,
+    .modern-card-elevated,
+    .modern-card-interactive {
+      box-shadow: none;
+      border: 1px solid #e5e7eb;
+    }
+  }
+}
+@layer components {
+  .page-header-gradient {
+    /* Default brand navy gradient. Lives in @layer components so any page that
+       supplies its own from-/to- utility classes still overrides it. */
+    @apply rounded-2xl sm:rounded-3xl bg-gradient-to-br from-navy-700 via-navy-800 to-navy-900 text-white p-5 sm:p-7 shadow-lg relative overflow-hidden;
+  }
+
+  .page-header-gradient::before {
+    content: '';
+    @apply absolute top-0 right-0 w-48 h-48 sm:w-64 sm:h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2;
+  }
+
+  .page-header-gradient::after {
+    content: '';
+    @apply absolute bottom-0 left-0 w-24 h-24 sm:w-32 sm:h-32 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2;
   }
 }

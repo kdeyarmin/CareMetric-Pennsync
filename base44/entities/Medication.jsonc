@@ -1,0 +1,91 @@
+{
+  "name": "Medication",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "name": {
+      "type": "string",
+      "description": "Medication name"
+    },
+    "dosage": {
+      "type": "string",
+      "description": "Dosage amount and unit (e.g., '500mg', '10ml')"
+    },
+    "frequency": {
+      "type": "string",
+      "description": "How often to take (e.g., 'Once daily', 'Twice daily', 'Every 8 hours')"
+    },
+    "route": {
+      "type": "string",
+      "enum": [
+        "oral",
+        "injection",
+        "topical",
+        "inhaled",
+        "transdermal",
+        "rectal",
+        "other"
+      ],
+      "description": "Route of administration"
+    },
+    "indication": {
+      "type": "string",
+      "description": "Reason for medication (diagnosis or condition)"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date medication was started"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date medication was discontinued"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "discontinued",
+        "pending",
+        "on_hold"
+      ],
+      "default": "active",
+      "description": "Current medication status"
+    },
+    "prescribed_by": {
+      "type": "string",
+      "description": "Name of prescribing physician"
+    },
+    "refills_remaining": {
+      "type": "number",
+      "description": "Number of refills remaining"
+    },
+    "side_effects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Known side effects or patient-reported effects"
+    },
+    "allergies_contraindications": {
+      "type": "string",
+      "description": "Known allergies or contraindications"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional clinical notes"
+    }
+  },
+  "required": [
+    "patient_id",
+    "name",
+    "dosage",
+    "frequency",
+    "route",
+    "status"
+  ]
+}

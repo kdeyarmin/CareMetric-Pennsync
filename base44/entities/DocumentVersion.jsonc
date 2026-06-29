@@ -1,0 +1,123 @@
+{
+  "name": "DocumentVersion",
+  "type": "object",
+  "properties": {
+    "document_signature_id": {
+      "type": "string",
+      "description": "Reference to DocumentSignature entity"
+    },
+    "package_id": {
+      "type": "string",
+      "description": "Reference to DocumentPackage for easy access"
+    },
+    "version_number": {
+      "type": "number",
+      "description": "Sequential version number (1, 2, 3...)"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Name of the document"
+    },
+    "document_type": {
+      "type": "string",
+      "description": "Document category (consent, discharge, etc.)"
+    },
+    "pdf_url": {
+      "type": "string",
+      "description": "URL to the PDF file for this version"
+    },
+    "file_hash": {
+      "type": "string",
+      "description": "Hash of the PDF for change detection"
+    },
+    "uploaded_by": {
+      "type": "string",
+      "description": "Email of user who uploaded/replaced this version"
+    },
+    "uploaded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this version was created"
+    },
+    "change_reason": {
+      "type": "string",
+      "description": "Reason for document update (correction, amendment, etc.)"
+    },
+    "is_current": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this is the active version for signing"
+    },
+    "previous_version_id": {
+      "type": "string",
+      "description": "Reference to previous version for audit trail"
+    },
+    "signature_status_at_version": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "signed",
+        "declined",
+        "expired"
+      ],
+      "description": "What the signature status was when this version was uploaded"
+    },
+    "signatures_carried_forward": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether previous signatures are valid for this version"
+    },
+    "invalidated_previous_signatures": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this version invalidated previous signatures"
+    },
+    "change_summary": {
+      "type": "string",
+      "description": "AI-generated or manual summary of what changed"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata like page count, file size, etc."
+    },
+    "template_content": {
+      "type": "string",
+      "description": "Populated document content generated from a template"
+    }
+  },
+  "required": [
+    "document_signature_id",
+    "package_id",
+    "version_number",
+    "document_name",
+    "pdf_url",
+    "uploaded_by",
+    "uploaded_at"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

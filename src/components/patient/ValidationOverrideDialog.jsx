@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function ValidationOverrideDialog({ 
   isOpen, 
@@ -16,7 +17,7 @@ export default function ValidationOverrideDialog({
 
   const handleOverride = () => {
     if (!justification.trim()) {
-      alert("Please provide a justification for overriding this warning");
+      toast.error("Please provide a justification for overriding this warning");
       return;
     }
     
@@ -50,7 +51,7 @@ export default function ValidationOverrideDialog({
             onChange={(e) => setJustification(e.target.value)}
             className="min-h-[100px]"
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-slate-500">
             This justification will be logged for audit purposes.
           </p>
         </div>

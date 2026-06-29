@@ -1,0 +1,59 @@
+{
+  "name": "FaxTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of this template"
+    },
+    "cover_page_data": {
+      "type": "object",
+      "description": "Saved cover page configuration"
+    },
+    "recipient_name": {
+      "type": "string",
+      "description": "Pre-filled recipient name"
+    },
+    "recipient_fax_number": {
+      "type": "string",
+      "description": "Pre-filled recipient fax number"
+    },
+    "recipient_organization": {
+      "type": "string",
+      "description": "Pre-filled recipient organization"
+    },
+    "document_url": {
+      "type": "string",
+      "description": "URL of the attached document (optional)"
+    },
+    "document_name": {
+      "type": "string",
+      "description": "Name of the attached document"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Pre-filled fax subject line"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Pre-filled notes or message"
+    },
+    "is_default": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is the default template"
+    },
+    "use_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times this template has been used"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

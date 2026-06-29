@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, WifiOff, CheckCircle2, Edit3, Wifi } from "lucide-react";
+import { Save, WifiOff, CheckCircle2, Edit3 } from "lucide-react";
 
 export default function OfflineNoteEditor({ patientId, onSaveOffline }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -19,7 +19,12 @@ export default function OfflineNoteEditor({ patientId, onSaveOffline }) {
   });
   const [savedLocally, setSavedLocally] = useState(false);
 
-  const cachedPatients = JSON.parse(localStorage.getItem('offline_patient_data') || '[]');
+  let cachedPatients = [];
+  try {
+    cachedPatients = JSON.parse(localStorage.getItem('offline_patient_data') || '[]');
+  } catch (e) {
+    console.warn('Failed to parse cached patient data:', e);
+  }
   const patient = cachedPatients.find(c => c.patient.id === patientId)?.patient;
 
   useEffect(() => {
@@ -56,9 +61,10 @@ export default function OfflineNoteEditor({ patientId, onSaveOffline }) {
     };
 
     // Add to localStorage
-    const existingDrafts = JSON.parse(localStorage.getItem('offline_visit_drafts') || '[]');
+    let existingDrafts = [];
+    try { existingDrafts = JSON.parse(localStorage.getItem('offline_visit_drafts') || '[]'); } catch {}
     existingDrafts.push(draft);
-    localStorage.setItem('offline_visit_drafts', JSON.stringify(existingDrafts));
+    try { localStorage.setItem('offline_visit_drafts', JSON.stringify(existingDrafts)); } catch {}
 
     setSavedLocally(true);
     setTimeout(() => setSavedLocally(false), 3000);
@@ -116,7 +122,7 @@ export default function OfflineNoteEditor({ patientId, onSaveOffline }) {
           <div>
             <Label className="text-sm">Patient</Label>
             <p className="font-medium">{patient.first_name} {patient.last_name}</p>
-            <p className="text-xs text-gray-600">{patient.primary_diagnosis}</p>
+            <p className="text-xs text-slate-600">{patient.primary_diagnosis}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -193,7 +199,7 @@ export default function OfflineNoteEditor({ patientId, onSaveOffline }) {
               onChange={(e) => setNoteData({...noteData, nurse_notes: e.target.value})}
               className="min-h-[200px]"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               {noteData.nurse_notes.length} characters
             </p>
           </div>

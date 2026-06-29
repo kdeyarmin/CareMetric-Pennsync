@@ -1,0 +1,81 @@
+{
+  "name": "SystemLog",
+  "type": "object",
+  "properties": {
+    "job_name": {
+      "type": "string",
+      "description": "Name of the scheduled job or system process"
+    },
+    "job_type": {
+      "type": "string",
+      "enum": [
+        "medicare_guideline_sync",
+        "data_cleanup",
+        "report_generation",
+        "backup",
+        "other"
+      ],
+      "description": "Type of job"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "error",
+        "warning",
+        "running"
+      ],
+      "description": "Status of the job execution"
+    },
+    "message": {
+      "type": "string",
+      "description": "Summary message"
+    },
+    "details": {
+      "type": "object",
+      "description": "Detailed information about the job execution"
+    },
+    "error_stack": {
+      "type": "string",
+      "description": "Error stack trace if applicable"
+    },
+    "duration_ms": {
+      "type": "number",
+      "description": "How long the job took to run in milliseconds"
+    },
+    "records_processed": {
+      "type": "number",
+      "description": "Number of records processed"
+    },
+    "records_created": {
+      "type": "number",
+      "description": "Number of new records created"
+    },
+    "records_updated": {
+      "type": "number",
+      "description": "Number of records updated"
+    },
+    "records_failed": {
+      "type": "number",
+      "description": "Number of records that failed"
+    }
+  },
+  "required": [
+    "job_name",
+    "job_type",
+    "status",
+    "message"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

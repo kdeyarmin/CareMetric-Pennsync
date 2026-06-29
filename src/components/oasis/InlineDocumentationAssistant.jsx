@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Lightbulb, Copy, CheckCircle2, Sparkles } from "lucide-react";
+import { Loader2, Copy, CheckCircle2, Sparkles } from "lucide-react";
 
 export default function InlineDocumentationAssistant({ 
   issue, 
@@ -10,15 +10,15 @@ export default function InlineDocumentationAssistant({
   pdgmData,
   onInsertText 
 }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [suggestion, setSuggestion] = useState(null);
   const [copied, setCopied] = useState(false);
 
   const generateSuggestion = async () => {
-    setIsGenerating(true);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a CMS OASIS documentation expert. Generate specific clinical documentation to address this issue.
 
 ISSUE DETAILS:
@@ -74,7 +74,6 @@ Return JSON:
       setSuggestion({ error: "Failed to generate suggestion. Please try again." });
     }
     
-    setIsGenerating(false);
   };
 
   const handleCopy = (text) => {
@@ -88,11 +87,11 @@ Return JSON:
       {!suggestion ? (
         <Button
           onClick={generateSuggestion}
-          disabled={isGenerating}
+          disabled={ai.loading}
           size="sm"
           className="w-full bg-indigo-600 hover:bg-indigo-700"
         >
-          {isGenerating ? (
+          {ai.loading ? (
             <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Generating...</>
           ) : (
             <><Sparkles className="w-3 h-3 mr-2" /> AI Documentation Assistant</>
@@ -105,7 +104,7 @@ Return JSON:
       ) : (
         <div className="space-y-3">
           {/* Main Documentation Text */}
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-3 rounded-lg border-2 border-indigo-300">
+          <div className="bg-gradient-to-r from-indigo-50 to-navy-50 p-3 rounded-lg border-2 border-indigo-300">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-indigo-800 flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
@@ -135,7 +134,7 @@ Return JSON:
                 )}
               </div>
             </div>
-            <p className="text-sm text-gray-800 leading-relaxed italic">
+            <p className="text-sm text-slate-800 leading-relaxed italic">
               "{suggestion.documentation_text}"
             </p>
           </div>
@@ -147,9 +146,9 @@ Return JSON:
           </div>
 
           {/* M-Item Support */}
-          <div className="bg-purple-50 p-2 rounded border border-purple-200">
-            <p className="text-xs font-medium text-purple-800 mb-1">🎯 M-Item Scoring Support:</p>
-            <p className="text-xs text-purple-900">{suggestion.m_item_support}</p>
+          <div className="bg-navy-50 p-2 rounded border border-navy-200">
+            <p className="text-xs font-medium text-navy-800 mb-1">🎯 M-Item Scoring Support:</p>
+            <p className="text-xs text-navy-900">{suggestion.m_item_support}</p>
           </div>
 
           {/* Key Elements */}
@@ -168,15 +167,15 @@ Return JSON:
 
           {/* Alternative Phrases */}
           {suggestion.alternative_phrases?.length > 0 && (
-            <details className="bg-gray-50 p-2 rounded border">
-              <summary className="text-xs font-medium text-gray-700 cursor-pointer">
+            <details className="bg-slate-50 p-2 rounded border">
+              <summary className="text-xs font-medium text-slate-700 cursor-pointer">
                 Alternative Phrasing Options ({suggestion.alternative_phrases.length})
               </summary>
               <div className="mt-2 space-y-2">
                 {suggestion.alternative_phrases.map((alt, idx) => (
                   <div key={idx} className="bg-white p-2 rounded border">
                     <div className="flex items-start justify-between gap-2 mb-1">
-                      <p className="text-xs text-gray-800 italic flex-1">"{alt.text}"</p>
+                      <p className="text-xs text-slate-800 italic flex-1">"{alt.text}"</p>
                       <Button
                         onClick={() => handleCopy(alt.text)}
                         size="sm"
@@ -186,7 +185,7 @@ Return JSON:
                         <Copy className="w-3 h-3" />
                       </Button>
                     </div>
-                    <p className="text-xs text-gray-500">Use: {alt.use_case}</p>
+                    <p className="text-xs text-slate-500">Use: {alt.use_case}</p>
                   </div>
                 ))}
               </div>

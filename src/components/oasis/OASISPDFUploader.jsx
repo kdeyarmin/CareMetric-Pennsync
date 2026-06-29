@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -102,7 +102,7 @@ const OASIS_EXTRACTION_SCHEMA = {
 
 export default function OASISPDFUploader({ 
   visitId, 
-  patientId,
+  _patientId,
   onDataExtracted, 
   initialData = null,
   compact = false 
@@ -129,12 +129,12 @@ export default function OASISPDFUploader({
         }
       }
     }
-  }, [visitId, initialData]);
+  }, [visitId, initialData, onDataExtracted]);
 
   // Save data to localStorage when it changes
   useEffect(() => {
     if (visitId && extractedData) {
-      localStorage.setItem(`oasis_data_${visitId}`, JSON.stringify(extractedData));
+      try { localStorage.setItem(`oasis_data_${visitId}`, JSON.stringify(extractedData)); } catch {}
     }
   }, [visitId, extractedData]);
 
@@ -170,7 +170,7 @@ export default function OASISPDFUploader({
   const processFile = async (fileObj, index, updateFiles) => {
     const maxRetries = 3;
     let attempt = 0;
-    let lastError = null;
+    let _lastError = null;
 
     while (attempt < maxRetries) {
       try {
@@ -214,7 +214,7 @@ export default function OASISPDFUploader({
           throw new Error(extractedResult.details || "Extraction failed");
         }
       } catch (err) {
-        lastError = err;
+        _lastError = err;
         attempt++;
         
         updateFiles(prev => {
@@ -347,26 +347,26 @@ export default function OASISPDFUploader({
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'pending': return <FileText className="w-4 h-4 text-gray-400" />;
+      case 'pending': return <FileText className="w-4 h-4 text-slate-400" />;
       case 'uploading': return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
-      case 'extracting': return <Loader2 className="w-4 h-4 text-purple-500 animate-spin" />;
+      case 'extracting': return <Loader2 className="w-4 h-4 text-navy-500 animate-spin" />;
       case 'retrying': return <RefreshCw className="w-4 h-4 text-orange-500 animate-spin" />;
       case 'success': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
       case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
-      default: return <FileText className="w-4 h-4 text-gray-400" />;
+      default: return <FileText className="w-4 h-4 text-slate-400" />;
     }
   };
 
   const getStatusBadge = (status) => {
     const variants = {
-      pending: "bg-gray-100 text-gray-700",
+      pending: "bg-slate-100 text-slate-700",
       uploading: "bg-blue-100 text-blue-700",
-      extracting: "bg-purple-100 text-purple-700",
+      extracting: "bg-navy-100 text-navy-700",
       retrying: "bg-orange-100 text-orange-700",
       success: "bg-green-100 text-green-700",
       error: "bg-red-100 text-red-700"
     };
-    return variants[status] || "bg-gray-100 text-gray-700";
+    return variants[status] || "bg-slate-100 text-slate-700";
   };
 
   const successCount = files.filter(f => f.status === 'success').length;
@@ -415,7 +415,7 @@ export default function OASISPDFUploader({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Upload Zone */}
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+        <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
           <input
             type="file"
             accept=".pdf"
@@ -426,11 +426,11 @@ export default function OASISPDFUploader({
             disabled={isProcessing}
           />
           <label htmlFor="oasis-multi-upload" className={`cursor-pointer ${isProcessing ? 'opacity-50' : ''}`}>
-            <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-            <p className="text-sm text-gray-600 mb-1">
+            <Upload className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+            <p className="text-sm text-slate-600 mb-1">
               Click to select OASIS PDF files
             </p>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-slate-400">
               Multiple files supported • Auto-retry on failure
             </p>
           </label>
@@ -440,7 +440,7 @@ export default function OASISPDFUploader({
         {files.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-slate-700">
                 {files.length} file{files.length !== 1 ? 's' : ''} • 
                 {successCount > 0 && <span className="text-green-600 ml-1">{successCount} extracted</span>}
                 {errorCount > 0 && <span className="text-red-600 ml-1">{errorCount} failed</span>}
@@ -466,7 +466,7 @@ export default function OASISPDFUploader({
                       file.status === 'error' ? 'bg-red-50 border-red-200' :
                       file.status === 'success' ? 'bg-green-50 border-green-200' :
                       file.status === 'retrying' ? 'bg-orange-50 border-orange-200' :
-                      'bg-gray-50 border-gray-200'
+                      'bg-slate-50 border-slate-200'
                     }`}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -504,7 +504,7 @@ export default function OASISPDFUploader({
                           variant="ghost"
                           size="sm"
                           onClick={() => removeFile(idx)}
-                          className="h-7 px-2 text-gray-400"
+                          className="h-7 px-2 text-slate-400"
                         >
                           <XCircle className="w-3 h-3" />
                         </Button>
@@ -521,7 +521,7 @@ export default function OASISPDFUploader({
         {isProcessing && (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Processing files...</span>
+              <span className="text-slate-600">Processing files...</span>
               <span className="font-medium">{overallProgress}%</span>
             </div>
             <Progress value={overallProgress} className="h-2" />
@@ -575,25 +575,25 @@ export default function OASISPDFUploader({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
               {extractedData.m0100_reason_for_assessment && (
                 <div className="bg-white p-2 rounded border">
-                  <span className="text-gray-500">Assessment:</span>
+                  <span className="text-slate-500">Assessment:</span>
                   <span className="ml-1 font-medium">{extractedData.m0100_reason_for_assessment}</span>
                 </div>
               )}
               {extractedData.clinical_record_items?.m1021_primary_diagnosis && (
                 <div className="bg-white p-2 rounded border">
-                  <span className="text-gray-500">Primary Dx:</span>
+                  <span className="text-slate-500">Primary Dx:</span>
                   <span className="ml-1 font-medium truncate">{extractedData.clinical_record_items.m1021_primary_diagnosis}</span>
                 </div>
               )}
               {extractedData.adl_iadl_status?.m1830_bathing && (
                 <div className="bg-white p-2 rounded border">
-                  <span className="text-gray-500">M1830:</span>
+                  <span className="text-slate-500">M1830:</span>
                   <span className="ml-1 font-medium">{extractedData.adl_iadl_status.m1830_bathing}</span>
                 </div>
               )}
               {extractedData.adl_iadl_status?.m1860_ambulation && (
                 <div className="bg-white p-2 rounded border">
-                  <span className="text-gray-500">M1860:</span>
+                  <span className="text-slate-500">M1860:</span>
                   <span className="ml-1 font-medium">{extractedData.adl_iadl_status.m1860_ambulation}</span>
                 </div>
               )}

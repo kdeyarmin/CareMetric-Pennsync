@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,13 +14,13 @@ export default function PatientEducationGenerator({ patientId, patient }) {
   const [readingLevel, setReadingLevel] = useState("6th-grade");
   const [includeImages, setIncludeImages] = useState(false);
   const [generatedMaterial, setGeneratedMaterial] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [additionalContext, setAdditionalContext] = useState("");
 
   const generateEducationMaterial = async () => {
-    setIsGenerating(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `Generate patient education material tailored for home health patients.
 
 PATIENT CONTEXT:
@@ -101,8 +102,8 @@ Keep language at ${readingLevel} reading level. Be encouraging and supportive in
       setGeneratedMaterial(result.material);
     } catch (error) {
       console.error("Error generating education material:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   return (
@@ -118,7 +119,7 @@ Keep language at ${readingLevel} reading level. Be encouraging and supportive in
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <GraduationCap className="w-5 h-5 text-purple-600" />
+              <GraduationCap className="w-5 h-5 text-navy-600" />
               Patient Education Material Generator
             </CardTitle>
           </CardHeader>
@@ -132,7 +133,7 @@ Keep language at ${readingLevel} reading level. Be encouraging and supportive in
                 rows={2}
               />
               {!topic && patient.primary_diagnosis && (
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-slate-500 mt-1">
                   Default: {patient.primary_diagnosis}
                 </p>
               )}
@@ -141,7 +142,7 @@ Keep language at ${readingLevel} reading level. Be encouraging and supportive in
             <div>
               <Label>Reading Level</Label>
               <select 
-                className="w-full h-10 px-3 border border-gray-300 rounded-md"
+                className="w-full h-10 px-3 border border-slate-300 rounded-md"
                 value={readingLevel}
                 onChange={(e) => setReadingLevel(e.target.value)}
               >
@@ -155,13 +156,13 @@ Keep language at ${readingLevel} reading level. Be encouraging and supportive in
             {additionalContext && (
               <div>
                 <Label>Context from Smart Notes</Label>
-                <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-sm">
-                  <p className="text-gray-700 whitespace-pre-wrap">{additionalContext}</p>
+                <div className="bg-navy-50 p-3 rounded-lg border border-navy-200 text-sm">
+                  <p className="text-slate-700 whitespace-pre-wrap">{additionalContext}</p>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => setAdditionalContext("")}
-                    className="mt-2 text-xs text-purple-600"
+                    className="mt-2 text-xs text-navy-600"
                   >
                     Clear Context
                   </Button>
@@ -182,8 +183,8 @@ Keep language at ${readingLevel} reading level. Be encouraging and supportive in
               </Label>
             </div>
 
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-              <p className="text-sm text-purple-900">
+            <div className="bg-navy-50 p-4 rounded-lg border border-navy-200">
+              <p className="text-sm text-navy-900">
                 <strong>Tailored for:</strong> {patient.first_name} {patient.last_name}
                 {patient.functional_status?.cognitive_status && (
                   <> • Cognitive Status: {patient.functional_status.cognitive_status}</>
@@ -193,10 +194,10 @@ Keep language at ${readingLevel} reading level. Be encouraging and supportive in
 
             <Button 
               onClick={generateEducationMaterial} 
-              disabled={isGenerating}
-              className="w-full bg-purple-600 hover:bg-purple-700"
+              disabled={ai.loading}
+              className="w-full bg-navy-600 hover:bg-navy-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" /> Generating...</>
               ) : (
                 <><Sparkles className="w-5 h-5 mr-2" /> Generate Education Material</>

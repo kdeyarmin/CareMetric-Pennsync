@@ -1,0 +1,101 @@
+{
+  "name": "TrainingRecommendation",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse"
+    },
+    "recommendation_type": {
+      "type": "string",
+      "enum": [
+        "documentation",
+        "clinical",
+        "compliance",
+        "safety",
+        "communication",
+        "technology"
+      ],
+      "description": "Category of the recommendation"
+    },
+    "recommendation_text": {
+      "type": "string",
+      "description": "The actual recommendation given"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "smart_note",
+        "compliance_check",
+        "audit",
+        "care_plan",
+        "incident",
+        "compliance_checker",
+        "ai_drafting_assistant",
+        "grammar_corrector",
+        "ai_documentation_suggester",
+        "risk_detector",
+        "clinical_decision_support",
+        "ai_scribe",
+        "automatic_document_review"
+      ],
+      "description": "Where the recommendation came from"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "addressed": {
+      "type": "boolean",
+      "default": false
+    },
+    "was_applied": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this recommendation was applied"
+    },
+    "applied_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this recommendation was applied"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Related patient if applicable"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Related visit if applicable"
+    },
+    "context_data": {
+      "type": "object",
+      "description": "Additional context about the suggestion",
+      "properties": {
+        "element": {
+          "type": "string",
+          "description": "Specific element or scenario (e.g., 'HOMEBOUND STATUS', 'Assessment')"
+        },
+        "note_snippet": {
+          "type": "string",
+          "description": "Snippet of the note content when suggestion was given"
+        },
+        "full_context": {
+          "type": "string",
+          "description": "Full context of the suggestion"
+        }
+      }
+    }
+  },
+  "required": [
+    "nurse_email",
+    "recommendation_type",
+    "recommendation_text",
+    "source"
+  ]
+}

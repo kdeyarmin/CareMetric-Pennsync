@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
@@ -10,6 +10,10 @@ Deno.serve(async (req) => {
     }
 
     const { nurseEmail, daysPeriod = 30 } = await req.json();
+    // Only admins may analyze another nurse's deficits/PHI; others get themselves.
+    if (nurseEmail && nurseEmail !== user.email && user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const emailToAnalyze = nurseEmail || user.email;
 
     // Fetch all AI suggestions for this nurse in the time period

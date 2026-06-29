@@ -1,13 +1,15 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
+import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { FileDown, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function ImportReportGenerator({ 
-  importHistory, 
+  _importHistory, 
   validRecords, 
   validationErrors,
   importResults 
@@ -127,15 +129,7 @@ export default function ImportReportGenerator({
     
     try {
       const rows = generateCSVReport();
-      const csvContent = rows.map(row => 
-        row.map(cell => {
-          const cellStr = String(cell);
-          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-            return `"${cellStr.replace(/"/g, '""')}"`;
-          }
-          return cellStr;
-        }).join(',')
-      ).join('\n');
+      const csvContent = toCsvRows(rows);
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
@@ -146,7 +140,7 @@ export default function ImportReportGenerator({
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating report:', error);
-      alert('Failed to generate report');
+      toast.error('Failed to generate report');
     }
     
     setIsGenerating(false);
@@ -191,7 +185,7 @@ export default function ImportReportGenerator({
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error generating detailed report:', error);
-      alert('Failed to generate detailed report');
+      toast.error('Failed to generate detailed report');
     }
     
     setIsGenerating(false);
@@ -207,7 +201,7 @@ export default function ImportReportGenerator({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Report Options */}
-        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+        <div className="bg-slate-50 rounded-lg p-4 space-y-3">
           <Label className="font-semibold">Report Options</Label>
           
           <div className="space-y-2">
@@ -279,7 +273,7 @@ export default function ImportReportGenerator({
           </Button>
         </div>
 
-        <div className="text-xs text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+        <div className="text-xs text-slate-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
           <p className="font-medium text-blue-900 mb-1">Report Contents:</p>
           <ul className="space-y-1 ml-4">
             <li>• Import timestamp and metadata</li>

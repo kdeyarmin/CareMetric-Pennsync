@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { invokeLLM } from "@/lib/invokeLLM";
+import { buildPdgmNavigatorCsv } from "./pdgmNavigatorExport";
+import { getConfidenceBadge, getSeverityBadge, getPriorityColor, getLevelColor, formatCurrency } from "./pdgmNavigatorHelpers";
+import { resolveAgencyCosts } from "./pdgmFinancialEngine";
+import { buildNavigationRequest, buildFinancialPredictionRequest, buildResolutionWorkflowRequest } from "./pdgmNavigatorPrompts";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Accordion,
@@ -32,43 +37,13 @@ import {
   Lightbulb,
   ChevronRight,
   Settings,
-  Download,
   FileJson,
   FileDown,
-  FileSpreadsheet,
-  BarChart3,
-  ExternalLink
-} from "lucide-react";
+  FileSpreadsheet, BarChart3, ExternalLink, BookOpen } from "lucide-react";
 import PDGMAnalyticsDashboard from "./PDGMAnalyticsDashboard";
 import PDGMScenarioModeler from "./PDGMScenarioModeler";
 import AIGroupAssignmentValidator from "./AIGroupAssignmentValidator";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
-// CMS PDGM Clinical Groups
-const CLINICAL_GROUPS = {
-  'MMTA_Surgical_Aftercare': { name: 'Surgical Aftercare', category: 'MMTA' },
-  'MMTA_Cardiac_Circulatory': { name: 'Cardiac/Circulatory', category: 'MMTA' },
-  'MMTA_Endocrine': { name: 'Endocrine', category: 'MMTA' },
-  'MMTA_GI_GU': { name: 'GI/GU', category: 'MMTA' },
-  'MMTA_Infectious_Disease': { name: 'Infectious Disease', category: 'MMTA' },
-  'MMTA_Other': { name: 'Other', category: 'MMTA' },
-  'MMTA_Respiratory': { name: 'Respiratory', category: 'MMTA' },
-  'MMTA_Neuro_Rehab': { name: 'Neuro/Rehab', category: 'MMTA' },
-  'MMTA_Wounds': { name: 'Wounds', category: 'MMTA' },
-  'MMTA_Complex_Nursing': { name: 'Complex Nursing', category: 'MMTA' },
-  'MMTA_Behavioral_Health': { name: 'Behavioral Health', category: 'MMTA' },
-  'MMTA_Medication_Management': { name: 'Medication Management', category: 'MMTA' },
-  'MMTA_Musculoskeletal': { name: 'Musculoskeletal', category: 'MMTA' }
-};
 
 export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, revenueData, onNavigationComplete }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -79,7 +54,7 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
   const [loadingResolution, setLoadingResolution] = useState(null);
   const [financialPredictions, setFinancialPredictions] = useState({});
   const [loadingPrediction, setLoadingPrediction] = useState(null);
-  const [showCostSettings, setShowCostSettings] = useState(false);
+  const [_showCostSettings, _setShowCostSettings] = useState(false);
   const [patientForecasts, setPatientForecasts] = useState(null);
   const [isLoadingForecasts, setIsLoadingForecasts] = useState(false);
   
@@ -92,206 +67,16 @@ export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, reve
     }
   });
 
-  const agencyCosts = agencySettings || {
-    avg_staff_hourly_rate: 45,
-    training_cost_per_hour: 35,
-    documentation_time_per_episode: 0.5,
-    audit_staff_hourly_rate: 50,
-    avg_episodes_per_year: 50,
-    wage_index: 1.0
-  };
+  const agencyCosts = resolveAgencyCosts(agencySettings);
 
-  // Auto-analyze when data is available
-  useEffect(() => {
-    if (pdgmData && !navigation && !isAnalyzing && !autoAnalyzed) {
-      runPDGMNavigation();
-      setAutoAnalyzed(true);
-    }
-  }, [pdgmData]);
-
-  const runPDGMNavigation = async () => {
+  const runPDGMNavigation = useCallback(async () => {
     if (!pdgmData) return;
 
     setIsAnalyzing(true);
     setError(null);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a CMS PDGM expert navigator. Analyze this OASIS data and determine the correct PDGM grouping with detailed explanation.
-
-OASIS/PDGM DATA:
-${JSON.stringify({
-  primary_diagnosis: pdgmData.primary_diagnosis,
-  primary_diagnosis_code: pdgmData.primary_diagnosis_code,
-  primary_diagnosis_description: pdgmData.primary_diagnosis_description,
-  comorbidities: pdgmData.comorbidities,
-  admission_source: pdgmData.admission_source,
-  episode_timing: pdgmData.episode_timing,
-  m0110_episode_timing: pdgmData.m0110_episode_timing,
-  soc_date: pdgmData.soc_date,
-  functional_scores: pdgmData.functional_scores,
-  clinical_items: pdgmData.clinical_items,
-  therapy_services: pdgmData.therapy_services
-}, null, 2)}
-
-EXISTING ANALYSIS SCORES:
-${JSON.stringify({
-  accuracy: analysisResults?.accuracy_score,
-  compliance: analysisResults?.compliance_score,
-  revenue: analysisResults?.revenue_optimization_score
-}, null, 2)}
-
-CURRENT REVENUE CALCULATION (if available):
-${JSON.stringify(revenueData?.original || {}, null, 2)}
-
-CRITICAL INSTRUCTIONS:
-- ALL ICD-10 diagnoses are valid for PDGM - there is no such thing as an "invalid diagnosis for PDGM"
-- Every diagnosis maps to one of the 12 PDGM clinical groups (MMTA categories)
-- If you're uncertain about the exact mapping, use your best clinical judgment to assign to the most appropriate group
-- Do NOT flag a diagnosis as "invalid" or "not recognized" - instead, determine which clinical group it most closely aligns with
-- If the diagnosis is unclear, assign it to "MMTA_Other" rather than marking it as invalid
-
-Provide a complete PDGM navigation analysis:
-
-1. CLINICAL GROUP DETERMINATION
-- Identify the correct PDGM clinical group based on the primary diagnosis ICD-10 code
-- Every diagnosis MUST be assigned to one of the 12 clinical groups (Surgical Aftercare, Cardiac/Circulatory, Endocrine, GI/GU, Infectious Disease, Respiratory, Neuro/Rehab, Wounds, Complex Nursing, Behavioral Health, Medication Management, Musculoskeletal, or Other)
-- Explain WHY this clinical group applies based on the diagnosis description and ICD-10 category
-- List alternative clinical groups that could apply if documentation or coding changes
-- Only flag issues if there are true documentation problems (missing info, conflicting data) - NOT diagnosis validity
-
-2. FUNCTIONAL IMPAIRMENT LEVEL
-- Calculate total functional points from M-items (M1800-M1860)
-- Determine functional level (Low/Medium/High)
-- Explain threshold cutoffs used
-- Identify which M-items are driving the level
-
-3. COMORBIDITY ADJUSTMENT
-- Analyze comorbidities for PDGM relevance
-- Identify high-value vs low-value comorbidities
-- Determine comorbidity adjustment level (None/Low/High)
-- Flag missing comorbidities that could be documented
-
-4. ADMISSION SOURCE & EPISODE TIMING
-- Validate admission source (Community vs Institutional)
-- Validate episode timing (Early vs Late)
-- Check for discrepancies with M0110 and dates
-- Calculate payment impact of source/timing combination
-
-5. CASE-MIX CALCULATION
-- Show step-by-step case-mix weight calculation
-- Break down each multiplier contribution
-- Calculate final payment amount
-
-6. DISCREPANCIES & OPPORTUNITIES
-- Flag any data discrepancies found
-- Identify documentation opportunities for higher reimbursement
-- Provide specific recommendations
-
-Return JSON:
-{
-  "clinical_group": {
-    "assigned_group": "MMTA_GroupName",
-    "group_name": "Human readable name",
-    "confidence": "high/medium/low",
-    "rationale": "Why this group was assigned based on the diagnosis",
-    "icd10_basis": "ICD-10 code category and clinical reasoning for this mapping",
-    "alternative_groups": [{"group": "name", "if_condition": "what would need to change"}],
-    "potential_issues": ["ONLY list real documentation issues like missing data or conflicts - NEVER say diagnosis is invalid"]
-  },
-  "functional_level": {
-    "total_points": 0,
-    "level": "low/medium/high",
-    "point_breakdown": {
-      "m1800_grooming": {"score": 0, "max": 3, "contribution": "description"},
-      "m1810_dress_upper": {"score": 0, "max": 3, "contribution": "description"},
-      "m1820_dress_lower": {"score": 0, "max": 3, "contribution": "description"},
-      "m1830_bathing": {"score": 0, "max": 6, "contribution": "description"},
-      "m1840_toilet_transfer": {"score": 0, "max": 4, "contribution": "description"},
-      "m1850_transferring": {"score": 0, "max": 5, "contribution": "description"},
-      "m1860_ambulation": {"score": 0, "max": 6, "contribution": "description"}
-    },
-    "threshold_used": "X points for low, Y for high",
-    "level_driver": "Which items are driving the level",
-    "optimization_opportunities": ["ways to improve if clinically appropriate"]
-  },
-  "comorbidity_adjustment": {
-    "level": "none/low/high",
-    "total_comorbidities": 0,
-    "high_value_count": 0,
-    "medium_value_count": 0,
-    "high_value_conditions": ["list"],
-    "medium_value_conditions": ["list"],
-    "missing_opportunities": ["comorbidities that could be added if present"],
-    "rationale": "explanation of level determination"
-  },
-  "admission_timing": {
-    "admission_source": "community/institutional",
-    "admission_source_confidence": "high/medium/low",
-    "admission_source_evidence": "what supports this",
-    "episode_timing": "early/late",
-    "episode_timing_confidence": "high/medium/low",
-    "episode_timing_evidence": "what supports this",
-    "m0110_value": "value if found",
-    "days_since_soc": null,
-    "discrepancies": ["any conflicts found"],
-    "payment_impact": "how this combination affects payment"
-  },
-  "case_mix_calculation": {
-    "base_payment": 2031.64,
-    "clinical_weight": 0.0,
-    "functional_multiplier": 0.0,
-    "comorbidity_multiplier": 0.0,
-    "source_timing_key": "community_early etc",
-    "final_case_mix_weight": 0.0,
-    "calculated_payment": 0.0,
-    "calculation_steps": [
-      "Step 1: description",
-      "Step 2: description"
-    ]
-  },
-  "discrepancies": [
-    {
-      "type": "category",
-      "severity": "critical/high/medium/low",
-      "finding": "what was found",
-      "expected": "what should be",
-      "actual": "what is documented",
-      "revenue_impact": "$ impact estimate",
-      "recommendation": "what to do"
-    }
-  ],
-  "optimization_opportunities": [
-    {
-      "area": "area name",
-      "current_state": "current documentation",
-      "opportunity": "what could change",
-      "potential_impact": "$ or % impact",
-      "action_required": "specific action",
-      "clinical_justification_needed": "what clinical evidence is needed"
-    }
-  ],
-  "summary": {
-    "payment_amount": 0.0,
-    "key_drivers": ["top 3 factors affecting payment"],
-    "risk_areas": ["areas of concern"],
-    "quick_wins": ["easy improvements"]
-  }
-}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            clinical_group: { type: "object" },
-            functional_level: { type: "object" },
-            comorbidity_adjustment: { type: "object" },
-            admission_timing: { type: "object" },
-            case_mix_calculation: { type: "object" },
-            discrepancies: { type: "array", items: { type: "object" } },
-            optimization_opportunities: { type: "array", items: { type: "object" } },
-            summary: { type: "object" }
-          }
-        }
-      });
+      const result = await invokeLLM(buildNavigationRequest({ pdgmData, analysisResults, revenueData }));
 
       setNavigation(result);
       
@@ -305,32 +90,15 @@ Return JSON:
     }
 
     setIsAnalyzing(false);
-  };
+  }, [pdgmData, analysisResults, revenueData, onNavigationComplete]);
 
-  const getConfidenceBadge = (confidence) => {
-    const styles = {
-      high: 'bg-green-100 text-green-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      low: 'bg-red-100 text-red-800'
-    };
-    return styles[confidence] || styles.medium;
-  };
-
-  const getSeverityBadge = (severity) => {
-    const styles = {
-      critical: 'bg-red-600 text-white',
-      high: 'bg-orange-500 text-white',
-      medium: 'bg-yellow-500 text-white',
-      low: 'bg-blue-500 text-white'
-    };
-    return styles[severity] || styles.medium;
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
-  };
-
-
+  // Auto-analyze when data is available
+  useEffect(() => {
+    if (pdgmData && !navigation && !isAnalyzing && !autoAnalyzed) {
+      runPDGMNavigation();
+      setAutoAnalyzed(true);
+    }
+  }, [pdgmData, navigation, isAnalyzing, autoAnalyzed, runPDGMNavigation]);
 
   const exportJSON = () => {
     const exportData = {
@@ -357,44 +125,9 @@ Return JSON:
   const exportCSV = () => {
     if (!navigation) return;
 
-    const rows = [
-      ['PDGM Navigator Analysis - Discrepancies & Opportunities'],
-      ['Generated:', new Date().toISOString()],
-      [''],
-      ['DISCREPANCIES'],
-      ['Type', 'Severity', 'Finding', 'Expected', 'Actual', 'Revenue Impact', 'Recommendation']
-    ];
-
-    (navigation.discrepancies || []).forEach(d => {
-      rows.push([
-        d.type || '',
-        d.severity || '',
-        d.finding || '',
-        d.expected || '',
-        d.actual || '',
-        d.revenue_impact || '',
-        d.recommendation || ''
-      ]);
-    });
-
-    rows.push(['']);
-    rows.push(['OPTIMIZATION OPPORTUNITIES']);
-    rows.push(['Area', 'Current State', 'Opportunity', 'Potential Impact', 'Action Required', 'Clinical Justification']);
-
-    (navigation.optimization_opportunities || []).forEach(o => {
-      rows.push([
-        o.area || '',
-        o.current_state || '',
-        o.opportunity || '',
-        o.potential_impact || '',
-        o.action_required || '',
-        o.clinical_justification_needed || ''
-      ]);
-    });
-
-    const csvContent = rows.map(row => 
-      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-    ).join('\n');
+    // Row layout + escaping extracted to a tested util that also neutralizes
+    // CSV formula injection (the findings/recommendations are AI-generated text).
+    const csvContent = buildPdgmNavigatorCsv(navigation);
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -411,122 +144,7 @@ Return JSON:
     setLoadingPrediction(index);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a PDGM financial analyst. Predict the financial impact of this ${type} over a 1-year period.
-
-${type.toUpperCase()} DETAILS:
-${JSON.stringify(item, null, 2)}
-
-CURRENT REVENUE DATA:
-Base Payment: ${revenueData?.original?.totalPayment || navigation?.case_mix_calculation?.calculated_payment || 2031.64}
-Current Case-Mix: ${revenueData?.original?.caseMixWeight || navigation?.case_mix_calculation?.final_case_mix_weight || 1.0}
-
-AGENCY-SPECIFIC COST DATA (use these values for calculations):
-- Average Staff Hourly Rate: $${agencyCosts.avg_staff_hourly_rate || 45}
-- Training Cost Per Hour: $${agencyCosts.training_cost_per_hour || 35}
-- Documentation Time Per Episode: ${agencyCosts.documentation_time_per_episode || 0.5} hours
-- Audit Staff Hourly Rate: $${agencyCosts.audit_staff_hourly_rate || 50}
-- Average Similar Episodes Per Year: ${agencyCosts.avg_episodes_per_year || 50}
-- Current documentation pattern: likely to repeat
-- Industry average correction rate: 65% if addressed proactively
-
-IMPORTANT: Use the agency-specific values above for ALL cost calculations, implementation costs, and breakeven analysis.
-
-Provide a detailed financial impact analysis:
-
-1. PER-EPISODE IMPACT
-   - Current state payment (if unaddressed)
-   - Corrected state payment (if addressed)
-   - Net gain per episode
-
-2. ANNUAL PROJECTION (1 YEAR)
-   - Use ${agencyCosts.avg_episodes_per_year || 50} episodes/year based on agency data
-   - Total revenue if unaddressed
-   - Total revenue if corrected
-   - Total opportunity cost
-   - Cumulative impact over time
-
-3. RISK ANALYSIS
-   - Probability this issue repeats: %
-   - Audit risk if unaddressed
-   - Compliance exposure
-   - Downside scenarios
-
-4. PRIORITIZATION SCORE
-   - Financial urgency (1-10)
-   - Ease of correction (1-10)
-   - ROI potential (low/medium/high)
-   - Recommended action timeline
-
-5. BREAKEVEN ANALYSIS
-   - Time to implement correction (in hours)
-   - Cost to implement using agency rates:
-     * Staff time at $${agencyCosts.avg_staff_hourly_rate || 45}/hour
-     * Training at $${agencyCosts.training_cost_per_hour || 35}/hour
-     * Documentation updates at ${agencyCosts.documentation_time_per_episode || 0.5} hours/episode
-     * Audit/review at $${agencyCosts.audit_staff_hourly_rate || 50}/hour
-   - Breakeven point (# of episodes)
-   - Net benefit after 1 year
-
-Return JSON:
-{
-  "per_episode": {
-    "current_payment": 0,
-    "corrected_payment": 0,
-    "gain_per_episode": 0,
-    "percentage_increase": 0,
-    "explanation": "why this gap exists"
-  },
-  "annual_projection": {
-    "similar_episodes_per_year": ${agencyCosts.avg_episodes_per_year || 50},
-    "total_current_revenue": 0,
-    "total_corrected_revenue": 0,
-    "total_opportunity": 0,
-    "opportunity_if_50_percent_corrected": 0,
-    "cumulative_12_month": 0,
-    "monthly_impact": 0
-  },
-  "risk_analysis": {
-    "repetition_probability": 0,
-    "audit_risk_level": "low/medium/high/critical",
-    "compliance_exposure": "description",
-    "downside_scenario": "worst case if unaddressed",
-    "downside_amount": 0
-  },
-  "prioritization": {
-    "financial_urgency": 0,
-    "ease_of_correction": 0,
-    "roi_potential": "low/medium/high",
-    "priority_rank": "low/medium/high/critical",
-    "recommended_timeline": "immediate/this week/this month/this quarter",
-    "justification": "why this priority"
-  },
-  "breakeven": {
-    "implementation_time": "time estimate",
-    "implementation_cost": 0,
-    "episodes_to_breakeven": 0,
-    "time_to_breakeven": "time estimate",
-    "net_benefit_year_1": 0,
-    "roi_percentage": 0
-  },
-  "visual_summary": {
-    "icon": "💰/⚠️/🎯/📈",
-    "tagline": "one-sentence impact summary",
-    "color_code": "green/yellow/orange/red"
-  }
-}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            per_episode: { type: "object" },
-            annual_projection: { type: "object" },
-            risk_analysis: { type: "object" },
-            prioritization: { type: "object" },
-            breakeven: { type: "object" },
-            visual_summary: { type: "object" }
-          }
-        }
-      });
+      const result = await invokeLLM(buildFinancialPredictionRequest({ item, type, revenueData, navigation, agencyCosts }));
 
       setFinancialPredictions(prev => ({
         ...prev,
@@ -543,107 +161,11 @@ Return JSON:
     setLoadingPrediction(null);
   };
 
-  const getPriorityColor = (priority) => {
-    const colors = {
-      critical: 'bg-red-600 text-white',
-      high: 'bg-orange-500 text-white',
-      medium: 'bg-yellow-500 text-white',
-      low: 'bg-blue-500 text-white'
-    };
-    return colors[priority] || colors.medium;
-  };
-
   const getResolutionWorkflow = async (discrepancy, index) => {
     setLoadingResolution(index);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a CMS OASIS compliance expert. Provide a detailed resolution workflow for this PDGM discrepancy.
-
-DISCREPANCY DETAILS:
-${JSON.stringify(discrepancy, null, 2)}
-
-FULL OASIS CONTEXT:
-Primary Diagnosis: ${pdgmData.primary_diagnosis_code} - ${pdgmData.primary_diagnosis_description}
-Admission Source: ${pdgmData.admission_source}
-Episode Timing: ${pdgmData.episode_timing}
-Functional Scores: ${JSON.stringify(pdgmData.functional_scores, null, 2)}
-Comorbidities: ${JSON.stringify(pdgmData.comorbidities, null, 2)}
-
-Provide a comprehensive resolution plan:
-
-1. ROOT CAUSE ANALYSIS
-   - Identify exactly why this discrepancy occurred
-   - Explain the specific data points causing the issue
-
-2. STEP-BY-STEP CORRECTION PROCESS
-   - Provide numbered steps to resolve
-   - Be specific about which M-items or fields need correction
-   - Include verification steps
-
-3. CLINICAL DOCUMENTATION CHANGES
-   - Provide exact text snippets to add/modify
-   - Show before/after examples
-   - Ensure clinical appropriateness
-
-4. CMS GUIDELINES REFERENCE
-   - Cite specific CMS OASIS-E guidance sections
-   - Reference relevant M-item definitions
-   - Include PDGM grouping rules
-
-5. VALIDATION CHECKLIST
-   - List items to verify after correction
-   - Include interdependency checks
-
-Return JSON:
-{
-  "root_cause": "detailed explanation of why discrepancy exists",
-  "severity_explanation": "why this matters for reimbursement/compliance",
-  "correction_steps": [
-    {
-      "step_number": 1,
-      "action": "what to do",
-      "specific_fields": ["M-items or fields to change"],
-      "rationale": "why this step is needed"
-    }
-  ],
-  "documentation_changes": [
-    {
-      "item": "M-item or field",
-      "current_value": "what's currently documented",
-      "recommended_value": "what it should be",
-      "example_narrative": "exact text to add to clinical notes",
-      "clinical_justification": "why this is clinically appropriate"
-    }
-  ],
-  "cms_references": [
-    {
-      "guideline": "CMS guideline name",
-      "section": "specific section",
-      "quote": "relevant quote from guideline",
-      "application": "how it applies to this case"
-    }
-  ],
-  "validation_checklist": [
-    "item to verify after correction"
-  ],
-  "estimated_resolution_time": "time estimate",
-  "revenue_impact_if_resolved": "$ impact explanation"
-}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            root_cause: { type: "string" },
-            severity_explanation: { type: "string" },
-            correction_steps: { type: "array", items: { type: "object" } },
-            documentation_changes: { type: "array", items: { type: "object" } },
-            cms_references: { type: "array", items: { type: "object" } },
-            validation_checklist: { type: "array", items: { type: "string" } },
-            estimated_resolution_time: { type: "string" },
-            revenue_impact_if_resolved: { type: "string" }
-          }
-        }
-      });
+      const result = await invokeLLM(buildResolutionWorkflowRequest({ discrepancy, pdgmData }));
 
       setResolutionWorkflows(prev => ({
         ...prev,
@@ -660,17 +182,11 @@ Return JSON:
     setLoadingResolution(null);
   };
 
-  const getLevelColor = (level) => {
-    if (level === 'high') return 'text-green-600 bg-green-100';
-    if (level === 'medium') return 'text-yellow-600 bg-yellow-100';
-    return 'text-blue-600 bg-blue-100';
-  };
-
   const [isExporting, setIsExporting] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
 
   // Fetch historical patient data for forecasting
-  const { data: patientHistory = [] } = useQuery({
+  const { data: _patientHistory = [] } = useQuery({
     queryKey: ['patientOasisHistory', pdgmData?.patient_info?.name],
     queryFn: async () => {
       if (!pdgmData?.patient_info?.name) return [];
@@ -684,14 +200,7 @@ Return JSON:
     queryFn: () => base44.entities.Patient.list('-created_date', 100),
   });
 
-  // Auto-generate forecasts when navigation completes
-  useEffect(() => {
-    if (navigation && !patientForecasts && !isLoadingForecasts) {
-      generatePatientForecasts();
-    }
-  }, [navigation]);
-
-  const generatePatientForecasts = async () => {
+  const generatePatientForecasts = useCallback(async () => {
     if (!navigation || !pdgmData) return;
 
     setIsLoadingForecasts(true);
@@ -769,7 +278,8 @@ PREDICT:
    - Timeline for key milestones
    - Resource optimization opportunities`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -870,7 +380,14 @@ PREDICT:
       console.error('Forecasting error:', error);
     }
     setIsLoadingForecasts(false);
-  };
+  }, [navigation, pdgmData, allPatients]);
+
+  // Auto-generate forecasts when navigation completes
+  useEffect(() => {
+    if (navigation && !patientForecasts && !isLoadingForecasts) {
+      generatePatientForecasts();
+    }
+  }, [navigation, patientForecasts, isLoadingForecasts, generatePatientForecasts]);
 
   const exportPDF = async () => {
     if (!navigation) return;
@@ -902,8 +419,8 @@ PREDICT:
 
   if (!pdgmData) {
     return (
-      <Card className="border-2 border-gray-200">
-        <CardContent className="p-6 text-center text-gray-500">
+      <Card className="border-2 border-slate-200">
+        <CardContent className="p-6 text-center text-slate-500">
           <Navigation className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">Upload and analyze an OASIS document to use the PDGM Navigator</p>
         </CardContent>
@@ -912,11 +429,11 @@ PREDICT:
   }
 
   return (
-    <Card className="border-2 border-cyan-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-cyan-50 to-blue-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="pb-3 bg-gradient-to-r from-navy-50 to-blue-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Navigation className="w-5 h-5 text-cyan-600" />
+            <Navigation className="w-5 h-5 text-navy-600" />
             Automated PDGM Navigator
           </div>
           <div className="flex items-center gap-2">
@@ -985,14 +502,14 @@ PREDICT:
       <CardContent className="space-y-4 pt-4">
         {isAnalyzing ? (
           <div className="text-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-cyan-600 mx-auto mb-3" />
-            <p className="text-sm text-gray-600">Analyzing PDGM grouping and calculating payment...</p>
-            <p className="text-xs text-gray-400 mt-1">Evaluating clinical group, functional level, comorbidities, and timing</p>
+            <Loader2 className="w-8 h-8 animate-spin text-navy-600 mx-auto mb-3" />
+            <p className="text-sm text-slate-600">Analyzing PDGM grouping and calculating payment...</p>
+            <p className="text-xs text-slate-400 mt-1">Evaluating clinical group, functional level, comorbidities, and timing</p>
           </div>
         ) : !navigation ? (
           <Button
             onClick={runPDGMNavigation}
-            className="w-full bg-cyan-600 hover:bg-cyan-700"
+            className="w-full bg-navy-600 hover:bg-navy-700"
           >
             <Navigation className="w-4 h-4 mr-2" /> Analyze PDGM Grouping
           </Button>
@@ -1022,15 +539,15 @@ PREDICT:
               </div>
 
               {/* Functional Level */}
-              <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="p-3 bg-navy-50 rounded-lg border border-navy-200">
                 <div className="flex items-center gap-1 mb-1">
-                  <Activity className="w-3 h-3 text-purple-600" />
-                  <span className="text-xs text-purple-600 font-medium">Functional Level</span>
+                  <Activity className="w-3 h-3 text-navy-600" />
+                  <span className="text-xs text-navy-600 font-medium">Functional Level</span>
                 </div>
-                <p className="text-sm font-bold text-purple-900 capitalize">
+                <p className="text-sm font-bold text-navy-900 capitalize">
                   {navigation.functional_level?.level || 'Unknown'}
                 </p>
-                <p className="text-xs text-purple-600">
+                <p className="text-xs text-navy-600">
                   {navigation.functional_level?.total_points || 0} points
                 </p>
               </div>
@@ -1066,7 +583,7 @@ PREDICT:
 
             {/* Case-Mix Calculation Breakdown */}
             {navigation.case_mix_calculation && (
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-200">
+              <div className="bg-gradient-to-r from-indigo-50 to-navy-50 p-4 rounded-lg border border-indigo-200">
                 <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
                   <Calculator className="w-4 h-4" />
                   Case-Mix Payment Calculation
@@ -1075,25 +592,25 @@ PREDICT:
                 {/* Visual Payment Flow */}
                 <div className="flex items-center justify-between flex-wrap gap-2 mb-4 text-center">
                   <div className="bg-white p-2 rounded border min-w-[80px]">
-                    <p className="text-xs text-gray-500">Base</p>
+                    <p className="text-xs text-slate-500">Base</p>
                     <p className="font-bold text-indigo-700">{formatCurrency(navigation.case_mix_calculation.base_payment)}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
                   <div className="bg-white p-2 rounded border min-w-[80px]">
-                    <p className="text-xs text-gray-500">Clinical</p>
+                    <p className="text-xs text-slate-500">Clinical</p>
                     <p className="font-bold text-blue-600">×{navigation.case_mix_calculation.clinical_weight?.toFixed(4)}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
                   <div className="bg-white p-2 rounded border min-w-[80px]">
-                    <p className="text-xs text-gray-500">Functional</p>
-                    <p className="font-bold text-purple-600">×{navigation.case_mix_calculation.functional_multiplier?.toFixed(2)}</p>
+                    <p className="text-xs text-slate-500">Functional</p>
+                    <p className="font-bold text-navy-600">×{navigation.case_mix_calculation.functional_multiplier?.toFixed(2)}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
                   <div className="bg-white p-2 rounded border min-w-[80px]">
-                    <p className="text-xs text-gray-500">Comorbidity</p>
+                    <p className="text-xs text-slate-500">Comorbidity</p>
                     <p className="font-bold text-green-600">×{navigation.case_mix_calculation.comorbidity_multiplier?.toFixed(3)}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
                   <div className="bg-green-100 p-2 rounded border-2 border-green-400 min-w-[100px]">
                     <p className="text-xs text-green-600">Payment</p>
                     <p className="font-bold text-green-700 text-lg">{formatCurrency(navigation.case_mix_calculation.calculated_payment)}</p>
@@ -1103,12 +620,12 @@ PREDICT:
                 {/* Case-Mix Weight */}
                 <div className="bg-white p-3 rounded border">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Final Case-Mix Weight</span>
+                    <span className="text-sm font-medium text-slate-700">Final Case-Mix Weight</span>
                     <span className="text-lg font-bold text-indigo-700">
                       {navigation.case_mix_calculation.final_case_mix_weight?.toFixed(4)}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-slate-500">
                     Source/Timing: <span className="font-mono">{navigation.case_mix_calculation.source_timing_key}</span>
                   </p>
                   {agencyCosts.wage_index && agencyCosts.wage_index !== 1.0 && (
@@ -1145,23 +662,23 @@ PREDICT:
                 <AccordionContent className="px-4 pb-4 pt-2">
                   <div className="space-y-3">
                     <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                      <p className="text-xs text-gray-500 mb-1">Assigned Group</p>
+                      <p className="text-xs text-slate-500 mb-1">Assigned Group</p>
                       <p className="font-semibold text-blue-900">{navigation.clinical_group?.group_name}</p>
-                      <p className="text-xs text-gray-600 mt-1">{navigation.clinical_group?.rationale}</p>
+                      <p className="text-xs text-slate-600 mt-1">{navigation.clinical_group?.rationale}</p>
                     </div>
                     
                     <div className="bg-white p-3 rounded border">
-                      <p className="text-xs font-medium text-gray-700 mb-1">ICD-10 Mapping Basis</p>
-                      <p className="text-sm text-gray-800">{navigation.clinical_group?.icd10_basis}</p>
+                      <p className="text-xs font-medium text-slate-700 mb-1">ICD-10 Mapping Basis</p>
+                      <p className="text-sm text-slate-800">{navigation.clinical_group?.icd10_basis}</p>
                     </div>
 
                     {navigation.clinical_group?.alternative_groups?.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-gray-700 mb-2">Alternative Groups (if documentation changes)</p>
+                        <p className="text-xs font-medium text-slate-700 mb-2">Alternative Groups (if documentation changes)</p>
                         {navigation.clinical_group.alternative_groups.map((alt, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 p-2 rounded mb-1">
+                          <div key={i} className="flex items-center gap-2 text-xs bg-slate-50 p-2 rounded mb-1">
                             <Badge variant="outline">{alt.group}</Badge>
-                            <span className="text-gray-600">if {alt.if_condition}</span>
+                            <span className="text-slate-600">if {alt.if_condition}</span>
                           </div>
                         ))}
                       </div>
@@ -1186,10 +703,10 @@ PREDICT:
 
               {/* Functional Level Details */}
               <AccordionItem value="functional" className="border rounded-lg">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline bg-purple-50 rounded-t-lg">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline bg-navy-50 rounded-t-lg">
                   <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-purple-600" />
-                    <span className="font-medium text-purple-800">Functional Impairment Breakdown</span>
+                    <Activity className="w-4 h-4 text-navy-600" />
+                    <span className="font-medium text-navy-800">Functional Impairment Breakdown</span>
                     <Badge className={`ml-2 ${getLevelColor(navigation.functional_level?.level)}`}>
                       {navigation.functional_level?.total_points} pts = {navigation.functional_level?.level}
                     </Badge>
@@ -1199,48 +716,46 @@ PREDICT:
                   <div className="space-y-3">
                     {/* Point Breakdown Table */}
                     <div className="border rounded overflow-hidden">
-                      <table className="w-full text-xs">
-                        <thead className="bg-purple-100">
-                          <tr>
-                            <th className="text-left p-2">M-Item</th>
-                            <th className="text-center p-2">Score</th>
-                            <th className="text-center p-2">Max</th>
-                            <th className="text-left p-2">Contribution</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {navigation.functional_level?.point_breakdown && 
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>M-Item</TableHead>
+                            <TableHead className="text-center">Score</TableHead>
+                            <TableHead className="text-center">Max</TableHead>
+                            <TableHead>Contribution</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {navigation.functional_level?.point_breakdown &&
                             Object.entries(navigation.functional_level.point_breakdown).map(([key, data]) => (
-                              <tr key={key} className="hover:bg-gray-50">
-                                <td className="p-2 font-mono text-purple-700">{key.toUpperCase().replace('_', ' ')}</td>
-                                <td className="p-2 text-center font-bold">{data.score}</td>
-                                <td className="p-2 text-center text-gray-500">{data.max}</td>
-                                <td className="p-2 text-gray-600">{data.contribution}</td>
-                              </tr>
+                              <TableRow key={key}>
+                                <TableCell className="font-mono text-navy-700">{key.toUpperCase().replace('_', ' ')}</TableCell>
+                                <TableCell className="text-center font-bold">{data.score}</TableCell>
+                                <TableCell className="text-center text-slate-500">{data.max}</TableCell>
+                                <TableCell className="text-slate-600">{data.contribution}</TableCell>
+                              </TableRow>
                             ))
                           }
-                        </tbody>
-                        <tfoot className="bg-purple-50">
-                          <tr>
-                            <td className="p-2 font-semibold">Total</td>
-                            <td className="p-2 text-center font-bold text-purple-700">
+                          <TableRow className="bg-navy-50 hover:bg-navy-50">
+                            <TableCell className="font-semibold">Total</TableCell>
+                            <TableCell className="text-center font-bold text-navy-700">
                               {navigation.functional_level?.total_points}
-                            </td>
-                            <td className="p-2 text-center text-gray-500">30</td>
-                            <td className="p-2"></td>
-                          </tr>
-                        </tfoot>
-                      </table>
+                            </TableCell>
+                            <TableCell className="text-center text-slate-500">30</TableCell>
+                            <TableCell></TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
                     </div>
 
-                    <div className="bg-gray-50 p-3 rounded border text-xs">
-                      <p className="font-medium text-gray-700 mb-1">Threshold Used</p>
-                      <p className="text-gray-600">{navigation.functional_level?.threshold_used}</p>
+                    <div className="bg-slate-50 p-3 rounded border text-xs">
+                      <p className="font-medium text-slate-700 mb-1">Threshold Used</p>
+                      <p className="text-slate-600">{navigation.functional_level?.threshold_used}</p>
                     </div>
 
-                    <div className="bg-purple-50 p-3 rounded border border-purple-200 text-xs">
-                      <p className="font-medium text-purple-700 mb-1">Level Driver</p>
-                      <p className="text-purple-800">{navigation.functional_level?.level_driver}</p>
+                    <div className="bg-navy-50 p-3 rounded border border-navy-200 text-xs">
+                      <p className="font-medium text-navy-700 mb-1">Level Driver</p>
+                      <p className="text-navy-800">{navigation.functional_level?.level_driver}</p>
                     </div>
 
                     {navigation.functional_level?.optimization_opportunities?.length > 0 && (
@@ -1273,8 +788,8 @@ PREDICT:
                 <AccordionContent className="px-4 pb-4 pt-2">
                   <div className="space-y-3">
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-gray-50 p-2 rounded border">
-                        <p className="text-xs text-gray-500">Total</p>
+                      <div className="bg-slate-50 p-2 rounded border">
+                        <p className="text-xs text-slate-500">Total</p>
                         <p className="text-lg font-bold">{navigation.comorbidity_adjustment?.total_comorbidities || 0}</p>
                       </div>
                       <div className="bg-green-50 p-2 rounded border border-green-200">
@@ -1311,7 +826,7 @@ PREDICT:
                       </div>
                     )}
 
-                    <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                    <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded">
                       {navigation.comorbidity_adjustment?.rationale}
                     </p>
                   </div>
@@ -1339,7 +854,7 @@ PREDICT:
                         <p className="font-semibold text-orange-900 capitalize">
                           {navigation.admission_timing?.admission_source}
                         </p>
-                        <p className="text-xs text-gray-600 mt-1">
+                        <p className="text-xs text-slate-600 mt-1">
                           {navigation.admission_timing?.admission_source_evidence}
                         </p>
                       </div>
@@ -1354,15 +869,15 @@ PREDICT:
                         <p className="font-semibold text-blue-900 capitalize">
                           {navigation.admission_timing?.episode_timing}
                         </p>
-                        <p className="text-xs text-gray-600 mt-1">
+                        <p className="text-xs text-slate-600 mt-1">
                           {navigation.admission_timing?.episode_timing_evidence}
                         </p>
                       </div>
                     </div>
 
                     {navigation.admission_timing?.m0110_value && (
-                      <div className="bg-gray-50 p-2 rounded border text-xs">
-                        <span className="text-gray-500">M0110 Value: </span>
+                      <div className="bg-slate-50 p-2 rounded border text-xs">
+                        <span className="text-slate-500">M0110 Value: </span>
                         <span className="font-mono font-medium">{navigation.admission_timing.m0110_value}</span>
                       </div>
                     )}
@@ -1405,8 +920,8 @@ PREDICT:
                           <Badge className={getSeverityBadge(disc.severity)}>{disc.severity}</Badge>
                           <Badge variant="outline" className="text-xs">{disc.type}</Badge>
                         </div>
-                        <p className="text-sm text-gray-800 mb-1">{disc.finding}</p>
-                        <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                        <p className="text-sm text-slate-800 mb-1">{disc.finding}</p>
+                        <div className="flex items-center gap-2 text-xs text-slate-600 mb-2">
                           <span>Expected: <strong>{disc.expected}</strong></span>
                           <ArrowRight className="w-3 h-3" />
                           <span>Actual: <strong className="text-red-600">{disc.actual}</strong></span>
@@ -1458,8 +973,8 @@ PREDICT:
                             <div className="flex items-center gap-2">
                               <span className="text-2xl">{financialPredictions[idx].visual_summary?.icon || '💰'}</span>
                               <div>
-                                <h4 className="font-semibold text-gray-900">Financial Impact Prediction</h4>
-                                <p className="text-xs text-gray-600">{financialPredictions[idx].visual_summary?.tagline}</p>
+                                <h4 className="font-semibold text-slate-900">Financial Impact Prediction</h4>
+                                <p className="text-xs text-slate-600">{financialPredictions[idx].visual_summary?.tagline}</p>
                               </div>
                             </div>
                             <Badge className={getPriorityColor(financialPredictions[idx].prioritization?.priority_rank || 'medium')}>
@@ -1469,7 +984,7 @@ PREDICT:
 
                           {/* Per Episode Impact */}
                           <div className="bg-white p-3 rounded-lg border-2 border-green-300">
-                            <p className="text-xs font-semibold text-gray-700 mb-2">Per Episode Impact</p>
+                            <p className="text-xs font-semibold text-slate-700 mb-2">Per Episode Impact</p>
                             <div className="grid grid-cols-3 gap-2 mb-2">
                               <div className="text-center p-2 bg-red-50 rounded">
                                 <p className="text-xs text-red-600">Current</p>
@@ -1496,23 +1011,23 @@ PREDICT:
                                 (+{financialPredictions[idx].per_episode?.percentage_increase}% increase)
                               </p>
                             </div>
-                            <p className="text-xs text-gray-600 mt-2 italic">
+                            <p className="text-xs text-slate-600 mt-2 italic">
                               {financialPredictions[idx].per_episode?.explanation}
                             </p>
                           </div>
 
                           {/* Annual Projection */}
                           <div className="bg-white p-3 rounded-lg border-2 border-blue-300">
-                            <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                            <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
                               <TrendingUp className="w-3 h-3" /> 1-Year Projection
                             </p>
                             <div className="space-y-2">
-                              <div className="bg-gradient-to-r from-purple-100 to-indigo-100 p-3 rounded border-2 border-purple-300">
-                                <p className="text-xs text-purple-700 mb-1">💎 Total Annual Opportunity</p>
-                                <p className="text-3xl font-bold text-purple-800">
+                              <div className="bg-gradient-to-r from-navy-100 to-indigo-100 p-3 rounded border-2 border-navy-300">
+                                <p className="text-xs text-navy-700 mb-1">💎 Total Annual Opportunity</p>
+                                <p className="text-3xl font-bold text-navy-800">
                                   {formatCurrency(financialPredictions[idx].annual_projection?.total_opportunity)}
                                 </p>
-                                <p className="text-xs text-purple-600 mt-1">
+                                <p className="text-xs text-navy-600 mt-1">
                                   Based on {financialPredictions[idx].annual_projection?.similar_episodes_per_year} similar episodes per year
                                 </p>
                               </div>
@@ -1521,29 +1036,29 @@ PREDICT:
 
                           {/* Risk Analysis */}
                           <div className="bg-white p-3 rounded-lg border border-orange-300">
-                            <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                            <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
                               <AlertTriangle className="w-3 h-3 text-orange-600" /> Risk if Unaddressed
                             </p>
                             <div className="space-y-2 text-xs">
                               <div className="flex items-center justify-between p-2 bg-orange-50 rounded">
-                                <span className="text-gray-700">Repetition Probability</span>
+                                <span className="text-slate-700">Repetition Probability</span>
                                 <Badge className="bg-orange-600 text-white">
                                   {financialPredictions[idx].risk_analysis?.repetition_probability}%
                                 </Badge>
                               </div>
                               <div className="flex items-center justify-between p-2 bg-red-50 rounded">
-                                <span className="text-gray-700">Audit Risk Level</span>
+                                <span className="text-slate-700">Audit Risk Level</span>
                                 <Badge className={getSeverityBadge(financialPredictions[idx].risk_analysis?.audit_risk_level)}>
                                   {financialPredictions[idx].risk_analysis?.audit_risk_level}
                                 </Badge>
                               </div>
                               <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
                                 <p className="font-medium text-yellow-800 mb-1">Compliance Exposure</p>
-                                <p className="text-gray-700">{financialPredictions[idx].risk_analysis?.compliance_exposure}</p>
+                                <p className="text-slate-700">{financialPredictions[idx].risk_analysis?.compliance_exposure}</p>
                               </div>
                               <div className="bg-red-50 p-2 rounded border border-red-300">
                                 <p className="font-medium text-red-800 mb-1">⚠️ Worst Case Scenario</p>
-                                <p className="text-gray-700">{financialPredictions[idx].risk_analysis?.downside_scenario}</p>
+                                <p className="text-slate-700">{financialPredictions[idx].risk_analysis?.downside_scenario}</p>
                                 <p className="text-red-700 font-bold mt-1">
                                   Potential Loss: {formatCurrency(financialPredictions[idx].risk_analysis?.downside_amount)}
                                 </p>
@@ -1553,7 +1068,7 @@ PREDICT:
 
                           {/* Prioritization */}
                           <div className="bg-white p-3 rounded-lg border-2 border-indigo-300">
-                            <p className="text-xs font-semibold text-gray-700 mb-2">Prioritization Analysis</p>
+                            <p className="text-xs font-semibold text-slate-700 mb-2">Prioritization Analysis</p>
                             <div className="grid grid-cols-3 gap-2 mb-2 text-center text-xs">
                               <div className="bg-indigo-50 p-2 rounded">
                                 <p className="text-indigo-600 mb-1">Financial Urgency</p>
@@ -1564,7 +1079,7 @@ PREDICT:
                                       className={`w-2 h-4 rounded-sm ${
                                         i < financialPredictions[idx].prioritization?.financial_urgency
                                           ? 'bg-indigo-600'
-                                          : 'bg-gray-200'
+                                          : 'bg-slate-200'
                                       }`}
                                     />
                                   ))}
@@ -1582,7 +1097,7 @@ PREDICT:
                                       className={`w-2 h-4 rounded-sm ${
                                         i < financialPredictions[idx].prioritization?.ease_of_correction
                                           ? 'bg-green-600'
-                                          : 'bg-gray-200'
+                                          : 'bg-slate-200'
                                       }`}
                                     />
                                   ))}
@@ -1591,9 +1106,9 @@ PREDICT:
                                   {financialPredictions[idx].prioritization?.ease_of_correction}/10
                                 </p>
                               </div>
-                              <div className="bg-purple-50 p-2 rounded">
-                                <p className="text-purple-600 mb-1">ROI Potential</p>
-                                <p className="text-2xl font-bold text-purple-800 uppercase">
+                              <div className="bg-navy-50 p-2 rounded">
+                                <p className="text-navy-600 mb-1">ROI Potential</p>
+                                <p className="text-2xl font-bold text-navy-800 uppercase">
                                   {financialPredictions[idx].prioritization?.roi_potential}
                                 </p>
                               </div>
@@ -1602,26 +1117,26 @@ PREDICT:
                               <p className="text-xs text-indigo-700 font-medium mb-1">
                                 🎯 Recommended Timeline: <span className="uppercase">{financialPredictions[idx].prioritization?.recommended_timeline}</span>
                               </p>
-                              <p className="text-xs text-gray-700">{financialPredictions[idx].prioritization?.justification}</p>
+                              <p className="text-xs text-slate-700">{financialPredictions[idx].prioritization?.justification}</p>
                             </div>
                           </div>
 
                           {/* Breakeven Analysis */}
-                          <div className="bg-white p-3 rounded-lg border border-gray-300">
-                          <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                          <div className="bg-white p-3 rounded-lg border border-slate-300">
+                          <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
                             <Calculator className="w-3 h-3" /> Breakeven Analysis
                             <Badge variant="outline" className="text-xs ml-auto">Agency-Specific</Badge>
                           </p>
                           <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="bg-gray-50 p-2 rounded">
-                              <p className="text-gray-500">Implementation Time</p>
-                              <p className="font-medium text-gray-800">
+                            <div className="bg-slate-50 p-2 rounded">
+                              <p className="text-slate-500">Implementation Time</p>
+                              <p className="font-medium text-slate-800">
                                 {financialPredictions[idx].breakeven?.implementation_time}
                               </p>
                             </div>
-                            <div className="bg-gray-50 p-2 rounded">
-                              <p className="text-gray-500">Implementation Cost</p>
-                              <p className="font-medium text-gray-800">
+                            <div className="bg-slate-50 p-2 rounded">
+                              <p className="text-slate-500">Implementation Cost</p>
+                              <p className="font-medium text-slate-800">
                                 {formatCurrency(financialPredictions[idx].breakeven?.implementation_cost)}
                               </p>
                             </div>
@@ -1669,8 +1184,8 @@ PREDICT:
 
                           {/* Root Cause */}
                           <div className="bg-white p-3 rounded border">
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Root Cause Analysis</p>
-                            <p className="text-sm text-gray-800">{resolutionWorkflows[idx].root_cause}</p>
+                            <p className="text-xs font-semibold text-slate-700 mb-1">Root Cause Analysis</p>
+                            <p className="text-sm text-slate-800">{resolutionWorkflows[idx].root_cause}</p>
                             <p className="text-xs text-orange-700 mt-1 bg-orange-50 p-1.5 rounded">
                               <strong>Impact:</strong> {resolutionWorkflows[idx].severity_explanation}
                             </p>
@@ -1679,7 +1194,7 @@ PREDICT:
                           {/* Correction Steps */}
                           {resolutionWorkflows[idx].correction_steps?.length > 0 && (
                             <div className="bg-white p-3 rounded border">
-                              <p className="text-xs font-semibold text-gray-700 mb-2">Step-by-Step Correction Process</p>
+                              <p className="text-xs font-semibold text-slate-700 mb-2">Step-by-Step Correction Process</p>
                               <div className="space-y-2">
                                 {resolutionWorkflows[idx].correction_steps.map((step, i) => (
                                   <div key={i} className="flex gap-2">
@@ -1687,13 +1202,13 @@ PREDICT:
                                       {step.step_number}
                                     </div>
                                     <div className="flex-1">
-                                      <p className="text-sm font-medium text-gray-800">{step.action}</p>
+                                      <p className="text-sm font-medium text-slate-800">{step.action}</p>
                                       {step.specific_fields?.length > 0 && (
-                                        <p className="text-xs text-gray-600">
-                                          Fields: {step.specific_fields.map(f => <span key={f} className="font-mono bg-gray-100 px-1 rounded">{f}</span>)}
+                                        <p className="text-xs text-slate-600">
+                                          Fields: {step.specific_fields.map(f => <span key={f} className="font-mono bg-slate-100 px-1 rounded">{f}</span>)}
                                         </p>
                                       )}
-                                      <p className="text-xs text-gray-500 italic">{step.rationale}</p>
+                                      <p className="text-xs text-slate-500 italic">{step.rationale}</p>
                                     </div>
                                   </div>
                                 ))}
@@ -1704,10 +1219,10 @@ PREDICT:
                           {/* Documentation Changes */}
                           {resolutionWorkflows[idx].documentation_changes?.length > 0 && (
                             <div className="bg-white p-3 rounded border">
-                              <p className="text-xs font-semibold text-gray-700 mb-2">Clinical Documentation Changes</p>
+                              <p className="text-xs font-semibold text-slate-700 mb-2">Clinical Documentation Changes</p>
                               <div className="space-y-2">
                                 {resolutionWorkflows[idx].documentation_changes.map((change, i) => (
-                                  <div key={i} className="bg-gray-50 p-2 rounded border">
+                                  <div key={i} className="bg-slate-50 p-2 rounded border">
                                     <div className="flex items-center justify-between mb-1">
                                       <span className="text-xs font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
                                         {change.item}
@@ -1716,18 +1231,18 @@ PREDICT:
                                     <div className="grid grid-cols-2 gap-2 mb-2 text-xs">
                                       <div className="bg-red-50 p-1.5 rounded border border-red-200">
                                         <p className="text-red-600 font-medium mb-0.5">Current</p>
-                                        <p className="text-gray-700">{change.current_value || 'Not documented'}</p>
+                                        <p className="text-slate-700">{change.current_value || 'Not documented'}</p>
                                       </div>
                                       <div className="bg-green-50 p-1.5 rounded border border-green-200">
                                         <p className="text-green-600 font-medium mb-0.5">Recommended</p>
-                                        <p className="text-gray-700">{change.recommended_value}</p>
+                                        <p className="text-slate-700">{change.recommended_value}</p>
                                       </div>
                                     </div>
                                     <div className="bg-blue-50 p-2 rounded border border-blue-200 mb-1">
                                       <p className="text-xs text-blue-600 font-medium mb-0.5">📝 Example Narrative:</p>
                                       <p className="text-sm text-blue-900 italic">"{change.example_narrative}"</p>
                                     </div>
-                                    <p className="text-xs text-gray-600">
+                                    <p className="text-xs text-slate-600">
                                       <strong>Clinical Justification:</strong> {change.clinical_justification}
                                     </p>
                                   </div>
@@ -1739,15 +1254,15 @@ PREDICT:
                           {/* CMS References */}
                           {resolutionWorkflows[idx].cms_references?.length > 0 && (
                             <div className="bg-white p-3 rounded border">
-                              <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                              <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
                                 <BookOpen className="w-3 h-3" /> CMS Guidelines Reference
                               </p>
                               <div className="space-y-2">
                                 {resolutionWorkflows[idx].cms_references.map((ref, i) => (
-                                  <div key={i} className="bg-gray-50 p-2 rounded border text-xs">
-                                    <p className="font-medium text-gray-800">{ref.guideline}</p>
-                                    <p className="text-gray-600">Section: {ref.section}</p>
-                                    <p className="text-gray-700 italic mt-1 bg-white p-1 rounded">"{ref.quote}"</p>
+                                  <div key={i} className="bg-slate-50 p-2 rounded border text-xs">
+                                    <p className="font-medium text-slate-800">{ref.guideline}</p>
+                                    <p className="text-slate-600">Section: {ref.section}</p>
+                                    <p className="text-slate-700 italic mt-1 bg-white p-1 rounded">"{ref.quote}"</p>
                                     <p className="text-blue-700 mt-1">
                                       <strong>Application:</strong> {ref.application}
                                     </p>
@@ -1760,12 +1275,12 @@ PREDICT:
                           {/* Validation Checklist */}
                           {resolutionWorkflows[idx].validation_checklist?.length > 0 && (
                             <div className="bg-white p-3 rounded border">
-                              <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                              <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3" /> Post-Correction Validation
                               </p>
                               <ul className="space-y-1">
                                 {resolutionWorkflows[idx].validation_checklist.map((item, i) => (
-                                  <li key={i} className="text-xs text-gray-700 flex items-start gap-1">
+                                  <li key={i} className="text-xs text-slate-700 flex items-start gap-1">
                                     <span className="text-green-600">✓</span> {item}
                                   </li>
                                 ))}
@@ -1776,8 +1291,8 @@ PREDICT:
                           {/* Summary Info */}
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             <div className="bg-white p-2 rounded border">
-                              <p className="text-gray-500 mb-0.5">Estimated Time</p>
-                              <p className="font-medium text-gray-800">{resolutionWorkflows[idx].estimated_resolution_time}</p>
+                              <p className="text-slate-500 mb-0.5">Estimated Time</p>
+                              <p className="font-medium text-slate-800">{resolutionWorkflows[idx].estimated_resolution_time}</p>
                             </div>
                             <div className="bg-green-50 p-2 rounded border border-green-200">
                               <p className="text-green-600 mb-0.5">Revenue Impact</p>
@@ -1814,13 +1329,13 @@ PREDICT:
                           <span className="font-medium text-green-900">{opp.area}</span>
                           <Badge className="bg-green-600 text-white">{opp.potential_impact}</Badge>
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">Current: {opp.current_state}</p>
+                        <p className="text-xs text-slate-600 mb-1">Current: {opp.current_state}</p>
                         <p className="text-sm text-green-800 mb-1">{opp.opportunity}</p>
                         <div className="bg-blue-50 p-2 rounded text-xs mb-2">
                           <strong>Action:</strong> {opp.action_required}
                         </div>
                         {opp.clinical_justification_needed && (
-                          <p className="text-xs text-gray-500 mb-2 italic">
+                          <p className="text-xs text-slate-500 mb-2 italic">
                             Requires: {opp.clinical_justification_needed}
                           </p>
                         )}
@@ -1855,7 +1370,7 @@ PREDICT:
                             </p>
                             
                             <div className="bg-white p-2 rounded text-center">
-                              <p className="text-xs text-gray-500">Annual Opportunity</p>
+                              <p className="text-xs text-slate-500">Annual Opportunity</p>
                               <p className="text-2xl font-bold text-green-700">
                                 {formatCurrency(financialPredictions[oppIndex].annual_projection?.total_opportunity)}
                               </p>
@@ -1871,9 +1386,9 @@ PREDICT:
                                   {financialPredictions[oppIndex].prioritization?.recommended_timeline}
                                 </p>
                               </div>
-                              <div className="bg-purple-50 p-2 rounded text-center">
-                                <p className="text-purple-600">ROI</p>
-                                <p className="font-bold text-purple-800">
+                              <div className="bg-navy-50 p-2 rounded text-center">
+                                <p className="text-navy-600">ROI</p>
+                                <p className="font-bold text-navy-800">
                                   {financialPredictions[oppIndex].breakeven?.roi_percentage}%
                                 </p>
                               </div>
@@ -1889,7 +1404,7 @@ PREDICT:
 
             {/* Patient Outcome Forecasts */}
             {patientForecasts && (
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border-2 border-blue-300">
+              <div className="bg-gradient-to-r from-blue-50 to-navy-50 p-4 rounded-lg border-2 border-blue-300">
                 <h3 className="font-semibold text-blue-900 mb-4 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5" />
                   Predictive Patient Outcome Forecasts
@@ -1930,13 +1445,13 @@ PREDICT:
 
                       <div className="grid grid-cols-2 gap-2 mb-3">
                         <div className="text-center p-2 bg-white rounded border">
-                          <p className="text-xs text-gray-600">30-Day Risk</p>
+                          <p className="text-xs text-slate-600">30-Day Risk</p>
                           <p className="text-2xl font-bold text-red-600">
                             {patientForecasts.readmission_risk?.thirty_day_risk_score}%
                           </p>
                         </div>
                         <div className="text-center p-2 bg-white rounded border">
-                          <p className="text-xs text-gray-600">60-Day Risk</p>
+                          <p className="text-xs text-slate-600">60-Day Risk</p>
                           <p className="text-2xl font-bold text-orange-600">
                             {patientForecasts.readmission_risk?.sixty_day_risk_score}%
                           </p>
@@ -1945,8 +1460,8 @@ PREDICT:
 
                       {patientForecasts.readmission_risk?.top_risk_factors?.length > 0 && (
                         <div className="bg-white p-2 rounded border mb-2">
-                          <p className="text-xs font-semibold text-gray-700 mb-1">Top Risk Factors</p>
-                          <ul className="text-xs text-gray-700 space-y-1">
+                          <p className="text-xs font-semibold text-slate-700 mb-1">Top Risk Factors</p>
+                          <ul className="text-xs text-slate-700 space-y-1">
                             {patientForecasts.readmission_risk.top_risk_factors.map((factor, i) => (
                               <li key={i}>• {factor}</li>
                             ))}
@@ -1978,18 +1493,18 @@ PREDICT:
                       </div>
 
                       <div className="text-center p-3 bg-white rounded border-2 border-blue-300 mb-3">
-                        <p className="text-xs text-gray-600">Predicted LOS</p>
+                        <p className="text-xs text-slate-600">Predicted LOS</p>
                         <p className="text-4xl font-bold text-blue-700">
                           {patientForecasts.length_of_stay?.predicted_days}
                         </p>
                         <p className="text-xs text-blue-600">days</p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-slate-500 mt-1">
                           {patientForecasts.length_of_stay?.confidence_range}
                         </p>
                       </div>
 
                       <div className="bg-white p-2 rounded border mb-2">
-                        <p className="text-xs text-gray-600">{patientForecasts.length_of_stay?.compared_to_average}</p>
+                        <p className="text-xs text-slate-600">{patientForecasts.length_of_stay?.compared_to_average}</p>
                       </div>
 
                       {patientForecasts.length_of_stay?.influencing_factors?.length > 0 && (
@@ -2006,7 +1521,7 @@ PREDICT:
                   </Card>
 
                   {/* Functional Outcomes */}
-                  <Card className="border-2 border-purple-400 bg-purple-50">
+                  <Card className="border-2 border-navy-400 bg-navy-50">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="font-semibold flex items-center gap-2">
@@ -2015,21 +1530,21 @@ PREDICT:
                         </h4>
                       </div>
 
-                      <div className="text-center p-3 bg-white rounded border-2 border-purple-300 mb-3">
-                        <p className="text-xs text-gray-600">Expected Improvement</p>
-                        <p className="text-4xl font-bold text-purple-700">
+                      <div className="text-center p-3 bg-white rounded border-2 border-navy-300 mb-3">
+                        <p className="text-xs text-slate-600">Expected Improvement</p>
+                        <p className="text-4xl font-bold text-navy-700">
                           {patientForecasts.functional_outcomes?.expected_improvement_percentage}%
                         </p>
-                        <p className="text-xs text-purple-600 mt-1">
+                        <p className="text-xs text-navy-600 mt-1">
                           Success Probability: {patientForecasts.functional_outcomes?.success_probability}%
                         </p>
                       </div>
 
                       <div className="bg-white p-2 rounded border mb-2 text-xs">
-                        <p className="text-gray-600">
+                        <p className="text-slate-600">
                           <strong>Discharge Functional Level:</strong> {patientForecasts.functional_outcomes?.discharge_functional_level}
                         </p>
-                        <p className="text-gray-600 mt-1">
+                        <p className="text-slate-600 mt-1">
                           <strong>Timeline:</strong> {patientForecasts.functional_outcomes?.timeline_to_goals}
                         </p>
                       </div>
@@ -2067,13 +1582,13 @@ PREDICT:
 
                       <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
                         <div className="bg-white p-2 rounded border text-center">
-                          <p className="text-gray-600">Weekly Visits</p>
+                          <p className="text-slate-600">Weekly Visits</p>
                           <p className="text-2xl font-bold text-green-700">
                             {patientForecasts.resource_allocation?.predicted_weekly_visits}
                           </p>
                         </div>
                         <div className="bg-white p-2 rounded border text-center">
-                          <p className="text-gray-600">Total Care Hours</p>
+                          <p className="text-slate-600">Total Care Hours</p>
                           <p className="text-2xl font-bold text-green-700">
                             {patientForecasts.resource_allocation?.total_care_hours_estimate}
                           </p>
@@ -2083,15 +1598,15 @@ PREDICT:
                       <div className="bg-white p-2 rounded border text-xs mb-2">
                         <div className="grid grid-cols-3 gap-1 text-center">
                           <div>
-                            <p className="text-gray-500">SN</p>
+                            <p className="text-slate-500">SN</p>
                             <p className="font-bold">{patientForecasts.resource_allocation?.skilled_nursing_visits}</p>
                           </div>
                           <div>
-                            <p className="text-gray-500">PT</p>
+                            <p className="text-slate-500">PT</p>
                             <p className="font-bold">{patientForecasts.resource_allocation?.pt_sessions_recommended}</p>
                           </div>
                           <div>
-                            <p className="text-gray-500">OT</p>
+                            <p className="text-slate-500">OT</p>
                             <p className="font-bold">{patientForecasts.resource_allocation?.ot_sessions_recommended}</p>
                           </div>
                         </div>
@@ -2129,15 +1644,15 @@ PREDICT:
                               <p className="font-semibold text-sm text-indigo-900">{int.intervention}</p>
                               <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                                 <div>
-                                  <p className="text-gray-500">Timeframe</p>
-                                  <p className="font-medium text-gray-800">{int.timeframe}</p>
+                                  <p className="text-slate-500">Timeframe</p>
+                                  <p className="font-medium text-slate-800">{int.timeframe}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500">Expected Outcome</p>
+                                  <p className="text-slate-500">Expected Outcome</p>
                                   <p className="font-medium text-green-700">{int.expected_outcome}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500">Resources</p>
+                                  <p className="text-slate-500">Resources</p>
                                   <p className="font-medium text-blue-700">{int.resource_needs}</p>
                                 </div>
                               </div>
@@ -2151,16 +1666,16 @@ PREDICT:
 
                 {/* Key Milestones */}
                 {patientForecasts.care_planning_insights?.key_milestones?.length > 0 && (
-                  <div className="bg-white p-4 rounded-lg border-2 border-purple-300">
-                    <h4 className="font-semibold text-purple-900 mb-3">📅 Care Plan Milestones</h4>
+                  <div className="bg-white p-4 rounded-lg border-2 border-navy-300">
+                    <h4 className="font-semibold text-navy-900 mb-3">📅 Care Plan Milestones</h4>
                     <div className="space-y-2">
                       {patientForecasts.care_planning_insights.key_milestones.map((milestone, idx) => (
-                        <div key={idx} className="flex items-start gap-3 bg-purple-50 p-2 rounded border border-purple-200">
-                          <CheckCircle2 className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                        <div key={idx} className="flex items-start gap-3 bg-navy-50 p-2 rounded border border-navy-200">
+                          <CheckCircle2 className="w-4 h-4 text-navy-600 flex-shrink-0 mt-0.5" />
                           <div className="flex-1 text-xs">
-                            <p className="font-semibold text-purple-900">{milestone.milestone}</p>
-                            <p className="text-gray-600">Target: {milestone.target_date}</p>
-                            <p className="text-gray-700">Success Criteria: {milestone.success_criteria}</p>
+                            <p className="font-semibold text-navy-900">{milestone.milestone}</p>
+                            <p className="text-slate-600">Target: {milestone.target_date}</p>
+                            <p className="text-slate-700">Success Criteria: {milestone.success_criteria}</p>
                           </div>
                         </div>
                       ))}
@@ -2176,25 +1691,25 @@ PREDICT:
                   </h4>
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     <div className="text-center p-2 bg-green-50 rounded border border-green-200">
-                      <p className="text-xs text-gray-600">Ambulation</p>
+                      <p className="text-xs text-slate-600">Ambulation</p>
                       <p className="text-xl font-bold text-green-700">
                         {patientForecasts.quality_measures_forecast?.improvement_in_ambulation_likelihood}%
                       </p>
                       <p className="text-xs text-green-600">likely to improve</p>
                     </div>
                     <div className="text-center p-2 bg-blue-50 rounded border border-blue-200">
-                      <p className="text-xs text-gray-600">Bathing</p>
+                      <p className="text-xs text-slate-600">Bathing</p>
                       <p className="text-xl font-bold text-blue-700">
                         {patientForecasts.quality_measures_forecast?.improvement_in_bathing_likelihood}%
                       </p>
                       <p className="text-xs text-blue-600">likely to improve</p>
                     </div>
-                    <div className="text-center p-2 bg-purple-50 rounded border border-purple-200">
-                      <p className="text-xs text-gray-600">Transferring</p>
-                      <p className="text-xl font-bold text-purple-700">
+                    <div className="text-center p-2 bg-navy-50 rounded border border-navy-200">
+                      <p className="text-xs text-slate-600">Transferring</p>
+                      <p className="text-xl font-bold text-navy-700">
                         {patientForecasts.quality_measures_forecast?.improvement_in_transferring_likelihood}%
                       </p>
-                      <p className="text-xs text-purple-600">likely to improve</p>
+                      <p className="text-xs text-navy-600">likely to improve</p>
                     </div>
                   </div>
 
@@ -2214,7 +1729,7 @@ PREDICT:
                 </div>
 
                 {/* Overall Prognosis */}
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-3 rounded-lg border border-indigo-300">
+                <div className="bg-gradient-to-r from-indigo-50 to-navy-50 p-3 rounded-lg border border-indigo-300">
                   <p className="text-xs font-semibold text-indigo-800 mb-1">📊 Overall Prognosis</p>
                   <p className="text-sm text-indigo-900">{patientForecasts.overall_prognosis}</p>
                 </div>
@@ -2256,18 +1771,17 @@ PREDICT:
 
             {/* AI Group Assignment Validator */}
             <AIGroupAssignmentValidator
-              oasisData={oasisData}
+              oasisData={pdgmData}
               analysisResults={analysisResults}
               pdgmData={pdgmData}
-              patientId={patientId}
+              patientId={pdgmData?.patient_id}
               autoValidate={true}
             />
-
             {/* PDGM Scenario Modeler */}
             <PDGMScenarioModeler
               baselineOasisData={pdgmData}
               baselineNavigationData={navigation}
-              patientId={patientId}
+              patientId={pdgmData?.patient_id}
             />
 
             {/* Re-analyze Button */}

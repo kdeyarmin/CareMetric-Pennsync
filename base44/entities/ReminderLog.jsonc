@@ -1,0 +1,91 @@
+{
+  "name": "ReminderLog",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Reference to DocumentPackage"
+    },
+    "package_name": {
+      "type": "string",
+      "description": "Package name at time of reminder"
+    },
+    "signer_email": {
+      "type": "string",
+      "description": "Email address reminder was sent to"
+    },
+    "signer_name": {
+      "type": "string",
+      "description": "Signer name for personalization"
+    },
+    "reminder_type": {
+      "type": "string",
+      "enum": [
+        "pre_due",
+        "due_today",
+        "overdue"
+      ],
+      "default": "pre_due",
+      "description": "Type of reminder sent"
+    },
+    "days_until_due": {
+      "type": "number",
+      "description": "Number of days until due date when reminder was sent"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the reminder was sent"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "bounced",
+        "failed"
+      ],
+      "default": "sent",
+      "description": "Delivery status"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error details if delivery failed"
+    },
+    "document_count": {
+      "type": "number",
+      "description": "Number of documents in the package"
+    },
+    "documents_signed": {
+      "type": "number",
+      "description": "Number of documents already signed"
+    },
+    "documents_pending": {
+      "type": "number",
+      "description": "Number of documents still pending"
+    }
+  },
+  "required": [
+    "package_id",
+    "signer_email",
+    "sent_at"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

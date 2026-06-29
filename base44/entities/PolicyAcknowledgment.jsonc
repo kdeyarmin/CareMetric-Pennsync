@@ -1,0 +1,105 @@
+{
+  "name": "PolicyAcknowledgment",
+  "type": "object",
+  "properties": {
+    "policy_id": {
+      "type": "string",
+      "description": "Reference to PolicyLibrary"
+    },
+    "policy_title": {
+      "type": "string",
+      "description": "Policy title snapshot at distribution time"
+    },
+    "policy_number": {
+      "type": "string",
+      "description": "Policy identifier snapshot"
+    },
+    "policy_version": {
+      "type": "string",
+      "description": "Policy version snapshot, so re-distributing a new version creates fresh acknowledgments"
+    },
+    "doc_url": {
+      "type": "string",
+      "description": "URL to the policy document the user must read"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User email of the assignee"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "User full name snapshot"
+    },
+    "distributed_by": {
+      "type": "string",
+      "description": "Email of the admin who distributed the policy"
+    },
+    "assigned_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the acknowledgment was assigned"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date by which acknowledgment is required"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "assigned",
+        "acknowledged",
+        "overdue"
+      ],
+      "default": "assigned",
+      "description": "Acknowledgment status"
+    },
+    "acknowledged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the user acknowledged the policy"
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the acknowledgment was completed"
+    },
+    "signed_name": {
+      "type": "string",
+      "description": "Typed signature name"
+    },
+    "device_metadata": {
+      "type": "object",
+      "description": "Device and browser metadata at acknowledgment time"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address if available"
+    }
+  },
+  "required": [
+    "policy_id",
+    "policy_title",
+    "policy_version",
+    "user_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

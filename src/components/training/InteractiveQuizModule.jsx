@@ -1,5 +1,7 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useAICall } from "@/hooks/useAICall";
+import { DEFAULT_PASSING_SCORE } from "@/constants/training";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +18,7 @@ import {
   RotateCcw,
   ArrowRight,
   Brain,
-  Target,
-  Clock
+  Target
 } from "lucide-react";
 
 const quizCategories = [
@@ -29,9 +30,9 @@ const quizCategories = [
   { id: "hipaa", label: "HIPAA & Privacy", questions: 8 }
 ];
 
-export default function InteractiveQuizModule({ nurseEmail, onQuizCompleted }) {
+export default function InteractiveQuizModule({ _nurseEmail, onQuizCompleted }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [questions, setQuestions] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
@@ -42,12 +43,12 @@ export default function InteractiveQuizModule({ nurseEmail, onQuizCompleted }) {
   const [startTime, setStartTime] = useState(null);
 
   const generateQuiz = async (category) => {
-    setIsGenerating(true);
     setSelectedCategory(category);
     setStartTime(new Date());
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a professional quiz for home health nurses on: "${category.label}"
 
 Create ${category.questions} multiple-choice questions that test practical knowledge.
@@ -88,15 +89,24 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
         }
       });
 
-      setQuestions(result.questions || []);
+      const generated = Array.isArray(result.questions) ? result.questions : [];
+      // Guard: an empty question set would make scoring divide by zero (NaN).
+      if (generated.length === 0) {
+        toast.error('The quiz failed to generate. Please try again.');
+        setSelectedCategory(null);
+        return;
+      }
+
+      setQuestions(generated);
       setCurrentQuestion(0);
       setScore(0);
       setAnswers([]);
       setQuizCompleted(false);
     } catch (error) {
       console.error("Error generating quiz:", error);
+      toast.error('The quiz failed to generate. Please try again.');
+      setSelectedCategory(null);
     }
-    setIsGenerating(false);
   };
 
   const handleAnswer = () => {
@@ -124,12 +134,16 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
       setQuizCompleted(true);
       const endTime = new Date();
       const duration = Math.round((endTime - startTime) / 1000 / 60);
-      
+
+      const percentage = questions.length > 0
+        ? Math.round((score / questions.length) * 100)
+        : 0;
+
       onQuizCompleted?.({
         category: selectedCategory.label,
         score,
         total: questions.length,
-        percentage: Math.round((score / questions.length) * 100),
+        percentage,
         duration,
         answers
       });
@@ -152,23 +166,23 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
     return (
       <div className="space-y-4">
         <div className="text-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Interactive Knowledge Quiz</h2>
-          <p className="text-sm text-gray-600">Test your understanding with AI-generated questions</p>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Interactive Knowledge Quiz</h2>
+          <p className="text-sm text-slate-600">Test your understanding with AI-generated questions</p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {quizCategories.map((category) => (
             <Card
               key={category.id}
-              className="cursor-pointer hover:shadow-lg transition-all hover:border-blue-300 overflow-hidden"
+              className="cursor-pointer hover:shadow-lg transition-all hover:border-blue-300"
               onClick={() => generateQuiz(category)}
             >
-              <CardContent className="p-4 sm:p-6 text-center">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <HelpCircle className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <HelpCircle className="w-6 h-6 text-blue-600" />
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-1 text-sm sm:text-base break-words">{category.label}</h3>
-                <p className="text-xs text-gray-500">{category.questions} questions</p>
+                <h3 className="font-semibold text-slate-900 mb-1">{category.label}</h3>
+                <p className="text-xs text-slate-500">{category.questions} questions</p>
               </CardContent>
             </Card>
           ))}
@@ -178,7 +192,7 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
   }
 
   // Loading State
-  if (isGenerating) {
+  if (ai.loading) {
     return (
       <Card className="border-2 border-blue-200 bg-blue-50">
         <CardContent className="p-12 text-center">
@@ -192,8 +206,8 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
 
   // Quiz Completed
   if (quizCompleted) {
-    const percentage = Math.round((score / questions.length) * 100);
-    const passed = percentage >= 80;
+    const percentage = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+    const passed = percentage >= DEFAULT_PASSING_SCORE;
 
     return (
       <Card className={`border-2 ${passed ? 'border-green-300 bg-green-50' : 'border-orange-300 bg-orange-50'}`}>
@@ -208,11 +222,11 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
             )}
           </div>
           
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">
             {passed ? 'Congratulations!' : 'Keep Learning!'}
           </h2>
           
-          <p className="text-lg text-gray-700 mb-4">
+          <p className="text-lg text-slate-700 mb-4">
             You scored <span className="font-bold">{score}</span> out of <span className="font-bold">{questions.length}</span>
           </p>
           
@@ -227,7 +241,7 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
 
           {/* Answer Review */}
           <div className="text-left bg-white rounded-lg p-4 mb-6 max-h-60 overflow-auto">
-            <h3 className="font-semibold text-gray-900 mb-3">Answer Review:</h3>
+            <h3 className="font-semibold text-slate-900 mb-3">Answer Review:</h3>
             {questions.map((q, idx) => {
               const answer = answers[idx];
               return (
@@ -239,7 +253,7 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
                       <XCircle className="w-4 h-4 text-red-600 mt-0.5" />
                     )}
                     <div>
-                      <p className="text-xs font-medium text-gray-900">Q{idx + 1}: {q.question.substring(0, 60)}...</p>
+                      <p className="text-xs font-medium text-slate-900">Q{idx + 1}: {(q.question || '').substring(0, 60)}...</p>
                       {!answer?.isCorrect && (
                         <p className="text-xs text-green-700 mt-1">Correct: {q.options[q.correct_index]}</p>
                       )}
@@ -305,7 +319,7 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
         </div>
 
         {/* Question */}
-        <h3 className="text-lg font-medium text-gray-900 mb-6">{currentQ?.question}</h3>
+        <h3 className="text-lg font-medium text-slate-900 mb-6">{currentQ?.question}</h3>
 
         {/* Options */}
         <RadioGroup
@@ -313,8 +327,8 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
           onValueChange={(val) => !showResult && setSelectedAnswer(parseInt(val))}
           className="space-y-3"
         >
-          {currentQ?.options.map((option, idx) => {
-            let optionClass = "border-gray-200 hover:border-blue-300";
+          {currentQ?.options?.map((option, idx) => {
+            let optionClass = "border-slate-200 hover:border-blue-300";
             if (showResult) {
               if (idx === currentQ.correct_index) {
                 optionClass = "border-green-500 bg-green-50";
@@ -351,10 +365,10 @@ ${category.id === 'hipaa' ? '- Protected health information, patient rights, bre
           <div className={`mt-6 p-4 rounded-lg ${
             selectedAnswer === currentQ.correct_index ? 'bg-green-100 border border-green-300' : 'bg-blue-100 border border-blue-300'
           }`}>
-            <p className="text-sm font-medium text-gray-900 mb-1">
+            <p className="text-sm font-medium text-slate-900 mb-1">
               {selectedAnswer === currentQ.correct_index ? '✓ Correct!' : '✗ Incorrect'}
             </p>
-            <p className="text-sm text-gray-700">{currentQ.explanation}</p>
+            <p className="text-sm text-slate-700">{currentQ.explanation}</p>
           </div>
         )}
 

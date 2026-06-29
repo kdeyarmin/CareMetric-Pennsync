@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,9 +41,9 @@ export default function PDGMScenarioModeler({ baselineOasisData, baselineNavigat
   });
   
   const [scenarios, setScenarios] = useState([]);
-  const [isSimulating, setIsSimulating] = useState(false);
+  const ai = useAICall();
   const [simulationResult, setSimulationResult] = useState(null);
-  const [compareMode, setCompareMode] = useState(false);
+  const [_compareMode, _setCompareMode] = useState(false);
   const [selectedScenarios, setSelectedScenarios] = useState([]);
   const [newComorbidity, setNewComorbidity] = useState('');
 
@@ -55,7 +57,6 @@ export default function PDGMScenarioModeler({ baselineOasisData, baselineNavigat
   });
 
   const runSimulation = async () => {
-    setIsSimulating(true);
     try {
       const prompt = `You are a PDGM payment expert. Simulate the impact of these OASIS changes on case-mix weight, payment, and quality measures.
 
@@ -65,7 +66,7 @@ ${JSON.stringify({
   comorbidities: baselineOasisData?.comorbidities,
   admission_source: baselineOasisData?.admission_source,
   episode_timing: baselineOasisData?.episode_timing,
-  baseline_payment: baselineNavigationData?.case_mix_calculation?.calculated_payment || 2031.64
+  baseline_payment: baselineNavigationData?.case_mix_calculation?.calculated_payment || 2038.22
 }, null, 2)}
 
 SIMULATED SCENARIO:
@@ -82,7 +83,8 @@ CALCULATE:
 
 Provide detailed comparison showing what changed and why.`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -141,8 +143,8 @@ Provide detailed comparison showing what changed and why.`;
       setSimulationResult(result);
     } catch (error) {
       console.error('Simulation error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsSimulating(false);
   };
 
   const updateFunctionalScore = (mItem, value) => {
@@ -220,10 +222,10 @@ Provide detailed comparison showing what changed and why.`;
   };
 
   return (
-    <Card className="border-2 border-cyan-400 shadow-lg">
-      <CardHeader className="bg-gradient-to-r from-cyan-50 to-blue-50">
+    <Card className="border-2 border-navy-400 shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-blue-50">
         <CardTitle className="flex items-center gap-2">
-          <Lightbulb className="w-6 h-6 text-cyan-600" />
+          <Lightbulb className="w-6 h-6 text-navy-600" />
           PDGM Scenario Modeler
         </CardTitle>
       </CardHeader>
@@ -250,10 +252,10 @@ Provide detailed comparison showing what changed and why.`;
             </div>
 
             {/* Functional Scores */}
-            <Card className="border-purple-200">
-              <CardHeader className="pb-3 bg-purple-50">
+            <Card className="border-navy-200">
+              <CardHeader className="pb-3 bg-navy-50">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-purple-600" />
+                  <Activity className="w-4 h-4 text-navy-600" />
                   Functional Scores
                 </CardTitle>
               </CardHeader>
@@ -366,10 +368,10 @@ Provide detailed comparison showing what changed and why.`;
             <div className="flex gap-2">
               <Button
                 onClick={runSimulation}
-                disabled={isSimulating}
-                className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                disabled={ai.loading}
+                className="flex-1 bg-navy-600 hover:bg-navy-700"
               >
-                {isSimulating ? (
+                {ai.loading ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Simulating...</>
                 ) : (
                   <><Play className="w-4 h-4 mr-2" /> Run Simulation</>
@@ -402,14 +404,14 @@ Provide detailed comparison showing what changed and why.`;
                   </CardHeader>
                   <CardContent className="pt-4">
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className="text-center p-3 bg-gray-50 rounded border">
-                        <p className="text-xs text-gray-600 mb-1">Baseline</p>
-                        <p className="text-xl font-bold text-gray-700">
+                      <div className="text-center p-3 bg-slate-50 rounded border">
+                        <p className="text-xs text-slate-600 mb-1">Baseline</p>
+                        <p className="text-xl font-bold text-slate-700">
                           {formatCurrency(simulationResult.payment_impact?.baseline_payment)}
                         </p>
                       </div>
                       <div className="flex items-center justify-center">
-                        <ArrowRight className="w-6 h-6 text-cyan-600" />
+                        <ArrowRight className="w-6 h-6 text-navy-600" />
                       </div>
                       <div className="text-center p-3 bg-green-50 rounded border-2 border-green-400">
                         <p className="text-xs text-green-600 mb-1">Simulated</p>
@@ -451,18 +453,18 @@ Provide detailed comparison showing what changed and why.`;
                 </Card>
 
                 {/* Functional Analysis */}
-                <Card className="border-2 border-purple-400">
-                  <CardHeader className="pb-3 bg-purple-50">
+                <Card className="border-2 border-navy-400">
+                  <CardHeader className="pb-3 bg-navy-50">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-purple-600" />
+                      <Activity className="w-4 h-4 text-navy-600" />
                       Functional Impact
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-4">
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div className="text-center p-3 bg-white rounded border">
-                        <p className="text-xs text-gray-600">Total Points</p>
-                        <p className="text-2xl font-bold text-purple-700">
+                        <p className="text-xs text-slate-600">Total Points</p>
+                        <p className="text-2xl font-bold text-navy-700">
                           {simulationResult.functional_analysis?.total_points}
                         </p>
                         <Badge variant="outline" className="text-xs mt-1">
@@ -471,7 +473,7 @@ Provide detailed comparison showing what changed and why.`;
                         </Badge>
                       </div>
                       <div className="text-center p-3 bg-white rounded border">
-                        <p className="text-xs text-gray-600">Functional Level</p>
+                        <p className="text-xs text-slate-600">Functional Level</p>
                         <Badge className={
                           simulationResult.functional_analysis?.functional_level === 'high' ? 'bg-green-600' :
                           simulationResult.functional_analysis?.functional_level === 'medium' ? 'bg-yellow-600' :
@@ -480,7 +482,7 @@ Provide detailed comparison showing what changed and why.`;
                           {simulationResult.functional_analysis?.functional_level}
                         </Badge>
                         {simulationResult.functional_analysis?.level_change && (
-                          <p className="text-xs text-gray-600 mt-1">
+                          <p className="text-xs text-slate-600 mt-1">
                             {simulationResult.functional_analysis.level_change}
                           </p>
                         )}
@@ -488,9 +490,9 @@ Provide detailed comparison showing what changed and why.`;
                     </div>
 
                     {simulationResult.functional_analysis?.key_drivers?.length > 0 && (
-                      <div className="bg-purple-50 p-2 rounded border border-purple-200">
-                        <p className="text-xs text-purple-700 font-semibold mb-1">Key Drivers:</p>
-                        <ul className="text-xs text-purple-800 space-y-1">
+                      <div className="bg-navy-50 p-2 rounded border border-navy-200">
+                        <p className="text-xs text-navy-700 font-semibold mb-1">Key Drivers:</p>
+                        <ul className="text-xs text-navy-800 space-y-1">
                           {simulationResult.functional_analysis.key_drivers.map((driver, i) => (
                             <li key={i}>• {driver}</li>
                           ))}
@@ -511,17 +513,17 @@ Provide detailed comparison showing what changed and why.`;
                   <CardContent className="pt-4">
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div className="text-center p-3 bg-white rounded border">
-                        <p className="text-xs text-gray-600">Adjustment Level</p>
+                        <p className="text-xs text-slate-600">Adjustment Level</p>
                         <Badge className={
                           simulationResult.comorbidity_analysis?.adjustment_level === 'high' ? 'bg-green-600' :
                           simulationResult.comorbidity_analysis?.adjustment_level === 'low' ? 'bg-yellow-600' :
-                          'bg-gray-600'
+                          'bg-slate-600'
                         } size="lg">
                           {simulationResult.comorbidity_analysis?.adjustment_level}
                         </Badge>
                       </div>
                       <div className="text-center p-3 bg-white rounded border">
-                        <p className="text-xs text-gray-600">High-Value Count</p>
+                        <p className="text-xs text-slate-600">High-Value Count</p>
                         <p className="text-2xl font-bold text-blue-700">
                           {simulationResult.comorbidity_analysis?.high_value_count}
                         </p>
@@ -531,7 +533,7 @@ Provide detailed comparison showing what changed and why.`;
                     <div className="bg-blue-50 p-3 rounded border border-blue-200">
                       <p className="text-xs text-blue-700 font-semibold mb-1">Change from Baseline:</p>
                       <p className="text-sm text-blue-800">{simulationResult.comorbidity_analysis?.change_from_baseline}</p>
-                      <p className="text-xs text-gray-600 mt-2">{simulationResult.comorbidity_analysis?.impact_explanation}</p>
+                      <p className="text-xs text-slate-600 mt-2">{simulationResult.comorbidity_analysis?.impact_explanation}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -547,11 +549,11 @@ Provide detailed comparison showing what changed and why.`;
                     </CardHeader>
                     <CardContent className="pt-4">
                       {simulationResult.quality_impact.improvement_measures_affected?.length > 0 && (
-                        <div className="bg-purple-50 p-3 rounded border border-purple-200 mb-3">
-                          <p className="text-xs text-purple-700 font-semibold mb-2">Affected Measures:</p>
+                        <div className="bg-navy-50 p-3 rounded border border-navy-200 mb-3">
+                          <p className="text-xs text-navy-700 font-semibold mb-2">Affected Measures:</p>
                           <ul className="space-y-1">
                             {simulationResult.quality_impact.improvement_measures_affected.map((measure, i) => (
-                              <li key={i} className="text-sm text-purple-800">• {measure}</li>
+                              <li key={i} className="text-sm text-navy-800">• {measure}</li>
                             ))}
                           </ul>
                         </div>
@@ -635,21 +637,21 @@ Provide detailed comparison showing what changed and why.`;
           {/* Saved Scenarios */}
           <TabsContent value="saved" className="space-y-3">
             {scenarios.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
-                <Lightbulb className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-600">No saved scenarios yet</p>
-                <p className="text-sm text-gray-500">Create and run a simulation, then save it</p>
+              <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed">
+                <Lightbulb className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-600">No saved scenarios yet</p>
+                <p className="text-sm text-slate-500">Create and run a simulation, then save it</p>
               </div>
             ) : (
               <ScrollArea className="max-h-[600px]">
                 <div className="space-y-3">
                   {scenarios.map((scenario, idx) => (
-                    <Card key={scenario.id} className="border-2 hover:border-cyan-400 transition-colors">
+                    <Card key={scenario.id} className="border-2 hover:border-navy-400 transition-colors">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            <h4 className="font-semibold text-gray-900">{scenario.scenario_name}</h4>
-                            <p className="text-xs text-gray-500">
+                            <h4 className="font-semibold text-slate-900">{scenario.scenario_name}</h4>
+                            <p className="text-xs text-slate-500">
                               Saved {new Date(scenario.created_date || Date.now()).toLocaleDateString()}
                             </p>
                           </div>
@@ -666,12 +668,12 @@ Provide detailed comparison showing what changed and why.`;
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-                          <div className="bg-gray-50 p-2 rounded">
-                            <p className="text-gray-600">Functional Points</p>
+                          <div className="bg-slate-50 p-2 rounded">
+                            <p className="text-slate-600">Functional Points</p>
                             <p className="font-bold">{scenario.simulation_result?.functional_analysis?.total_points}</p>
                           </div>
-                          <div className="bg-gray-50 p-2 rounded">
-                            <p className="text-gray-600">Comorbidities</p>
+                          <div className="bg-slate-50 p-2 rounded">
+                            <p className="text-slate-600">Comorbidities</p>
                             <p className="font-bold">{scenario.scenario_data?.comorbidities?.length}</p>
                           </div>
                         </div>
@@ -690,7 +692,7 @@ Provide detailed comparison showing what changed and why.`;
                             size="sm"
                             variant="outline"
                             onClick={() => toggleCompareScenario(scenario)}
-                            className={selectedScenarios.find(s => s.id === scenario.id) ? 'bg-cyan-100' : ''}
+                            className={selectedScenarios.find(s => s.id === scenario.id) ? 'bg-navy-100' : ''}
                           >
                             <BarChart3 className="w-3 h-3 mr-2" />
                             Compare
@@ -715,15 +717,15 @@ Provide detailed comparison showing what changed and why.`;
           {/* Comparison View */}
           <TabsContent value="compare" className="space-y-4">
             {selectedScenarios.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
-                <BarChart3 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-600">No scenarios selected for comparison</p>
-                <p className="text-sm text-gray-500">Go to Saved Scenarios and click "Compare"</p>
+              <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed">
+                <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-600">No scenarios selected for comparison</p>
+                <p className="text-sm text-slate-500">Go to Saved Scenarios and click "Compare"</p>
               </div>
             ) : (
               <div className="space-y-4">
-                <Alert className="bg-cyan-50 border-cyan-300">
-                  <AlertDescription className="text-sm text-cyan-900">
+                <Alert className="bg-navy-50 border-navy-300">
+                  <AlertDescription className="text-sm text-navy-900">
                     Comparing {selectedScenarios.length} scenario{selectedScenarios.length !== 1 ? 's' : ''}
                   </AlertDescription>
                 </Alert>
@@ -735,17 +737,17 @@ Provide detailed comparison showing what changed and why.`;
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {selectedScenarios.map((scenario, idx) => (
-                        <div key={scenario.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-white rounded border">
+                      {selectedScenarios.map((scenario, _idx) => (
+                        <div key={scenario.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-50 to-white rounded border">
                           <div>
                             <p className="font-semibold text-sm">{scenario.scenario_name}</p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-slate-500">
                               Functional: {scenario.simulation_result?.functional_analysis?.total_points} pts | 
                               Comorbidities: {scenario.scenario_data?.comorbidities?.length}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-lg font-bold text-gray-900">
+                            <p className="text-lg font-bold text-slate-900">
                               {formatCurrency(scenario.simulated_payment)}
                             </p>
                             <Badge className={
@@ -787,7 +789,7 @@ Provide detailed comparison showing what changed and why.`;
                         <div key={scenario.id} className="flex items-center justify-between p-2 bg-white rounded border">
                           <p className="text-sm font-medium">{scenario.scenario_name}</p>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-600">
+                            <span className="text-sm text-slate-600">
                               {scenario.simulation_result?.functional_analysis?.total_points} points
                             </span>
                             <Badge className={

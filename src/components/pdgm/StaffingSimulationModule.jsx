@@ -1,24 +1,16 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { invokeLLM } from "@/lib/invokeLLM";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
+
 import {
   Users,
   TrendingUp,
-  DollarSign,
   Calculator,
   Loader2,
   Plus,
@@ -27,13 +19,9 @@ import {
   Stethoscope,
   Heart,
   Activity,
-  AlertTriangle,
-  CheckCircle2,
-  ArrowRight
+  CheckCircle2
 } from "lucide-react";
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -48,7 +36,7 @@ import {
 
 const SERVICE_LINES = [
   { id: 'wound_care', name: 'Wound Care', icon: Heart, avgRevenue: 2800, color: '#ef4444' },
-  { id: 'cardiac', name: 'Cardiac Care', icon: Activity, avgRevenue: 2400, color: '#3b82f6' },
+  { id: 'cardiac', name: 'Cardiac Care', icon: Activity, avgRevenue: 2400, color: '#3557b0' },
   { id: 'orthopedic', name: 'Orthopedic/Post-Surgical', icon: Stethoscope, avgRevenue: 2200, color: '#22c55e' },
   { id: 'neuro_rehab', name: 'Neuro/Stroke Rehab', icon: Activity, avgRevenue: 2600, color: '#8b5cf6' },
   { id: 'diabetes', name: 'Diabetes Management', icon: Heart, avgRevenue: 2100, color: '#f59e0b' },
@@ -83,7 +71,8 @@ export default function StaffingSimulationModule({ currentData, formatCurrency }
   const runStaffingSimulation = async () => {
     setIsSimulating(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt: `Simulate financial impact of staffing changes for a home health agency.
 
 CURRENT STATE:
@@ -159,7 +148,8 @@ Return JSON:
     const selectedService = SERVICE_LINES.find(s => s.id === newServiceLine);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt: `Simulate financial impact of adding a new service line to a home health agency.
 
 CURRENT STATE:
@@ -234,9 +224,9 @@ Return JSON:
   };
 
   const StaffingControl = ({ label, value, onChange, icon: Icon }) => (
-    <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+    <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
       <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4 text-gray-500" />
+        <Icon className="w-4 h-4 text-slate-500" />
         <span className="text-sm font-medium">{label}</span>
       </div>
       <div className="flex items-center gap-2">
@@ -249,7 +239,7 @@ Return JSON:
           <Minus className="w-3 h-3" />
         </Button>
         <span className={`w-8 text-center font-bold ${
-          value > 0 ? 'text-green-600' : value < 0 ? 'text-red-600' : 'text-gray-600'
+          value > 0 ? 'text-green-600' : value < 0 ? 'text-red-600' : 'text-slate-600'
         }`}>
           {value > 0 ? '+' : ''}{value}
         </span>
@@ -358,9 +348,9 @@ Return JSON:
                     <p className="text-xs text-green-600">Revenue Increase</p>
                     <p className="text-lg font-bold text-green-900">{formatCurrency(simulationResults.data.revenue_increase)}</p>
                   </div>
-                  <div className="bg-purple-50 p-2 rounded-lg border border-purple-200 text-center">
-                    <p className="text-xs text-purple-600">Net Margin</p>
-                    <p className="text-lg font-bold text-purple-900">{formatCurrency(simulationResults.data.net_margin_change)}</p>
+                  <div className="bg-navy-50 p-2 rounded-lg border border-navy-200 text-center">
+                    <p className="text-xs text-navy-600">Net Margin</p>
+                    <p className="text-lg font-bold text-navy-900">{formatCurrency(simulationResults.data.net_margin_change)}</p>
                   </div>
                   <div className="bg-orange-50 p-2 rounded-lg border border-orange-200 text-center">
                     <p className="text-xs text-orange-600">ROI</p>
@@ -378,7 +368,7 @@ Return JSON:
                         <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                         <Tooltip formatter={(value) => formatCurrency(value)} />
                         <Legend />
-                        <Area type="monotone" dataKey="revenue" stackId="1" stroke="#3b82f6" fill="#93c5fd" name="Revenue" />
+                        <Area type="monotone" dataKey="revenue" stackId="1" stroke="#3557b0" fill="#93c5fd" name="Revenue" />
                         <Area type="monotone" dataKey="margin" stackId="2" stroke="#22c55e" fill="#86efac" name="Margin" />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -419,12 +409,12 @@ Return JSON:
                     className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
                       newServiceLine === service.id 
                         ? 'border-indigo-500 bg-indigo-50' 
-                        : 'border-gray-200 hover:border-gray-300'
+                        : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <service.icon className="w-5 h-5 mb-1" style={{ color: service.color }} />
                     <p className="text-xs font-semibold">{service.name}</p>
-                    <p className="text-xs text-gray-500">{formatCurrency(service.avgRevenue)}/ep</p>
+                    <p className="text-xs text-slate-500">{formatCurrency(service.avgRevenue)}/ep</p>
                   </div>
                 ))}
               </div>
@@ -489,10 +479,10 @@ Return JSON:
 
           {/* Service Line Simulation Results */}
           {simulationResults?.type === 'service_line' && simulationResults.data && (
-            <Card className="border-purple-200">
-              <CardHeader className="pb-2 bg-purple-50">
+            <Card className="border-navy-200">
+              <CardHeader className="pb-2 bg-navy-50">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-purple-600" />
+                  <Building2 className="w-4 h-4 text-navy-600" />
                   {simulationResults.data.service_name} - Financial Projection
                 </CardTitle>
               </CardHeader>
@@ -511,9 +501,9 @@ Return JSON:
                     <p className="text-xs text-orange-600">Breakeven</p>
                     <p className="text-lg font-bold text-orange-900">Month {simulationResults.data.breakeven_month}</p>
                   </div>
-                  <div className="bg-purple-50 p-2 rounded-lg border border-purple-200 text-center">
-                    <p className="text-xs text-purple-600">Case-Mix</p>
-                    <p className="text-lg font-bold text-purple-900">{simulationResults.data.pdgm_considerations?.avg_case_mix_weight}</p>
+                  <div className="bg-navy-50 p-2 rounded-lg border border-navy-200 text-center">
+                    <p className="text-xs text-navy-600">Case-Mix</p>
+                    <p className="text-lg font-bold text-navy-900">{simulationResults.data.pdgm_considerations?.avg_case_mix_weight}</p>
                   </div>
                 </div>
 
@@ -527,7 +517,7 @@ Return JSON:
                         <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                         <Tooltip formatter={(value) => formatCurrency(value)} />
                         <Legend />
-                        <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} name="Revenue" />
+                        <Line type="monotone" dataKey="revenue" stroke="#3557b0" strokeWidth={2} name="Revenue" />
                         <Line type="monotone" dataKey="profit" stroke="#22c55e" strokeWidth={2} name="Profit" />
                       </LineChart>
                     </ResponsiveContainer>
@@ -553,9 +543,9 @@ Return JSON:
                     <div className="grid grid-cols-3 gap-2">
                       {simulationResults.data.success_metrics.map((metric, idx) => (
                         <div key={idx} className="bg-white p-2 rounded border text-center">
-                          <p className="text-xs text-gray-600">{metric.metric}</p>
+                          <p className="text-xs text-slate-600">{metric.metric}</p>
                           <p className="text-sm font-bold text-green-700">{metric.target}</p>
-                          <p className="text-xs text-gray-500">{metric.timeline}</p>
+                          <p className="text-xs text-slate-500">{metric.timeline}</p>
                         </div>
                       ))}
                     </div>

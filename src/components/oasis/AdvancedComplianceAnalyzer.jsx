@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Shield, AlertTriangle, Loader2, TrendingUp, FileText, CheckCircle2, BookOpen } from "lucide-react";
 
 export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, patientId }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [complianceReport, setComplianceReport] = useState(null);
   const [autoAnalyze, setAutoAnalyze] = useState(false);
 
@@ -32,18 +33,9 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
     enabled: !!analysisResults
   });
 
-  // Auto-analyze when data is available
-  useEffect(() => {
-    if (analysisResults && !complianceReport && !isAnalyzing && !autoAnalyze && historicalOASIS.length >= 0) {
-      setAutoAnalyze(true);
-      analyzeCompliance();
-    }
-  }, [analysisResults, historicalOASIS]);
-
-  const analyzeCompliance = async () => {
+  const analyzeCompliance = useCallback(async () => {
     if (!analysisResults || !pdgmData) return;
 
-    setIsAnalyzing(true);
     try {
       // Calculate historical compliance metrics
       const historicalMetrics = {
@@ -80,7 +72,8 @@ export default function AdvancedComplianceAnalyzer({ analysisResults, pdgmData, 
         }));
 
       // Advanced AI analysis with regulatory knowledge
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert OASIS compliance auditor with deep knowledge of CMS regulations, Medicare Conditions of Participation (CoPs), and OASIS-E guidance.
 
 CURRENT OASIS ASSESSMENT DATA:
@@ -233,8 +226,16 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
       console.error("Advanced compliance analysis error:", error);
       setComplianceReport({ error: "Failed to generate advanced compliance analysis. Please try again." });
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [analysisResults, pdgmData, historicalOASIS, historicalAudits]);
+
+  // Auto-analyze when data is available
+  useEffect(() => {
+    if (analysisResults && !complianceReport && !ai.loading && !autoAnalyze && historicalOASIS.length >= 0) {
+      setAutoAnalyze(true);
+      analyzeCompliance();
+    }
+  }, [analysisResults, historicalOASIS, complianceReport, ai.loading, autoAnalyze, analyzeCompliance]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -242,7 +243,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
       case 'high': return 'bg-orange-500 text-white';
       case 'moderate': return 'bg-yellow-500 text-white';
       case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
@@ -262,7 +263,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
 
   return (
     <Card className="border-2 border-red-300 shadow-lg">
-      <CardHeader className="bg-gradient-to-r from-red-50 to-pink-50">
+      <CardHeader className="bg-gradient-to-r from-red-50 to-gold-50">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Shield className="w-6 h-6 text-red-600" />
@@ -270,10 +271,10 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
           </CardTitle>
           <Button
             onClick={analyzeCompliance}
-            disabled={isAnalyzing}
+            disabled={ai.loading}
             className="bg-red-600 hover:bg-red-700"
           >
-            {isAnalyzing ? (
+            {ai.loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
             ) : (
               <><Shield className="w-4 h-4 mr-2" /> {complianceReport ? 'Refresh Analysis' : 'Generate Report'}</>
@@ -297,31 +298,31 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
             <CardContent>
               <div className="grid grid-cols-4 gap-4 mb-4">
                 <div className="text-center">
-                  <p className="text-xs text-gray-600 mb-1">Risk Level</p>
+                  <p className="text-xs text-slate-600 mb-1">Risk Level</p>
                   <Badge className={getSeverityColor(complianceReport.executive_summary?.overall_risk_level)} size="lg">
                     {complianceReport.executive_summary?.overall_risk_level?.toUpperCase()}
                   </Badge>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-gray-600 mb-1">Risk Score</p>
+                  <p className="text-xs text-slate-600 mb-1">Risk Score</p>
                   <p className="text-2xl font-bold text-red-600">{complianceReport.executive_summary?.risk_score}/100</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-gray-600 mb-1">Risks Found</p>
+                  <p className="text-xs text-slate-600 mb-1">Risks Found</p>
                   <p className="text-2xl font-bold text-orange-600">{complianceReport.executive_summary?.total_risks_identified}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-gray-600 mb-1">Violations</p>
+                  <p className="text-xs text-slate-600 mb-1">Violations</p>
                   <p className="text-2xl font-bold text-red-700">{complianceReport.executive_summary?.regulatory_violations}</p>
                 </div>
               </div>
               
               {complianceReport.executive_summary?.key_findings?.length > 0 && (
                 <div className="bg-white p-3 rounded border">
-                  <p className="text-sm font-semibold text-gray-900 mb-2">Key Findings:</p>
+                  <p className="text-sm font-semibold text-slate-900 mb-2">Key Findings:</p>
                   <ul className="space-y-1">
                     {complianceReport.executive_summary.key_findings.map((finding, idx) => (
-                      <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                      <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                         <span className="text-red-600">•</span>
                         {finding}
                       </li>
@@ -355,20 +356,20 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                           <div className="flex items-center gap-2">
                             <span className="text-2xl">{getRiskTypeIcon(risk.risk_type)}</span>
                             <div>
-                              <p className="font-semibold text-gray-900">{risk.title}</p>
-                              <p className="text-xs text-gray-500">Type: {risk.risk_type?.replace(/_/g, ' ')}</p>
+                              <p className="font-semibold text-slate-900">{risk.title}</p>
+                              <p className="text-xs text-slate-500">Type: {risk.risk_type?.replace(/_/g, ' ')}</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <Badge className={getSeverityColor(risk.severity)}>{risk.severity}</Badge>
-                            <p className="text-xs text-gray-600 mt-1">Audit Trigger: {risk.audit_trigger_likelihood}</p>
+                            <p className="text-xs text-slate-600 mt-1">Audit Trigger: {risk.audit_trigger_likelihood}</p>
                           </div>
                         </div>
 
                         <div className="space-y-2">
                           <div className="bg-white p-2 rounded border">
-                            <p className="text-xs text-gray-500 mb-1">Description:</p>
-                            <p className="text-sm text-gray-800">{risk.description}</p>
+                            <p className="text-xs text-slate-500 mb-1">Description:</p>
+                            <p className="text-sm text-slate-800">{risk.description}</p>
                           </div>
 
                           <div className="bg-amber-50 p-2 rounded border border-amber-200">
@@ -382,9 +383,9 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                           </div>
 
                           {risk.historical_context && (
-                            <div className="bg-purple-50 p-2 rounded border border-purple-200">
-                              <p className="text-xs text-purple-700 font-medium mb-1">Historical Context:</p>
-                              <p className="text-sm text-purple-900">{risk.historical_context}</p>
+                            <div className="bg-navy-50 p-2 rounded border border-navy-200">
+                              <p className="text-xs text-navy-700 font-medium mb-1">Historical Context:</p>
+                              <p className="text-sm text-navy-900">{risk.historical_context}</p>
                             </div>
                           )}
                         </div>
@@ -399,7 +400,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
           {/* Regulatory Compliance Report */}
           {complianceReport.regulatory_compliance_report?.length > 0 && (
             <Card className="border-2 border-red-400">
-              <CardHeader className="bg-gradient-to-r from-red-50 to-rose-50">
+              <CardHeader className="bg-gradient-to-r from-red-50 to-red-50">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <BookOpen className="w-5 h-5 text-red-600" />
                   Regulatory Compliance Report ({complianceReport.regulatory_compliance_report.length})
@@ -413,7 +414,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                         <div className="flex items-center justify-between w-full pr-4">
                           <div className="flex items-center gap-3">
                             <Badge className={getSeverityColor(violation.severity)}>{violation.severity}</Badge>
-                            <span className="font-semibold text-gray-900">{violation.violation_type}</span>
+                            <span className="font-semibold text-slate-900">{violation.violation_type}</span>
                           </div>
                           {violation.affected_items?.length > 0 && (
                             <Badge variant="outline" className="text-xs">
@@ -426,7 +427,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                         {/* Affected Items */}
                         {violation.affected_items?.length > 0 && (
                           <div className="mb-3">
-                            <p className="text-xs text-gray-600 mb-1">Affected M-Items:</p>
+                            <p className="text-xs text-slate-600 mb-1">Affected M-Items:</p>
                             <div className="flex flex-wrap gap-1">
                               {violation.affected_items.map((item, iIdx) => (
                                 <Badge key={iIdx} variant="outline" className="font-mono text-xs">{item}</Badge>
@@ -438,7 +439,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                         {/* Regulatory Citations */}
                         {violation.regulatory_citations?.length > 0 && (
                           <div className="space-y-3 mb-4">
-                            <p className="text-sm font-semibold text-gray-900">Regulatory Citations:</p>
+                            <p className="text-sm font-semibold text-slate-900">Regulatory Citations:</p>
                             {violation.regulatory_citations.map((citation, cIdx) => (
                               <Card key={cIdx} className="bg-blue-50 border-blue-200">
                                 <CardContent className="p-3">
@@ -450,8 +451,8 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                                     </div>
                                   </div>
                                   <div className="bg-white p-2 rounded border border-blue-200 mt-2">
-                                    <p className="text-xs text-gray-600 mb-1">Compliance Requirement:</p>
-                                    <p className="text-sm text-gray-900">{citation.compliance_requirement}</p>
+                                    <p className="text-xs text-slate-600 mb-1">Compliance Requirement:</p>
+                                    <p className="text-sm text-slate-900">{citation.compliance_requirement}</p>
                                   </div>
                                   <div className="bg-red-50 p-2 rounded border border-red-200 mt-2">
                                     <p className="text-xs text-red-600 mb-1">How It's Violated:</p>
@@ -479,9 +480,9 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                         )}
 
                         {violation.audit_appeal_risk && (
-                          <div className="bg-purple-50 p-3 rounded border border-purple-200">
-                            <p className="text-xs text-purple-700 font-medium mb-1">Audit/Appeal Risk:</p>
-                            <p className="text-sm text-purple-900">{violation.audit_appeal_risk}</p>
+                          <div className="bg-navy-50 p-3 rounded border border-navy-200">
+                            <p className="text-xs text-navy-700 font-medium mb-1">Audit/Appeal Risk:</p>
+                            <p className="text-sm text-navy-900">{violation.audit_appeal_risk}</p>
                           </div>
                         )}
                       </AccordionContent>
@@ -510,8 +511,8 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
-                            <p className="font-semibold text-gray-900 mb-1">{remediation.issue_being_addressed}</p>
-                            <p className="text-xs text-gray-600">Priority: {remediation.priority_level}/10</p>
+                            <p className="font-semibold text-slate-900 mb-1">{remediation.issue_being_addressed}</p>
+                            <p className="text-xs text-slate-600">Priority: {remediation.priority_level}/10</p>
                           </div>
                         </div>
 
@@ -522,20 +523,20 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                         </div>
 
                         {/* Clinical Rationale */}
-                        <div className="bg-purple-50 p-3 rounded border border-purple-200 mb-3">
-                          <p className="text-xs text-purple-700 font-medium mb-1">Clinical Rationale:</p>
-                          <p className="text-sm text-purple-900">{remediation.clinical_rationale}</p>
+                        <div className="bg-navy-50 p-3 rounded border border-navy-200 mb-3">
+                          <p className="text-xs text-navy-700 font-medium mb-1">Clinical Rationale:</p>
+                          <p className="text-sm text-navy-900">{remediation.clinical_rationale}</p>
                         </div>
 
                         {/* Immediate Actions */}
                         {remediation.immediate_actions?.length > 0 && (
                           <div className="mb-3">
-                            <p className="text-sm font-semibold text-gray-900 mb-2">Immediate Actions:</p>
+                            <p className="text-sm font-semibold text-slate-900 mb-2">Immediate Actions:</p>
                             <div className="space-y-2">
                               {remediation.immediate_actions.map((action, aIdx) => (
                                 <div key={aIdx} className="bg-white p-3 rounded border">
                                   <div className="flex items-start justify-between mb-2">
-                                    <p className="text-sm font-medium text-gray-900">Step {aIdx + 1}: {action.action_step}</p>
+                                    <p className="text-sm font-medium text-slate-900">Step {aIdx + 1}: {action.action_step}</p>
                                     {action.time_estimate && (
                                       <Badge variant="outline" className="text-xs">{action.time_estimate}</Badge>
                                     )}
@@ -550,7 +551,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
 
                                   {action.m_items_to_review?.length > 0 && (
                                     <div className="flex flex-wrap gap-1 mt-2">
-                                      <p className="text-xs text-gray-600 w-full mb-1">Review M-Items:</p>
+                                      <p className="text-xs text-slate-600 w-full mb-1">Review M-Items:</p>
                                       {action.m_items_to_review.map((item, mIdx) => (
                                         <Badge key={mIdx} variant="outline" className="font-mono text-xs">{item}</Badge>
                                       ))}
@@ -566,7 +567,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                         {remediation.sample_compliant_narrative && (
                           <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-3 rounded border-2 border-green-300 mb-3">
                             <p className="text-xs text-green-700 font-medium mb-2">✅ Sample Compliant Narrative:</p>
-                            <p className="text-sm text-gray-900 italic leading-relaxed">"{remediation.sample_compliant_narrative}"</p>
+                            <p className="text-sm text-slate-900 italic leading-relaxed">"{remediation.sample_compliant_narrative}"</p>
                           </div>
                         )}
 
@@ -591,10 +592,10 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
 
           {/* Trend Analysis */}
           {complianceReport.trend_analysis && (
-            <Card className="border-2 border-purple-300">
-              <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+            <Card className="border-2 border-navy-300">
+              <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-purple-600" />
+                  <TrendingUp className="w-5 h-5 text-navy-600" />
                   Compliance Trend Analysis
                 </CardTitle>
               </CardHeader>
@@ -659,7 +660,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                       <p className="text-sm font-semibold text-red-900 mb-2">🚨 Immediate Priorities:</p>
                       <ol className="space-y-1">
                         {complianceReport.action_plan.immediate_priorities.map((priority, idx) => (
-                          <li key={idx} className="text-sm text-gray-800 flex items-start gap-2">
+                          <li key={idx} className="text-sm text-slate-800 flex items-start gap-2">
                             <span className="bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0">
                               {idx + 1}
                             </span>
@@ -675,7 +676,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                       <p className="text-sm font-semibold text-orange-900 mb-2">📅 Short-Term Goals (1-2 weeks):</p>
                       <ul className="space-y-1">
                         {complianceReport.action_plan.short_term_goals.map((goal, idx) => (
-                          <li key={idx} className="text-sm text-gray-800">• {goal}</li>
+                          <li key={idx} className="text-sm text-slate-800">• {goal}</li>
                         ))}
                       </ul>
                     </div>
@@ -686,7 +687,7 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
                       <p className="text-sm font-semibold text-blue-900 mb-2">🎯 Long-Term Improvements:</p>
                       <ul className="space-y-1">
                         {complianceReport.action_plan.long_term_improvements.map((improvement, idx) => (
-                          <li key={idx} className="text-sm text-gray-800">• {improvement}</li>
+                          <li key={idx} className="text-sm text-slate-800">• {improvement}</li>
                         ))}
                       </ul>
                     </div>
@@ -715,11 +716,11 @@ DELIVER A COMPREHENSIVE COMPLIANCE RISK REPORT.`,
         </CardContent>
       )}
 
-      {!complianceReport && !isAnalyzing && (
+      {!complianceReport && !ai.loading && (
         <CardContent className="py-8 text-center">
-          <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-600 mb-4">Click "Generate Report" to perform advanced compliance analysis</p>
-          <p className="text-xs text-gray-500">
+          <Shield className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <p className="text-slate-600 mb-4">Click "Generate Report" to perform advanced compliance analysis</p>
+          <p className="text-xs text-slate-500">
             Analyzes {historicalOASIS.length} historical assessments and {historicalAudits.length} past audits
           </p>
         </CardContent>

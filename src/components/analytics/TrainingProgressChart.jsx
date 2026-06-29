@@ -1,8 +1,6 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { GraduationCap, BookOpen, Brain, CheckCircle2 } from "lucide-react";
 
 export default function TrainingProgressChart({ 
@@ -73,7 +71,7 @@ export default function TrainingProgressChart({
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <GraduationCap className="w-4 h-4 text-blue-600" />
-              <p className="text-xs text-gray-600">Modules Completed</p>
+              <p className="text-xs text-slate-600">Modules Completed</p>
             </div>
             <p className="text-2xl font-bold">{completedCount}/{totalAssigned}</p>
             <Progress value={overallProgress} className="h-1.5 mt-2" />
@@ -83,11 +81,11 @@ export default function TrainingProgressChart({
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Brain className="w-4 h-4 text-purple-600" />
-              <p className="text-xs text-gray-600">Avg Quiz Score</p>
+              <Brain className="w-4 h-4 text-navy-600" />
+              <p className="text-xs text-slate-600">Avg Quiz Score</p>
             </div>
             <p className="text-2xl font-bold">{avgScore}%</p>
-            <Progress value={avgScore} className="h-1.5 mt-2 [&>div]:bg-purple-500" />
+            <Progress value={avgScore} className="h-1.5 mt-2 [&>div]:bg-navy-500" />
           </CardContent>
         </Card>
 
@@ -95,7 +93,7 @@ export default function TrainingProgressChart({
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <BookOpen className="w-4 h-4 text-green-600" />
-              <p className="text-xs text-gray-600">Micro-Lessons</p>
+              <p className="text-xs text-slate-600">Micro-Lessons</p>
             </div>
             <p className="text-2xl font-bold">{microLearningProgress.filter(ml => ml.status === 'completed').length}</p>
           </CardContent>
@@ -105,7 +103,7 @@ export default function TrainingProgressChart({
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-              <p className="text-xs text-gray-600">Open Tasks</p>
+              <p className="text-xs text-slate-600">Open Tasks</p>
             </div>
             <p className="text-2xl font-bold">{recommendations.length}</p>
           </CardContent>
@@ -125,7 +123,7 @@ export default function TrainingProgressChart({
                 <XAxis dataKey="module" fontSize={12} angle={-45} textAnchor="end" height={80} />
                 <YAxis fontSize={12} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
                 <Tooltip />
-                <Bar dataKey="completionRate" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="completionRate" fill="#3557b0" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

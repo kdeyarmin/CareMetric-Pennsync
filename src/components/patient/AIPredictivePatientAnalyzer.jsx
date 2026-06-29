@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import {
 } from "lucide-react";
 
 export default function AIPredictivePatientAnalyzer({ patientId, autoAnalyze = false }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState(null);
 
@@ -55,16 +56,9 @@ export default function AIPredictivePatientAnalyzer({ patientId, autoAnalyze = f
     enabled: !!patientId
   });
 
-  useEffect(() => {
-    if (autoAnalyze && patient && !analysis && !isAnalyzing) {
-      performAnalysis();
-    }
-  }, [autoAnalyze, patient]);
-
-  const performAnalysis = async () => {
+  const performAnalysis = useCallback(async () => {
     if (!patient) return;
 
-    setIsAnalyzing(true);
     setError(null);
 
     try {
@@ -151,7 +145,8 @@ Analyze and provide structured insights in the following areas:
 
 Be specific, evidence-based, and actionable. Focus on Medicare home health best practices.`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -276,10 +271,15 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
     } catch (err) {
       console.error('Analysis error:', err);
       setError(err.message || 'Failed to analyze patient data');
-    } finally {
-      setIsAnalyzing(false);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [carePlans, incidents, patient, visits]);
+
+  useEffect(() => {
+    if (autoAnalyze && patient && !analysis && !ai.loading) {
+      performAnalysis();
+    }
+  }, [autoAnalyze, patient, analysis, ai.loading, performAnalysis]);
 
   const getSeverityColor = (severity) => {
     const severityLower = (severity || '').toLowerCase();
@@ -299,8 +299,8 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
   if (!patient) {
     return (
       <Card>
-        <CardContent className="p-8 text-center text-gray-500">
-          <Brain className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+        <CardContent className="p-8 text-center text-slate-500">
+          <Brain className="w-12 h-12 mx-auto mb-3 text-slate-400" />
           <p>No patient data available for analysis</p>
         </CardContent>
       </Card>
@@ -310,22 +310,22 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-none">
+      <Card className="bg-gradient-to-r from-navy-600 to-indigo-600 text-white border-none">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Brain className="w-10 h-10" />
               <div>
                 <h2 className="text-2xl font-bold">AI Predictive Analysis</h2>
-                <p className="text-purple-100">Evidence-based clinical insights and risk assessment</p>
+                <p className="text-navy-100">Evidence-based clinical insights and risk assessment</p>
               </div>
             </div>
             <Button
               onClick={performAnalysis}
-              disabled={isAnalyzing}
-              className="bg-white text-purple-600 hover:bg-purple-50"
+              disabled={ai.loading}
+              className="bg-white text-navy-600 hover:bg-navy-50"
             >
-              {isAnalyzing ? (
+              {ai.loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Analyzing...
@@ -411,7 +411,7 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
             <CardContent>
               <div className="space-y-4">
                 {analysis.healthRisks?.map((risk, idx) => (
-                  <div key={idx} className="border rounded-lg p-4 hover:bg-gray-50">
+                  <div key={idx} className="border rounded-lg p-4 hover:bg-slate-50">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold">{risk.risk}</h4>
@@ -420,7 +420,7 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                         </Badge>
                       </div>
                     </div>
-                    <p className="text-sm text-gray-700 mb-3">{risk.rationale}</p>
+                    <p className="text-sm text-slate-700 mb-3">{risk.rationale}</p>
                     <div className="bg-green-50 border border-green-200 rounded p-3">
                       <p className="text-xs font-semibold text-green-900 mb-1">Mitigation Strategies:</p>
                       <ul className="space-y-1">
@@ -439,7 +439,7 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-purple-600" />
+                <Target className="w-5 h-5 text-navy-600" />
                 Optimal Care Pathway Recommendations
               </CardTitle>
             </CardHeader>
@@ -458,11 +458,11 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div className="bg-purple-50 border border-purple-200 rounded p-3">
+                  <div className="bg-navy-50 border border-navy-200 rounded p-3">
                     <h4 className="font-semibold text-sm mb-2">Monitoring Frequency</h4>
                     <p className="text-sm">{analysis.carePathwayRecommendations?.monitoringFrequency}</p>
                   </div>
-                  <div className="bg-purple-50 border border-purple-200 rounded p-3">
+                  <div className="bg-navy-50 border border-navy-200 rounded p-3">
                     <h4 className="font-semibold text-sm mb-2">Focus Areas</h4>
                     <ul className="space-y-1">
                       {analysis.carePathwayRecommendations?.focusAreas?.map((area, idx) => (
@@ -600,7 +600,7 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                     </div>
                   </div>
                   <div className="mb-3">
-                    <p className="text-xs font-semibold text-gray-700 mb-1">Infection Types at Risk:</p>
+                    <p className="text-xs font-semibold text-slate-700 mb-1">Infection Types at Risk:</p>
                     <div className="flex flex-wrap gap-1">
                       {analysis.adverseEventPrediction?.infectionRisk?.riskTypes?.map((type, idx) => (
                         <Badge key={idx} variant="outline" className="text-xs">{type}</Badge>
@@ -620,9 +620,9 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                 {/* Other Adverse Events */}
                 {analysis.adverseEventPrediction?.otherAdverseEvents?.length > 0 && (
                   <div className="space-y-2">
-                    <h4 className="font-semibold text-gray-900">Other Potential Adverse Events</h4>
+                    <h4 className="font-semibold text-slate-900">Other Potential Adverse Events</h4>
                     {analysis.adverseEventPrediction?.otherAdverseEvents?.map((event, idx) => (
-                      <div key={idx} className="border rounded-lg p-3 bg-gray-50">
+                      <div key={idx} className="border rounded-lg p-3 bg-slate-50">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium">{event.eventType}</span>
                           <Badge className={getSeverityColor(event.riskLevel)}>
@@ -631,7 +631,7 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                         </div>
                         <ul className="space-y-1">
                           {event.preventionActions?.map((action, aidx) => (
-                            <li key={aidx} className="text-xs text-gray-700">• {action}</li>
+                            <li key={aidx} className="text-xs text-slate-700">• {action}</li>
                           ))}
                         </ul>
                       </div>
@@ -656,7 +656,7 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                   <h4 className="font-semibold mb-3">Priority Education Topics</h4>
                   <div className="space-y-2">
                     {analysis.educationRecommendations?.priorityTopics?.map((topic, idx) => (
-                      <div key={idx} className="border rounded-lg p-3 hover:bg-gray-50">
+                      <div key={idx} className="border rounded-lg p-3 hover:bg-slate-50">
                         <div className="flex items-start justify-between mb-2">
                           <h5 className="font-semibold">{topic.topic}</h5>
                           <Badge className={
@@ -667,7 +667,7 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                             {topic.priority} priority
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-700 mb-2">{topic.rationale}</p>
+                        <p className="text-sm text-slate-700 mb-2">{topic.rationale}</p>
                         <div className="bg-blue-50 border border-blue-200 rounded p-2">
                           <p className="text-xs font-semibold text-blue-900 mb-1">Teaching Method:</p>
                           <p className="text-xs text-blue-800">{topic.teachingMethod}</p>
@@ -678,14 +678,14 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
                 </div>
 
                 {analysis.educationRecommendations?.caregiverEducation?.length > 0 && (
-                  <div className="bg-purple-50 border border-purple-200 rounded p-3">
-                    <h4 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
+                  <div className="bg-navy-50 border border-navy-200 rounded p-3">
+                    <h4 className="font-semibold text-navy-900 mb-2 flex items-center gap-2">
                       <Users className="w-4 h-4" />
                       Family/Caregiver Education
                     </h4>
                     <ul className="space-y-1">
                       {analysis.educationRecommendations?.caregiverEducation?.map((item, idx) => (
-                        <li key={idx} className="text-sm text-purple-800">• {item}</li>
+                        <li key={idx} className="text-sm text-navy-800">• {item}</li>
                       ))}
                     </ul>
                   </div>
@@ -786,15 +786,15 @@ Be specific, evidence-based, and actionable. Focus on Medicare home health best 
         </>
       )}
 
-      {!analysis && !isAnalyzing && (
+      {!analysis && !ai.loading && (
         <Card>
           <CardContent className="p-12 text-center">
-            <Brain className="w-16 h-16 mx-auto mb-4 text-purple-600" />
+            <Brain className="w-16 h-16 mx-auto mb-4 text-navy-600" />
             <h3 className="text-xl font-semibold mb-2">Ready to Analyze</h3>
-            <p className="text-gray-600 mb-4">
+            <p className="text-slate-600 mb-4">
               Click "Start Analysis" to generate AI-powered predictive insights for this patient.
             </p>
-            <Button onClick={performAnalysis} className="bg-purple-600 hover:bg-purple-700">
+            <Button onClick={performAnalysis} className="bg-navy-600 hover:bg-navy-700">
               <Brain className="w-4 h-4 mr-2" />
               Start Analysis
             </Button>

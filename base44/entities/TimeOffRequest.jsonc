@@ -1,0 +1,123 @@
+{
+  "name": "TimeOffRequest",
+  "type": "object",
+  "properties": {
+    "employee_email": {
+      "type": "string",
+      "description": "Email of the employee requesting time off"
+    },
+    "employee_name": {
+      "type": "string",
+      "description": "Display name of the requesting employee"
+    },
+    "manager_email": {
+      "type": "string",
+      "description": "Email of the manager/approver responsible for this request (optional; blank routes to admins)"
+    },
+    "manager_name": {
+      "type": "string",
+      "description": "Display name of the approving manager"
+    },
+    "request_type": {
+      "type": "string",
+      "enum": [
+        "vacation",
+        "sick",
+        "personal",
+        "bereavement",
+        "jury_duty",
+        "parental",
+        "unpaid",
+        "other"
+      ],
+      "default": "vacation",
+      "description": "Category of time off"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "First day off (inclusive)"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last day off (inclusive)"
+    },
+    "half_day": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the request is for a half day (applies a 0.5 day reduction)"
+    },
+    "total_days": {
+      "type": "number",
+      "description": "Calculated number of business days requested"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Employee-provided reason or note for the request"
+    },
+    "coverage": {
+      "type": "string",
+      "description": "Coverage plan / who will cover responsibilities while out"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "denied",
+        "cancelled"
+      ],
+      "default": "pending",
+      "description": "Approval status of the request"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of the manager/admin who reviewed the request"
+    },
+    "reviewer_name": {
+      "type": "string",
+      "description": "Display name of the reviewer"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the request was approved or denied"
+    },
+    "review_notes": {
+      "type": "string",
+      "description": "Manager's note attached on approval or denial"
+    }
+  },
+  "required": [
+    "request_type",
+    "start_date",
+    "end_date",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "employee_email": "{{user.email}}"
+        },
+        {
+          "manager_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

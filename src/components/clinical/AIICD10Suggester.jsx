@@ -1,23 +1,24 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Plus, CheckCircle2, FileText } from "lucide-react";
+import { Loader2, Search, CheckCircle2, FileText } from "lucide-react";
 
 export default function AIICD10Suggester({ onCodesSelected }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
+  const ai = useAICall();
   const [suggestedCodes, setSuggestedCodes] = useState([]);
   const [selectedCodes, setSelectedCodes] = useState([]);
 
   const searchCodes = async () => {
     if (!searchQuery.trim()) return;
     
-    setIsSearching(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert in ICD-10 medical coding. Based on the following clinical description, suggest the most appropriate ICD-10 codes:
 
 CLINICAL DESCRIPTION:
@@ -58,8 +59,8 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
       setSuggestedCodes(result.codes || []);
     } catch (error) {
       console.error("Error searching ICD-10 codes:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsSearching(false);
   };
 
   const handleKeyPress = (e) => {
@@ -83,9 +84,9 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
   const getCategoryColor = (category) => {
     const lower = category?.toLowerCase() || '';
     if (lower.includes('primary')) return 'bg-blue-100 text-blue-800';
-    if (lower.includes('secondary') || lower.includes('comorbidity')) return 'bg-purple-100 text-purple-800';
+    if (lower.includes('secondary') || lower.includes('comorbidity')) return 'bg-navy-100 text-navy-800';
     if (lower.includes('complication')) return 'bg-orange-100 text-orange-800';
-    return 'bg-gray-100 text-gray-800';
+    return 'bg-slate-100 text-slate-800';
   };
 
   return (
@@ -108,10 +109,10 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
             />
             <Button
               onClick={searchCodes}
-              disabled={isSearching || !searchQuery.trim()}
+              disabled={ai.loading || !searchQuery.trim()}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
-              {isSearching ? (
+              {ai.loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
@@ -149,7 +150,7 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
 
           {suggestedCodes.length > 0 && (
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              <p className="text-sm font-semibold text-gray-700">
+              <p className="text-sm font-semibold text-slate-700">
                 AI Suggested ICD-10 Codes:
               </p>
               {suggestedCodes.map((codeItem, idx) => {
@@ -160,7 +161,7 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
                     className={`p-3 rounded-lg border cursor-pointer transition-all ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-50'
-                        : 'border-gray-200 bg-white hover:border-indigo-300 hover:bg-indigo-50'
+                        : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50'
                     }`}
                     onClick={() => toggleCodeSelection(codeItem)}
                   >
@@ -182,10 +183,10 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
                         <CheckCircle2 className="w-5 h-5 text-indigo-600 flex-shrink-0" />
                       )}
                     </div>
-                    <p className="text-sm font-medium text-gray-900 mb-1">
+                    <p className="text-sm font-medium text-slate-900 mb-1">
                       {codeItem.description}
                     </p>
-                    <p className="text-xs text-gray-600">
+                    <p className="text-xs text-slate-600">
                       {codeItem.justification}
                     </p>
                   </div>
@@ -194,8 +195,8 @@ Return 5-10 most relevant codes, prioritized by relevance and specificity.`,
             </div>
           )}
 
-          {!isSearching && suggestedCodes.length === 0 && searchQuery && (
-            <p className="text-sm text-gray-500 text-center py-4">
+          {!ai.loading && suggestedCodes.length === 0 && searchQuery && (
+            <p className="text-sm text-slate-500 text-center py-4">
               No results. Try a different clinical description.
             </p>
           )}

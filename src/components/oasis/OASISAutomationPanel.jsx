@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,8 +7,6 @@ import { Progress } from "@/components/ui/progress";
 import {
   CheckCircle2,
   AlertTriangle,
-  XCircle,
-  ArrowRight,
   Sparkles,
   FileText,
   Eye,
@@ -48,7 +46,7 @@ export default function OASISAutomationPanel({
       case "auto_update": return <Zap className="w-4 h-4 text-green-600" />;
       case "review": return <Eye className="w-4 h-4 text-yellow-600" />;
       case "flag": return <Flag className="w-4 h-4 text-red-600" />;
-      case "no_change": return <Check className="w-4 h-4 text-gray-600" />;
+      case "no_change": return <Check className="w-4 h-4 text-slate-600" />;
       default: return <AlertCircle className="w-4 h-4 text-blue-600" />;
     }
   };
@@ -106,10 +104,10 @@ export default function OASISAutomationPanel({
 
   if (isLoading) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-6 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4" />
-          <p className="text-sm text-gray-600">Analyzing clinical note and mapping to OASIS fields...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-navy-600 mx-auto mb-4" />
+          <p className="text-sm text-slate-600">Analyzing clinical note and mapping to OASIS fields...</p>
         </CardContent>
       </Card>
     );
@@ -151,39 +149,39 @@ export default function OASISAutomationPanel({
       )}
 
       {/* Summary Card */}
-      <Card className="border-2 border-purple-200 bg-gradient-to-b from-purple-50 to-white">
+      <Card className="border-2 border-navy-200 bg-gradient-to-b from-navy-50 to-white">
         <CardHeader className="py-4">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             AI OASIS Automation Results
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Stats Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white p-3 rounded-lg border border-gray-200">
-              <p className="text-2xl font-bold text-purple-600">
+            <div className="bg-white p-3 rounded-lg border border-slate-200">
+              <p className="text-2xl font-bold text-navy-600">
                 {overallSummary.total_items_mapped || oasisSuggestions.length}
               </p>
-              <p className="text-xs text-gray-600">Items Mapped</p>
+              <p className="text-xs text-slate-600">Items Mapped</p>
             </div>
             <div className="bg-green-50 p-3 rounded-lg border border-green-200">
               <p className="text-2xl font-bold text-green-600">
                 {overallSummary.high_confidence_count || highConfidenceCount}
               </p>
-              <p className="text-xs text-gray-600">High Confidence</p>
+              <p className="text-xs text-slate-600">High Confidence</p>
             </div>
             <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
               <p className="text-2xl font-bold text-orange-600">
                 {overallSummary.discrepancy_count || discrepancies.length}
               </p>
-              <p className="text-xs text-gray-600">Discrepancies</p>
+              <p className="text-xs text-slate-600">Discrepancies</p>
             </div>
             <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
               <p className="text-2xl font-bold text-yellow-600">
                 {overallSummary.flagged_for_review_count || needsReview.length}
               </p>
-              <p className="text-xs text-gray-600">Need Review</p>
+              <p className="text-xs text-slate-600">Need Review</p>
             </div>
           </div>
 
@@ -223,7 +221,7 @@ export default function OASISAutomationPanel({
       )}
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+      <div className="flex gap-2 bg-slate-100 p-1 rounded-lg">
         <Button
           size="sm"
           variant={filterAction === "all" ? "default" : "ghost"}
@@ -262,7 +260,7 @@ export default function OASISAutomationPanel({
       </div>
 
       {/* Suggestions List */}
-      <Card className="border-gray-200">
+      <Card className="border-slate-200">
         <CardHeader className="py-3">
           <CardTitle className="text-sm flex items-center justify-between">
             <span>OASIS Field Suggestions</span>
@@ -311,7 +309,7 @@ export default function OASISAutomationPanel({
                         <p className="text-lg font-bold">
                           {suggestion.suggested_value}
                         </p>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-slate-600">
                           {suggestion.suggested_value_label}
                         </p>
                       </div>
@@ -319,15 +317,15 @@ export default function OASISAutomationPanel({
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4 space-y-3">
                     {/* Confidence Breakdown */}
-                    <div className="bg-gray-50 p-3 rounded border">
+                    <div className="bg-slate-50 p-3 rounded border">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-gray-700">Confidence Analysis</span>
+                        <span className="text-xs font-semibold text-slate-700">Confidence Analysis</span>
                         <Badge className={getConfidenceColor(suggestion.confidence_score)}>
                           {suggestion.confidence_score}%
                         </Badge>
                       </div>
                       <Progress value={suggestion.confidence_score} className="h-2 mb-2" />
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-slate-600">
                         {suggestion.confidence_score >= 85 ? "✓ Very confident - clear documentation" :
                          suggestion.confidence_score >= 70 ? "⚠ Confident - good evidence but verify" :
                          suggestion.confidence_score >= 50 ? "⚠ Moderate - review recommended" :
@@ -336,8 +334,8 @@ export default function OASISAutomationPanel({
                     </div>
 
                     {/* Supporting Evidence */}
-                    <div className="bg-white p-3 rounded border border-gray-200">
-                      <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                    <div className="bg-white p-3 rounded border border-slate-200">
+                      <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
                         <FileText className="w-3 h-3" />
                         Evidence from Clinical Note:
                       </p>
@@ -347,7 +345,7 @@ export default function OASISAutomationPanel({
                         </p>
                       </div>
                       {suggestion.note_location && (
-                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <p className="text-xs text-slate-500 flex items-center gap-1">
                           📍 Location: <span className="font-medium">{suggestion.note_location}</span>
                         </p>
                       )}

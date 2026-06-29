@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { 
   Popover,
@@ -31,6 +30,17 @@ import { Calendar } from "@/components/ui/calendar";
 import { Bell, Plus, Edit2, Trash2, Eye, EyeOff, Search, Clock, Calendar as CalendarIcon, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function AnnouncementManager() {
   const queryClient = useQueryClient();
@@ -38,6 +48,7 @@ export default function AnnouncementManager() {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [announcementToDelete, setAnnouncementToDelete] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -51,12 +62,10 @@ export default function AnnouncementManager() {
     queryFn: async () => {
       try {
         const result = await base44.entities.Announcement.list('-created_date');
-        console.log('✅ Fetched announcements count:', result?.length);
-        console.log('✅ Raw announcements data:', result);
         return result || [];
       } catch (error) {
         console.error('❌ Error fetching announcements:', error);
-        alert(`Error loading announcements: ${error.message}`);
+        toast.error(`Error loading announcements: ${error.message}`);
         return [];
       }
     },
@@ -67,22 +76,18 @@ export default function AnnouncementManager() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      console.log('📤 Creating announcement:', data);
       const result = await base44.entities.Announcement.create(data);
-      console.log('✅ Created successfully:', result);
       return result;
     },
-    onSuccess: async (data) => {
-      console.log('🔄 Refetching announcements...');
+    onSuccess: async (_data) => {
       await queryClient.invalidateQueries({ queryKey: ['announcements'] });
-      const refetchResult = await refetch();
-      console.log('✅ Refetch complete, count:', refetchResult.data?.length);
+      await refetch();
       setIsDialogOpen(false);
       resetForm();
     },
     onError: (error) => {
       console.error('❌ Create failed:', error);
-      alert(`Failed to create: ${error.message}`);
+      toast.error(`Failed to create: ${error.message}`);
     }
   });
 
@@ -93,11 +98,11 @@ export default function AnnouncementManager() {
       await refetch();
       setIsDialogOpen(false);
       resetForm();
-      alert('Announcement updated successfully!');
+      toast.success('Announcement updated successfully!');
     },
     onError: (error) => {
       console.error('Update error:', error);
-      alert(`Failed to update announcement: ${error.message}`);
+      toast.error(`Failed to update announcement: ${error.message}`);
     }
   });
 
@@ -106,7 +111,7 @@ export default function AnnouncementManager() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['announcements'] });
       await refetch();
-      alert('Announcement deleted successfully!');
+      toast.success('Announcement deleted successfully!');
     }
   });
 
@@ -174,7 +179,6 @@ export default function AnnouncementManager() {
       dataToSubmit.expires_at = formData.expires_at.toISOString();
     }
     
-    console.log('📝 Submitting announcement:', dataToSubmit);
     
     if (editingId) {
       updateMutation.mutate({ id: editingId, data: dataToSubmit });
@@ -187,7 +191,7 @@ export default function AnnouncementManager() {
     updateMutation.mutate({ id, data: { is_active: !currentStatus } });
   };
 
-  const getTypeColor = (type) => {
+  const _getTypeColor = (type) => {
     switch (type) {
       case 'urgent': return 'bg-red-100 text-red-800';
       case 'success': return 'bg-green-100 text-green-800';
@@ -213,188 +217,22 @@ export default function AnnouncementManager() {
               >
                 Refresh
               </Button>
-              <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                setIsDialogOpen(open);
-                if (!open) resetForm();
-              }}>
-                <DialogTrigger asChild>
-                  <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Announcement
-                  </Button>
-                </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingId ? 'Edit Announcement' : 'Create Announcement'}
-                </DialogTitle>
-              </DialogHeader>
-              <ScrollArea className="max-h-[70vh] pr-4">
-                <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Title</label>
-                  <Input
-                    value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    required
-                    placeholder="Enter announcement title..."
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Content</label>
-                  <Textarea
-                    value={formData.content}
-                    onChange={(e) => setFormData({...formData, content: e.target.value})}
-                    required
-                    rows={4}
-                    placeholder="Enter announcement content..."
-                  />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Status</Label>
-                  <Select 
-                    value={formData.is_active ? "active" : "inactive"} 
-                    onValueChange={(v) => setFormData({...formData, is_active: v === "active"})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-sm font-medium">Schedule For (Optional)</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.scheduled_for ? format(formData.scheduled_for, 'PPp') : <span>Select date & time</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={formData.scheduled_for}
-                          onSelect={(date) => {
-                            if (date) {
-                              const now = new Date();
-                              date.setHours(now.getHours(), now.getMinutes(), 0, 0);
-                              setFormData({...formData, scheduled_for: date});
-                            } else {
-                              setFormData({...formData, scheduled_for: null});
-                            }
-                          }}
-                          initialFocus
-                        />
-                        {formData.scheduled_for && (
-                          <div className="p-3 border-t">
-                            <Label className="text-xs">Time</Label>
-                            <Input
-                              type="time"
-                              value={format(formData.scheduled_for, 'HH:mm')}
-                              onChange={(e) => {
-                                const [hours, minutes] = e.target.value.split(':');
-                                const newDate = new Date(formData.scheduled_for);
-                                newDate.setHours(parseInt(hours), parseInt(minutes));
-                                setFormData({...formData, scheduled_for: newDate});
-                              }}
-                              className="mt-1"
-                            />
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setFormData({...formData, scheduled_for: null})}
-                              className="w-full mt-2"
-                            >
-                              Clear
-                            </Button>
-                          </div>
-                        )}
-                      </PopoverContent>
-                    </Popover>
-                    <p className="text-xs text-gray-500 mt-1">Leave empty to publish immediately</p>
-                  </div>
-
-                  <div>
-                    <Label className="text-sm font-medium">Expires At (Optional)</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.expires_at ? format(formData.expires_at, 'PPp') : <span>Select date & time</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={formData.expires_at}
-                          onSelect={(date) => {
-                            if (date) {
-                              const now = new Date();
-                              date.setHours(23, 59, 59, 999);
-                              setFormData({...formData, expires_at: date});
-                            } else {
-                              setFormData({...formData, expires_at: null});
-                            }
-                          }}
-                          initialFocus
-                        />
-                        {formData.expires_at && (
-                          <div className="p-3 border-t">
-                            <Label className="text-xs">Time</Label>
-                            <Input
-                              type="time"
-                              value={format(formData.expires_at, 'HH:mm')}
-                              onChange={(e) => {
-                                const [hours, minutes] = e.target.value.split(':');
-                                const newDate = new Date(formData.expires_at);
-                                newDate.setHours(parseInt(hours), parseInt(minutes));
-                                setFormData({...formData, expires_at: newDate});
-                              }}
-                              className="mt-1"
-                            />
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setFormData({...formData, expires_at: null})}
-                              className="w-full mt-2"
-                            >
-                              Clear
-                            </Button>
-                          </div>
-                        )}
-                      </PopoverContent>
-                    </Popover>
-                    <p className="text-xs text-gray-500 mt-1">Leave empty for no expiration</p>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    className="bg-blue-600 hover:bg-blue-700"
-                    disabled={createMutation.isPending || updateMutation.isPending}
-                  >
-                    {createMutation.isPending || updateMutation.isPending ? 'Saving...' : editingId ? 'Update' : 'Create'}
-                  </Button>
-                  </div>
-                  </form>
-                </ScrollArea>
-              </DialogContent>
-            </Dialog>
+              <Button 
+                onClick={() => {
+                  resetForm();
+                  setIsDialogOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Announcement
+              </Button>
             </div>
           </div>
           
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 placeholder="Search announcements..."
                 value={searchTerm}
@@ -420,16 +258,16 @@ export default function AnnouncementManager() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <p className="text-sm text-gray-500 text-center py-4">Loading...</p>
+          <p className="text-sm text-slate-500 text-center py-4">Loading...</p>
         ) : announcements.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-sm text-gray-500">No announcements yet. Create one to get started!</p>
-            <p className="text-xs text-gray-400 mt-2">Check browser console for details</p>
+            <p className="text-sm text-slate-500">No announcements yet. Create one to get started!</p>
+            <p className="text-xs text-slate-400 mt-2">Check browser console for details</p>
           </div>
         ) : filteredAnnouncements.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-sm text-gray-500">No announcements match your filters</p>
-            <p className="text-xs text-gray-400 mt-2">Total: {announcements.length}</p>
+            <p className="text-sm text-slate-500">No announcements match your filters</p>
+            <p className="text-xs text-slate-400 mt-2">Total: {announcements.length}</p>
           </div>
         ) : (
           <ScrollArea className="h-[300px] sm:h-[400px]">
@@ -442,14 +280,14 @@ export default function AnnouncementManager() {
                   className={`p-3 sm:p-4 rounded-lg border ${
                     status === 'active' ? 'bg-white' : 
                     status === 'scheduled' ? 'bg-blue-50 border-blue-200' :
-                    status === 'expired' ? 'bg-gray-50 opacity-60' : 
-                    'bg-gray-50 opacity-60'
+                    status === 'expired' ? 'bg-slate-50 opacity-60' : 
+                    'bg-slate-50 opacity-60'
                   }`}
                 >
                   <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-3">
                     <div className="flex-1 min-w-0 w-full">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h4 className="font-semibold text-gray-900">{announcement.title}</h4>
+                        <h4 className="font-semibold text-slate-900">{announcement.title}</h4>
                         {status === 'scheduled' && (
                           <Badge className="bg-blue-500 text-white">
                             <Clock className="w-3 h-3 mr-1" />
@@ -457,19 +295,19 @@ export default function AnnouncementManager() {
                           </Badge>
                         )}
                         {status === 'expired' && (
-                          <Badge variant="outline" className="text-gray-500">
+                          <Badge variant="outline" className="text-slate-500">
                             Expired
                           </Badge>
                         )}
                         {status === 'inactive' && (
-                          <Badge variant="outline" className="text-gray-500">
+                          <Badge variant="outline" className="text-slate-500">
                             Inactive
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">{announcement.content}</p>
+                      <p className="text-sm text-slate-600 mb-2">{announcement.content}</p>
                       <div className="space-y-1">
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-slate-500">
                           Created {formatEastern(announcement.created_date, 'MMM d, yyyy')}
                         </p>
                         {announcement.scheduled_for && (
@@ -507,11 +345,7 @@ export default function AnnouncementManager() {
                         size="sm"
                         variant="ghost"
                         className="text-red-600 hover:text-red-700 flex-1 sm:flex-none"
-                        onClick={() => {
-                          if (confirm('Delete this announcement?')) {
-                            deleteMutation.mutate(announcement.id);
-                          }
-                        }}
+                        onClick={() => setAnnouncementToDelete(announcement)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -524,6 +358,202 @@ export default function AnnouncementManager() {
           </ScrollArea>
         )}
       </CardContent>
+
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) resetForm();
+      }}>
+        <DialogContent className="w-[98vw] max-w-6xl overflow-visible">
+          <DialogHeader>
+            <DialogTitle>
+              {editingId ? 'Edit Announcement' : 'Create Announcement'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-visible">
+            <div>
+              <label htmlFor="announcement-title" className="text-sm font-medium">Title</label>
+              <Input
+                id="announcement-title"
+                value={formData.title}
+                onChange={(e) => setFormData({...formData, title: e.target.value})}
+                required
+                placeholder="Enter announcement title..."
+                className="text-base"
+              />
+            </div>
+            <div>
+              <label htmlFor="announcement-content" className="text-sm font-medium">Content</label>
+              <Textarea
+                id="announcement-content"
+                value={formData.content}
+                onChange={(e) => setFormData({...formData, content: e.target.value})}
+                required
+                rows={3}
+                placeholder="Enter announcement content..."
+                className="text-base"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Status</Label>
+              <Select 
+                value={formData.is_active ? "active" : "inactive"} 
+                onValueChange={(v) => setFormData({...formData, is_active: v === "active"})}
+              >
+                <SelectTrigger className="text-base">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-sm font-medium">Schedule For (Optional)</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal text-sm sm:text-base">
+                      <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">{formData.scheduled_for ? format(formData.scheduled_for, 'PPp') : 'Select date & time'}</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={formData.scheduled_for}
+                      onSelect={(date) => {
+                        if (date) {
+                          const now = new Date();
+                          date.setHours(now.getHours(), now.getMinutes(), 0, 0);
+                          setFormData({...formData, scheduled_for: date});
+                        } else {
+                          setFormData({...formData, scheduled_for: null});
+                        }
+                      }}
+                      autoFocus
+                    />
+                    {formData.scheduled_for && (
+                      <div className="p-3 border-t">
+                        <Label className="text-xs">Time</Label>
+                        <Input
+                          type="time"
+                          value={format(formData.scheduled_for, 'HH:mm')}
+                          onChange={(e) => {
+                            const [hours, minutes] = e.target.value.split(':');
+                            const newDate = new Date(formData.scheduled_for);
+                            newDate.setHours(parseInt(hours, 10), parseInt(minutes, 10));
+                            setFormData({...formData, scheduled_for: newDate});
+                          }}
+                          className="mt-1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setFormData({...formData, scheduled_for: null})}
+                          className="w-full mt-2"
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                <p className="text-xs text-slate-500 mt-1">Leave empty to publish immediately</p>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Expires At (Optional)</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal text-sm sm:text-base">
+                      <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">{formData.expires_at ? format(formData.expires_at, 'PPp') : 'Select date & time'}</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={formData.expires_at}
+                      onSelect={(date) => {
+                        if (date) {
+                          const _now = new Date();
+                          date.setHours(23, 59, 59, 999);
+                          setFormData({...formData, expires_at: date});
+                        } else {
+                          setFormData({...formData, expires_at: null});
+                        }
+                      }}
+                      autoFocus
+                    />
+                    {formData.expires_at && (
+                      <div className="p-3 border-t">
+                        <Label className="text-xs">Time</Label>
+                        <Input
+                          type="time"
+                          value={format(formData.expires_at, 'HH:mm')}
+                          onChange={(e) => {
+                            const [hours, minutes] = e.target.value.split(':');
+                            const newDate = new Date(formData.expires_at);
+                            newDate.setHours(parseInt(hours, 10), parseInt(minutes, 10));
+                            setFormData({...formData, expires_at: newDate});
+                          }}
+                          className="mt-1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setFormData({...formData, expires_at: null})}
+                          className="w-full mt-2"
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                <p className="text-xs text-slate-500 mt-1">Leave empty for no expiration</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
+                {createMutation.isPending || updateMutation.isPending ? 'Saving...' : editingId ? 'Update' : 'Create'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!announcementToDelete} onOpenChange={(open) => { if (!open) setAnnouncementToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Announcement</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{announcementToDelete?.title}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                deleteMutation.mutate(announcementToDelete.id);
+                setAnnouncementToDelete(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAICall } from "@/hooks/useAICall";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +13,6 @@ import {
   CheckCircle2,
   Clock,
   Target,
-  Users,
-  ChevronRight,
   Sparkles
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -30,20 +29,17 @@ export default function ProactiveCareGapIdentifier({
   compact = false 
 }) {
   const queryClient = useQueryClient();
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+  const ai = useAICall();
   const [identifiedGaps, setIdentifiedGaps] = useState(null);
-  const [selectedPatients, setSelectedPatients] = useState([]);
+  const [_selectedPatients, _setSelectedPatients] = useState([]);
 
-  useEffect(() => {
-    if (autoAnalyze && patients?.length > 0) {
-      analyzeForGaps();
-    }
-  }, [autoAnalyze, patients?.length]);
-
-  const analyzeForGaps = async () => {
+  const analyzeForGaps = useCallback(async () => {
     if (!patients || patients.length === 0) return;
 
-    setIsAnalyzing(true);
     try {
       // Analyze high-risk patients (active, with visits/care plans)
       const patientsToAnalyze = patients
@@ -84,7 +80,8 @@ export default function ProactiveCareGapIdentifier({
       });
 
       // Use AI to identify care gaps
-      const gapAnalysis = await base44.integrations.Core.InvokeLLM({
+      const gapAnalysis = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert home health clinical analyst. Analyze these patient profiles to proactively identify potential care gaps, missed opportunities, and risks before they become problems.
 
 PATIENT PROFILES:
@@ -155,8 +152,14 @@ Return structured JSON with prioritized gaps.`,
     } catch (error) {
       console.error('Error analyzing care gaps:', error);
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [patients, visits, carePlans, alerts, maxGaps]);
+
+  useEffect(() => {
+    if (autoAnalyze && patients?.length > 0) {
+      analyzeForGaps();
+    }
+  }, [autoAnalyze, patients?.length, analyzeForGaps]);
 
   const createTaskMutation = useMutation({
     mutationFn: (taskData) => base44.entities.Task.create(taskData),
@@ -174,7 +177,8 @@ Return structured JSON with prioritized gaps.`,
         description: `${gap.gap_description}\n\nClinical Rationale:\n${gap.clinical_rationale}\n\nRecommended Actions:\n${gap.recommended_interventions.join('\n- ')}`,
         type: 'followup',
         priority: gap.risk_level === 'critical' ? 'high' : gap.risk_level === 'high' ? 'high' : 'medium',
-        due_timeframe: gap.suggested_timeline === 'urgent' ? 'today' : 
+        assigned_to: currentUser?.email,
+        due_timeframe: gap.suggested_timeline === 'urgent' ? 'today' :
                        gap.suggested_timeline === 'this_week' ? 'this_week' : 
                        gap.suggested_timeline === 'next_week' ? 'next_visit' : 'this_week',
         source: 'ai_generated',
@@ -197,7 +201,7 @@ Return structured JSON with prioritized gaps.`,
   const getTimelineIcon = (timeline) => {
     if (timeline === 'urgent') return <AlertTriangle className="w-4 h-4 text-red-600" />;
     if (timeline === 'this_week') return <Clock className="w-4 h-4 text-orange-600" />;
-    return <Clock className="w-4 h-4 text-gray-600" />;
+    return <Clock className="w-4 h-4 text-slate-600" />;
   };
 
   if (!patients || patients.length === 0) {
@@ -210,10 +214,10 @@ Return structured JSON with prioritized gaps.`,
         <CardContent className="p-4">
           <Button 
             onClick={analyzeForGaps} 
-            disabled={isAnalyzing}
+            disabled={ai.loading}
             className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
           >
-            {isAnalyzing ? (
+            {ai.loading ? (
               <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" /> Analyzing...</>
             ) : (
               <><Brain className="w-4 h-4 mr-2" /> Scan for Care Gaps</>
@@ -235,13 +239,13 @@ Return structured JSON with prioritized gaps.`,
             <div>
               <span>AI Care Gap Identifier</span>
               {identifiedGaps && (
-                <p className="text-xs font-normal text-gray-600 mt-0.5">
+                <p className="text-xs font-normal text-slate-600 mt-0.5">
                   Analyzed {identifiedGaps.total_patients_analyzed} patients
                 </p>
               )}
             </div>
           </div>
-          {!isAnalyzing && (
+          {!ai.loading && (
             <Button 
               onClick={analyzeForGaps} 
               size="sm"
@@ -255,10 +259,10 @@ Return structured JSON with prioritized gaps.`,
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4">
-        {isAnalyzing ? (
+        {ai.loading ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-            <p className="text-sm text-gray-600">Analyzing patient data for potential care gaps...</p>
+            <p className="text-sm text-slate-600">Analyzing patient data for potential care gaps...</p>
           </div>
         ) : identifiedGaps ? (
           <div className="space-y-4">
@@ -290,13 +294,13 @@ Return structured JSON with prioritized gaps.`,
                             </Badge>
                             {getTimelineIcon(gap.suggested_timeline)}
                           </div>
-                          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">
-                            {gap.gap_category.replace(/_/g, ' ')}
+                          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
+                            {(gap.gap_category || '').replace(/_/g, ' ')}
                           </p>
                         </div>
                       </div>
 
-                      <p className="text-sm text-gray-900 mb-2">{gap.gap_description}</p>
+                      <p className="text-sm text-slate-900 mb-2">{gap.gap_description}</p>
 
                       <div className="bg-blue-50 p-3 rounded mb-3">
                         <p className="text-xs font-semibold text-blue-900 mb-1">Clinical Rationale:</p>
@@ -314,12 +318,12 @@ Return structured JSON with prioritized gaps.`,
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+                      <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
                         <span className="flex items-center gap-1">
                           <Target className="w-3 h-3" />
-                          Impact: {gap.estimated_impact.replace(/_/g, ' ')}
+                          Impact: {(gap.estimated_impact || '').replace(/_/g, ' ')}
                         </span>
-                        <span>Timeline: {gap.suggested_timeline.replace(/_/g, ' ')}</span>
+                        <span>Timeline: {(gap.suggested_timeline || '').replace(/_/g, ' ')}</span>
                       </div>
 
                       <Button
@@ -338,7 +342,7 @@ Return structured JSON with prioritized gaps.`,
               <div className="text-center py-8">
                 <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
                 <p className="text-sm text-green-700 font-medium">No significant care gaps identified</p>
-                <p className="text-xs text-gray-600 mt-1">Current care patterns are appropriate</p>
+                <p className="text-xs text-slate-600 mt-1">Current care patterns are appropriate</p>
               </div>
             )}
           </div>
@@ -351,7 +355,7 @@ Return structured JSON with prioritized gaps.`,
               <Brain className="w-5 h-5 mr-2" />
               Analyze for Care Gaps
             </Button>
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-slate-500 mt-3">
               AI will analyze {patients.length} patients to identify potential care gaps
             </p>
           </div>

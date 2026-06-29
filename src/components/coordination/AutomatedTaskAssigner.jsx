@@ -1,5 +1,8 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+// Standard component AI-call hook: shared timeout/retry policy + managed
+// loading/error state. Prefer over a raw invokeLLM at component call sites.
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,10 +13,9 @@ import {
   UserCog, 
   Brain, 
   Loader2,
-  Send,
-  CheckCircle2,
-  Mail
+  Send
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function AutomatedTaskAssigner({ 
   patientId,
@@ -24,7 +26,7 @@ export default function AutomatedTaskAssigner({
   carePlanGaps
 }) {
   const queryClient = useQueryClient();
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [suggestedTasks, setSuggestedTasks] = useState([]);
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -34,10 +36,15 @@ export default function AutomatedTaskAssigner({
     queryFn: () => base44.entities.User.list(),
   });
 
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
   const generateTaskAssignments = async () => {
-    setIsGenerating(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `You are a care coordination AI. Based on detected gaps and patient changes, generate task assignments for the appropriate care team members.
 
 PATIENT: ${patientName}
@@ -84,8 +91,8 @@ Focus on tasks that require specialized expertise or coordination.`,
       setSelectedTasks(result.tasks?.map((_, idx) => idx) || []);
     } catch (error) {
       console.error('Task generation error:', error);
+      toast.error('Failed to generate task assignments. Please try again.');
     }
-    setIsGenerating(false);
   };
 
   const handleCreateTasks = async () => {
@@ -94,11 +101,28 @@ Focus on tasks that require specialized expertise or coordination.`,
       const tasksToCreate = selectedTasks.map(idx => suggestedTasks[idx]);
 
       for (const task of tasksToCreate) {
-        // Find appropriate assignee
-        const roleMatch = users.find(u => 
-          u.role === 'admin' || 
-          u.full_name?.toLowerCase().includes(task.assignee_role.toLowerCase())
-        );
+        // Find appropriate assignee. Previously this was a single find() whose
+        // first clause (u.role === 'admin') short-circuited true for the first
+        // admin in the list, so EVERY task landed on that admin; the second clause
+        // also matched the role title against full_name (wrong field). Match the
+        // requested role first (exact, then partial), and only fall back to an
+        // admin / any user when no role match exists.
+        const wantedRole = (task.assignee_role || '').toLowerCase().trim();
+        const roleMatch =
+          (wantedRole && users.find(u => (u.role || '').toLowerCase() === wantedRole)) ||
+          (wantedRole && users.find(u => (u.role || '').toLowerCase().includes(wantedRole))) ||
+          users.find(u => u.role === 'admin') ||
+          users[0];
+
+        // assigned_to is required on Task. If no user could be resolved (empty
+        // users list / load failure), the only safe owner is the current user;
+        // skip the task entirely rather than write an invalid record with
+        // assigned_to: undefined (which the platform would reject/drop).
+        const assignee = roleMatch?.email || currentUser?.email;
+        if (!assignee) {
+          toast.error(`Couldn't assign "${task.title}" — no eligible team member found.`);
+          continue;
+        }
 
         const timeframeMap = {
           'today': 'today',
@@ -109,9 +133,16 @@ Focus on tasks that require specialized expertise or coordination.`,
           'next visit': 'next_visit'
         };
 
-        const dueTimeframe = Object.keys(timeframeMap).find(key => 
+        const matchedKey = Object.keys(timeframeMap).find(key =>
           task.timeframe?.toLowerCase().includes(key)
         );
+        // Fall back aggressively for an urgent/high task whose free-text timeframe
+        // matched no key ("immediately", "asap") — defaulting it to the 7-day
+        // 'this_week' would bury work the AI flagged as urgent.
+        const isUrgent = task.priority === 'urgent' || task.priority === 'high';
+        const dueTimeframe = matchedKey
+          ? timeframeMap[matchedKey]
+          : (isUrgent ? 'today' : 'this_week');
 
         await base44.entities.Task.create({
           patient_id: patientId,
@@ -121,8 +152,8 @@ Focus on tasks that require specialized expertise or coordination.`,
                 task.task_type === 'call' ? 'call' : 'other',
           priority: task.priority === 'urgent' || task.priority === 'high' ? 'high' : 
                     task.priority === 'medium' ? 'medium' : 'low',
-          due_timeframe: dueTimeframe ? timeframeMap[dueTimeframe] : 'this_week',
-          assigned_to: roleMatch?.email,
+          due_timeframe: dueTimeframe,
+          assigned_to: assignee,
           source: 'ai_generated',
           ai_reason: task.rationale
         });
@@ -133,10 +164,10 @@ Focus on tasks that require specialized expertise or coordination.`,
       
       setSuggestedTasks([]);
       setSelectedTasks([]);
-      alert(`✅ Created ${tasksToCreate.length} care coordination tasks`);
+      toast.success(`✅ Created ${tasksToCreate.length} care coordination tasks`);
     } catch (error) {
       console.error('Task creation error:', error);
-      alert('Failed to create tasks');
+      toast.error('Failed to create tasks');
     }
     setIsCreating(false);
   };
@@ -151,10 +182,10 @@ Focus on tasks that require specialized expertise or coordination.`,
   }
 
   return (
-    <Card className="border-2 border-purple-300">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 pb-3">
+    <Card className="border-2 border-navy-300">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50 pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <UserCog className="w-5 h-5 text-purple-600" />
+          <UserCog className="w-5 h-5 text-navy-600" />
           AI Task Assignment Generator
         </CardTitle>
       </CardHeader>
@@ -166,20 +197,20 @@ Focus on tasks that require specialized expertise or coordination.`,
           </AlertDescription>
         </Alert>
 
-        {!suggestedTasks.length && !isGenerating && (
+        {!suggestedTasks.length && !ai.loading && (
           <Button
             onClick={generateTaskAssignments}
-            className="w-full bg-purple-600 hover:bg-purple-700"
+            className="w-full bg-navy-600 hover:bg-navy-700"
           >
             <Brain className="w-4 h-4 mr-2" />
             Generate Task Assignments
           </Button>
         )}
 
-        {isGenerating && (
+        {ai.loading && (
           <div className="text-center py-6">
-            <Loader2 className="w-8 h-8 text-purple-600 animate-spin mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Generating task assignments...</p>
+            <Loader2 className="w-8 h-8 text-navy-600 animate-spin mx-auto mb-2" />
+            <p className="text-sm text-slate-600">Generating task assignments...</p>
           </div>
         )}
 
@@ -212,7 +243,7 @@ Focus on tasks that require specialized expertise or coordination.`,
                         {task.priority}
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-600 mb-1">{task.description}</p>
+                    <p className="text-xs text-slate-600 mb-1">{task.description}</p>
                     <div className="flex items-center gap-2 text-xs">
                       <Badge variant="outline">{task.assignee_role}</Badge>
                       <Badge variant="outline">{task.timeframe}</Badge>
@@ -226,7 +257,7 @@ Focus on tasks that require specialized expertise or coordination.`,
               <Button
                 onClick={handleCreateTasks}
                 disabled={selectedTasks.length === 0 || isCreating}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className="flex-1 bg-navy-600 hover:bg-navy-700"
               >
                 {isCreating ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

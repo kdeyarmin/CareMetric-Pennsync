@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.1';
 
 Deno.serve(async (req) => {
@@ -53,7 +53,16 @@ Deno.serve(async (req) => {
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
     doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y);
-    y += 15;
+    y += 12;
+
+    // AI-estimate disclaimer (the scores below are AI-generated, not an official determination)
+    doc.setFontSize(8);
+    doc.setTextColor(146, 64, 14); // Amber
+    addWrappedText(
+      'AI-generated estimates from the assessment text - not an official OASIS/PDGM determination. A clinician must verify all M-items before submission; scores do not guarantee coverage or reimbursement.',
+      margin, y, contentWidth, 4
+    );
+    y += 8;
 
     // Score Overview Section
     doc.setFontSize(14);

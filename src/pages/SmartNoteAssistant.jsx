@@ -1,1676 +1,721 @@
-import React, { useState, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import ProviderNoteTypeSelector from "../components/smartNote/ProviderNoteTypeSelector";
-import { useLocation } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
-  CheckCircle2,
-  AlertCircle,
-  Brain,
-  Wand2,
-  Users,
-  X,
-  AlertTriangle,
-  Loader2,
-  Plus,
-  ShieldAlert,
-  ListTodo,
-  Clock,
-  Settings,
-  FileText
-  } from "lucide-react";
-import { 
-  getVisitTypesForProvider, 
-  getAccessibleCareSettings, 
-  getCareSettingLabel,
-  CARE_SETTINGS 
-} from "@/components/utils/providerVisitTypeMapping";
+  CheckCircle2, Loader2, ArrowRight, ClipboardList, User,
+  Mic, Square, AlertTriangle
+} from "lucide-react";
+import { todayEastern } from "../components/utils/timezone";
+import { logActivity, ActivityActions } from "../components/utils/activityLogger";
+import { enhanceTranscription } from "../components/utils/medicalDictionary";
+import SmartNoteHeader from "../components/smartNote/SmartNoteHeader";
+import VisitSummaryGenerator from "../components/smartNote/VisitSummaryGenerator";
+import NoteTemplateSelector from "../components/smartNote/NoteTemplateSelector";
+import VitalSignValidator from "../components/smartNote/VitalSignValidator";
+import VitalSignsForm from "../components/visit/VitalSignsForm";
+import StructuredNoteDrafter from "../components/smartNote/StructuredNoteDrafter";
+import VisitAudioRecorder from "../components/smartNote/VisitAudioRecorder";
+import VitalsTrendAnalysis from "../components/smartNote/VitalsTrendAnalysis";
+import FinalNoteDisplay from "../components/smartNote/FinalNoteDisplay";
+import FollowUpTasksPanel from "../components/smartNote/FollowUpTasksPanel";
+import ComplianceChecklist from "../components/smartNote/ComplianceChecklist";
+import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
+import { persistVisitNote } from "../components/smartNote/persistVisitNote";
+import { getPriorNote, parseNoteSections } from "../components/smartNote/noteHelpers";
+import { claimDictation, releaseDictation } from "@/components/smartNote/dictationController";
+import { generateFollowUpTasks } from "@/functions/generateFollowUpTasks";
+import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsage";
 import { toast } from "sonner";
-import { getProviderCompliancePrompt } from "@/components/utils/providerSpecificConfig";
-import { 
-  getProviderPromptAdditions,
-  getCareSettingPromptAdditions 
-} from "@/components/utils/aiPrompts";
-import { buildEnhancedPrompt, recordEditForLearning } from "@/components/utils/enhancedAIPrompts";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import CarePlanSuggestionsPanel from "@/components/smartNote/CarePlanSuggestionsPanel";
-import SmartTemplateSuggester from "@/components/smartNote/SmartTemplateSuggester";
-import CustomTemplateCreator from "@/components/smartNote/CustomTemplateCreator";
-import EnhancedTemplateSelector from "@/components/templates/EnhancedTemplateSelector";
-import TemplateEducationSuggestions from "@/components/education/TemplateEducationSuggestions";
-import QuickPatientAccess from "@/components/smartNote/QuickPatientAccess";
+import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 
-import VitalSignsQuickButton from "@/components/smartNote/VitalSignsQuickButton";
-import AutoSaveIndicator from "@/components/smartNote/AutoSaveIndicator";
-import NoteDraftVersions from "@/components/smartNote/NoteDraftVersions";
-import NoteConflictResolver from "@/components/smartNote/NoteConflictResolver";
-import EnhancedOfflineNoteSync from "@/components/mobile/EnhancedOfflineNoteSync";
-import AIPatientSummaryGenerator from "@/components/patient/AIPatientSummaryGenerator";
+const HOME_HEALTH_VISIT_TYPES = [
+  { value: "routine_visit", label: "Routine SN Visit" },
+  { value: "admission", label: "Start of Care (SOC)" },
+  { value: "recertification", label: "Recertification" },
+  { value: "discharge", label: "Discharge" },
+  { value: "prn", label: "PRN Visit" },
+];
 
-import AutoPopulateDataFields from "@/components/smartNote/AutoPopulateDataFields";
-import AIFollowUpTasksGenerator from "@/components/smartNote/AIFollowUpTasksGenerator";
-import EnhancedICD10Suggester from "@/components/clinical/EnhancedICD10Suggester";
-import InteractiveQualitySuggestions from "@/components/smartNote/InteractiveQualitySuggestions";
-import { Sparkles } from "lucide-react";
-import VisitTypeGuidance from "@/components/smartNote/VisitTypeGuidance";
-import CodeSearchInserter from "@/components/smartNote/CodeSearchInserter";
-import AIPreferencesPanel from "@/components/smartNote/AIPreferencesPanel";
+const HOSPICE_VISIT_TYPES = [
+  { value: "routine_visit", label: "Routine Hospice Visit" },
+  { value: "admission", label: "Hospice Admission" },
+  { value: "recertification", label: "Recertification (Benefit Period)" },
+  { value: "discharge", label: "Discharge / Revocation" },
+  { value: "prn", label: "After-Hours / Crisis Visit" },
+];
 
-import MedicalCodingAssistant from "@/components/smartNote/MedicalCodingAssistant.jsx";
-import AdvancedMedicalCodingAssistant from "@/components/coding/AdvancedMedicalCodingAssistant";
+// Returns the right visit types based on care scope
+const getVisitTypes = (careScope) => {
+  if (careScope === "hospice") return HOSPICE_VISIT_TYPES;
+  if (careScope === "both") return [...HOME_HEALTH_VISIT_TYPES, ...HOSPICE_VISIT_TYPES.filter(v => !HOME_HEALTH_VISIT_TYPES.find(h => h.value === v.value))];
+  return HOME_HEALTH_VISIT_TYPES;
+};
 
-import RegulatoryComplianceMonitor from "@/components/smartNote/RegulatoryComplianceMonitor";
-import EducationLibraryBrowser from "@/components/education/EducationLibraryBrowser";
-import PatientEducationPanel from "@/components/education/PatientEducationPanel";
-import VoiceNoteRecorder from "@/components/smartNote/VoiceNoteRecorder";
-import VoiceDictationInput from "@/components/smartNote/VoiceDictationInput";
-import ClinicalInsightsPanel from "@/components/smartNote/ClinicalInsightsPanel";
-import OASISFieldSuggester from "@/components/smartNote/OASISFieldSuggester";
-import CarePlanDraftGenerator from "@/components/smartNote/CarePlanDraftGenerator";
-import DocumentationGapDetector from "@/components/smartNote/DocumentationGapDetector";
-import OfflineSyncNotification from "@/components/mobile/OfflineSyncNotification";
-import { useOfflineNotes } from "@/components/mobile/OfflineNoteCache";
-import ProactiveClinicalOrders from "@/components/clinical/ProactiveClinicalOrders";
-import PriorAuthGenerator from "@/components/clinical/PriorAuthGenerator";
-import VoiceToSOAPConverter from "@/components/smartNote/VoiceToSOAPConverter.jsx";
-import SmartEducationRecommender from "@/components/smartNote/SmartEducationRecommender.jsx";
-import MultiRegulationComplianceChecker from "@/components/compliance/MultiRegulationComplianceChecker.jsx";
-import AIFeedbackTrainer from "@/components/smartNote/AIFeedbackTrainer.jsx";
-import DocumentationQualityScore from "@/components/smartNote/DocumentationQualityScore";
-import PersonalizedEducationGenerator from "@/components/education/PersonalizedEducationGenerator";
-import EducationTrackingHistory from "@/components/education/EducationTrackingHistory";
-import OfflineNoteCapture from "@/components/mobile/OfflineNoteCapture";
-import { ResolveComplianceIssue, ResolveDocumentationGap, ResolveQualitySuggestion, ResolveAllIssues } from "@/components/smartNote/OneClickResolvers";
-import NoteEmailDialog from "@/components/notes/NoteEmailDialog";
-import ComplianceBasedTrainingRecommender from "@/components/training/ComplianceBasedTrainingRecommender";
-import AIOutputRating from "@/components/feedback/AIOutputRating";
-import InlineAIFeedback from "@/components/feedback/InlineAIFeedback";
-import RealTimeComplianceMonitor from '../components/compliance/RealTimeComplianceMonitor';
-import PatientContextSidebar from '../components/smartNote/PatientContextSidebar';
-import TimeSavingsSummary from '../components/smartNote/TimeSavingsSummary';
-import AIFollowUpQuestions from '../components/smartNote/AIFollowUpQuestions';
-import ProactiveGapAnalyzer from '../components/smartNote/ProactiveGapAnalyzer';
-import VisitRelevantHistorySummary from '../components/smartNote/VisitRelevantHistorySummary';
-import AICareCoordinationPanel from '../components/coordination/AICareCoordinationPanel';
-import UnifiedComplianceAudit from '../components/smartNote/UnifiedComplianceAudit';
-import UnifiedSuggestionsPanel from '../components/smartNote/UnifiedSuggestionsPanel';
-import NoteCompletenessTracker from '../components/smartNote/NoteCompletenessTracker';
-import QuickTemplateInserter from '../components/smartNote/QuickTemplateInserter';
-import AIPhraseSuggestionWidget from '../components/smartNote/AIPhraseSuggestionWidget';
-import ICD10CodeSuggester from '../components/smartNote/ICD10CodeSuggester';
-import FollowUpTaskGenerator from '../components/smartNote/FollowUpTaskGenerator';
-import RealtimeComplianceChecker from '../components/smartNote/RealtimeComplianceChecker';
-import PatientEducationGenerator from '../components/education/PatientEducationGenerator';
-import EnhancedMedicalCodingAssistant from '../components/smartNote/EnhancedMedicalCodingAssistant';
-import PremiumFeatureGate from '../components/subscription/PremiumFeatureGate';
-import UnifiedAIDocumentationAssistant from '../components/smartNote/UnifiedAIDocumentationAssistant';
-import ClinicalDecisionSupportPanel from '../components/smartNote/ClinicalDecisionSupportPanel';
-import PostEnhancementInsights from '../components/smartNote/PostEnhancementInsights';
-import AIClinicalAssistantPanel from '../components/clinical/AIClinicalAssistantPanel';
-import UnifiedSuggestionsApplier from '../components/smartNote/UnifiedSuggestionsApplier';
-import ClinicalDocumentationAIAssistant from '../components/clinical/ClinicalDocumentationAIAssistant';
+// Drafts are saved per patient (plus an "unassigned" bucket for notes typed
+// before a patient is picked) so switching patients never clobbers another
+// patient's in-progress note.
+const draftKeyFor = (pid) => `smart_note_draft_v2:${pid || "unassigned"}`;
 
-export default function SmartNoteAssistant() {
-  const [selectedPatient, setSelectedPatient] = useState("no_patient");
-  const [showCreatePatient, setShowCreatePatient] = useState(false);
-  const [visitType, setVisitType] = useState("");
-  const [selectedDiagnosis, setSelectedDiagnosis] = useState("");
-  const [diagnosisSearch, setDiagnosisSearch] = useState("");
-  const [roughNotes, setRoughNotes] = useState("");
-  const [enhancing, setEnhancing] = useState(false);
-  const [enhancedNote, setEnhancedNote] = useState(null);
-  const [complianceResults, setComplianceResults] = useState(null);
-  const [extractedData, setExtractedData] = useState(null);
-  const [showResults, setShowResults] = useState(false);
-  const [medicareViolations, setMedicareViolations] = useState([]);
-  const [regulatoryWarnings, setRegulatoryWarnings] = useState([]);
-  const [clinicalInsights, setClinicalInsights] = useState(null);
-  const [loadingInsights, setLoadingInsights] = useState(false);
-  const [suggestedTasks, setSuggestedTasks] = useState([]);
-  const [newPatientData, setNewPatientData] = useState({
-    first_name: "",
-    last_name: "",
-    date_of_birth: "",
-    medical_record_number: ""
+import StepIndicator from "../components/smartNote/StepIndicator";
+import SmartNoteTabs from "../components/smartNote/SmartNoteTabs";
+import PageContainer from "@/components/ui/PageContainer";
+import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
+
+export default function SmartNoteAssistant({ visitId = null }) {
+  const [searchParams] = useSearchParams();
+  const queryPatientId = searchParams.get("patientId") || searchParams.get("patient_id") || "";
+  const queryVisitType = searchParams.get("visitType") || searchParams.get("visit_type") || "";
+  const referralDraftNote = useMemo(() => {
+    if (searchParams.get("referral_mode") !== "true") return "";
+    // The prepopulation payload (PHI) is passed via sessionStorage keyed by
+    // referral id, not the URL, so it can't leak into history/proxy logs.
+    const referralId = searchParams.get("referral_id");
+    if (!referralId) return "";
+    try {
+      const raw = sessionStorage.getItem(`referral_prepopulate:${referralId}`);
+      if (!raw) return "";
+      const parsed = JSON.parse(raw);
+      return String(parsed.roughNote || "").trim();
+    } catch {
+      return "";
+    }
+  }, [searchParams]);
+  const [patientId, setPatientId] = useState(queryPatientId);
+  const [visitType, setVisitType] = useState(queryVisitType || "routine_visit");
+  const visitDate = todayEastern();
+  const [note, setNote] = useState(referralDraftNote);
+  // Structured vital signs (canonical vital_signs shape) saved onto the visit so
+  // they reach the chart, trends, and escalation — restoring the capture the
+  // retired Document Visit page provided.
+  const [vitals, setVitals] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [savedVisitId, setSavedVisitId] = useState(null);
+  const [savedAuditId, setSavedAuditId] = useState(null);
+  // When documenting a specific existing visit (deep-linked via ?visitId), the
+  // save COMPLETES that visit instead of creating a new one. Cleared once bound or
+  // when the user switches to a different patient than the bound visit's.
+  const [existingVisitId, setExistingVisitId] = useState(null);
+  const boundPatientRef = useRef(null);
+  const [step, setStep] = useState(1);
+  const [copied, setCopied] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [activeTab, setActiveTab] = useState("builder");
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [signatureImage, setSignatureImage] = useState(null);
+  const [followUpTasks, setFollowUpTasks] = useState([]);
+  const [generatingTasks, setGeneratingTasks] = useState(false);
+  const recRef = useRef(null);
+  const recStopRef = useRef(null);
+  const textareaRef = useRef(null);
+  const SAVED_PATIENT_KEY = "smart_note_patient_v1";
+  // Mirror the latest patient so the autosave effect can write under the active
+  // patient without re-subscribing on patientId (which would clobber drafts on
+  // switch). prevPatientRef drives the on-switch draft swap. noteRef guards the
+  // async durable-draft restore from clobbering text the nurse has started typing.
+  const patientIdRef = useRef(patientId);
+  const prevPatientRef = useRef(patientId);
+  const noteRef = useRef(note);
+  patientIdRef.current = patientId;
+  noteRef.current = note;
+
+  // Durable cross-session restore: a draft persisted to IndexedDB survives a full
+  // browser restart (sessionStorage does not). Apply it only if we're still on
+  // the same bucket and the nurse hasn't already started typing.
+  const tryRestoreDurableDraft = (pid) => {
+    import('@/lib/indexedDB')
+      .then(({ getDraftNoteLocally }) => getDraftNoteLocally(`draft_${pid || 'unassigned'}`))
+      .then((d) => {
+        if (patientIdRef.current !== pid || noteRef.current?.trim()) return;
+        if (!d?.note || d.note.trim().length <= 20) return;
+        setNote(d.note);
+        if (d.visitType) setVisitType(d.visitType);
+        setDraftRestored(true);
+      })
+      .catch(() => {});
+  };
+
+  // Clear a patient's draft from both stores once the note is saved or reset, so
+  // drafts don't accumulate (one PHI-bearing row per patient) indefinitely.
+  const clearDraft = (pid) => {
+    sessionStorage.removeItem(draftKeyFor(pid));
+    import('@/lib/indexedDB')
+      .then(({ deleteDraftNoteLocally }) => deleteDraftNoteLocally(`draft_${pid || 'unassigned'}`))
+      .catch(() => {});
+  };
+
+  const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
+  const careScope = currentUser?.care_scope || "home_health";
+  const VISIT_TYPES = getVisitTypes(careScope);
+  const isHospice = careScope === "hospice";
+  const serviceLine = isHospice ? "hospice" : "home_health";
+  const { data: patients = [] } = useQuery({
+    queryKey: ["patients"],
+    queryFn: async () => {
+        try {
+            return await base44.entities.Patient.filter({ status: "active" }, "first_name", 200);
+        } catch (e) {
+            if (!navigator.onLine) {
+                const { getPatientsLocally } = await import('@/lib/indexedDB');
+                const local = await getPatientsLocally();
+                return local || [];
+            }
+            throw e;
+        }
+    }
   });
-  const [creatingPatient, setCreatingPatient] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [vitalSigns, setVitalSigns] = useState({
-    temperature: "",
-    heart_rate: "",
-    respiratory_rate: "",
-    bp_systolic: "",
-    bp_diastolic: "",
-    oxygen_saturation: ""
+  const patient = patients.find(p => p.id === patientId);
+  // Full record for the selected patient (the list query may not include the
+  // note history). Used to pre-fill carry-forward answers from the last visit.
+  const { data: patientDetail } = useQuery({
+    queryKey: ["patientDetail", patientId],
+    queryFn: () => base44.entities.Patient.get(patientId),
+    enabled: !!patientId,
   });
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editedNote, setEditedNote] = useState("");
-  const [savingToPatient, setSavingToPatient] = useState(false);
-  const [showPreferences, setShowPreferences] = useState(false);
-  const [suggestedEducation, setSuggestedEducation] = useState([]);
-  const [providedEducation, setProvidedEducation] = useState([]);
-  const [noteRating, setNoteRating] = useState(null);
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-  const [timeSavedMinutes, setTimeSavedMinutes] = useState(0);
-  const [conflictData, setConflictData] = useState(null);
-  const [showTemplateCreator, setShowTemplateCreator] = useState(false);
-  const [templateCreatorInitData, setTemplateCreatorInitData] = useState(null);
-  const [showVoiceToSOAP, setShowVoiceToSOAP] = useState(false);
-  const [selectedRegulations, setSelectedRegulations] = useState(['medicare', 'hipaa']);
-  const [showFeedbackTrainer, setShowFeedbackTrainer] = useState(false);
-  const location = useLocation();
-  const { isOnline, saveOfflineNote } = useOfflineNotes();
+  useEffect(() => {
+    if (currentUser?.email) logActivity(ActivityActions.PAGE_VISIT, { page: "SmartNoteAssistant" });
+  }, [currentUser?.email]);
+
+  // Visit binding: when deep-linked with ?visitId (e.g. from a compliance alert or
+  // the patient's visit list), load that visit and pre-select its patient + visit
+  // type so saving COMPLETES it rather than creating a duplicate. Vitals are left
+  // for the nurse to enter fresh (the scheduled visit has none yet).
+  const { data: boundVisit } = useQuery({
+    queryKey: ["visit", visitId],
+    queryFn: () => base44.entities.Visit.get(visitId),
+    enabled: !!visitId,
+  });
+  useEffect(() => {
+    if (!boundVisit?.id) return;
+    boundPatientRef.current = boundVisit.patient_id;
+    setExistingVisitId(boundVisit.id);
+    if (boundVisit.patient_id) setPatientId(boundVisit.patient_id);
+    if (boundVisit.visit_type) setVisitType(boundVisit.visit_type);
+  }, [boundVisit]);
+
+  // Restore saved patient context across tabs
+  useEffect(() => {
+    if (queryPatientId || queryVisitType) {
+      if (queryPatientId) setPatientId(queryPatientId);
+      if (queryVisitType) setVisitType(queryVisitType);
+      return;
+    }
+    const saved = sessionStorage.getItem(SAVED_PATIENT_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.patientId) setPatientId(parsed.patientId);
+        if (parsed.visitType) setVisitType(parsed.visitType);
+      } catch {}
+    }
+  }, [queryPatientId, queryVisitType]);
+
+  // Persist patient context across tabs
+  useEffect(() => {
+    sessionStorage.setItem(SAVED_PATIENT_KEY, JSON.stringify({ patientId, visitType }));
+  }, [patientId, visitType]);
+
+  // On first mount, restore the draft for whatever bucket we start in (the saved
+  // patient, or the unassigned bucket) so an in-progress note survives a reload.
+  useEffect(() => {
+    if (referralDraftNote) {
+      setNote(referralDraftNote);
+      setDraftRestored(true);
+      return;
+    }
+    const saved = sessionStorage.getItem(draftKeyFor(patientIdRef.current));
+    if (!saved) { tryRestoreDurableDraft(patientIdRef.current); return; }
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.note?.trim().length > 20) {
+        setNote(parsed.note);
+        if (parsed.visitType) setVisitType(parsed.visitType);
+        setDraftRestored(true);
+      }
+    } catch { /* ignore a corrupt draft */ }
+  }, [referralDraftNote]);
+
+  // When the selected patient changes, load that patient's saved draft (resume
+  // where you left off). The outgoing patient's note was already autosaved under
+  // their own key, so switching never loses or cross-contaminates a draft. When
+  // arriving from the no-patient-yet state with a note already typed, carry it
+  // over (migrate) instead of wiping it.
+  useEffect(() => {
+    const prev = prevPatientRef.current;
+    if (prev === patientId) return;
+    prevPatientRef.current = patientId;
+    // Vitals are per-visit, not part of the draft store — clear them on a patient
+    // switch so one patient's readings never carry onto another's chart.
+    setVitals({});
+    // Drop the visit binding if the nurse switches to a different patient than the
+    // bound visit's — so the save can't complete the wrong patient's visit.
+    if (patientId !== boundPatientRef.current) setExistingVisitId(null);
+    let incoming = null;
+    const saved = sessionStorage.getItem(draftKeyFor(patientId));
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        incoming = parsed.note || "";
+        if (parsed.visitType) setVisitType(parsed.visitType);
+      } catch { incoming = null; }
+    }
+    if (incoming !== null) {
+      setNote(incoming);
+      setDraftRestored(incoming.trim().length > 20);
+    } else if (prev) {
+      // Switching between two real patients and the incoming one has no session
+      // draft — clear, then check the durable store (covers a post-restart switch
+      // where the only copy of their draft is in IndexedDB).
+      setNote("");
+      setDraftRestored(false);
+      tryRestoreDurableDraft(patientId);
+    }
+    // else: came from the unassigned bucket with nothing saved — keep the typed
+    // note so it isn't lost; it will autosave under the newly-selected patient.
+  }, [patientId]);
+
+  // Autosave under the ACTIVE patient (via ref) — deliberately not keyed on
+  // patientId, so a patient switch never writes the old note under the new key.
+  useEffect(() => {
+    if (!note.trim()) return;
+    const pid = patientIdRef.current;
+    sessionStorage.setItem(draftKeyFor(pid), JSON.stringify({ note, visitType, patientId: pid }));
+    import('@/lib/indexedDB').then(({ saveDraftNoteLocally }) => {
+        saveDraftNoteLocally({ id: `draft_${pid || 'unassigned'}`, note, visitType, patientId: pid });
+    }).catch(console.error);
+  }, [note, visitType]);
+
+  useEffect(() => { if (step === 1) textareaRef.current?.focus(); }, [step]);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('fromScribe') === 'true') {
-        const preFilledNote = sessionStorage.getItem('preFilledNote');
-        if (preFilledNote) {
-            setRoughNotes(preFilledNote);
-            sessionStorage.removeItem('preFilledNote');
-        }
-    }
-  }, [location]);
+    return () => {
+      try { recRef.current?.stop(); } catch { /* already stopped */ }
+      releaseDictation(recStopRef.current);
+    };
+  }, []);
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
-  });
+  const startDictation = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { toast.error("Speech recognition not supported in this browser."); return; }
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+    rec.onresult = (e) => {
+      const t = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(" ");
+      const enhanced = enhanceTranscription(t);
+      setNote(prev => prev ? prev + " " + enhanced : enhanced);
+    };
+    const stop = () => { try { rec.stop(); } catch { /* already stopped */ } };
+    recStopRef.current = stop;
+    rec.onerror = () => { setListening(false); releaseDictation(stop); };
+    rec.onend = () => { setListening(false); releaseDictation(stop); };
+    recRef.current = rec;
+    // Stop any per-question dictation mic first — only one recognizer at a time.
+    claimDictation(stop);
+    rec.start();
+    setListening(true);
+  };
+  const stopDictation = () => { recRef.current?.stop(); setListening(false); releaseDictation(recStopRef.current); };
 
-  // Auto-set care setting and provider type from user profile
-  const careSetting = currentUser?.service_type || "";
-  const providerType = currentUser?.credential_type || "RN";
+  // Step 1 → 2. The deterministic scan + questions + generation + fact-check all
+  // live in <ConstrainedNoteReviewer>, which scans `note` on mount.
+  const startReview = () => {
+    if (!note || note.trim().length < 20) return;
+    setSaved(false);
+    setSavedVisitId(null);
+    setSavedAuditId(null);
+    setStep(2);
+  };
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ["allPatients"],
-    queryFn: async () => {
-      return await base44.entities.Patient.list('-updated_date', 500);
-    }
-  });
-
-  const { data: customComplianceRules = [] } = useQuery({
-    queryKey: ['activeComplianceRules'],
-    queryFn: async () => {
-      const rules = await base44.entities.ComplianceRule.list('-created_date', 500);
-      return rules.filter(rule => rule.is_active);
-    }
-  });
-
-  // Fetch user AI preferences
-  const { data: aiPreferences } = useQuery({
-    queryKey: ['aiPreferences', currentUser?.email],
-    queryFn: async () => {
-      const prefs = await base44.entities.AIConfiguration.filter({
-        user_email: currentUser?.email
-      });
-      return prefs[0] || null;
-    },
-    enabled: !!currentUser?.email
-  });
-
-  const createNewPatient = async () => {
-    if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
-      toast.error("First and last name are required");
+  // Save to the patient's chart. Re-verifies any edits first (via the reviewer),
+  // then persists — updating the same Visit on re-save so editing never creates a
+  // duplicate. Optional: the note is fully usable (copy/PDF) without saving.
+  const handleSave = async (api) => {
+    if (!patientId || !currentUser?.email) {
+      toast.error("Select a patient to save this note to their chart.");
       return;
     }
-
-    setCreatingPatient(true);
+    if (api.chartRisk?.hasUnacknowledgedCritical) {
+      toast.error("Acknowledge the chart safety conflict before saving to the chart.");
+      return;
+    }
+    setSaving(true);
     try {
-      const created = await base44.entities.Patient.create({
-        first_name: newPatientData.first_name,
-        last_name: newPatientData.last_name,
-        date_of_birth: newPatientData.date_of_birth || null,
-        medical_record_number: newPatientData.medical_record_number || ""
-      });
-
-      setSelectedPatient(created.id);
-      setShowCreatePatient(false);
-      setNewPatientData({
-        first_name: "",
-        last_name: "",
-        date_of_birth: "",
-        medical_record_number: ""
-      });
-      toast.success("Patient created successfully");
-    } catch (error) {
-      toast.error("Failed to create patient");
-      console.error(error);
+      let result = api.result;
+      if (api.dirty) {
+        result = await api.recheck();
+        if (!result) { setSaving(false); return; } // fact-check failed → reviewer shows the fix panel
+      }
+      await persistNote(result);
+      setSaved(true);
+      // The work is now persisted (online) or queued (offline) — drop the local
+      // draft so it doesn't linger as stale PHI for this patient.
+      clearDraft(patientId);
+    } catch (err) {
+      console.error("Save to chart error:", err);
+      toast.error("Saving to the chart failed.");
     } finally {
-      setCreatingPatient(false);
+      setSaving(false);
     }
   };
 
-  const enhanceNote = async () => {
-     console.log('🔵 ENHANCE NOTE STARTED');
-     if (!roughNotes.trim()) {
-     toast.error("Please enter clinical notes");
-     return;
-     }
-
-     if (!careSetting) {
-     toast.error("Please select a care setting");
-     return;
-     }
-
-     if (!visitType) {
-     toast.error("Please select a visit type");
-     return;
-     }
-
-     if (!selectedDiagnosis) {
-     toast.error("Please select a diagnosis");
-     return;
-     }
-
-     const loadingToast = toast.loading("Enhancing note and analyzing quality...");
-     setEnhancing(true);
-     setEnhancedNote(null);
-     setComplianceResults(null);
-     setShowResults(false);
-     setMedicareViolations([]);
-     setRegulatoryWarnings([]);
-     setSuggestedTasks([]);
-
-     try {
-     console.log('🔵 Getting compliance prompt for:', providerType, visitType, careSetting);
-     const compliancePrompt = getProviderCompliancePrompt(providerType, visitType);
-     const providerAdditions = getProviderPromptAdditions(providerType);
-     const locationAdditions = getCareSettingPromptAdditions(careSetting);
-     let fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
-
-     // Enhance prompt with learned patterns and knowledge base
-     fullCompliancePrompt = await buildEnhancedPrompt({
-       basePrompt: fullCompliancePrompt,
-       visitType,
-       diagnosis: selectedDiagnosis,
-       careSetting,
-       category: 'clinical_documentation'
-     });
-     console.log('✅ Enhanced compliance prompt with learned patterns');
-
-     // Filter custom rules applicable to this provider, visit type, and care setting
-     const applicableRules = customComplianceRules.filter(rule => {
-       // Check visit type
-       const visitTypeMatch = !rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0 || 
-                              rule.applies_to_visit_types.includes(visitType);
-
-       // Check care type (home_health, hospice, both)
-       const careTypeMatch = !rule.applies_to_care_type || rule.applies_to_care_type === 'both' ||
-                             rule.applies_to_care_type === careSetting;
-
-       return visitTypeMatch && careTypeMatch;
-     });
-     console.log('✅ Applicable rules:', applicableRules.length);
-
-       // Gather enhanced patient context
-       let patientContext = null;
-       if (selectedPatient !== 'no_patient' && patientData) {
-         console.log('🔵 Building patient context for:', patientData.id);
-         const recentNotes = (patientData.enhanced_notes_history || []).slice(-3);
-         const carePlans = await base44.entities.CarePlan.filter({
-           patient_id: patientData.id,
-           status: 'active'
-         });
-
-         patientContext = {
-           patient_name: `${patientData.first_name} ${patientData.last_name}`,
-           primary_diagnosis: patientData.primary_diagnosis,
-           secondary_diagnoses: patientData.secondary_diagnoses || [],
-           allergies: patientData.allergies,
-           current_medications: patientData.current_medications || [],
-           recent_notes: recentNotes.map(note => ({
-             date: note.date,
-             visit_type: note.visit_type,
-             diagnosis: note.diagnosis,
-             note_excerpt: note.enhanced_note?.substring(0, 300)
-           })),
-           active_care_plans: carePlans.map(cp => ({
-             problem: cp.problem,
-             goal: cp.goal,
-             status: cp.status
-           }))
-         };
-         console.log('✅ Patient context built');
-       }
-
-       // Single consolidated backend call with vital signs, patient context, and AI preferences
-       console.log('🔵 Calling enhanceNoteWithQuality function...');
-       const response = await base44.functions.invoke('enhanceNoteWithQuality', {
-          rough_notes: roughNotes,
-          visit_type: visitType,
-          diagnosis: selectedDiagnosis,
-          provider_type: providerType,
-          care_setting: careSetting,
-          compliance_prompt: fullCompliancePrompt,
-          custom_rules: applicableRules,
-          patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
-          vital_signs: vitalSigns,
-          patient_context: patientContext,
-          ai_preferences: aiPreferences
-        });
-
-        // Apply user's learned preferences to refine the note
-        let refinedResponse = response;
-        try {
-          const preferencesResponse = await base44.functions.invoke('applyLearnedPreferences', {
-            enhanced_note: response.data?.enhanced_note || response.enhanced_note,
-            provider_type: providerType,
-            visit_type: visitType,
-            suggested_suggestions: response.data?.quality_analysis?.suggestions || []
-          });
-          if (preferencesResponse.data?.enhanced_note) {
-            refinedResponse.data.enhanced_note = preferencesResponse.data.enhanced_note;
-            console.log('✅ Applied learned preferences to note');
-          }
-        } catch (prefError) {
-          console.error('Warning: Could not apply learned preferences:', prefError);
-          // Continue without learned preferences
-        }
-
-       console.log('✅ Function response received:', response);
-       // Handle nested response structure: response.data.data contains the actual result
-       const result = response.data?.data || response.data || response;
-       console.log('✅ Result extracted:', result);
-       console.log('📋 FULL RESULT STRUCTURE:', JSON.stringify(result, null, 2));
-       
-       // Debug individual fields
-       console.log('🔍 enhanced_note:', result.enhanced_note);
-       console.log('🔍 compliance_check:', result.compliance_check);
-       console.log('🔍 quality_analysis:', result.quality_analysis);
-       console.log('🔍 suggested_tasks:', result.suggested_tasks);
-       console.log('🔍 suggested_education_materials:', result.suggested_education_materials);
-
-       // Update all state with consolidated results
-       console.log('🔵 Updating state...');
-       const finalNote = refinedResponse.data?.enhanced_note || result.enhanced_note;
-       setExtractedData(result.extracted_data);
-       setEnhancedNote(finalNote);
-       setEditedNote(finalNote);
-       setComplianceResults({
-         ...result.compliance_check,
-         quality_analysis: result.quality_analysis
-       });
-       setMedicareViolations(result.compliance_check?.medicare_violations || []);
-       setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
-       setSuggestedTasks(result.suggested_tasks || []);
-       setSuggestedEducation(result.suggested_education_materials || []);
-
-       // Calculate time saved (estimate: 15 min manual charting saved with AI enhancement)
-       const noteLength = finalNote?.length || 0;
-       const baselineMinutes = Math.max(10, Math.min(30, noteLength / 50)); // 10-30 min based on length
-       const actualMinutes = 2; // Typical time with AI
-       const savedMinutes = baselineMinutes - actualMinutes;
-       setTimeSavedMinutes(savedMinutes);
-
-       // Record time savings
-       try {
-         await base44.entities.TimeSavings.create({
-           user_email: currentUser?.email,
-           feature_used: 'note_enhancement',
-           time_saved_minutes: savedMinutes,
-           patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
-           visit_date: new Date().toISOString().split('T')[0],
-           baseline_time_minutes: baselineMinutes,
-           actual_time_minutes: actualMinutes,
-           note_length_chars: noteLength,
-           specialty: providerType
-         });
-       } catch (saveError) {
-         console.error('Failed to save time tracking:', saveError);
-       }
-
-       // Generate clinical insights in background
-       generateClinicalInsights(finalNote, result.extracted_data);
-
-       console.log('🔵 STATE AFTER UPDATES:');
-       console.log('  - enhancedNote will be:', result.enhanced_note);
-       console.log('  - complianceResults will be:', {...result.compliance_check, quality_analysis: result.quality_analysis});
-       console.log('✅ State updated, setting showResults to true');
-       setShowResults(true);
-       setIsEditMode(false);
-
-       toast.dismiss(loadingToast);
-       if (result.compliance_check?.compliance_score >= 85) {
-         toast.success("Note enhanced - Medicare compliant!");
-       } else {
-         toast.warning("Note enhanced - Review compliance warnings");
-       }
-       console.log('✅ ENHANCE NOTE COMPLETED SUCCESSFULLY');
-     } catch (error) {
-       console.error('❌ ERROR enhancing note:', error);
-       console.error('Error stack:', error.stack);
-       toast.dismiss(loadingToast);
-       toast.error(`Failed to enhance note: ${error.message || 'Unknown error'}`);
-     } finally {
-       setEnhancing(false);
-     }
-   };
-
-  // Get available visit types based on provider and care setting from profile
-  const availableVisitTypes = (providerType && careSetting) ?
-    getVisitTypesForProvider(providerType, careSetting) :
-    [];
-
-  // Home Health & Hospice focused diagnoses
-  const HOME_HEALTH_HOSPICE_DIAGNOSES = [
-    "Congestive Heart Failure (CHF) - I50.9",
-    "COPD - J44.1",
-    "Diabetes Mellitus Type 2 - E11.9",
-    "Hypertension - I10",
-    "Wound Care - Pressure Ulcer - L89",
-    "Wound Care - Diabetic Ulcer - E11.621",
-    "Wound Care - Venous Stasis Ulcer - I87.2",
-    "Wound Care - Surgical Site - T81.4",
-    "Post-Surgical Care",
-    "Chronic Kidney Disease - N18.9",
-    "Dementia/Alzheimer's - F03.90",
-    "Stroke/CVA Recovery - I63.9",
-    "UTI - N39.0",
-    "Pneumonia - J18.9",
-    "Cellulitis - L03.90",
-    "DVT/PE - I82.40",
-    "Atrial Fibrillation - I48.91",
-    "Coronary Artery Disease - I25.10",
-    "Peripheral Vascular Disease - I73.9",
-    "Parkinson's Disease - G20",
-    "Multiple Sclerosis - G35",
-    "Cancer Care / Oncology - C80.1",
-    "Palliative Care - Z51.5",
-    "End-of-Life / Hospice Care - Z51.5",
-    "Chronic Pain Management - G89.29",
-    "Depression - F32.9",
-    "Anxiety - F41.9",
-    "Fall Risk / History of Falls - R29.6",
-    "Osteoarthritis - M19.90",
-    "Osteoporosis - M81.0",
-    "Fracture - Hip - S72.009A",
-    "ESRD on Dialysis - N18.6",
-    "Anemia - D64.9",
-    "Seizure Disorder - G40.909",
-    "Dysphagia - R13.10",
-    "Obesity - E66.9",
-    "Sepsis - A41.9",
-    "COVID-19 - U07.1",
-    "Heart Failure - Systolic - I50.20",
-    "Heart Failure - Diastolic - I50.30",
-    "Liver Cirrhosis - K74.60",
-    "ALS - G12.21",
-    "Bipolar Disorder - F31.9",
-    "Schizophrenia - F20.9",
-    "Opioid Dependence - F11.20",
-    "Caregiver Support / Training",
-  ];
-
-  const [customDiagnosisSearch, setCustomDiagnosisSearch] = useState("");
-  const [showCustomSearch, setShowCustomSearch] = useState(false);
-
-  const commonDiagnoses = HOME_HEALTH_HOSPICE_DIAGNOSES;
-
-  const filteredDiagnoses = diagnosisSearch.trim() ?
-  commonDiagnoses.filter((d) =>
-  d.toLowerCase().includes(diagnosisSearch.toLowerCase())
-  ) :
-  commonDiagnoses;
-
-  const getSelectedPatientData = () => {
-    if (selectedPatient === "no_patient" || selectedPatient === "create_new") return null;
-    return allPatients.find((p) => p.id === selectedPatient);
+  // Create-or-update the chart records from the reviewer's save-ready result via
+  // the shared persistVisitNote helper (also used by the Visit Scribe audio flow),
+  // then run the host-only follow-up (state + task/supply analysis) on a fresh save.
+  const persistNote = async (result) => {
+    const out = await persistVisitNote({
+      result, patientId, visitDate, visitType, roughNote: note, vitals,
+      currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
+      savedVisitId, savedAuditId, existingVisitId,
+    });
+    if (!out) return;
+    if (out.mode === 'create') {
+      setSavedVisitId(out.visitId);
+      // The visit (new or the just-completed bound one) is now the same-session
+      // target, so further re-saves go through the savedVisitId update path.
+      setExistingVisitId(null);
+      // Remember the audit so a later re-save updates it in place.
+      if (out.auditId) setSavedAuditId(out.auditId);
+      generateTasksFromNote(out.finalText, out.visitId);
+      analyzeSupplyUsage(out.finalText, out.visitId);
+    }
   };
 
-  const patientData = getSelectedPatientData();
-
-  const saveToPatientRecord = async () => {
-    if (selectedPatient === "no_patient" || !patientData) {
-      toast.error("Please select a patient to save this note");
-      return;
+  const analyzeSupplyUsage = async (noteText, visitId) => {
+    if (!noteText || !patientId) return;
+    try {
+      await analyzeVisitForSupplyUsage({ visitId, visitNotes: noteText, patientId });
+    } catch (err) {
+      console.error("Supply analysis failed:", err);
     }
+  };
 
-    setSavingToPatient(true);
-    
-    // Build education text for the note
-    let educationText = '';
-    if (providedEducation.length > 0) {
-      educationText = '\n\nPatient Education Provided:\n' + 
-        providedEducation.map(ed => `- ${ed.material.title} (via ${ed.method})`).join('\n');
+  const generateTasksFromNote = async (noteText, visitId) => {
+    if (!noteText || generatingTasks) return;
+    setGeneratingTasks(true);
+    try {
+      const result = await generateFollowUpTasks({
+        noteText,
+        patientId: patientId || undefined,
+        visitId: visitId || undefined,
+        visitType,
+        diagnosis: patient?.primary_diagnosis || "",
+      });
+      if (result?.data?.tasks?.length) {
+        setFollowUpTasks(result.data.tasks);
+      }
+    } catch (err) {
+      console.error("Failed to generate follow-up tasks:", err);
+    } finally {
+      setGeneratingTasks(false);
     }
-    
-    const noteData = {
-      patientId: patientData.id,
-      visitType,
-      diagnosis: selectedDiagnosis,
-      enhancedNote: (isEditMode ? editedNote : enhancedNote) + educationText,
-      roughNotes,
-      vitalSigns,
-      qualityScore: complianceResults?.quality_analysis?.overall_quality_score,
-      complianceScore: complianceResults?.compliance_score
+  };
+
+  const reset = () => {
+    setNote(""); setSaved(false); setSavedVisitId(null); setSavedAuditId(null);
+    setStep(1); setDraftRestored(false); setSignatureImage(null); setFollowUpTasks([]);
+    setVitals({}); setExistingVisitId(null);
+    clearDraft(patientIdRef.current);
+  };
+
+  // Turn critical chart conflicts / vitals flagged in the reviewer into high-
+  // priority provider follow-up tasks. A critical follow-up must never be lost,
+  // so offline (or on a failed create) it is queued to the offline sync drain
+  // instead of being dropped.
+  const escalateToTasks = async (items) => {
+    if (!items?.length || !currentUser?.email) return;
+    const payloads = items.map((it) => ({
+      patient_id: patientId || undefined,
+      title: it.title,
+      description: it.description || "",
+      type: "notify",
+      priority: "high",
+      status: "pending",
+      source: "manual",
+      assigned_to: currentUser.email,
+      ai_reason: it.reason || "",
+      related_visit_id: savedVisitId || undefined,
+    }));
+    const queueForSync = async (toQueue) => {
+      const { addToSyncQueue } = await import('@/lib/indexedDB');
+      await Promise.all(toQueue.map((p) => addToSyncQueue('CREATE_TASK', p)));
     };
 
-    // If offline, save to cache
-    if (!isOnline) {
-      const draftId = saveOfflineNote(noteData);
-      if (draftId) {
-        toast.success("Note saved offline - will sync when online");
-        setSavingToPatient(false);
-        return;
+    // Offline: queue everything; the OfflineManager drain creates them on reconnect.
+    if (!navigator.onLine) {
+      try {
+        await queueForSync(payloads);
+        setFollowUpTasks((prev) => [...payloads, ...prev]);
+        toast.success(`Saved ${payloads.length} follow-up task${payloads.length !== 1 ? "s" : ""} offline — will sync when reconnected.`);
+      } catch (err) {
+        console.error("Failed to queue escalation task(s):", err);
+        toast.error("Couldn't save the follow-up task offline.");
       }
+      return;
     }
 
-    // If online, save directly
+    // Online: create each individually so a partial failure can't re-create the
+    // ones that already succeeded (Promise.all would reject the whole batch and
+    // the retry would duplicate the successes).
+    const results = await Promise.allSettled(payloads.map((p) => base44.entities.Task.create(p)));
+    const created = [];
+    const failed = [];
+    results.forEach((r, i) => (r.status === "fulfilled" ? created.push(r.value) : failed.push(payloads[i])));
+    if (created.length) setFollowUpTasks((prev) => [...created, ...prev]);
+    if (!failed.length) {
+      toast.success(`Created ${created.length} provider follow-up task${created.length !== 1 ? "s" : ""}.`);
+      return;
+    }
+    // Queue ONLY the failures (a transient 5xx, not necessarily a disconnect),
+    // then kick the sync drain so they retry now — not just on the next
+    // offline→online transition, which may never come while we stay online.
+    console.error("Some escalation task creates failed; queuing for retry:", results.find((r) => r.status === "rejected")?.reason);
     try {
-      const currentHistory = patientData.enhanced_notes_history || [];
-      
-      const newEntry = {
-        date: new Date().toISOString(),
-        visit_type: visitType,
-        diagnosis: selectedDiagnosis,
-        enhanced_note: noteData.enhancedNote,
-        rough_note: roughNotes,
-        quality_score: complianceResults?.quality_analysis?.overall_quality_score,
-        compliance_score: complianceResults?.compliance_score,
-        nurse_email: currentUser?.email,
-        vital_signs: vitalSigns
-      };
-
-      await base44.entities.Patient.update(patientData.id, {
-        enhanced_notes_history: [...currentHistory, newEntry]
-      });
-
-      toast.success("Note saved to patient record" + (educationText ? " with education documented!" : "!"));
-    } catch (error) {
-      console.error('Error saving to patient:', error);
-      
-      // If save fails, cache offline
-      const draftId = saveOfflineNote(noteData);
-      if (draftId) {
-        toast.warning("Saved offline - will sync when connection restored");
-      } else {
-        toast.error("Failed to save note");
-      }
-    } finally {
-      setSavingToPatient(false);
+      await queueForSync(failed);
+      setFollowUpTasks((prev) => [...failed, ...prev]);
+      window.dispatchEvent(new Event('online'));
+      toast.message(`Couldn't reach the server for ${failed.length} follow-up task${failed.length !== 1 ? "s" : ""} — saved and retrying.`);
+    } catch (err) {
+      console.error("Failed to queue failed escalation task(s):", err);
+      toast.error("Couldn't save the follow-up task. Try again.");
     }
   };
 
-  const recheckCompliance = async () => {
-   const loadingToast = toast.loading("Re-checking compliance and quality...");
-   try {
-     const compliancePrompt = getProviderCompliancePrompt(providerType, visitType);
-     const providerAdditions = getProviderPromptAdditions(providerType);
-     const locationAdditions = getCareSettingPromptAdditions(careSetting);
-     const fullCompliancePrompt = `${compliancePrompt}\n${providerAdditions}\n${locationAdditions}`;
-      
-      const applicableRules = customComplianceRules.filter(rule => {
-        const visitTypeMatch = !rule.applies_to_visit_types || rule.applies_to_visit_types.length === 0 || 
-                              rule.applies_to_visit_types.includes(visitType);
-        const careTypeMatch = !rule.applies_to_care_type || rule.applies_to_care_type === 'both' ||
-                             rule.applies_to_care_type === careSetting;
-        return visitTypeMatch && careTypeMatch;
-      });
-
-      const response = await base44.functions.invoke('enhanceNoteWithQuality', {
-        rough_notes: editedNote,
-        visit_type: visitType,
-        diagnosis: selectedDiagnosis,
-        provider_type: providerType,
-        care_setting: careSetting,
-        compliance_prompt: fullCompliancePrompt,
-        custom_rules: applicableRules,
-        patient_id: selectedPatient !== 'no_patient' ? selectedPatient : null,
-        vital_signs: vitalSigns
-      });
-
-      const result = response.data;
-      const newComplianceResults = result.compliance_check?.medicare_violations || [];
-      setComplianceResults({
-        ...result.compliance_check,
-        quality_analysis: result.quality_analysis
-      });
-      setMedicareViolations(newComplianceResults);
-      setRegulatoryWarnings(result.compliance_check?.regulatory_warnings || []);
-
-      // Enhanced learning from user edits
-      if (enhancedNote !== editedNote) {
-        try {
-          // Old learning system
-          await base44.functions.invoke('learnFromUserEdits', {
-            original_enhanced_note: enhancedNote,
-            edited_note: editedNote,
-            visit_type: visitType,
-            provider_type: providerType,
-            compliance_issues_before: medicareViolations,
-            compliance_issues_after: newComplianceResults
-          });
-
-          // New enhanced learning system with explicit rating
-          await recordEditForLearning({
-            originalText: enhancedNote,
-            editedText: editedNote,
-            context: {
-              visit_type: visitType,
-              diagnosis: selectedDiagnosis,
-              care_setting: careSetting,
-              section: 'full_note',
-              compliance_score: result.compliance_check?.compliance_score || 0,
-              quality_score: result.quality_analysis?.overall_quality_score || 0,
-              explicit_rating: noteRating?.rating || null,
-              explicit_feedback: noteRating?.feedback || null
-            }
-          });
-          console.log('✅ Enhanced learning from user edits complete');
-        } catch (learnError) {
-          console.error('Error learning from edits:', learnError);
-        }
-      }
-
-      toast.dismiss(loadingToast);
-      toast.success("Compliance check complete!");
-    } catch (error) {
-      console.error('Error re-checking:', error);
-      toast.dismiss(loadingToast);
-      toast.error("Failed to re-check compliance");
-    }
-  };
-
-  const applySuggestionToRoughNotes = (improvedText, originalExcerpt) => {
-    if (originalExcerpt) {
-      setRoughNotes(roughNotes.replace(originalExcerpt, improvedText));
-    } else {
-      setRoughNotes(roughNotes + '\n\n' + improvedText);
-    }
-  };
-
-  const generateClinicalInsights = async (note, extractedData) => {
-    setLoadingInsights(true);
-    try {
-      const response = await base44.functions.invoke('generateClinicalInsights', {
-        enhanced_note: note,
-        diagnoses: extractedData?.diagnoses || [selectedDiagnosis],
-        symptoms: extractedData?.symptoms || [],
-        medications: extractedData?.medications || [],
-        vital_signs: vitalSigns,
-        visit_type: visitType,
-        provider_type: providerType,
-        patient_context: patientData ? {
-          age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-          comorbidities: patientData.secondary_diagnoses || []
-        } : {}
-      });
-      setClinicalInsights(response.data);
-    } catch (error) {
-      console.error('Error generating clinical insights:', error);
-    } finally {
-      setLoadingInsights(false);
-    }
-  };
+  const ready = note.trim().length >= 20;
 
   return (
-    <PremiumFeatureGate featureName="Smart Note Assistant" featureDescription="AI-powered clinical documentation with real-time compliance monitoring and quality scoring." allowTrial={true}>
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 p-4 sm:p-6 pb-20 sm:pb-6">
-      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
-        
-        {/* Professional Header */}
-        <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg">
-              <Wand2 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Smart Note Assistant</h1>
-              <p className="text-sm text-slate-600 mt-0.5">AI-powered clinical documentation with compliance monitoring</p>
-            </div>
-          </div>
+    <PageContainer>
+
+      <HideWhenEmbedded>
+        <SmartNoteHeader careScope={careScope} onReset={reset} step={step} activeTab={activeTab} />
+      </HideWhenEmbedded>
+
+      <SmartNoteTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {/* ── TAB: DRAFT FROM VITALS ── */}
+      {activeTab === "drafter" && (
+        <StructuredNoteDrafter
+          patient={patient}
+          onDraftReady={(draft, vType, structuredVitals) => {
+            setNote(draft);
+            setVisitType(vType);
+            // Carry the structured vitals into the same canonical state the main
+            // form uses, so they reach the verified pipeline (coverage, trends,
+            // critical-vital escalation, chart cross-check) — not just the prose.
+            if (structuredVitals) setVitals(structuredVitals);
+            setActiveTab("builder");
+          }}
+        />
+      )}
+
+      {/* ── TAB: VISIT SUMMARY ── */}
+      {activeTab === "summary" && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <VisitSummaryGenerator patientId={patientId} />
         </div>
+      )}
+
+      {/* ── TAB: VITAL TRENDS ── */}
+      {activeTab === "trends" && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <VitalsTrendAnalysis patientId={patientId} />
+        </div>
+      )}
 
 
-        {/* Conflict Resolution */}
-        {conflictData && (
-          <NoteConflictResolver
-            onlineVersion={conflictData.online}
-            offlineVersion={conflictData.offline}
-            patientName={patientData?.first_name}
-            onResolve={(content) => {
-              setRoughNotes(content);
-              setConflictData(null);
-              toast.success("Conflict resolved");
-            }}
-          />
-        )}
-        {/* Hide provider note type selector to streamline - visit type is below */}
 
-        {/* Streamlined - removed checklist for efficiency */}
-
-        {/* Offline Sync Status */}
-        {!isOnline && <OfflineSyncNotification currentUser={currentUser} />}
-
-        {!showResults ?
+      {/* ── TAB: NOTE BUILDER ── */}
+      {activeTab === "builder" && (
         <>
-            {/* Clinical Documentation Form - Streamlined */}
-            <Card className="border-blue-200 shadow-md">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 p-4 sm:p-6">
-                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  Clinical Documentation
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="bg-white p-4 sm:p-6 space-y-4">
-                 {/* Quick Patient Access - Hide if using standard section */}
-
-                 {/* Core Documentation Fields - Compact Grid */}
-                 <div className="grid gap-4">
-                 {/* Patient Selection Dropdown */}
-                 <div className="w-full">
-                   <Label className="text-sm font-semibold text-slate-700 mb-2 block">Patient *</Label>
-                  <Select value={selectedPatient} onValueChange={setSelectedPatient}>
-                    <SelectTrigger className="w-full h-11">
-                      <SelectValue placeholder="Select patient..." />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      <SelectItem value="no_patient">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4 text-orange-500" />
-                          <span>No Patient Data (Anonymous)</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="create_new">
-                        <div className="flex items-center gap-2">
-                          <Plus className="w-4 h-4 text-blue-500" />
-                          <span>Create New Patient</span>
-                        </div>
-                      </SelectItem>
-                      {allPatients.map((patient) =>
-                    <SelectItem key={patient.id} value={patient.id}>
-                          {patient.first_name} {patient.last_name} - MRN: {patient.medical_record_number}
-                        </SelectItem>
-                    )}
-                    </SelectContent>
-                  </Select>
-                  {selectedPatient === "no_patient" &&
-                <p className="text-xs text-orange-600 mt-1">
-                      ⚠️ Note will not be saved to patient records
-                    </p>
-                }
-                  {patientData &&
-                <div className="mt-2 p-2 bg-slate-100 dark:bg-slate-800 rounded text-sm">
-                      <strong>Selected:</strong> {patientData.first_name} {patientData.last_name}
-                      {patientData.primary_diagnosis &&
-                  <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                          Primary: {patientData.primary_diagnosis}
-                        </div>
-                  }
-                    </div>
-                }
-                </div>
-
-                {/* Visit Type Selection */}
-                <div className="w-full">
-                  <Label className="text-sm font-semibold text-slate-700 mb-2 block">Visit Type *</Label>
-                  <Select value={visitType} onValueChange={setVisitType}>
-                    <SelectTrigger className="h-11">
-                      <SelectValue placeholder="Select visit type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableVisitTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Diagnosis Selection */}
-                <div className="w-full">
-                  <Label className="text-sm font-semibold text-slate-700 mb-2 block">Primary Diagnosis *</Label>
-                  {!showCustomSearch ? (
-                    <div className="space-y-2">
-                      <Input
-                        placeholder="Search common diagnoses..."
-                        value={diagnosisSearch}
-                        onChange={(e) => setDiagnosisSearch(e.target.value)}
-                        className="h-11"
-                      />
-                      <Select value={selectedDiagnosis} onValueChange={(value) => {
-                        if (value === "__other__") {
-                          setShowCustomSearch(true);
-                          setDiagnosisSearch("");
-                        } else {
-                          setSelectedDiagnosis(value);
-                          setDiagnosisSearch("");
-                        }
-                      }}>
-                        <SelectTrigger className="h-11">
-                          <SelectValue placeholder="Select diagnosis..." />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60">
-                          {filteredDiagnoses.map((diagnosis) => (
-                            <SelectItem key={diagnosis} value={diagnosis}>
-                              {diagnosis}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="__other__">
-                            <span className="text-blue-600 font-medium">Other — Search by name or ICD-10...</span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Type diagnosis name or ICD-10 code..."
-                          value={customDiagnosisSearch}
-                          onChange={(e) => setCustomDiagnosisSearch(e.target.value)}
-                          className="h-11 flex-1"
-                          autoFocus
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-11 px-3 text-xs"
-                          onClick={() => { setShowCustomSearch(false); setCustomDiagnosisSearch(""); }}
-                        >
-                          Back
-                        </Button>
-                      </div>
-                      {customDiagnosisSearch.trim().length >= 2 && (
-                        <Button
-                          variant="outline"
-                          className="w-full h-11 justify-start text-left text-sm"
-                          onClick={() => {
-                            setSelectedDiagnosis(customDiagnosisSearch.trim());
-                            setShowCustomSearch(false);
-                            setCustomDiagnosisSearch("");
-                          }}
-                        >
-                          Use: <span className="font-semibold ml-1">{customDiagnosisSearch.trim()}</span>
-                        </Button>
-                      )}
-                      <p className="text-[10px] text-slate-500">Type at least 2 characters, then click to select</p>
-                    </div>
-                  )}
-                  {selectedDiagnosis && (
-                    <div className="mt-1 flex items-center gap-2">
-                      <Badge className="bg-blue-100 text-blue-800 text-xs">{selectedDiagnosis}</Badge>
-                      <button onClick={() => { setSelectedDiagnosis(""); setShowCustomSearch(false); }} className="text-xs text-slate-400 hover:text-red-500">clear</button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Smart Template Suggester with AI matching */}
-                {visitType && providerType && (
-                  <SmartTemplateSuggester
-                    visitType={visitType}
-                    providerType={providerType}
-                    diagnosis={selectedDiagnosis}
-                    patientData={patientData}
-                    onSelectTemplate={(formattedNote, template) => {
-                      setRoughNotes(formattedNote);
-                      setSelectedTemplate(template);
-                    }}
-                    onOpenCreator={(initialData) => {
-                      setTemplateCreatorInitData(initialData || null);
-                      setShowTemplateCreator(true);
-                    }}
-                  />
-                )}
-
-                {/* Template Education Suggestions */}
-                {visitType && providerType && selectedTemplate && (
-                  <TemplateEducationSuggestions
-                    templateId={selectedTemplate.id}
-                    patientDiagnosis={selectedDiagnosis}
-                  />
-                )}
-
-                {/* Visit Type Guidance */}
-                {visitType && <VisitTypeGuidance visitType={visitType} diagnosis={selectedDiagnosis} />}
-
-                {/* OASIS Field Suggestions - Only for RN on Admission visits */}
-                {providerType === 'RN' && visitType === 'admission' && selectedDiagnosis && (
-                  <OASISFieldSuggester
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    noteContent={roughNotes}
-                    patientContext={patientData ? {
-                      age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                      diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])],
-                      medications: patientData.current_medications
-                    } : null}
-                    onFieldsGenerated={(fields) => {
-                      console.log('OASIS fields suggested:', fields);
-                    }}
-                  />
-                )}
-
-                {/* Real-Time Compliance Monitoring - Combined */}
-                {visitType && selectedDiagnosis && roughNotes && roughNotes.length > 100 && (
-                  <RealTimeComplianceMonitor
-                    content={roughNotes}
-                    documentType={visitType}
-                    patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                    onScoreChange={(score) => {
-                      if (score < 70) {
-                        console.log('Low compliance score detected:', score);
-                      }
-                    }}
-                  />
-                )}
-
-                {/* AI Clinical Assistance - Consolidated */}
-                {visitType && selectedDiagnosis && (
-                   <UnifiedAIDocumentationAssistant
-                     patientId={selectedPatient}
-                     patientData={patientData}
-                     visitType={visitType}
-                     diagnosis={selectedDiagnosis}
-                     clinicalNotes={roughNotes}
-                     extractedData={extractedData}
-                     onFieldsPopulated={(result) => {
-                       if (result.fields) {
-                         const populated = `\nAssessment: ${result.fields.assessment}\n\nPlan: ${result.fields.plan}`;
-                         setRoughNotes(roughNotes + populated);
-                         toast.success('Fields populated');
-                       }
-                     }}
-                     onCodesGenerated={(result) => {
-                       console.log('ICD-10 codes generated:', result.codes);
-                     }}
-                     onEducationGenerated={(result) => {
-                       setSuggestedEducation([result.material]);
-                       toast.success('Education material generated');
-                     }}
-                     onComplianceChecked={(result) => {
-                       console.log('Compliance check completed:', result);
-                     }}
-                   />
-                 )}
-
-                {/* Voice to SOAP Converter */}
-                {visitType && selectedDiagnosis && (
-                  <VoiceToSOAPConverter
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    nurseType={providerType}
-                    patientContext={patientData ? {
-                      patient_name: `${patientData.first_name} ${patientData.last_name}`,
-                      age: patientData.date_of_birth ? Math.floor((new Date() - new Date(patientData.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : null,
-                      diagnoses: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])]
-                    } : null}
-                    onSOAPGenerated={(soapNote) => {
-                      setRoughNotes(soapNote);
-                      toast.success('SOAP note generated from voice');
-                    }}
-                  />
-                )}
-
-                {/* Smart Education Recommender */}
-                {selectedDiagnosis && (
-                  <SmartEducationRecommender
-                    diagnosis={selectedDiagnosis}
-                    visitType={visitType}
-                    onMaterialsGenerated={(materials) => {
-                      setSuggestedEducation(materials);
-                      toast.success('Education recommendations generated');
-                    }}
-                  />
-                )}
-
-                {/* Multi-Regulation Compliance Checker */}
-                {visitType && selectedDiagnosis && roughNotes && roughNotes.length > 100 && (
-                  <MultiRegulationComplianceChecker
-                    noteContent={roughNotes}
-                    visitType={visitType}
-                    regulations={selectedRegulations}
-                    onComplianceAnalyzed={(analysis) => {
-                      console.log('Multi-regulation compliance analysis:', analysis);
-                    }}
-                  />
-                )}
-
-                {/* Documentation Gap Detection - On Demand */}
-                {visitType && selectedDiagnosis && roughNotes && (
-                  <DocumentationGapDetector
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    noteContent={roughNotes}
-                    vitalSigns={vitalSigns}
-                    patientContext={patientData}
-                    onGapIdentified={(gaps) => {
-                      if (gaps.some(g => g.severity === 'critical')) {
-                        toast.warning('Critical documentation gaps detected');
-                      }
-                    }}
-                    onGapResolved={(enhancedNote) => {
-                      setRoughNotes(enhancedNote);
-                    }}
-                  />
-                )}
-
-
-
-                </div>
-
-                {/* Vital Signs Section */}
-                <div className="w-full bg-slate-50 p-4 rounded-lg border border-slate-200">
-                 <Label className="text-sm font-semibold text-slate-700 mb-3 block">Vital Signs</Label>
-                 {selectedPatient !== 'no_patient' && (
-                   <VitalSignsQuickButton
-                     patientId={selectedPatient}
-                     onApply={(vitals) => {
-                       setVitalSigns({
-                         temperature: vitals.temperature || vitalSigns.temperature,
-                         heart_rate: vitals.heart_rate || vitalSigns.heart_rate,
-                         respiratory_rate: vitals.respiratory_rate || vitalSigns.respiratory_rate,
-                         bp_systolic: vitals.blood_pressure?.split('/')[ 0] || vitalSigns.bp_systolic,
-                         bp_diastolic: vitals.blood_pressure?.split('/')[1] || vitalSigns.bp_diastolic,
-                         oxygen_saturation: vitals.oxygen_saturation || vitalSigns.oxygen_saturation
-                       });
-                     }}
-                   />
-                 )}
-                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-1 sm:mt-2">
-                   <div>
-                    <label className="text-[9px] sm:text-[10px] md:text-xs text-slate-600 dark:text-slate-400 block mb-1">Temp (°F)</label>
-                     <Input
-                       type="number"
-                       step="0.1"
-                       placeholder="98.6"
-                       value={vitalSigns.temperature}
-                       onChange={(e) => setVitalSigns({...vitalSigns, temperature: e.target.value})}
-                       className="h-9 text-sm"
-                     />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Heart Rate (bpm)</label>
-                      <Input
-                        type="number"
-                        placeholder="72"
-                        value={vitalSigns.heart_rate}
-                        onChange={(e) => setVitalSigns({...vitalSigns, heart_rate: e.target.value})}
-                        className="h-9"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Resp Rate</label>
-                      <Input
-                        type="number"
-                        placeholder="16"
-                        value={vitalSigns.respiratory_rate}
-                        onChange={(e) => setVitalSigns({...vitalSigns, respiratory_rate: e.target.value})}
-                        className="h-9"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">BP Systolic</label>
-                      <Input
-                        type="number"
-                        placeholder="120"
-                        value={vitalSigns.bp_systolic}
-                        onChange={(e) => setVitalSigns({...vitalSigns, bp_systolic: e.target.value})}
-                        className="h-9"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">BP Diastolic</label>
-                      <Input
-                        type="number"
-                        placeholder="80"
-                        value={vitalSigns.bp_diastolic}
-                        onChange={(e) => setVitalSigns({...vitalSigns, bp_diastolic: e.target.value})}
-                        className="h-9"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">O2 Sat (%)</label>
-                      <Input
-                        type="number"
-                        placeholder="98"
-                        value={vitalSigns.oxygen_saturation}
-                        onChange={(e) => setVitalSigns({...vitalSigns, oxygen_saturation: e.target.value})}
-                        className="h-9"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-
-
-                {/* Patient Context & History - Collapsed by Default */}
-                {selectedPatient !== 'no_patient' && patientData && (
-                  <details className="group">
-                    <summary className="cursor-pointer list-none">
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">
-                        <span className="text-xs font-semibold text-slate-700">📋 Patient Context & History (click to expand)</span>
-                      </div>
-                    </summary>
-                    <div className="mt-2 space-y-2">
-                      <PatientContextSidebar
-                        patientId={selectedPatient}
-                        onInsertContext={(text) => {
-                          setRoughNotes(roughNotes + '\n\n' + text);
-                        }}
-                      />
-                      {visitType && selectedDiagnosis && (
-                        <>
-                          <VisitRelevantHistorySummary
-                            patient={patientData}
-                            visitType={visitType}
-                            diagnosis={selectedDiagnosis}
-                            onInsertText={(text) => setRoughNotes(roughNotes + text)}
-                          />
-                          <AIFollowUpQuestions
-                            patient={patientData}
-                            visitType={visitType}
-                            diagnosis={selectedDiagnosis}
-                            roughNotes={roughNotes}
-                            onInsertQuestion={(text) => setRoughNotes(roughNotes + '\n\n' + text)}
-                          />
-                        </>
-                      )}
-                    </div>
-                  </details>
-                )}
-
-                {/* AI Documentation Assistant - Code Suggestions, Auto-Populate, Compliance */}
-                {visitType && selectedDiagnosis && (
-                  <ClinicalDocumentationAIAssistant
-                    noteContent={roughNotes}
-                    visitType={visitType}
-                    diagnosis={selectedDiagnosis}
-                    providerType={providerType}
-                    patientData={patientData}
-                    onSOAPGenerated={(soapNote) => {
-                      setRoughNotes(soapNote);
-                      toast.success('SOAP note generated from voice');
-                    }}
-                    onCodesSelected={(codes) => {
-                      const icd = codes.filter(c => c.code?.match(/^[A-Z]/));
-                      const cpt = codes.filter(c => c.code?.match(/^\d/));
-                      let codeText = '';
-                      if (icd.length) codeText += '\n\nICD-10 Codes:\n' + icd.map(c => `- ${c.code}: ${c.description}`).join('\n');
-                      if (cpt.length) codeText += '\n\nCPT Codes:\n' + cpt.map(c => `- ${c.code}: ${c.description}`).join('\n');
-                      if (codeText) setRoughNotes(prev => prev + codeText);
-                      toast.success(`${codes.length} code(s) added to notes`);
-                    }}
-                    onFieldsPopulated={(fields) => {
-                      if (fields.assessment || fields.plan || fields.subjective) {
-                        const addText = [
-                          fields.subjective ? `\nS: ${fields.subjective}` : '',
-                          fields.objective ? `\nO: ${fields.objective}` : '',
-                          fields.assessment ? `\nA: ${fields.assessment}` : '',
-                          fields.plan ? `\nP: ${fields.plan}` : '',
-                          fields.homebound_status ? `\nHomebound: ${fields.homebound_status}` : '',
-                          fields.skilled_need_justification ? `\nSkilled Need: ${fields.skilled_need_justification}` : ''
-                        ].filter(Boolean).join('');
-                        if (addText.trim()) setRoughNotes(prev => prev + addText);
-                      }
-                    }}
-                  />
-                )}
-
-                {/* Clinical Notes Section */}
-                <div className="w-full">
-                  <div className="mb-3">
-                    <Label className="text-sm font-semibold text-slate-700 mb-1 block">Clinical Notes *</Label>
-                    <p className="text-xs text-slate-600">Type or dictate your clinical observations and findings</p>
-                  </div>
-
-                  {/* Auto-Save Indicator */}
-                  {selectedPatient !== "no_patient" && (
-                    <AutoSaveIndicator
-                      noteContent={roughNotes}
-                      onSave={async () => {
-                        if (selectedPatient !== "no_patient" && roughNotes.trim()) {
-                          saveOfflineNote({
-                            patientId: selectedPatient,
-                            visitType,
-                            diagnosis: selectedDiagnosis,
-                            enhancedNote: roughNotes,
-                            roughNotes,
-                            vitalSigns
-                          });
-                        }
-                      }}
-                      enabled={true}
-                    />
-                  )}
-
-                  {/* Draft Versions */}
-                  {selectedPatient !== "no_patient" && (
-                    <NoteDraftVersions
-                      patientId={selectedPatient}
-                      visitType={visitType}
-                      diagnosis={selectedDiagnosis}
-                      onVersionSelect={(version) => {
-                        setRoughNotes(version.content);
-                        toast.info("Version loaded");
-                      }}
-                    />
-                  )}
-
-                  <VoiceDictationInput
-                    value={roughNotes}
-                    onChange={(e) => setRoughNotes(e.target.value)}
-                    placeholder="Enter your rough clinical notes here or use voice dictation...
-
-Example: Patient reports feeling better, pain level 2/10. Medications reviewed, compliant. Wound healing well, no signs of infection. Patient ambulating with walker..."
-
-
-
-                  />
-                </div>
-
-                {/* Generate Enhanced Note Button */}
-                <div className="pt-2 border-t border-slate-200">
-                <Button
-                onClick={enhanceNote}
-                disabled={enhancing || !visitType || !selectedDiagnosis || !roughNotes.trim()}
-                className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all"
-                size="lg">
-
-                  {enhancing ?
-                  <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Generating Enhanced Note...
-                    </> :
-
-                  <>
-                      <Sparkles className="w-5 h-5 mr-2" />
-                      Generate Enhanced Note
-                    </>
-                  }
-                  </Button>
-                  </div>
-              </CardContent>
-            </Card>
-          </> :
-
-        <>
-            {/* Results Page */}
-            <div className="space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden min-w-0">
-
-
-              {/* Time Savings Summary */}
-              {timeSavedMinutes > 0 && (
-                <TimeSavingsSummary 
-                  timeSavedMinutes={timeSavedMinutes} 
-                  feature="note_enhancement" 
-                />
-              )}
-
-              {/* Note Completeness Tracker */}
-              <NoteCompletenessTracker
-                noteContent={isEditMode ? editedNote : enhancedNote}
-                complianceResults={complianceResults}
-                visitType={visitType}
-                providerType={providerType}
-              />
-
-              {/* Enhanced Note Display */}
-              <Card className="border-green-200 shadow-md">
-                <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-100 p-4 sm:p-6">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="p-1.5 bg-green-600 rounded-lg">
-                        <CheckCircle2 className="w-5 h-5 text-white" />
-                      </div>
-                      <div>
-                        <span className="font-semibold text-lg text-slate-900 block">Enhanced Clinical Note</span>
-                        <span className="text-xs text-slate-600">AI-optimized and compliance-checked</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                      {complianceResults?.compliance_score && (
-                        <Badge className={`${complianceResults.compliance_score >= 85 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'} text-xs font-semibold px-3 py-1`}>
-                          {complianceResults.compliance_score}% Compliant
-                        </Badge>
-                      )}
-                      <Button onClick={() => { navigator.clipboard.writeText(enhancedNote); toast.success("Copied!"); }} variant="outline" size="sm">Copy</Button>
-                      {!isEditMode && <Button onClick={() => { setIsEditMode(true); setEditedNote(enhancedNote); }} variant="outline" size="sm">Edit</Button>}
-                      {patientData && !isEditMode && (
-                        <Button onClick={saveToPatientRecord} disabled={savingToPatient} className="bg-green-600 hover:bg-green-700" size="sm">
-                          {savingToPatient ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save to Record'}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-4 sm:p-6">
-                  {isEditMode ? (
-                    <div className="space-y-3">
-                      <textarea value={editedNote} onChange={(e) => setEditedNote(e.target.value)} className="w-full h-64 p-4 border-2 border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono" />
-                      <div className="flex gap-2">
-                        <Button onClick={() => { setEnhancedNote(editedNote); setIsEditMode(false); recheckCompliance(); }} className="bg-green-600 hover:bg-green-700">Save & Recheck</Button>
-                        <Button onClick={() => { setEditedNote(enhancedNote); setIsEditMode(false); }} variant="outline">Cancel</Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-slate-50 p-5 rounded-lg text-sm whitespace-pre-wrap max-h-96 overflow-y-auto border border-slate-200 leading-relaxed">
-                      {enhancedNote}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Post-Enhancement AI Insights: ICD-10, Tasks, Compliance */}
-              <PostEnhancementInsights
-                enhancedNote={isEditMode ? editedNote : enhancedNote}
-                diagnosis={selectedDiagnosis}
-                visitType={visitType}
-                providerType={providerType}
-                careSetting={careSetting}
-                patientId={selectedPatient}
-                patientData={patientData}
-                currentUserEmail={currentUser?.email}
-                onCodesSelected={(codes) => {
-                  console.log('ICD-10 codes selected:', codes);
-                  toast.success(`${codes.length} code(s) added`);
-                }}
-              />
-
-              {/* AI Feedback & Training */}
-              <InlineAIFeedback
-                suggestionType="note_enhancement"
-                suggestionContent={enhancedNote?.substring(0, 500)}
-                userEmail={currentUser?.email}
-                contextData={{ visit_type: visitType, diagnosis: selectedDiagnosis, care_setting: careSetting }}
-              />
-
-              {/* AI Feedback Trainer */}
-              <AIFeedbackTrainer
-                enhancedNote={isEditMode ? editedNote : enhancedNote}
-                originalNote={roughNotes}
-                visitType={visitType}
-                outputType="note"
-                userEmail={currentUser?.email}
-                onFeedbackSubmitted={() => {
-                  toast.success('Your feedback helps improve the AI');
-                }}
-              />
-
-              {currentUser?.role === 'admin' && (
-                <Button 
-                  onClick={() => setShowFeedbackTrainer(true)}
-                  variant="outline"
-                  className="w-full"
-                >
-                  Train AI From User Feedback (Admin)
-                </Button>
-              )}
-
-              {/* Unified Suggestions & Quick Actions */}
-              <UnifiedSuggestionsApplier
-                complianceIssues={complianceResults?.issues || []}
-                qualitySuggestions={complianceResults?.quality_analysis?.suggestions || []}
-                educationMaterials={suggestedEducation}
-                medicareViolations={medicareViolations}
-                noteContent={isEditMode ? editedNote : enhancedNote}
-                loading={enhancing}
-                onApplyAll={async () => {
-                  // Apply all quality improvements
-                  let improvedNote = isEditMode ? editedNote : enhancedNote;
-                  
-                  // Apply quality suggestions
-                  if (complianceResults?.quality_analysis?.suggestions) {
-                    for (const suggestion of complianceResults.quality_analysis.suggestions) {
-                      if (suggestion.excerpt && suggestion.improved_text && improvedNote.includes(suggestion.excerpt)) {
-                        improvedNote = improvedNote.replace(suggestion.excerpt, suggestion.improved_text);
-                      }
-                    }
-                  }
-                  
-                  setEditedNote(improvedNote);
-                  setEnhancedNote(improvedNote);
-                  setIsEditMode(false);
-                  toast.success("All suggestions applied successfully!");
-                  await recheckCompliance();
-                }}
-              />
-
-              {/* New Note Button */}
-              <Button onClick={() => { setShowResults(false); setEnhancedNote(null); setRoughNotes(""); setIsEditMode(false); }} variant="outline" className="w-full touch-target">
-                Create New Note
-              </Button>
-
-              {/* Detailed Audit - Collapsed by Default */}
-              {(medicareViolations.length > 0 || complianceResults?.quality_analysis?.suggestions?.length > 0) && (
-              <details className="group w-full">
-                <summary className="cursor-pointer list-none">
-                  <Card className="hover:shadow-md transition-all border-slate-200">
-                    <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 p-4 sm:p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <ShieldAlert className="w-4 h-4 text-slate-600" />
-                          <span className="text-xs font-semibold text-slate-700">Detailed Audit Report</span>
-                        </div>
-                        <span className="text-xs text-slate-500 group-open:hidden">▼</span>
-                        <span className="text-xs text-slate-500 hidden group-open:inline">▲</span>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                </summary>
-                <div className="mt-2 space-y-3 w-full">
-                  <UnifiedComplianceAudit complianceResults={complianceResults} medicareViolations={medicareViolations} regulatoryWarnings={regulatoryWarnings} qualityAnalysis={complianceResults?.quality_analysis} />
-                </div>
-              </details>
-              )}
-
-              {/* Clinical Tools & Education - Collapsed by Default */}
-              <details className="group w-full">
-              <summary className="cursor-pointer list-none">
-                <Card className="hover:shadow-md transition-all border-slate-200">
-                  <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 p-4 sm:p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Brain className="w-4 h-4 text-slate-600" />
-                        <span className="text-xs font-semibold text-slate-700">Clinical Tools & Education</span>
-                      </div>
-                      <span className="text-xs text-slate-500 group-open:hidden">▼</span>
-                      <span className="text-xs text-slate-500 hidden group-open:inline">▲</span>
-                    </div>
-                  </CardHeader>
-                </Card>
-              </summary>
-              <div className="mt-2 space-y-3 w-full">
-                  {(providerType === 'MD' || providerType === 'NP') && (
-                    <>
-                      <ICD10CodeSuggester
-                        noteContent={isEditMode ? editedNote : enhancedNote}
-                        diagnosis={selectedDiagnosis}
-                        visitType={visitType}
-                        onCodesSelected={(codes) => {
-                          console.log('ICD-10 codes selected:', codes);
-                          toast.success(`${codes.length} code(s) selected`);
-                        }}
-                      />
-
-                      <FollowUpTaskGenerator
-                        noteContent={isEditMode ? editedNote : enhancedNote}
-                        diagnosis={selectedDiagnosis}
-                        patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                        currentUserEmail={currentUser?.email}
-                        onTasksCreated={(tasks) => {
-                          console.log('Follow-up tasks created:', tasks);
-                        }}
-                      />
-
-                      <EnhancedMedicalCodingAssistant
-                        noteContent={isEditMode ? editedNote : enhancedNote}
-                        diagnosis={selectedDiagnosis}
-                        procedures={extractedData?.procedures || ''}
-                        patientAge={patientData?.age}
-                        visitType={visitType}
-                        patientId={selectedPatient !== 'no_patient' ? selectedPatient : null}
-                        onCodesSelected={(codes) => {
-                          console.log('Codes selected:', codes);
-                        }}
-                      />
-
-                      <AdvancedMedicalCodingAssistant
-                        enhancedNote={isEditMode ? editedNote : enhancedNote}
-                        extractedData={extractedData}
-                        diagnosis={selectedDiagnosis}
-                        visitType={visitType}
-                        onCodesGenerated={(codes) => {
-                          console.log('Medical codes generated:', codes);
-                        }}
-                      />
-                      </>
-                      )}
-                  <MedicalCodingAssistant enhancedNote={enhancedNote} diagnosis={selectedDiagnosis} visitType={visitType} providerType={providerType} patientContext={patientData ? { patient_name: `${patientData.first_name} ${patientData.last_name}`, primary_diagnosis: patientData.primary_diagnosis, secondary_diagnoses: patientData.secondary_diagnoses, current_medications: patientData.current_medications } : null} currentUser={currentUser} />
-                  {patientData && (providerType === 'RN' || providerType === 'MSW' || providerType === 'NP' || providerType === 'PT' || providerType === 'OT' || providerType === 'ST') && (
-                    <CarePlanSuggestionsPanel patientId={patientData.id} visitType={visitType} diagnosis={selectedDiagnosis} noteContent={enhancedNote} providerType={providerType} />
-                  )}
-                  {patientData && (
-                    <>
-                      <PatientEducationGenerator
-                        patientAge={patientData?.age}
-                        onMaterialGenerated={(material) => {
-                          console.log('Patient education material generated:', material);
-                          toast.success('Educational material generated!');
-                        }}
-                      />
-                      <PatientEducationPanel suggestedMaterials={suggestedEducation} patientId={selectedPatient} patientEmail={patientData?.email} onEducationProvided={(material, method) => { setProvidedEducation(prev => [...prev, { material, method }]); toast.success('Education documented'); }} />
-                    </>
-                  )}
-                </div>
-              </details>
+          {draftRestored && (
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <p className="text-xs text-emerald-700 font-medium">Draft restored.</p>
             </div>
-          </>
-        }
+          )}
 
-        {/* Offline Sync Status - Bottom */}
-        {currentUser?.email && (
-          <EnhancedOfflineNoteSync 
-            userEmail={currentUser.email} 
-            isOnline={isOnline}
-          />
-        )}
+          <StepIndicator step={step} />
 
-        {/* Create Patient Dialog */}
-        {(showCreatePatient || selectedPatient === "create_new") &&
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-md">
-              <CardHeader className="p-4 sm:p-6">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base sm:text-lg">Create New Patient</CardTitle>
-                  <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => {
-                    setShowCreatePatient(false);
-                    setSelectedPatient("no_patient");
-                  }}>
+          {/* STEP 1: WRITE */}
+          {step === 1 && (
+            <div className="space-y-3">
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 space-y-4">
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <User className="w-3.5 h-3.5 text-navy-600" />
+                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Patient</span>
+                    <span className="text-xs text-slate-400 font-normal normal-case ml-1">optional</span>
+                  </div>
+                  <SearchablePatientSelect
+                    patients={patients}
+                    value={patientId}
+                    onValueChange={setPatientId}
+                    className="bg-slate-50 border-slate-200 h-12 sm:h-11 text-sm rounded-xl"
+                  />
+                </div>
+                <div className="border-t border-slate-100" />
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <ClipboardList className="w-3.5 h-3.5 text-navy-600" />
+                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Visit Type</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {VISIT_TYPES.map(v => {
+                      const selected = visitType === v.value;
+                      return (
+                        <button
+                          key={v.value}
+                          type="button"
+                          onClick={() => setVisitType(v.value)}
+                          aria-pressed={selected}
+                          style={selected ? { backgroundColor: '#264491', borderColor: '#264491', color: '#ffffff' } : undefined}
+                          className={`py-3 sm:py-2 px-2 rounded-xl text-xs font-semibold border-2 transition-all text-center leading-tight min-h-[48px] sm:min-h-0 active:scale-95 ${selected ? "shadow-md" : "bg-slate-50 border-slate-200 text-slate-700 hover:border-navy-300 hover:bg-navy-50"}`}
+                        >
+                          {v.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
 
-                    <X className="w-4 h-4" />
+              {patient && (
+                <div className="flex items-center gap-2 text-xs text-navy-700 bg-navy-50 border border-navy-200 rounded-lg px-3 py-2">
+                  <User className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    <strong>{patient.first_name} {patient.last_name}</strong>
+                    {patient.primary_diagnosis ? ` · ${patient.primary_diagnosis}` : ""}
+                    {patient.current_medications?.length > 0 ? ` · ${patient.current_medications.length} meds` : ""}
+                    {patient.functional_status?.fall_risk === "high" && <span className="ml-2 inline-flex items-center gap-1 text-rose-600 font-bold"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> High Fall Risk</span>}
+                  </span>
+                </div>
+              )}
+
+              {/* Structured vitals — saved to the visit's vital_signs (feeds the
+                  chart, vitals trends, and critical-vitals escalation). */}
+              <VitalSignsForm vitalSigns={vitals} onChange={setVitals} />
+
+              <NoteTemplateSelector currentVisitType={visitType} onSelect={(content, type) => {
+                setNote(content); setVisitType(type);
+                setTimeout(() => textareaRef.current?.focus(), 100);
+              }} />
+
+              <ComplianceChecklist isHospice={isHospice} />
+
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-navy-700">Your Rough Notes / Bullet Points</span>
+                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
+                    onClick={() => { setActiveTab("drafter"); }}>
+                    <ClipboardList className="w-3.5 h-3.5" /> Use Structured Form
                   </Button>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
-                <div>
-                  <Label className="text-xs sm:text-sm">First Name *</Label>
-                  <Input
-                  value={newPatientData.first_name}
-                  onChange={(e) =>
-                  setNewPatientData({
-                    ...newPatientData,
-                    first_name: e.target.value
-                  })
-                  }
-                  placeholder="John"
-                  className="h-11" />
-
+                {/* Voice input — one consolidated group: speak live, or record &
+                    transcribe. All paths append your own words to the draft below;
+                    none rewrite or embellish it. */}
+                <div className="px-4 py-2 bg-navy-50 border-b border-navy-100">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Mic className="w-3 h-3 text-navy-500" />
+                    <span className="text-[11px] font-semibold text-navy-600 uppercase tracking-wide">Voice input — optional</span>
+                  </div>
+                  <div className="space-y-2">
+                    <Button
+                      variant={listening ? "destructive" : "default"}
+                      className={`h-9 gap-2 text-xs font-semibold shadow-sm ${listening ? 'animate-pulse' : 'bg-navy-600 hover:bg-navy-700 text-white'}`}
+                      onClick={listening ? stopDictation : startDictation}
+                    >
+                      {listening ? <><Square className="w-4 h-4 fill-current" /> Stop Dictation</> : <><Mic className="w-4 h-4" /> Live Dictation</>}
+                    </Button>
+                    {/* One record-and-transcribe control (Narrative or SOAP). */}
+                    <VisitAudioRecorder
+                      onTranscribed={(text) => setNote(prev => prev ? prev + "\n\n" + text : text)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs sm:text-sm">Last Name *</Label>
-                  <Input
-                  value={newPatientData.last_name}
-                  onChange={(e) =>
-                  setNewPatientData({
-                    ...newPatientData,
-                    last_name: e.target.value
-                  })
-                  }
-                  placeholder="Doe"
-                  className="h-11" />
-
-                </div>
-                <div>
-                  <Label className="text-xs sm:text-sm">Date of Birth</Label>
-                  <Input
-                  type="date"
-                  value={newPatientData.date_of_birth}
-                  onChange={(e) =>
-                  setNewPatientData({
-                    ...newPatientData,
-                    date_of_birth: e.target.value
-                  })
-                  }
-                  className="h-11" />
-
-                </div>
-                <div>
-                  <Label className="text-xs sm:text-sm">Medical Record Number</Label>
-                  <Input
-                  value={newPatientData.medical_record_number}
-                  onChange={(e) =>
-                  setNewPatientData({
-                    ...newPatientData,
-                    medical_record_number: e.target.value
-                  })
-                  }
-                  placeholder="MRN-12345"
-                  className="h-11" />
-
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <textarea ref={textareaRef} value={note} onChange={e => setNote(e.target.value)}
+                  placeholder={"Enter bullet points or rough draft — AI will NOT invent information.\n\n• BP 148/90, HR 82, O2 95% RA, pain 3/10\n• homebound: unable to leave without considerable effort\n• skilled need: wound assessment and dressing change\n• wound R heel 2×3 cm granulating, no odor\n• taught med schedule, pt verbalized understanding\n• fall risk — clutter noted, discussed w/ family"}
+                  className="w-full min-h-[240px] sm:min-h-[320px] text-sm border-0 px-4 py-3 focus:ring-0 bg-white font-mono resize-none outline-none leading-relaxed" spellCheck={false}
+                />
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50 gap-3">
+                  <span className={`text-xs shrink-0 ${ready ? "text-emerald-600 font-medium" : "text-slate-400"}`}>
+                    {ready ? `${note.length} chars — ready` : `${20 - note.trim().length} more chars needed`}
+                  </span>
                   <Button
-                  variant="outline"
-                  className="flex-1 w-full touch-target"
-                  onClick={() => {
-                    setShowCreatePatient(false);
-                    setSelectedPatient("no_patient");
-                  }}>
-
-                    Cancel
-                  </Button>
-                  <Button
-                  className="flex-1 w-full touch-target"
-                  onClick={createNewPatient}
-                  disabled={creatingPatient}>
-
-                    {creatingPatient ?
-                  <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Creating...
-                      </> :
-
-                  "Create Patient"
-                  }
+                    onClick={startReview}
+                    disabled={!ready}
+                    style={ready ? { backgroundColor: '#264491', color: '#ffffff' } : undefined}
+                    className="hover:bg-navy-700 h-11 sm:h-9 px-5 gap-1.5 text-sm font-semibold w-full sm:w-auto"
+                  >
+                    <ClipboardList className="w-4 h-4" /> Review & Complete <ArrowRight className="w-3.5 h-3.5" />
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        }
-        {/* Custom Template Creator Dialog */}
-        {showTemplateCreator && (
-          <CustomTemplateCreator
-            onClose={() => { setShowTemplateCreator(false); setTemplateCreatorInitData(null); }}
-            onSaved={() => { setShowTemplateCreator(false); setTemplateCreatorInitData(null); }}
-            initialData={templateCreatorInitData}
-            visitType={visitType}
-            providerType={providerType}
-            diagnosis={selectedDiagnosis}
-          />
-        )}
+              </div>
+
+              <VitalSignValidator noteText={note} />
+
+            </div>
+          )}
+
+          {/* STEP 2: QUESTIONS / GENERATE / REVIEW — shared constrained-scribe flow */}
+          {step === 2 && (
+            <ConstrainedNoteReviewer
+              roughNote={note}
+              serviceLine={serviceLine}
+              visitType={visitType}
+              vitals={vitals}
+              priorNote={getPriorNote(patientDetail || patient)}
+              patient={patientDetail || patient}
+              currentUser={currentUser}
+              onEscalate={escalateToTasks}
+              onBack={() => setStep(1)}
+              renderFinalNote={(api) => (
+                <>
+                  {generatingTasks && (
+                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />
+                      Generating follow-up tasks from your note…
                     </div>
-                    </div>
-    </PremiumFeatureGate>);
-
+                  )}
+                  {followUpTasks.length > 0 && (
+                    <FollowUpTasksPanel tasks={followUpTasks} onDismiss={() => setFollowUpTasks([])} />
+                  )}
+                  <FinalNoteDisplay
+                    finalNote={api.finalNote}
+                    setFinalNote={api.setFinalNote}
+                    onCopy={async () => {
+                      try {
+                        await navigator.clipboard.writeText(api.finalNote);
+                        setCopied(true); setTimeout(() => setCopied(false), 2500);
+                      } catch {
+                        setCopied(false);
+                        toast.error("Couldn't copy to the clipboard. Select the note text and copy manually.");
+                      }
+                    }}
+                    copied={copied}
+                    patient={patient}
+                    visitType={visitType}
+                    analysisScore={api.coverage}
+                    analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: [] }}
+                    currentUser={currentUser}
+                    signatureImage={signatureImage}
+                    setSignatureImage={setSignatureImage}
+                    onReset={reset}
+                    originalNote={note}
+                    noteSections={parseNoteSections(api.finalNote)}
+                    onSave={() => handleSave(api)}
+                    saving={saving}
+                    saved={saved && !api.dirty}
+                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical}
+                  />
+                </>
+              )}
+            />
+          )}
+        </>
+      )}
+    </PageContainer>
+  );
 }

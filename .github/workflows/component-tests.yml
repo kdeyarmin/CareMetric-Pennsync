@@ -1,0 +1,55 @@
+name: Component Tests
+
+# Runs the Vitest + jsdom component/render suite (React Testing Library),
+# including the navigation-bar render smoke test (src/test/navPages.test.jsx).
+#
+# Separate from "Workflow Quality Checks", which is intentionally scoped to a
+# narrow set of utility/workflow files. This one fires on any source change so
+# the render tests actually guard pages/components on the PRs that touch them.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vitest.config.js'
+      - '.github/workflows/component-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vitest.config.js'
+      - '.github/workflows/component-tests.yml'
+
+concurrency:
+  group: component-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  component-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (full repo)
+        run: npm run lint
+
+      - name: Run component & render tests
+        run: npm run test:components

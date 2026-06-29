@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,10 +30,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { toast } from 'sonner';
 
 export default function AITrainingModuleGenerator() {
   const queryClient = useQueryClient();
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [selectedRecommendations, setSelectedRecommendations] = useState(new Set());
   const [selectedExemplars, setSelectedExemplars] = useState(new Set());
   const [moduleType, setModuleType] = useState("mixed");
@@ -63,16 +65,16 @@ export default function AITrainingModuleGenerator() {
 
   const generateTrainingModule = async () => {
     if (selectedRecommendations.size === 0 && selectedExemplars.size === 0) {
-      alert('Please select at least one recommendation or exemplary document');
+      toast.error('Please select at least one recommendation or exemplary document');
       return;
     }
 
-    setIsGenerating(true);
     try {
       const selectedRecs = trainingRecommendations.filter(r => selectedRecommendations.has(r.id));
       const selectedExs = exemplaryDocs.filter(e => selectedExemplars.has(e.id));
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert clinical education specialist for home health nursing. Create a comprehensive training module for Pennsylvania home health staff focusing on Medicare compliance (42 CFR 484).
 
 INPUT DATA FOR MODULE GENERATION:
@@ -207,9 +209,8 @@ Return structured JSON training module.`,
       setGeneratedModule(result);
     } catch (error) {
       console.error('Error generating training module:', error);
-      alert('Failed to generate training module. Please try again.');
+      toast.error('Failed to generate training module. Please try again.');
     }
-    setIsGenerating(false);
   };
 
   const publishModule = async () => {
@@ -247,29 +248,29 @@ Return structured JSON training module.`,
       queryClient.invalidateQueries({ queryKey: ['trainingRecommendationsForModules'] });
       queryClient.invalidateQueries({ queryKey: ['exemplaryDocumentation'] });
 
-      alert('Training module published successfully!');
+      toast.success('Training module published successfully!');
       setGeneratedModule(null);
       setSelectedRecommendations(new Set());
       setSelectedExemplars(new Set());
       setModuleTitle("");
     } catch (error) {
       console.error('Error publishing module:', error);
-      alert('Failed to publish training module. Please try again.');
+      toast.error('Failed to publish training module. Please try again.');
     }
     setIsPublishing(false);
   };
 
   return (
     <div className="space-y-6">
-      <Card className="border-2 border-purple-300">
+      <Card className="border-2 border-navy-300">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-600" />
+            <Brain className="w-5 h-5 text-navy-600" />
             AI Training Module Generator
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-600">
             Select compliance gaps and exemplary documentation to automatically generate comprehensive training modules.
           </p>
 
@@ -301,10 +302,10 @@ Return structured JSON training module.`,
 
           {/* Select Compliance Gaps */}
           <div>
-            <p className="font-medium text-gray-900 mb-2">Compliance Gaps to Address</p>
-            <div className="max-h-48 overflow-y-auto space-y-2 bg-gray-50 p-3 rounded border">
+            <p className="font-medium text-slate-900 mb-2">Compliance Gaps to Address</p>
+            <div className="max-h-48 overflow-y-auto space-y-2 bg-slate-50 p-3 rounded border">
               {trainingRecommendations.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">No unaddressed recommendations</p>
+                <p className="text-sm text-slate-500 text-center py-4">No unaddressed recommendations</p>
               ) : (
                 trainingRecommendations.map(rec => (
                   <div key={rec.id} className="flex items-start gap-2 bg-white p-2 rounded border">
@@ -318,7 +319,7 @@ Return structured JSON training module.`,
                       }}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900">{rec.recommendation_text}</p>
+                      <p className="text-sm text-slate-900">{rec.recommendation_text}</p>
                       <div className="flex gap-2 mt-1">
                         <Badge className={
                           rec.severity === 'critical' ? 'bg-red-600' :
@@ -333,17 +334,17 @@ Return structured JSON training module.`,
                 ))
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Selected: {selectedRecommendations.size}
             </p>
           </div>
 
           {/* Select Exemplary Documentation */}
           <div>
-            <p className="font-medium text-gray-900 mb-2">Exemplary Documentation Examples</p>
+            <p className="font-medium text-slate-900 mb-2">Exemplary Documentation Examples</p>
             <div className="max-h-48 overflow-y-auto space-y-2 bg-green-50 p-3 rounded border border-green-200">
               {exemplaryDocs.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">No exemplary documentation flagged yet</p>
+                <p className="text-sm text-slate-500 text-center py-4">No exemplary documentation flagged yet</p>
               ) : (
                 exemplaryDocs.map(doc => (
                   <div key={doc.id} className="flex items-start gap-2 bg-white p-2 rounded border">
@@ -363,7 +364,7 @@ Return structured JSON training module.`,
                           Score: {doc.context_data?.overall_score || 'N/A'}
                         </p>
                       </div>
-                      <p className="text-xs text-gray-700 italic">
+                      <p className="text-xs text-slate-700 italic">
                         "{doc.context_data?.note_snippet?.substring(0, 100) || doc.recommendation_text}..."
                       </p>
                     </div>
@@ -371,17 +372,17 @@ Return structured JSON training module.`,
                 ))
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Selected: {selectedExemplars.size}
             </p>
           </div>
 
           <Button
             onClick={generateTrainingModule}
-            disabled={isGenerating || (selectedRecommendations.size === 0 && selectedExemplars.size === 0)}
-            className="w-full bg-purple-600 hover:bg-purple-700"
+            disabled={ai.loading || (selectedRecommendations.size === 0 && selectedExemplars.size === 0)}
+            className="w-full bg-navy-600 hover:bg-navy-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                 Generating Module...
@@ -413,7 +414,7 @@ Return structured JSON training module.`,
           <CardContent className="space-y-4">
             {/* Module Header */}
             <div className="bg-white p-4 rounded border">
-              <p className="text-sm text-gray-700 mb-3">{generatedModule.description}</p>
+              <p className="text-sm text-slate-700 mb-3">{generatedModule.description}</p>
               <div className="flex gap-2">
                 <Badge variant="outline">{generatedModule.category}</Badge>
                 <Badge variant="outline">{generatedModule.difficulty_level}</Badge>
@@ -440,13 +441,13 @@ Return structured JSON training module.`,
                   <span className="font-medium">Introduction & Medicare Requirements</span>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
-                  <p className="text-sm text-gray-700 mb-3">{generatedModule.content?.introduction}</p>
+                  <p className="text-sm text-slate-700 mb-3">{generatedModule.content?.introduction}</p>
                   {generatedModule.content?.medicare_requirements?.length > 0 && (
-                    <div className="bg-purple-50 p-3 rounded border border-purple-200">
-                      <p className="font-semibold text-purple-900 text-sm mb-2">42 CFR 484 Requirements:</p>
+                    <div className="bg-navy-50 p-3 rounded border border-navy-200">
+                      <p className="font-semibold text-navy-900 text-sm mb-2">42 CFR 484 Requirements:</p>
                       <ul className="space-y-1">
                         {generatedModule.content.medicare_requirements.map((req, i) => (
-                          <li key={i} className="text-xs text-purple-800">• {req}</li>
+                          <li key={i} className="text-xs text-navy-800">• {req}</li>
                         ))}
                       </ul>
                     </div>
@@ -461,7 +462,7 @@ Return structured JSON training module.`,
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
                   <div className="prose prose-sm max-w-none">
-                    <div className="text-sm text-gray-700 whitespace-pre-line">
+                    <div className="text-sm text-slate-700 whitespace-pre-line">
                       {generatedModule.content?.main_content}
                     </div>
                   </div>
@@ -484,7 +485,7 @@ Return structured JSON training module.`,
                         <div className="bg-green-50 p-3 rounded mb-2">
                           <p className="text-sm text-green-900 italic">"{ex.example_text}"</p>
                         </div>
-                        <p className="text-xs text-gray-700">{ex.analysis}</p>
+                        <p className="text-xs text-slate-700">{ex.analysis}</p>
                       </div>
                     ))}
                   </AccordionContent>
@@ -504,7 +505,7 @@ Return structured JSON training module.`,
                     {generatedModule.content.common_errors.map((err, idx) => (
                       <div key={idx} className="bg-white p-3 rounded border">
                         <p className="font-semibold text-red-900 mb-1">❌ {err.error}</p>
-                        <p className="text-xs text-gray-600 mb-2">{err.why_problematic}</p>
+                        <p className="text-xs text-slate-600 mb-2">{err.why_problematic}</p>
                         <div className="bg-green-50 p-2 rounded border border-green-200">
                           <p className="text-xs font-semibold text-green-900 mb-1">✓ Correct Approach:</p>
                           <p className="text-xs text-green-800">{err.correct_approach}</p>
@@ -524,17 +525,17 @@ Return structured JSON training module.`,
                   <AccordionContent className="px-4 pb-4 space-y-3">
                     {generatedModule.content.quiz_questions.map((q, idx) => (
                       <div key={idx} className="bg-white p-3 rounded border">
-                        <p className="font-medium text-gray-900 mb-2">
+                        <p className="font-medium text-slate-900 mb-2">
                           {idx + 1}. {q.question}
                         </p>
                         <div className="space-y-1 mb-2">
-                          {q.options.map((opt, optIdx) => (
+                          {q.options?.map((opt, optIdx) => (
                             <div
                               key={optIdx}
                               className={`p-2 rounded text-sm ${
                                 optIdx === q.correct_answer
                                   ? 'bg-green-100 border-2 border-green-500 font-medium'
-                                  : 'bg-gray-50 border'
+                                  : 'bg-slate-50 border'
                               }`}
                             >
                               {String.fromCharCode(65 + optIdx)}. {opt}
@@ -568,9 +569,9 @@ Return structured JSON training module.`,
                   <AccordionContent className="px-4 pb-4 space-y-4">
                     {generatedModule.content.scenarios.map((scenario, idx) => (
                       <div key={idx} className="bg-white p-4 rounded border">
-                        <p className="font-bold text-gray-900 mb-2">{scenario.scenario_title}</p>
-                        <div className="bg-gray-50 p-3 rounded mb-3">
-                          <p className="text-sm text-gray-700">{scenario.patient_context}</p>
+                        <p className="font-bold text-slate-900 mb-2">{scenario.scenario_title}</p>
+                        <div className="bg-slate-50 p-3 rounded mb-3">
+                          <p className="text-sm text-slate-700">{scenario.patient_context}</p>
                         </div>
                         <p className="text-sm font-medium text-orange-600 mb-2">
                           Challenge: {scenario.challenge}
@@ -600,16 +601,16 @@ Return structured JSON training module.`,
               )}
 
               {/* Key Takeaways */}
-              <AccordionItem value="takeaways" className="border rounded-lg bg-purple-50">
+              <AccordionItem value="takeaways" className="border rounded-lg bg-navy-50">
                 <AccordionTrigger className="px-4 py-3">
                   <span className="font-medium">Key Takeaways & Quick Reference</span>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4 space-y-3">
                   <div className="bg-white p-3 rounded border">
-                    <p className="font-semibold text-gray-900 mb-2">Key Takeaways:</p>
+                    <p className="font-semibold text-slate-900 mb-2">Key Takeaways:</p>
                     <ul className="space-y-1">
                       {generatedModule.content?.key_takeaways?.map((takeaway, idx) => (
-                        <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                        <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                           <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                           {takeaway}
                         </li>
@@ -617,11 +618,11 @@ Return structured JSON training module.`,
                     </ul>
                   </div>
                   {generatedModule.content?.quick_reference_phrases?.length > 0 && (
-                    <div className="bg-purple-50 p-3 rounded border border-purple-200">
-                      <p className="font-semibold text-purple-900 mb-2">Quick Reference Phrases:</p>
+                    <div className="bg-navy-50 p-3 rounded border border-navy-200">
+                      <p className="font-semibold text-navy-900 mb-2">Quick Reference Phrases:</p>
                       <div className="flex flex-wrap gap-2">
                         {generatedModule.content.quick_reference_phrases.map((phrase, idx) => (
-                          <Badge key={idx} className="bg-purple-100 text-purple-900">
+                          <Badge key={idx} className="bg-navy-100 text-navy-900">
                             {phrase}
                           </Badge>
                         ))}

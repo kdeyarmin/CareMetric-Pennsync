@@ -1,10 +1,9 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -17,7 +16,6 @@ import {
   Brain,
   Loader2,
   Search,
-  FileText,
   Copy,
   Printer,
   CheckCircle2,
@@ -28,6 +26,7 @@ import {
   Shield,
   AlertTriangle
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function EducationMaterialGenerator({ patient, teachBackHistory = [], onMaterialGenerated }) {
   const [searchTopic, setSearchTopic] = useState("");
@@ -35,7 +34,7 @@ export default function EducationMaterialGenerator({ patient, teachBackHistory =
   const [readingLevel, setReadingLevel] = useState("simple");
   const [language, setLanguage] = useState("english");
   const [culturalBackground, setCulturalBackground] = useState("not_specified");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [generatedContent, setGeneratedContent] = useState(null);
   const [copied, setCopied] = useState(false);
   const [learningProfile, setLearningProfile] = useState(null);
@@ -45,7 +44,7 @@ export default function EducationMaterialGenerator({ patient, teachBackHistory =
     if (teachBackHistory.length > 0) {
       const levels = teachBackHistory.map(t => t.understandingLevel);
       const goodCount = levels.filter(l => l === 'good').length;
-      const fairCount = levels.filter(l => l === 'fair').length;
+      const _fairCount = levels.filter(l => l === 'fair').length;
       const poorCount = levels.filter(l => l === 'poor').length;
       
       let recommendedLevel = 'simple';
@@ -107,11 +106,10 @@ export default function EducationMaterialGenerator({ patient, teachBackHistory =
   const generateMaterial = async () => {
     const topic = searchTopic || (patient?.primary_diagnosis);
     if (!topic) {
-      alert("Please enter a topic or select a patient with a diagnosis.");
+      toast.error("Please enter a topic or select a patient with a diagnosis.");
       return;
     }
 
-    setIsGenerating(true);
     try {
       // Build personalization context
       let personalizationContext = '';
@@ -138,7 +136,8 @@ CULTURAL CONSIDERATIONS (${culturalBackground.replace(/_/g, ' ')}):
 `;
       }
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `You are a patient education specialist creating PERSONALIZED, easy-to-understand health education materials for home health and hospice patients.
 
 TOPIC: ${topic}
@@ -225,9 +224,8 @@ Return JSON:
       }
     } catch (error) {
       console.error("Error generating material:", error);
-      alert("Error generating material. Please try again.");
+      toast.error("Error generating material. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = () => {
@@ -240,11 +238,20 @@ Return JSON:
 
   const handlePrint = () => {
     if (generatedContent) {
+      const escapeHtml = (str) => {
+        if (str == null) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      };
       const printWindow = window.open('', '_blank');
       printWindow.document.write(`
         <html>
           <head>
-            <title>${generatedContent.title}</title>
+            <title>${escapeHtml(generatedContent.title)}</title>
             <style>
               body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
               h1 { color: #1e40af; border-bottom: 2px solid #1e40af; padding-bottom: 10px; }
@@ -257,33 +264,33 @@ Return JSON:
             </style>
           </head>
           <body>
-            <h1>${generatedContent.title}</h1>
-            <p>${generatedContent.introduction}</p>
+            <h1>${escapeHtml(generatedContent.title)}</h1>
+            <p>${escapeHtml(generatedContent.introduction)}</p>
             
             <h2>Key Points to Remember</h2>
             <ul>
-              ${generatedContent.key_points?.map(kp => `<li><strong>${kp.point}</strong><br>${kp.explanation}</li>`).join('') || ''}
+              ${generatedContent.key_points?.map(kp => `<li><strong>${escapeHtml(kp.point)}</strong><br>${escapeHtml(kp.explanation)}</li>`).join('') || ''}
             </ul>
             
             <div class="warning">
               <h2>⚠️ Warning Signs</h2>
               <ul>
-                ${generatedContent.warning_signs?.map(ws => `<li><strong>${ws.sign}</strong> - ${ws.action}</li>`).join('') || ''}
+                ${generatedContent.warning_signs?.map(ws => `<li><strong>${escapeHtml(ws.sign)}</strong> - ${escapeHtml(ws.action)}</li>`).join('') || ''}
               </ul>
             </div>
             
             <div class="call">
               <h2>📞 Call Your Nurse or Doctor If:</h2>
               <ul>
-                ${generatedContent.when_to_call?.map(item => `<li>${item}</li>`).join('') || ''}
+                ${generatedContent.when_to_call?.map(item => `<li>${escapeHtml(item)}</li>`).join('') || ''}
               </ul>
             </div>
             
             <h2>Self-Care Tips</h2>
-            ${generatedContent.self_care_tips?.map(tip => `<div class="tip"><strong>${tip.tip}</strong><br>${tip.how_to}</div>`).join('') || ''}
+            ${generatedContent.self_care_tips?.map(tip => `<div class="tip"><strong>${escapeHtml(tip.tip)}</strong><br>${escapeHtml(tip.how_to)}</div>`).join('') || ''}
             
             <h2>Summary</h2>
-            <p><strong>${generatedContent.summary}</strong></p>
+            <p><strong>${escapeHtml(generatedContent.summary)}</strong></p>
           </body>
         </html>
       `);
@@ -314,10 +321,10 @@ Return JSON:
               />
               <Button
                 onClick={generateMaterial}
-                disabled={isGenerating}
+                disabled={ai.loading}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isGenerating ? (
+                {ai.loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Search className="w-4 h-4" />
@@ -328,7 +335,7 @@ Return JSON:
 
           {/* Quick Topics */}
           <div>
-            <Label className="text-xs text-gray-500">Quick Topics:</Label>
+            <Label className="text-xs text-slate-500">Quick Topics:</Label>
             <div className="flex flex-wrap gap-2 mt-1">
               {commonTopics.slice(0, 5).map((topic) => (
                 <Badge
@@ -412,19 +419,19 @@ Return JSON:
               <p className="text-sm font-semibold text-blue-900 mb-2">📊 Patient Learning Profile</p>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-white p-2 rounded">
-                  <span className="text-gray-600">Success Rate:</span>
+                  <span className="text-slate-600">Success Rate:</span>
                   <span className={`ml-1 font-semibold ${learningProfile.successRate >= 70 ? 'text-green-600' : learningProfile.successRate >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
                     {learningProfile.successRate}%
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded">
-                  <span className="text-gray-600">Sessions:</span>
+                  <span className="text-slate-600">Sessions:</span>
                   <span className="ml-1 font-semibold">{learningProfile.totalSessions}</span>
                 </div>
                 <div className="bg-white p-2 rounded col-span-2">
-                  <span className="text-gray-600">Recommended Level:</span>
+                  <span className="text-slate-600">Recommended Level:</span>
                   <span className="ml-1 font-semibold capitalize">{learningProfile.recommendedLevel}</span>
-                  <span className="text-gray-500 ml-1">(auto-selected)</span>
+                  <span className="text-slate-500 ml-1">(auto-selected)</span>
                 </div>
               </div>
             </div>
@@ -445,7 +452,7 @@ Return JSON:
         {generatedContent && (
           <div className="space-y-4 border-t pt-6">
             <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">{generatedContent.title}</h3>
+              <h3 className="text-xl font-bold text-slate-900">{generatedContent.title}</h3>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={handleCopy}>
                   {copied ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
@@ -456,7 +463,7 @@ Return JSON:
               </div>
             </div>
 
-            <p className="text-gray-700">{generatedContent.introduction}</p>
+            <p className="text-slate-700">{generatedContent.introduction}</p>
 
             {/* Key Points */}
             <div className="bg-blue-50 p-4 rounded-lg">
@@ -465,7 +472,7 @@ Return JSON:
                 {generatedContent.key_points?.map((kp, idx) => (
                   <li key={idx} className="text-sm">
                     <strong>{kp.point}</strong>
-                    <p className="text-gray-600">{kp.explanation}</p>
+                    <p className="text-slate-600">{kp.explanation}</p>
                   </li>
                 ))}
               </ul>
@@ -478,7 +485,7 @@ Return JSON:
                 {generatedContent.warning_signs?.map((ws, idx) => (
                   <li key={idx} className="text-sm">
                     <strong className="text-yellow-800">{ws.sign}</strong>
-                    <span className="text-gray-700"> → {ws.action}</span>
+                    <span className="text-slate-700"> → {ws.action}</span>
                   </li>
                 ))}
               </ul>
@@ -501,16 +508,16 @@ Return JSON:
                 {generatedContent.self_care_tips?.map((tip, idx) => (
                   <div key={idx} className="bg-white p-2 rounded border border-green-200">
                     <strong className="text-sm">{tip.tip}</strong>
-                    <p className="text-xs text-gray-600">{tip.how_to}</p>
+                    <p className="text-xs text-slate-600">{tip.how_to}</p>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Summary */}
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-              <h4 className="font-semibold text-purple-900 mb-2">📝 Remember</h4>
-              <p className="text-sm text-purple-800">{generatedContent.summary}</p>
+            <div className="bg-navy-50 p-4 rounded-lg border border-navy-200">
+              <h4 className="font-semibold text-navy-900 mb-2">📝 Remember</h4>
+              <p className="text-sm text-navy-800">{generatedContent.summary}</p>
             </div>
           </div>
         )}

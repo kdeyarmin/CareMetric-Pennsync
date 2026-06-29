@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,6 @@ import {
   Copy, 
   Download, 
   History, 
-  Undo2, 
   CheckCircle2,
   Edit2,
   Eye,
@@ -30,19 +29,7 @@ export default function DocumentDraftManager({
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Initialize first version
-  useEffect(() => {
-    if (generatedContent && versions.length === 0) {
-      saveVersion(generatedContent, "Initial AI Generation");
-    }
-  }, [generatedContent]);
-
-  // Update edited content when generatedContent changes
-  useEffect(() => {
-    setEditedContent(generatedContent);
-  }, [generatedContent]);
-
-  const saveVersion = (content, label = "Manual Edit") => {
+  const saveVersion = useCallback((content, label = "Manual Edit") => {
     const newVersion = {
       content,
       label,
@@ -51,7 +38,19 @@ export default function DocumentDraftManager({
     };
     setVersions(prev => [...prev, newVersion]);
     setCurrentVersion(versions.length);
-  };
+  }, [versions.length]);
+
+  // Initialize first version
+  useEffect(() => {
+    if (generatedContent && versions.length === 0) {
+      saveVersion(generatedContent, "Initial AI Generation");
+    }
+  }, [generatedContent, versions.length, saveVersion]);
+
+  // Update edited content when generatedContent changes
+  useEffect(() => {
+    setEditedContent(generatedContent);
+  }, [generatedContent]);
 
   const handleSaveEdit = () => {
     if (editedContent !== getCurrentContent()) {
@@ -218,14 +217,14 @@ export default function DocumentDraftManager({
                 onChange={(e) => setEditedContent(e.target.value)}
                 className="min-h-[400px] font-mono text-sm"
               />
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>{editedContent.length} characters</span>
                 <span>Use Ctrl+Z for undo</span>
               </div>
             </div>
           ) : (
-            <div className="bg-gray-50 p-4 rounded-lg border">
-              <pre className="whitespace-pre-wrap text-sm text-gray-800 font-sans">
+            <div className="bg-slate-50 p-4 rounded-lg border">
+              <pre className="whitespace-pre-wrap text-sm text-slate-800 font-sans">
                 {getCurrentContent()}
               </pre>
             </div>

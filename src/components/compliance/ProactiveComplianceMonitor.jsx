@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +21,7 @@ export default function ProactiveComplianceMonitor({
   refreshInterval = 60000 
 }) {
   const [alerts, setAlerts] = useState([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
 
   const { data: recentAudits = [] } = useQuery({
     queryKey: ['recentComplianceAudits'],
@@ -38,16 +40,9 @@ export default function ProactiveComplianceMonitor({
     initialData: [],
   });
 
-  useEffect(() => {
-    if (autoMonitor && recentAudits.length > 0) {
-      analyzePatterns();
-    }
-  }, [recentAudits, autoMonitor]);
-
-  const analyzePatterns = async () => {
+  const analyzePatterns = useCallback(async () => {
     if (recentAudits.length < 5) return;
 
-    setIsAnalyzing(true);
     try {
       // Analyze patterns in recent audits
       const allIssues = recentAudits.flatMap(a => a.issues || []);
@@ -78,7 +73,8 @@ export default function ProactiveComplianceMonitor({
       });
 
       // Use AI to identify critical patterns
-      const patternAnalysis = await base44.integrations.Core.InvokeLLM({
+      const patternAnalysis = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Analyze Medicare compliance patterns for Pennsylvania home health agency. Identify critical trends requiring immediate attention.
 
 RECENT DATA:
@@ -178,9 +174,16 @@ Return JSON with: critical_patterns array (with pattern, frequency, cop_referenc
       setAlerts(newAlerts);
     } catch (error) {
       console.error('Pattern analysis error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [medicareRules, recentAudits]);
+
+  useEffect(() => {
+    if (autoMonitor && recentAudits.length > 0) {
+      analyzePatterns();
+    }
+  }, [recentAudits, autoMonitor, analyzePatterns]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -191,12 +194,12 @@ Return JSON with: critical_patterns array (with pattern, frequency, cop_referenc
     }
   };
 
-  if (isAnalyzing) {
+  if (ai.loading) {
     return (
       <Card className="border-2 border-blue-200">
         <CardContent className="p-6 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-sm text-gray-600">Analyzing compliance patterns...</p>
+          <p className="text-sm text-slate-600">Analyzing compliance patterns...</p>
         </CardContent>
       </Card>
     );
@@ -241,8 +244,8 @@ Return JSON with: critical_patterns array (with pattern, frequency, cop_referenc
                   )}
                 </div>
                 <div className="bg-white p-2 rounded border">
-                  <p className="text-xs font-semibold text-gray-700">Recommended Action:</p>
-                  <p className="text-xs text-gray-600">{alert.action}</p>
+                  <p className="text-xs font-semibold text-slate-700">Recommended Action:</p>
+                  <p className="text-xs text-slate-600">{alert.action}</p>
                 </div>
               </div>
             </AlertDescription>

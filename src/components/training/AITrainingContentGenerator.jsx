@@ -1,7 +1,7 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -58,18 +58,18 @@ const trainingTopics = {
   }
 };
 
-export default function AITrainingContentGenerator({ onContentGenerated, nurseEmail }) {
+export default function AITrainingContentGenerator({ onContentGenerated, _nurseEmail }) {
   const [selectedCategory, setSelectedCategory] = useState("documentation");
   const [selectedTopic, setSelectedTopic] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [generatedContent, setGeneratedContent] = useState(null);
 
   const generateTrainingContent = async (topic) => {
-    setIsGenerating(true);
     setSelectedTopic(topic);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate comprehensive training content for home health nurses on: "${topic}"
 
 Category: ${trainingTopics[selectedCategory].label}
@@ -139,12 +139,12 @@ Use professional but accessible language.`,
       onContentGenerated?.(result);
     } catch (error) {
       console.error("Error generating training content:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const category = trainingTopics[selectedCategory];
-  const Icon = category.icon;
+  const _Icon = category.icon;
 
   return (
     <div className="space-y-4">
@@ -179,8 +179,8 @@ Use professional but accessible language.`,
                         <BookOpen className={`w-4 h-4 text-${cat.color}-600`} />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{topic}</p>
-                        <p className="text-xs text-gray-500 mt-1">Click to generate</p>
+                        <p className="text-sm font-medium text-slate-900">{topic}</p>
+                        <p className="text-xs text-slate-500 mt-1">Click to generate</p>
                       </div>
                     </div>
                   </CardContent>
@@ -192,7 +192,7 @@ Use professional but accessible language.`,
       </Tabs>
 
       {/* Loading State */}
-      {isGenerating && (
+      {ai.loading && (
         <Card className="border-2 border-blue-200 bg-blue-50">
           <CardContent className="p-8 text-center">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
@@ -203,7 +203,7 @@ Use professional but accessible language.`,
       )}
 
       {/* Generated Content Display */}
-      {generatedContent && !isGenerating && (
+      {generatedContent && !ai.loading && (
         <Card className="border-2 border-green-200">
           <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50">
             <CardTitle className="flex items-center justify-between">
@@ -222,13 +222,13 @@ Use professional but accessible language.`,
           <CardContent className="p-4 space-y-6">
             {/* Learning Objectives */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2">
                 <Target className="w-4 h-4 text-blue-600" />
                 Learning Objectives
               </h3>
               <ul className="space-y-1">
                 {generatedContent.learning_objectives?.map((obj, idx) => (
-                  <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                     {obj}
                   </li>
@@ -238,12 +238,12 @@ Use professional but accessible language.`,
 
             {/* Key Concepts */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Key Concepts</h3>
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Key Concepts</h3>
               <div className="grid gap-2">
                 {generatedContent.key_concepts?.map((concept, idx) => (
-                  <div key={idx} className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-sm font-medium text-gray-900">{concept.term}</p>
-                    <p className="text-xs text-gray-600 mt-1">{concept.definition}</p>
+                  <div key={idx} className="bg-slate-50 p-3 rounded-lg">
+                    <p className="text-sm font-medium text-slate-900">{concept.term}</p>
+                    <p className="text-xs text-slate-600 mt-1">{concept.definition}</p>
                   </div>
                 ))}
               </div>
@@ -251,12 +251,12 @@ Use professional but accessible language.`,
 
             {/* Best Practices */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Best Practices</h3>
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Best Practices</h3>
               <div className="space-y-3">
                 {generatedContent.best_practices?.map((bp, idx) => (
                   <div key={idx} className="border-l-4 border-green-500 pl-3 py-2">
-                    <p className="text-sm font-medium text-gray-900">{bp.practice}</p>
-                    <p className="text-xs text-gray-600 mt-1"><strong>Example:</strong> {bp.example}</p>
+                    <p className="text-sm font-medium text-slate-900">{bp.practice}</p>
+                    <p className="text-xs text-slate-600 mt-1"><strong>Example:</strong> {bp.example}</p>
                     <p className="text-xs text-green-700 mt-1"><strong>Why:</strong> {bp.rationale}</p>
                   </div>
                 ))}
@@ -265,7 +265,7 @@ Use professional but accessible language.`,
 
             {/* Common Mistakes */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Common Mistakes to Avoid</h3>
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Common Mistakes to Avoid</h3>
               <div className="space-y-2">
                 {generatedContent.common_mistakes?.map((mistake, idx) => (
                   <div key={idx} className="bg-red-50 p-3 rounded-lg border border-red-200">
@@ -279,12 +279,12 @@ Use professional but accessible language.`,
 
             {/* Scenarios */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Real-World Scenarios</h3>
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Real-World Scenarios</h3>
               <div className="space-y-3">
                 {generatedContent.scenarios?.map((scenario, idx) => (
                   <div key={idx} className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                     <p className="text-sm font-medium text-blue-900">Scenario {idx + 1}:</p>
-                    <p className="text-xs text-gray-700 mt-1">{scenario.situation}</p>
+                    <p className="text-xs text-slate-700 mt-1">{scenario.situation}</p>
                     <p className="text-xs text-blue-800 mt-2"><strong>Correct Approach:</strong> {scenario.correct_approach}</p>
                     <p className="text-xs text-green-700 mt-1"><strong>Key Takeaway:</strong> {scenario.key_takeaway}</p>
                   </div>
@@ -304,11 +304,11 @@ Use professional but accessible language.`,
 
             {/* Regulatory References */}
             {generatedContent.regulatory_references?.length > 0 && (
-              <div className="bg-gray-100 p-3 rounded-lg">
-                <h3 className="text-xs font-semibold text-gray-700 mb-1">Regulatory References:</h3>
+              <div className="bg-slate-100 p-3 rounded-lg">
+                <h3 className="text-xs font-semibold text-slate-700 mb-1">Regulatory References:</h3>
                 <ul className="space-y-0.5">
                   {generatedContent.regulatory_references.map((ref, idx) => (
-                    <li key={idx} className="text-xs text-gray-600">• {ref}</li>
+                    <li key={idx} className="text-xs text-slate-600">• {ref}</li>
                   ))}
                 </ul>
               </div>

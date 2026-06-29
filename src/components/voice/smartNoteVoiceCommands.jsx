@@ -172,7 +172,7 @@ export const smartNoteCommands = [
 // Parse vital signs from spoken text with improved accuracy
 export const parseVitalSigns = (text) => {
   const vitals = {};
-  const normalizedText = text.toLowerCase();
+  const _normalizedText = text.toLowerCase();
   
   // Blood Pressure - multiple formats
   const bpPatterns = [
@@ -249,41 +249,4 @@ export const parseVitalSigns = (text) => {
   }
   
   return vitals;
-};
-
-// Language-specific command translations
-export const getLocalizedCommands = (languageCode) => {
-  const translations = {
-    'es-ES': {
-      'select patient': 'seleccionar paciente',
-      'enhance note': 'mejorar nota',
-      'save note': 'guardar nota',
-      'blood pressure': 'presión arterial',
-      'heart rate': 'frecuencia cardíaca',
-      'temperature': 'temperatura'
-    },
-    'fr-FR': {
-      'select patient': 'sélectionner patient',
-      'enhance note': 'améliorer note',
-      'save note': 'enregistrer note',
-      'blood pressure': 'tension artérielle',
-      'heart rate': 'fréquence cardiaque'
-    },
-    'de-DE': {
-      'select patient': 'patient auswählen',
-      'enhance note': 'notiz verbessern',
-      'save note': 'notiz speichern',
-      'blood pressure': 'blutdruck',
-      'heart rate': 'herzfrequenz'
-    }
-  };
-  
-  const langTranslations = translations[languageCode];
-  if (!langTranslations) return smartNoteCommands;
-  
-  return smartNoteCommands.map(cmd => ({
-    ...cmd,
-    trigger: langTranslations[cmd.trigger] || cmd.trigger,
-    aliases: cmd.aliases?.map(alias => langTranslations[alias] || alias)
-  }));
 };

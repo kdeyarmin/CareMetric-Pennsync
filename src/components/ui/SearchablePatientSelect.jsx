@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Check, ChevronsUpDown, Search, Clock, Star, Plus } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
+import { Check, ChevronsUpDown, Clock, Star, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -24,17 +25,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { base44 } from "@/api/base44Client";
 import { useQueryClient } from "@tanstack/react-query";
 
-export default function SearchablePatientSelect({ 
-  patients = [], 
-  value, 
+export default function SearchablePatientSelect({
+  patients = [],
+  value,
   onValueChange,
+  onChange, // Support both for backwards compatibility
   placeholder = "Select patient...",
-  className 
+  className,
+  id, // forwarded to the trigger so a <Label htmlFor> can target this control
 }) {
+  // Use either onValueChange or onChange
+  const handleChange = onValueChange || onChange || (() => {});
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [recentPatients, setRecentPatients] = useState([]);
@@ -44,6 +48,18 @@ export default function SearchablePatientSelect({
   const [creating, setCreating] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const queryClient = useQueryClient();
+  const [localPatients, setLocalPatients] = useState(Array.isArray(patients) ? patients : []);
+
+  // Sync local patients when prop changes
+  useEffect(() => {
+    let patientArray = [];
+    if (Array.isArray(patients)) {
+      patientArray = patients;
+    } else if (patients?.data && Array.isArray(patients.data)) {
+      patientArray = patients.data;
+    }
+    setLocalPatients(patientArray);
+  }, [patients]);
 
   // Load current user and their preferences
   useEffect(() => {
@@ -66,7 +82,7 @@ export default function SearchablePatientSelect({
 
   // Save to recent when patient is selected
   const handleSelect = (patientId) => {
-    onValueChange(patientId);
+    handleChange(patientId);
     setOpen(false);
 
     if (!currentUserEmail) return;
@@ -78,7 +94,7 @@ export default function SearchablePatientSelect({
     ].slice(0, 5);
     
     setRecentPatients(updatedRecent);
-    localStorage.setItem(`recentPatients_${currentUserEmail}`, JSON.stringify(updatedRecent));
+    try { localStorage.setItem(`recentPatients_${currentUserEmail}`, JSON.stringify(updatedRecent)); } catch {}
   };
 
   // Toggle favorite
@@ -93,7 +109,7 @@ export default function SearchablePatientSelect({
       : [...favoritedPatients, patientId];
     
     setFavoritedPatients(updatedFavorites);
-    localStorage.setItem(`favoritedPatients_${currentUserEmail}`, JSON.stringify(updatedFavorites));
+    try { localStorage.setItem(`favoritedPatients_${currentUserEmail}`, JSON.stringify(updatedFavorites)); } catch {}
   };
 
   // Create new patient
@@ -103,12 +119,17 @@ export default function SearchablePatientSelect({
     setCreating(true);
     try {
       const created = await base44.entities.Patient.create(newPatient);
+      setLocalPatients((current) => [created, ...current]);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-list'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-select'] });
+      queryClient.invalidateQueries({ queryKey: ['patients-for-signatures'] });
       handleSelect(created.id);
       setCreateDialogOpen(false);
       setNewPatient({ first_name: "", last_name: "" });
     } catch (error) {
-      console.error('Error creating patient:', error);
+      // Surface the failure (the dialog stays open so the entry isn't lost).
+      toast.error(error?.message || 'Failed to create patient. Please try again.');
     }
     setCreating(false);
   };
@@ -125,28 +146,34 @@ export default function SearchablePatientSelect({
   };
 
   // Get patient by ID
-  const getPatient = (id) => patients.find(p => p.id === id);
+  const getPatient = (id) => localPatients.find(p => p.id === id);
   const selectedPatient = getPatient(value);
 
   // Filter and organize patients
   const { favoritesList, recentList, allPatientsList } = useMemo(() => {
-    const searchLower = search.toLowerCase();
-    const filtered = patients.filter(p => {
-      const fullName = `${p.first_name} ${p.last_name}`.toLowerCase();
-      const mrn = (p.medical_record_number || '').toLowerCase();
-      return fullName.includes(searchLower) || mrn.includes(searchLower);
+    const searchLower = search.toLowerCase().trim();
+    const filtered = localPatients.filter(p => {
+      if (!p) return false;
+      const firstName = (p.first_name || '').trim().toLowerCase();
+      const lastName = (p.last_name || '').trim().toLowerCase();
+      const fullName = `${firstName} ${lastName}`;
+      const mrn = (p.medical_record_number || '').trim().toLowerCase();
+      return fullName.includes(searchLower) || mrn.includes(searchLower) || firstName.includes(searchLower) || lastName.includes(searchLower);
+    }).sort((a, b) => {
+      const aName = `${(a.last_name || '').trim()} ${(a.first_name || '').trim()}`.toLowerCase();
+      const bName = `${(b.last_name || '').trim()} ${(b.first_name || '').trim()}`.toLowerCase();
+      return aName.localeCompare(bName);
     });
 
     const favorites = filtered.filter(p => favoritedPatients.includes(p.id));
-    const recent = recentPatients
-      .map(id => getPatient(id))
-      .filter(p => p && filtered.includes(p))
+    const recentIds = new Set(recentPatients);
+    const recent = filtered
+      .filter(p => recentIds.has(p.id) && !favoritedPatients.includes(p.id))
       .slice(0, 3);
     
-    // All patients excluding favorites and recent
+    const favoriteIds = new Set(favoritedPatients);
     const all = filtered.filter(p => 
-      !favoritedPatients.includes(p.id) && 
-      !recent.some(r => r?.id === p.id)
+      !favoriteIds.has(p.id) && !recentIds.has(p.id)
     );
 
     return {
@@ -154,12 +181,13 @@ export default function SearchablePatientSelect({
       recentList: recent,
       allPatientsList: all
     };
-  }, [patients, search, favoritedPatients, recentPatients]);
+  }, [localPatients, search, favoritedPatients, recentPatients]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild disabled={false}>
         <Button
+          id={id}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -178,35 +206,42 @@ export default function SearchablePatientSelect({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-[--radix-popover-trigger-width] p-0" 
+      <PopoverContent
+        className="w-[calc(100vw-2rem)] max-w-[500px] p-0"
         align="start"
-        sideOffset={4}
+        side="bottom"
+        sideOffset={8}
+        avoidCollisions={false}
       >
         <Command shouldFilter={false}>
-          <div className="flex items-center border-b px-3">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <input
-              placeholder="Search patients..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          </div>
+          <CommandInput 
+            placeholder="Search patients..." 
+            value={search}
+            onValueChange={setSearch}
+            className="border-b-0"
+          />
           <CommandList className="max-h-[400px]">
-            <CommandEmpty>
-              <div className="py-6 text-center">
-                <p className="text-sm text-muted-foreground mb-3">No patient found.</p>
-                <Button 
-                  onClick={openCreateDialog}
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Create New Patient
-                </Button>
-              </div>
-            </CommandEmpty>
+            {localPatients.length === 0 ? (
+              <CommandEmpty>
+                <div className="py-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">No patients available. (Loaded: {localPatients.length})</p>
+                  <Button 
+                    onClick={openCreateDialog}
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create New Patient
+                  </Button>
+                </div>
+              </CommandEmpty>
+            ) : favoritesList.length === 0 && recentList.length === 0 && allPatientsList.length === 0 ? (
+              <CommandEmpty>
+                <div className="py-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">No patients match your search.</p>
+                </div>
+              </CommandEmpty>
+            ) : null}
             
             {favoritesList.length > 0 && (
               <CommandGroup heading="Favorites">
@@ -336,6 +371,17 @@ export default function SearchablePatientSelect({
                 ))}
               </CommandGroup>
             )}
+
+            <CommandGroup className="border-t">
+              <CommandItem
+                value="__add_new_patient__"
+                onSelect={openCreateDialog}
+                className="flex items-center gap-2 py-3 cursor-pointer text-navy-700 font-medium"
+              >
+                <Plus className="h-4 w-4 flex-shrink-0" />
+                {search.trim() ? `Add "${search.trim()}" as new patient` : "Add new patient"}
+              </CommandItem>
+            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>

@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -7,7 +6,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  TrendingDown,
   Eye,
   FileWarning,
   Scale
@@ -149,7 +147,7 @@ export default function AuditRiskPredictor({ analysisResults }) {
       case 'high': return 'bg-red-100 text-red-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'low': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -174,7 +172,7 @@ export default function AuditRiskPredictor({ analysisResults }) {
                 <CheckCircle2 className="w-6 h-6 text-green-600" />
               )}
               <div>
-                <p className="text-xs text-gray-600">Predicted Audit Risk</p>
+                <p className="text-xs text-slate-600">Predicted Audit Risk</p>
                 <p className={`text-2xl font-bold ${riskInfo.color}`}>
                   {riskInfo.level} Risk
                 </p>
@@ -182,7 +180,7 @@ export default function AuditRiskPredictor({ analysisResults }) {
             </div>
             <div className="text-right">
               <p className={`text-3xl font-bold ${riskInfo.color}`}>{riskScore}%</p>
-              <p className="text-xs text-gray-500">Risk Score</p>
+              <p className="text-xs text-slate-500">Risk Score</p>
             </div>
           </div>
           <Progress 
@@ -194,7 +192,7 @@ export default function AuditRiskPredictor({ analysisResults }) {
         {/* Risk Factors */}
         {riskFactors.length > 0 ? (
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <Eye className="w-4 h-4" />
               Contributing Risk Factors
             </p>
@@ -207,7 +205,7 @@ export default function AuditRiskPredictor({ analysisResults }) {
                   }`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-gray-800">{factor.factor}</span>
+                      <span className="text-sm font-medium text-slate-800">{factor.factor}</span>
                       {factor.count !== null && (
                         <Badge variant="outline" className="text-xs">{factor.count}</Badge>
                       )}
@@ -215,7 +213,7 @@ export default function AuditRiskPredictor({ analysisResults }) {
                         {factor.impact}
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">{factor.description}</p>
+                    <p className="text-xs text-slate-600 mt-1">{factor.description}</p>
                   </div>
                 </div>
               ))}

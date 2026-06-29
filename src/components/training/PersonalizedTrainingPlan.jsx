@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +15,9 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
-  Sparkles,
   Loader2,
   Play,
-  Award,
-  TrendingUp
+  Award
 } from "lucide-react";
 
 // Training modules mapped to documentation areas
@@ -204,20 +201,14 @@ export default function PersonalizedTrainingPlan({
   nurseEmail, 
   skillGaps = [], 
   onStartModule,
-  onModuleComplete 
+  _onModuleComplete 
 }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [trainingPlan, setTrainingPlan] = useState(null);
   const [expandedModules, setExpandedModules] = useState(new Set());
-  const [moduleProgress, setModuleProgress] = useState({});
+  const [moduleProgress, _setModuleProgress] = useState({});
 
-  useEffect(() => {
-    if (skillGaps.length > 0) {
-      generatePersonalizedPlan();
-    }
-  }, [skillGaps]);
-
-  const generatePersonalizedPlan = async () => {
+  const generatePersonalizedPlan = useCallback(async () => {
     setIsGenerating(true);
 
     // Build personalized plan based on skill gaps
@@ -260,7 +251,13 @@ export default function PersonalizedTrainingPlan({
 
     setTrainingPlan(plan);
     setIsGenerating(false);
-  };
+  }, [nurseEmail, skillGaps]);
+
+  useEffect(() => {
+    if (skillGaps.length > 0) {
+      generatePersonalizedPlan();
+    }
+  }, [skillGaps, generatePersonalizedPlan]);
 
   const toggleModule = (index) => {
     setExpandedModules(prev => {
@@ -279,7 +276,7 @@ export default function PersonalizedTrainingPlan({
       case 'high': return 'bg-red-100 text-red-800 border-red-300';
       case 'medium': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'low': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -294,11 +291,11 @@ export default function PersonalizedTrainingPlan({
 
   if (isGenerating) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-8 text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-3" />
-          <p className="text-sm font-medium text-purple-900">Creating Your Personalized Training Plan...</p>
-          <p className="text-xs text-purple-700 mt-1">Analyzing your documentation patterns</p>
+          <Loader2 className="w-8 h-8 animate-spin text-navy-600 mx-auto mb-3" />
+          <p className="text-sm font-medium text-navy-900">Creating Your Personalized Training Plan...</p>
+          <p className="text-xs text-navy-700 mt-1">Analyzing your documentation patterns</p>
         </CardContent>
       </Card>
     );
@@ -320,11 +317,11 @@ export default function PersonalizedTrainingPlan({
   const overallProgress = (completedModules / trainingPlan.modules.length) * 100;
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
         <CardTitle className="text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Target className="w-4 h-4 text-purple-600" />
+            <Target className="w-4 h-4 text-navy-600" />
             Your Personalized Training Plan
           </div>
           <div className="flex items-center gap-2">
@@ -335,7 +332,7 @@ export default function PersonalizedTrainingPlan({
           </div>
         </CardTitle>
         <div className="mt-2">
-          <div className="flex justify-between text-xs text-gray-600 mb-1">
+          <div className="flex justify-between text-xs text-slate-600 mb-1">
             <span>Overall Progress</span>
             <span>{completedModules}/{trainingPlan.modules.length} modules</span>
           </div>
@@ -353,10 +350,10 @@ export default function PersonalizedTrainingPlan({
               <div className={`rounded-lg border ${
                 module.status === 'completed' ? 'border-green-300 bg-green-50' :
                 module.severity === 'high' ? 'border-red-200 bg-red-50' :
-                'border-gray-200'
+                'border-slate-200'
               }`}>
                 <CollapsibleTrigger asChild>
-                  <div className="p-3 cursor-pointer hover:bg-gray-50/50 transition-colors">
+                  <div className="p-3 cursor-pointer hover:bg-slate-50/50 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -370,9 +367,9 @@ export default function PersonalizedTrainingPlan({
                             </Badge>
                           )}
                         </div>
-                        <h4 className="text-sm font-semibold text-gray-900">{module.title}</h4>
-                        <p className="text-xs text-gray-600 mt-0.5">{module.description}</p>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                        <h4 className="text-sm font-semibold text-slate-900">{module.title}</h4>
+                        <p className="text-xs text-slate-600 mt-0.5">{module.description}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" /> {module.duration} min
                           </span>
@@ -385,7 +382,7 @@ export default function PersonalizedTrainingPlan({
                         {module.status !== 'completed' && (
                           <Button
                             size="sm"
-                            className="h-7 text-xs bg-purple-600 hover:bg-purple-700"
+                            className="h-7 text-xs bg-navy-600 hover:bg-navy-700"
                             onClick={(e) => {
                               e.stopPropagation();
                               onStartModule?.(module);
@@ -420,23 +417,23 @@ export default function PersonalizedTrainingPlan({
 
                     {/* Lessons */}
                     <div>
-                      <p className="text-xs font-semibold text-gray-700 mb-2">Module Content:</p>
+                      <p className="text-xs font-semibold text-slate-700 mb-2">Module Content:</p>
                       <div className="space-y-1">
                         {module.lessons.map((lesson, lidx) => (
                           <div
                             key={lidx}
-                            className="flex items-center justify-between p-2 bg-white rounded border hover:bg-gray-50 cursor-pointer"
+                            className="flex items-center justify-between p-2 bg-white rounded border hover:bg-slate-50 cursor-pointer"
                             onClick={() => onStartModule?.({ ...module, startLesson: lidx })}
                           >
                             <div className="flex items-center gap-2">
                               <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                                lesson.type === 'quiz' ? 'bg-purple-100 text-purple-600' :
+                                lesson.type === 'quiz' ? 'bg-navy-100 text-navy-600' :
                                 lesson.type === 'practice' ? 'bg-green-100 text-green-600' :
                                 'bg-blue-100 text-blue-600'
                               }`}>
                                 {getLessonIcon(lesson.type)}
                               </div>
-                              <span className="text-xs text-gray-700">{lesson.title}</span>
+                              <span className="text-xs text-slate-700">{lesson.title}</span>
                             </div>
                             <Badge variant="outline" className="text-[10px]">
                               {lesson.duration} min

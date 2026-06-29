@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,13 +17,14 @@ import {
   Target
 } from "lucide-react";
 import { format, addDays } from "date-fns";
+import { toast } from 'sonner';
 
 export default function AutomatedTaskGenerator({
   patient,
   carePlans = [],
   onTasksGenerated
 }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [generatedTasks, setGeneratedTasks] = useState([]);
   const [selectedTasks, setSelectedTasks] = useState({});
   const [isCreating, setIsCreating] = useState(false);
@@ -30,11 +32,11 @@ export default function AutomatedTaskGenerator({
   const generateTasks = async () => {
     if (!patient || carePlans.length === 0) return;
 
-    setIsGenerating(true);
     try {
       const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a nurse task automation system. Generate specific, actionable tasks for nurses based on active care plans.
 
 PATIENT: ${patient.first_name} ${patient.last_name}
@@ -111,9 +113,8 @@ Return JSON:`,
 
     } catch (error) {
       console.error("Task generation error:", error);
-      alert("Failed to generate tasks. Please try again.");
+      toast.error("Failed to generate tasks. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const toggleTaskSelection = (idx) => {
@@ -136,12 +137,15 @@ Return JSON:`,
 
     const selected = generatedTasks.filter((_, idx) => selectedTasks[idx]);
     if (selected.length === 0) {
-      alert("Please select at least one task to create.");
+      toast.error("Please select at least one task to create.");
       return;
     }
 
     setIsCreating(true);
     try {
+      // Get current user
+      const currentUser = await base44.auth.me();
+      
       const createdTasks = [];
       for (const task of selected) {
         const dueDate = format(addDays(new Date(), task.suggested_due_days || 7), 'yyyy-MM-dd');
@@ -156,7 +160,8 @@ Return JSON:`,
           due_date: dueDate,
           due_timeframe: task.due_timeframe,
           source: 'care_plan',
-          ai_reason: task.rationale
+          ai_reason: task.rationale,
+          assigned_to: currentUser?.email
         });
         createdTasks.push(newTask);
       }
@@ -165,13 +170,13 @@ Return JSON:`,
         onTasksGenerated(createdTasks);
       }
 
-      alert(`Successfully created ${createdTasks.length} task(s)!`);
+      toast.success(`Successfully created ${createdTasks.length} task(s)!`);
       setGeneratedTasks([]);
       setSelectedTasks({});
 
     } catch (error) {
       console.error("Task creation error:", error);
-      alert("Failed to create tasks. Please try again.");
+      toast.error("Failed to create tasks. Please try again.");
     }
     setIsCreating(false);
   };
@@ -182,7 +187,7 @@ Return JSON:`,
       medium: "bg-yellow-100 text-yellow-800 border-yellow-300",
       low: "bg-blue-100 text-blue-800 border-blue-300"
     };
-    return colors[priority] || "bg-gray-100 text-gray-800";
+    return colors[priority] || "bg-slate-100 text-slate-800";
   };
 
   const getTypeIcon = (type) => {
@@ -219,10 +224,10 @@ Return JSON:`,
             </Alert>
             <Button
               onClick={generateTasks}
-              disabled={isGenerating || activeCarePlansCount === 0}
+              disabled={ai.loading || activeCarePlansCount === 0}
               className="w-full bg-indigo-600 hover:bg-indigo-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Tasks...</>
               ) : (
                 <><Zap className="w-4 h-4 mr-2" /> Generate Tasks from Care Plans</>
@@ -258,7 +263,7 @@ Return JSON:`,
                       className={`border transition-all ${
                         selectedTasks[idx] 
                           ? 'border-indigo-400 bg-indigo-50' 
-                          : 'border-gray-200 hover:border-gray-300'
+                          : 'border-slate-200 hover:border-slate-300'
                       }`}
                     >
                       <CardContent className="p-4">
@@ -271,7 +276,7 @@ Return JSON:`,
                           <div className="flex-1 min-w-0 space-y-2">
                             {/* Header */}
                             <div className="flex items-start gap-2">
-                              <TypeIcon className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
+                              <TypeIcon className="w-4 h-4 text-slate-500 mt-1 flex-shrink-0" />
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                                   <Badge className={getPriorityColor(task.priority)}>
@@ -285,19 +290,19 @@ Return JSON:`,
                                     {task.due_timeframe?.replace('_', ' ')}
                                   </Badge>
                                 </div>
-                                <h4 className="font-semibold text-gray-900">{task.title}</h4>
+                                <h4 className="font-semibold text-slate-900">{task.title}</h4>
                               </div>
                             </div>
 
                             {/* Care Plan Reference */}
-                            <div className="bg-purple-50 p-2 rounded border border-purple-200">
-                              <p className="text-xs text-purple-800">
+                            <div className="bg-navy-50 p-2 rounded border border-navy-200">
+                              <p className="text-xs text-navy-800">
                                 <strong>Care Plan:</strong> {task.care_plan_problem}
                               </p>
                             </div>
 
                             {/* Description */}
-                            <p className="text-sm text-gray-700">{task.description}</p>
+                            <p className="text-sm text-slate-700">{task.description}</p>
 
                             {/* Rationale */}
                             {task.rationale && (
@@ -318,7 +323,7 @@ Return JSON:`,
                             )}
 
                             {/* Timing */}
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-slate-500">
                               <strong>Due:</strong> {task.suggested_due_days} day(s) from now
                             </p>
                           </div>

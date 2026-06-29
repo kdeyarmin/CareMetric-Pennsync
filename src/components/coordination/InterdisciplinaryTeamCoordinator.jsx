@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Textarea } from "@/components/ui/textarea";
 import { 
   Users, 
   Brain, 
@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   UserPlus
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function InterdisciplinaryTeamCoordinator({ 
   patientId,
@@ -26,20 +27,13 @@ export default function InterdisciplinaryTeamCoordinator({
   autoAnalyze = false 
 }) {
   const queryClient = useQueryClient();
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [recommendation, setRecommendation] = useState(null);
   const [isCreatingAlert, setIsCreatingAlert] = useState(false);
 
-  useEffect(() => {
-    if (autoAnalyze && patientData) {
-      analyzeTeamMeetingNeed();
-    }
-  }, [autoAnalyze, patientId]);
-
-  const analyzeTeamMeetingNeed = async () => {
+  const analyzeTeamMeetingNeed = useCallback(async () => {
     if (!patientData) return;
 
-    setIsAnalyzing(true);
     try {
       const complexityIndicators = {
         diagnoses_count: [patientData.primary_diagnosis, ...(patientData.secondary_diagnoses || [])].filter(Boolean).length,
@@ -59,7 +53,8 @@ export default function InterdisciplinaryTeamCoordinator({
         }).length || 0
       };
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a care coordination expert. Analyze this patient's profile to determine if an interdisciplinary team (IDT) meeting is recommended.
 
 PATIENT PROFILE:
@@ -129,8 +124,14 @@ Return recommendation with:
       console.error('IDT analysis error:', error);
       setRecommendation({ error: error.message });
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [patientData, carePlans, incidents, alerts, recentVisits]);
+
+  useEffect(() => {
+    if (autoAnalyze && patientData) {
+      analyzeTeamMeetingNeed();
+    }
+  }, [autoAnalyze, patientId, patientData, analyzeTeamMeetingNeed]);
 
   const handleCreateCoordinationAlert = async () => {
     if (!recommendation?.meeting_recommended) return;
@@ -152,17 +153,17 @@ Return recommendation with:
       });
 
       queryClient.invalidateQueries({ queryKey: ['careCoordinationAlerts'] });
-      alert('✅ Care coordination alert created');
+      toast.success('✅ Care coordination alert created');
     } catch (error) {
       console.error('Error creating alert:', error);
-      alert('Failed to create coordination alert');
+      toast.error('Failed to create coordination alert');
     }
     setIsCreatingAlert(false);
   };
 
   return (
     <Card className="border-2 border-indigo-300">
-      <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50 pb-3">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50 pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Users className="w-5 h-5 text-indigo-600" />
           AI Team Meeting Coordinator
@@ -178,7 +179,7 @@ Return recommendation with:
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-4">
-        {!recommendation && !isAnalyzing && (
+        {!recommendation && !ai.loading && (
           <Button
             onClick={analyzeTeamMeetingNeed}
             className="w-full bg-indigo-600 hover:bg-indigo-700"
@@ -188,10 +189,10 @@ Return recommendation with:
           </Button>
         )}
 
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="text-center py-6">
             <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Analyzing patient complexity...</p>
+            <p className="text-sm text-slate-600">Analyzing patient complexity...</p>
           </div>
         )}
 
@@ -221,14 +222,14 @@ Return recommendation with:
             {recommendation.meeting_recommended && (
               <>
                 {/* Complexity Score */}
-                <div className="p-3 bg-gray-50 rounded-lg border">
+                <div className="p-3 bg-slate-50 rounded-lg border">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-semibold">Complexity Score</span>
                     <span className="text-xl font-bold text-indigo-600">
                       {recommendation.complexity_score}/100
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-slate-200 rounded-full h-2">
                     <div 
                       className="bg-indigo-600 h-2 rounded-full transition-all"
                       style={{ width: `${recommendation.complexity_score}%` }}
@@ -290,9 +291,9 @@ Return recommendation with:
 
                 {/* Optimal Timing */}
                 {recommendation.optimal_timing && (
-                  <div className="flex items-center gap-2 p-2 bg-purple-50 border border-purple-200 rounded text-xs">
-                    <Calendar className="w-4 h-4 text-purple-600" />
-                    <span className="text-purple-800">
+                  <div className="flex items-center gap-2 p-2 bg-navy-50 border border-navy-200 rounded text-xs">
+                    <Calendar className="w-4 h-4 text-navy-600" />
+                    <span className="text-navy-800">
                       <strong>Optimal Timing:</strong> {recommendation.optimal_timing}
                     </span>
                   </div>

@@ -1,12 +1,12 @@
-import React, { useState } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AICarePlanSuggestionEngine from "../components/carePlan/AICarePlanSuggestionEngine";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import {
@@ -14,16 +14,13 @@ import {
   Search,
   TrendingUp,
   CheckCircle2,
-  XCircle,
-  Edit,
   Trash2,
   User,
-  Calendar,
-  ArrowLeft,
-  Sparkles
+  Sparkles,
+  Plus,
+  ChevronDown
 } from "lucide-react";
 import { format, addDays } from "date-fns";
-import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -36,14 +33,16 @@ import AutomatedTaskGenerator from "../components/carePlan/AutomatedTaskGenerato
 import CarePlanTimeline from "../components/carePlan/CarePlanTimeline";
 import AIEducationRecommender from "../components/carePlan/AIEducationRecommender";
 import EducationTracker from "../components/carePlan/EducationTracker";
-import CarePlanEducationRecommender from "../components/education/CarePlanEducationRecommender";
-import SmartCarePlanGenerator from "../components/carePlan/SmartCarePlanGenerator";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
-import FavoriteButton from "../components/navigation/FavoriteButton";
-import CarePlanTemplateSelector from "../components/carePlan/CarePlanTemplateSelector";
-import ProgressTracker from "../components/carePlan/ProgressTracker";
-import ReviewReminders from "../components/carePlan/ReviewReminders";
-import CollaborationPanel from "../components/carePlan/CollaborationPanel";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
+import { DragDropContext } from "@hello-pangea/dnd";
+import { INTERVENTIONS_LIBRARY } from "@/components/carePlan/InterventionLibrary";
+import InterventionLibrary from "@/components/carePlan/InterventionLibrary";
+import CarePlanCanvas from "@/components/carePlan/CarePlanCanvas";
+import InterventionDetailPanel from "@/components/carePlan/InterventionDetailPanel";
+import AICarePlanAnalyzer from "@/components/carePlan/AICarePlanAnalyzer";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,16 +62,9 @@ export default function CarePlanManagement() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showAITools, setShowAITools] = useState(false);
   const [viewMode, setViewMode] = useState("list"); // "list" or "timeline"
-  const [showCreatePatient, setShowCreatePatient] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("list");
+  const [builderPatient, setBuilderPatient] = useState(null);
   const [planToDelete, setPlanToDelete] = useState(null);
-  const [newPatientData, setNewPatientData] = useState({
-    first_name: "",
-    last_name: "",
-    date_of_birth: "",
-    medical_record_number: "",
-  });
-  const [creatingPatient, setCreatingPatient] = useState(false);
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -80,7 +72,7 @@ export default function CarePlanManagement() {
   });
 
   // Log page visit
-  React.useEffect(() => {
+  useEffect(() => {
     if (currentUser?.email) {
       logActivity(ActivityActions.PAGE_VISIT, {
         page: 'CarePlanManagement',
@@ -89,17 +81,44 @@ export default function CarePlanManagement() {
     }
   }, [currentUser?.email]);
 
-  // Fetch all patients
-  const { data: patients = [] } = useQuery({
-    queryKey: ['allPatients'],
-    queryFn: () => base44.entities.Patient.list(),
+  // Fetch only patients the user has charted on
+  const { data: myVisits = [] } = useQuery({
+    queryKey: ['myVisits'],
+    queryFn: () => currentUser ? base44.entities.Visit.filter({ created_by: currentUser.email }) : Promise.resolve([]),
+    enabled: !!currentUser,
     initialData: [],
   });
+
+  const myPatientIds = useMemo(
+    () => [...new Set(myVisits.map(v => v.patient_id))],
+    [myVisits]
+  );
 
   // Fetch all care plans
   const { data: carePlans = [], isLoading } = useQuery({
     queryKey: ['allCarePlans'],
     queryFn: () => base44.entities.CarePlan.list('-created_date', 500),
+    initialData: [],
+  });
+
+  // Load patients for BOTH the user's charted patients AND every patient that
+  // has a care plan in the list. Previously only charted patients were loaded,
+  // so any care plan whose patient the user hadn't charted on was silently
+  // dropped from the grouped view (getPatient() returned undefined). Union the
+  // two id sets so no plan disappears.
+  const visiblePatientIds = useMemo(
+    () => [...new Set([...myPatientIds, ...carePlans.map(cp => cp.patient_id)])].filter(Boolean),
+    [myPatientIds, carePlans]
+  );
+
+  const { data: patients = [] } = useQuery({
+    queryKey: ['carePlanPatients', visiblePatientIds],
+    queryFn: async () => {
+      if (visiblePatientIds.length === 0) return [];
+      const allPatients = await base44.entities.Patient.list('-updated_date', 2000);
+      return allPatients.filter(p => visiblePatientIds.includes(p.id));
+    },
+    enabled: visiblePatientIds.length > 0,
     initialData: [],
   });
 
@@ -182,48 +201,6 @@ export default function CarePlanManagement() {
 
   const handleDelete = (planId) => {
     setPlanToDelete(planId);
-    setDeleteDialogOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if(planToDelete) {
-      deleteCarePlanMutation.mutate(planToDelete);
-    }
-    setPlanToDelete(null);
-    setDeleteDialogOpen(false);
-  };
-
-  const createNewPatient = async () => {
-    if (!newPatientData.first_name.trim() || !newPatientData.last_name.trim()) {
-      toast.error("First and last name are required");
-      return;
-    }
-
-    setCreatingPatient(true);
-    try {
-      const created = await base44.entities.Patient.create({
-        first_name: newPatientData.first_name,
-        last_name: newPatientData.last_name,
-        date_of_birth: newPatientData.date_of_birth || null,
-        medical_record_number: newPatientData.medical_record_number || "",
-      });
-
-      setSelectedPatient(created);
-      setShowCreatePatient(false);
-      setNewPatientData({
-        first_name: "",
-        last_name: "",
-        date_of_birth: "",
-        medical_record_number: "",
-      });
-      toast.success("Patient created successfully");
-      setShowAITools(true);
-    } catch (error) {
-      toast.error("Failed to create patient");
-      console.error(error);
-    } finally {
-      setCreatingPatient(false);
-    }
   };
 
   const handleAcceptRecommendation = async (recommendation) => {
@@ -274,17 +251,18 @@ export default function CarePlanManagement() {
       
       toast.success('Care plan created successfully with education materials!');
     } catch (error) {
+      console.error('Error creating care plan:', error);
       toast.error('Failed to create care plan. Please try again.');
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'active': return 'bg-green-500';
+      case 'active': return 'bg-emerald-500';
       case 'met': return 'bg-blue-500';
       case 'not_met': return 'bg-red-500';
-      case 'revised': return 'bg-yellow-500';
-      default: return 'bg-gray-500';
+      case 'revised': return 'bg-amber-500';
+      default: return 'bg-slate-500';
     }
   };
 
@@ -294,138 +272,363 @@ export default function CarePlanManagement() {
   const metGoals = carePlans.filter(p => p.status === 'met').length;
   const activePatients = Object.keys(groupedByPatient).length;
 
-  return (
-    <PremiumFeatureGate
-      featureName="Care Plan Management"
-      featureDescription="Create, manage, and optimize patient care plans with AI-powered recommendations. This premium feature includes automated task generation and personalized education planning."
-      allowTrial={true}
-    >
-    <div className="w-full overflow-x-hidden">
-      <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 overflow-hidden">
-        <Button
-          variant="outline"
-          onClick={() => navigate(createPageUrl("Dashboard"))}
-          className="mb-2 sm:mb-3 md:mb-4 w-full sm:w-auto touch-target h-9 text-xs sm:text-sm"
-          size="sm"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Dashboard
-        </Button>
+  // Care Plan Builder state
+  const [planItems, setPlanItems] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [linkedPathways, setLinkedPathways] = useState({});
+  const [planName, setPlanName] = useState("New Care Plan");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [careType, setCareType] = useState("home_health");
+  const [showAIAnalyzer, setShowAIAnalyzer] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
-        <div className="mb-4 sm:mb-6 w-full overflow-hidden">
-          <div className="flex items-center gap-2 sm:gap-3 w-full">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 dark:bg-slate-500 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
-              <Target className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">Care Plan Management</h1>
-              <p className="text-xs text-gray-600 hidden sm:block truncate">Manage and track patient care plans</p>
-            </div>
-            <div className="flex-shrink-0">
-              <FavoriteButton type="page" id="CarePlanManagement" name="Care Plan Management" />
-            </div>
+  function findLibraryItem(id) {
+    for (const cat of INTERVENTIONS_LIBRARY) {
+      const found = cat.items.find(i => i.id === id);
+      if (found) return { ...found, categoryId: cat.id };
+    }
+    return null;
+  }
+
+  const onDragEnd = useCallback((result) => {
+    const { source, destination, draggableId } = result;
+    if (!destination) return;
+
+    if (source.droppableId.startsWith("library-") && destination.droppableId === "care-plan-canvas") {
+      const itemId = draggableId;
+      if (planItems.some(i => i.id === itemId)) {
+        toast.success("This intervention is already in the plan.");
+        return;
+      }
+      const item = findLibraryItem(itemId);
+      if (!item) return;
+
+      setPlanItems(prev => {
+        const next = [...prev];
+        next.splice(destination.index, 0, item);
+        return next;
+      });
+      return;
+    }
+
+    if (source.droppableId === "care-plan-canvas" && destination.droppableId === "care-plan-canvas") {
+      const realId = draggableId.replace(/^plan-/, "");
+      setPlanItems(prev => {
+        const next = [...prev];
+        const srcIdx = prev.findIndex(i => i.id === realId);
+        if (srcIdx === -1) return prev;
+        const [moved] = next.splice(srcIdx, 1);
+        next.splice(destination.index, 0, moved);
+        return next;
+      });
+    }
+  }, [planItems]);
+
+  const removeItem = useCallback((id) => {
+    setPlanItems(prev => prev.filter(i => i.id !== id));
+    setLinkedPathways(prev => { const n = { ...prev }; delete n[id]; return n; });
+    setSelectedItem(prev => prev?.id === id ? null : prev);
+  }, []);
+
+  const linkPathway = useCallback((itemId, pathway) => {
+    setLinkedPathways(prev => ({ ...prev, [itemId]: pathway }));
+    toast.success(`Linked to: ${pathway}`);
+  }, []);
+
+  const handleSaveBuilder = async () => {
+    if (!builderPatient) { toast.error("Please select a patient first."); return; }
+    if (planItems.length === 0) { toast.error("Add at least one intervention."); return; }
+
+    setSaving(true);
+    try {
+      const existingPlans = await base44.entities.CarePlan.filter({ patient_id: builderPatient.id });
+      const savePromises = planItems.map(item => {
+        const existingForItem = existingPlans.find(p => p.problem === item.name);
+        const data = {
+          patient_id: builderPatient.id,
+          problem: item.name,
+          goal: `Achieve and maintain ${item.name.toLowerCase()} goals as documented in the care plan.`,
+          interventions: [item.description, linkedPathways[item.id] ? `Clinical Pathway: ${linkedPathways[item.id]}` : null].filter(Boolean),
+          frequency: item.frequency,
+          status: "active",
+        };
+        if (existingForItem) {
+          return base44.entities.CarePlan.update(existingForItem.id, data);
+        }
+        return base44.entities.CarePlan.create(data);
+      });
+
+      await Promise.all(savePromises);
+      setSaved(true);
+      queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
+      toast.success(`Care plan saved — ${planItems.length} interventions for ${builderPatient.first_name} ${builderPatient.last_name}`);
+      setTimeout(() => {
+        setSaved(false);
+        setActiveTab("list");
+        setPlanItems([]);
+        setLinkedPathways({});
+      }, 2000);
+    } catch {
+      toast.error("Failed to save care plan.");
+    }
+    setSaving(false);
+  };
+
+  const handleClearBuilder = () => {
+    setPlanItems([]);
+    setLinkedPathways({});
+    setSelectedItem(null);
+    setSaved(false);
+  };
+
+  const linkedCount = Object.keys(linkedPathways).length;
+  const complianceCount = planItems.filter(i => i.complianceTag).length;
+
+  const BuilderTab = () => (
+    <div className="flex flex-col h-[calc(100vh-16rem)] overflow-hidden">
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Target className="w-5 h-5 text-navy-600 flex-shrink-0" />
+            <Input
+              value={planName}
+              onChange={e => setPlanName(e.target.value)}
+              className="h-8 text-sm font-semibold border-0 shadow-none px-0 bg-transparent focus-visible:ring-0 max-w-xs"
+            />
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowPatientDropdown(!showPatientDropdown)}
+              className="flex items-center gap-2 text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
+            >
+              <User className="w-4 h-4 text-slate-500" />
+              <span className={builderPatient ? "text-slate-800 font-medium" : "text-slate-400"}>
+                {builderPatient ? `${builderPatient.first_name} ${builderPatient.last_name}` : "Select Patient"}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+
+            {showPatientDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50">
+                <div className="p-2 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      value={patientSearch}
+                      onChange={e => setPatientSearch(e.target.value)}
+                      placeholder="Search patients..."
+                      className="w-full text-sm pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-400"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <div className="max-h-48 overflow-y-auto py-1">
+                  {patients.filter(p => {
+                    const name = `${p.first_name} ${p.last_name}`.toLowerCase();
+                    return name.includes(patientSearch.toLowerCase());
+                  }).map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setBuilderPatient(p); setShowPatientDropdown(false); setPatientSearch(""); }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-navy-50 transition-colors ${builderPatient?.id === p.id ? "bg-navy-50 text-indigo-700 font-medium" : "text-slate-700"}`}
+                    >
+                      <div className="font-medium">{p.first_name} {p.last_name}</div>
+                      {p.primary_diagnosis && <div className="text-xs text-slate-400 truncate">{p.primary_diagnosis}</div>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500 border-x border-slate-200 px-3">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-navy-600" />
+              <span><strong className="text-slate-700">{planItems.length}</strong> interventions</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span><strong className="text-slate-700">{complianceCount}</strong> compliant</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-navy-500" />
+              <span><strong className="text-slate-700">{linkedCount}</strong> linked</span>
+            </span>
+          </div>
+
+          <select
+            value={careType}
+            onChange={(e) => setCareType(e.target.value)}
+            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors bg-white"
+          >
+            <option value="home_health">Home Health</option>
+            <option value="hospice">Hospice</option>
+          </select>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowAIAnalyzer(!showAIAnalyzer)} className="gap-1">
+              <Sparkles className="w-3.5 h-3.5" />
+              AI
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleClearBuilder} disabled={planItems.length === 0}>
+              Clear
+            </Button>
+            <Button size="sm" onClick={handleSaveBuilder} disabled={saving || !builderPatient || planItems.length === 0}>
+              {saving ? "Saving..." : saved ? "Saved!" : "Save Plan"}
+            </Button>
           </div>
         </div>
 
-        {/* Statistics */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2 md:gap-3 mb-3 sm:mb-4 md:mb-6 w-full">
-        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
-          <CardContent className="p-2 sm:p-3 md:p-4">
+        {showAIAnalyzer && (
+          <div className="absolute right-0 top-14 bottom-0 w-96 border-l border-slate-200 bg-white overflow-y-auto p-4 z-10">
+            <AICarePlanAnalyzer
+              patientId={builderPatient?.id}
+              patientName={builderPatient ? `${builderPatient.first_name} ${builderPatient.last_name}` : ""}
+              diagnosis={builderPatient?.primary_diagnosis}
+              careType={careType}
+              onInterventionsGenerated={(interventions, _schedule) => {
+                toast.success(`Generated ${interventions.length} interventions`);
+              }}
+            />
+          </div>
+        )}
+
+        <div className="flex-1 flex overflow-hidden">
+          <DragDropContext onDragEnd={onDragEnd}>
+            <InterventionLibrary />
+            <CarePlanCanvas
+              planItems={planItems}
+              onRemove={removeItem}
+              onSelectItem={setSelectedItem}
+              selectedItemId={selectedItem?.id}
+              linkedPathways={linkedPathways}
+            />
+          </DragDropContext>
+          <InterventionDetailPanel
+            item={selectedItem}
+            linkedPathway={selectedItem ? linkedPathways[selectedItem.id] : null}
+            onLinkPathway={linkPathway}
+            onClose={() => setSelectedItem(null)}
+          />
+        </div>
+      </div>
+    );
+
+  return (
+    <PageContainer>
+      <PageHeader
+        icon={Target}
+        eyebrow="Patient Care"
+        title="Care Plans"
+        description="Manage plans and build new interventions"
+        favoritePage="CarePlanManagement"
+      />
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="list" className="gap-2">
+            <Target className="w-4 h-4" />
+            Active Plans
+          </TabsTrigger>
+          <TabsTrigger value="builder" className="gap-2">
+            <Plus className="w-4 h-4" />
+            Build Plan
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list" className="space-y-4">
+
+      {/* Statistics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+        <Card className="modern-card border-l-4 border-l-navy-600 bg-white shadow-md">
+          <CardContent className="p-3 sm:p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-slate-600 dark:text-slate-300 text-[9px] sm:text-[10px] md:text-xs font-medium mb-0.5 truncate">Total Plans</p>
-                <p className="text-lg sm:text-2xl md:text-3xl font-bold">{totalPlans}</p>
+                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1 truncate">Total Plans</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800">{totalPlans}</p>
               </div>
-              <Target className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
+              <Target className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-navy-500/20 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
-          <CardContent className="p-3 sm:p-4">
+        <Card className="modern-card border-l-4 border-l-emerald-500 bg-white shadow-md">
+          <CardContent className="p-3 sm:p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Active</p>
-                <p className="text-2xl sm:text-3xl font-bold">{activePlans}</p>
+                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1 truncate">Active Plans</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800">{activePlans}</p>
               </div>
-              <TrendingUp className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
+              <TrendingUp className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-emerald-500/20 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
-          <CardContent className="p-3 sm:p-4">
+        <Card className="modern-card border-l-4 border-l-navy-500 bg-white shadow-md">
+          <CardContent className="p-3 sm:p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Goals Met</p>
-                <p className="text-2xl sm:text-3xl font-bold">{metGoals}</p>
+                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1 truncate">Goals Met</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800">{metGoals}</p>
               </div>
-              <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
+              <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-navy-500/20 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-300 text-slate-900 dark:bg-slate-700 dark:text-slate-100 border-none shadow-lg overflow-hidden">
-          <CardContent className="p-3 sm:p-4">
+        <Card className="modern-card border-l-4 border-l-orange-500 bg-white shadow-md">
+          <CardContent className="p-3 sm:p-4 md:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-slate-600 dark:text-slate-300 text-[10px] sm:text-xs font-medium mb-0.5 truncate">Patients</p>
-                <p className="text-2xl sm:text-3xl font-bold">{activePatients}</p>
+                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1 truncate">Patients</p>
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800">{activePatients}</p>
               </div>
-              <User className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-400 flex-shrink-0" />
+              <User className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-orange-500/20 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card className="mb-3 sm:mb-4 w-full overflow-hidden">
+      <Card className="mb-4 sm:mb-6">
         <CardContent className="p-3 sm:p-4">
-          <div className="flex flex-col gap-3 w-full">
-            <div className="w-full relative overflow-hidden">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="Search care plans..."
+                placeholder="Search care plans or patients..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-11 text-sm w-full"
+                className="pl-10 h-11 touch-target"
               />
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-40 h-11 text-sm">
+                <SelectTrigger className="w-full sm:w-48 h-11 touch-target">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all" className="text-sm">All Status</SelectItem>
-                  <SelectItem value="active" className="text-sm">Active</SelectItem>
-                  <SelectItem value="met" className="text-sm">Goal Met</SelectItem>
-                  <SelectItem value="not_met" className="text-sm">Not Met</SelectItem>
-                  <SelectItem value="revised" className="text-sm">Revised</SelectItem>
+                  <SelectItem value="all" className="py-3">All Status</SelectItem>
+                  <SelectItem value="active" className="py-3">Active</SelectItem>
+                  <SelectItem value="met" className="py-3">Goal Met</SelectItem>
+                  <SelectItem value="not_met" className="py-3">Not Met</SelectItem>
+                  <SelectItem value="revised" className="py-3">Revised</SelectItem>
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full sm:w-auto border-dashed"
-                onClick={() => setShowCreatePatient(true)}
-              >
-                + Add Patient
-              </Button>
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   variant={viewMode === "list" ? "default" : "outline"}
                   onClick={() => setViewMode("list")}
-                  size="sm"
-                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "list" ? "bg-blue-600" : ""}`}
+                  className={`flex-1 sm:flex-none min-h-[44px] ${viewMode === "list" ? "bg-navy-600" : ""}`}
                 >
                   List
                 </Button>
                 <Button
                   variant={viewMode === "timeline" ? "default" : "outline"}
                   onClick={() => setViewMode("timeline")}
-                  size="sm"
-                  className={`flex-1 sm:flex-initial touch-target text-xs sm:text-sm ${viewMode === "timeline" ? "bg-blue-600" : ""}`}
+                  className={`flex-1 sm:flex-none min-h-[44px] ${viewMode === "timeline" ? "bg-navy-600" : ""}`}
                 >
                   Timeline
                 </Button>
@@ -435,50 +638,9 @@ export default function CarePlanManagement() {
         </CardContent>
       </Card>
 
-      {/* Review Reminders Widget */}
-      {carePlans.length > 0 && (
-        <div className="mb-3 sm:mb-4 w-full">
-          <ReviewReminders carePlans={carePlans} />
-        </div>
-      )}
-
       {/* AI Tools Section */}
       {selectedPatient && showAITools && (
-        <div className="space-y-3 sm:space-y-4 mb-3 sm:mb-4 w-full overflow-hidden">
-          {/* AI Smart Care Plan Generator */}
-          <SmartCarePlanGenerator
-            patientId={selectedPatient.id}
-            onCarePlansCreated={() => {
-              queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
-            }}
-          />
-
-          {/* Template Selector */}
-          <CarePlanTemplateSelector
-            diagnosis={selectedPatient.primary_diagnosis}
-            providerType={currentUser?.credential_type}
-            onSelectTemplate={async (template) => {
-              try {
-                const targetDate = addDays(new Date(), template.target_days || 60);
-                await base44.entities.CarePlan.create({
-                  patient_id: selectedPatient.id,
-                  template_id: template.id,
-                  problem: template.problem,
-                  goal: template.goal,
-                  interventions: template.interventions,
-                  baseline_measurement: template.baseline_measurements?.[0] || "",
-                  frequency: template.frequency_options?.[0] || "Weekly",
-                  target_date: format(targetDate, 'yyyy-MM-dd'),
-                  status: 'active',
-                  next_review_date: format(addDays(new Date(), 30), 'yyyy-MM-dd')
-                });
-                queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
-                toast.success("Care plan created from template");
-              } catch (error) {
-                toast.error("Failed to create care plan");
-              }
-            }}
-          />
+        <div className="space-y-6 mb-6">
           {/* AI Suggestion Engine */}
           <AICarePlanSuggestionEngine
             patientId={selectedPatient.id}
@@ -489,10 +651,11 @@ export default function CarePlanManagement() {
               try {
                 const newPlan = await base44.entities.CarePlan.create(carePlanData);
                 
-                // Auto-assign education materials
+                // Auto-assign education materials (independent inserts — create
+                // concurrently after the care plan exists).
                 if (educationTopics?.length > 0) {
-                  for (const topic of educationTopics) {
-                    await base44.entities.PatientEducationAssignment.create({
+                  await Promise.all(educationTopics.map((topic) =>
+                    base44.entities.PatientEducationAssignment.create({
                       patient_id: selectedPatient.id,
                       care_plan_id: newPlan.id,
                       topic: topic,
@@ -502,8 +665,8 @@ export default function CarePlanManagement() {
                       assigned_date: new Date().toISOString().split('T')[0],
                       assigned_by: 'AI Care Plan System',
                       priority: 'high'
-                    });
-                  }
+                    })
+                  ));
                 }
                 
                 queryClient.invalidateQueries({ queryKey: ['allCarePlans'] });
@@ -519,13 +682,14 @@ export default function CarePlanManagement() {
                   page: 'CarePlanManagement'
                 });
               } catch (error) {
+                console.error('Error creating care plan:', error);
                 toast.error('Failed to create care plan. Please try again.');
               }
             }}
             autoGenerate={true}
           />
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full">
+          <div className="grid md:grid-cols-2 gap-6">
             <AICarePlanRecommendations
               patient={selectedPatient}
               visits={patientVisits}
@@ -537,47 +701,37 @@ export default function CarePlanManagement() {
               carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
               onTasksGenerated={() => {
                 queryClient.invalidateQueries({ queryKey: ['patientEducation'] });
-                alert('Tasks created successfully!');
+                toast.success('Tasks created successfully!');
               }}
             />
           </div>
-          <div className="space-y-3 sm:space-y-4 w-full">
-            {/* Inline Education Recommendations */}
-            <CarePlanEducationRecommender
-              patientDiagnosis={selectedPatient.primary_diagnosis}
-              onAssignMaterial={(material) => {
-                toast.success(`Added "${material.title}" to patient education plan`);
+          <div className="grid md:grid-cols-2 gap-6">
+            <AIEducationRecommender
+              patient={selectedPatient}
+              carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
+              onAssignEducation={() => {
+                queryClient.invalidateQueries({ queryKey: ['patientEducation', selectedPatient.id] });
               }}
             />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full">
-              <AIEducationRecommender
-                patient={selectedPatient}
-                carePlans={carePlans.filter(cp => cp.patient_id === selectedPatient.id)}
-                onAssignEducation={() => {
-                  queryClient.invalidateQueries({ queryKey: ['patientEducation', selectedPatient.id] });
-                }}
-              />
-              <EducationTracker patient={selectedPatient} />
-            </div>
+            <EducationTracker patient={selectedPatient} />
           </div>
         </div>
       )}
 
       {/* Care Plans by Patient */}
-      <div className="space-y-3 sm:space-y-4 w-full overflow-hidden">
+      <div className="space-y-6">
         {isLoading ? (
-          <Card className="w-full">
-            <CardContent className="p-8 sm:p-12 text-center text-gray-500 text-sm">
+          <Card>
+            <CardContent className="p-12 text-center text-slate-500">
               Loading care plans...
             </CardContent>
           </Card>
         ) : filteredCarePlans.length === 0 ? (
-          <Card className="w-full">
-            <CardContent className="p-8 sm:p-12 text-center">
-              <Target className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No care plans found</h3>
-              <p className="text-sm text-gray-500">Try adjusting your search or filters.</p>
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Target className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">No care plans found</h3>
+              <p className="text-slate-500">Try adjusting your search or filters.</p>
             </CardContent>
           </Card>
         ) : viewMode === "timeline" ? (
@@ -586,18 +740,20 @@ export default function CarePlanManagement() {
             if (!patient) return null;
 
             return (
-              <div key={patientId} className="space-y-3 w-full overflow-hidden">
-                <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 bg-slate-100 dark:bg-slate-800 rounded-lg border-2 border-slate-300 dark:border-slate-600 w-full">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
-                    <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <div key={patientId} className="space-y-3">
+                <div className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                  <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                    <User className="w-6 h-6 text-slate-600" />
                   </div>
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <h3 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-slate-900">
                       {patient.first_name} {patient.last_name}
                     </h3>
-                    <p className="text-xs text-gray-600 truncate">
-                      {patient.primary_diagnosis} • {plans.length} plan{plans.length !== 1 ? 's' : ''}
+                    <p className="text-sm text-slate-600">
+                      {patient.primary_diagnosis} • {plans.length} care plan{plans.length !== 1 ? 's' : ''}
                     </p>
+                  </div>
+                  <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant={selectedPatient?.id === patientId ? "default" : "outline"}
@@ -606,16 +762,14 @@ export default function CarePlanManagement() {
                         setShowAITools(true);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className={`mt-2 w-full touch-target text-xs ${selectedPatient?.id === patientId ? "" : ""}`}
+                      className={selectedPatient?.id === patientId ? "bg-navy-600 hover:bg-navy-700" : ""}
                     >
-                      <Sparkles className="w-3 h-3 mr-1" />
+                      <Sparkles className="w-4 h-4 mr-1" />
                       AI Tools
                     </Button>
                   </div>
                 </div>
-                <div className="w-full overflow-hidden">
-                  <CarePlanTimeline carePlans={plans} patient={patient} />
-                </div>
+                <CarePlanTimeline carePlans={plans} patient={patient} />
               </div>
             );
           })
@@ -625,77 +779,92 @@ export default function CarePlanManagement() {
             if (!patient) return null;
 
             return (
-              <Card key={patientId} className="border-l-4 border-l-slate-400 dark:border-l-slate-500 w-full overflow-hidden">
-                <CardHeader className="p-3 sm:p-4">
-                  <div className="flex flex-col gap-3 w-full">
-                    <div className="flex items-start gap-2 sm:gap-3 w-full">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 dark:bg-slate-500 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
-                        <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <Card key={patientId} className="modern-card border-l-4 border-l-navy-600 shadow-md">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                        <User className="w-6 h-6 text-slate-600" />
                       </div>
-                      <div className="flex-1 min-w-0 overflow-hidden">
-                        <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-900 truncate">
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900">
                           {patient.first_name} {patient.last_name}
                         </h3>
-                        <p className="text-xs sm:text-sm text-gray-600 truncate">
-                          {patient.primary_diagnosis} • {plans.length} plan{plans.length !== 1 ? 's' : ''}
+                        <p className="text-sm text-slate-600">
+                          {patient.primary_diagnosis} • {plans.length} active care plan{plans.length !== 1 ? 's' : ''}
                         </p>
                       </div>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2 w-full">
-                      <Button
-                        size="sm"
-                        variant={selectedPatient?.id === patientId ? "default" : "outline"}
-                        onClick={() => {
-                          setSelectedPatient(patient);
-                          setShowAITools(true);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        className={`w-full sm:flex-1 touch-target text-xs ${selectedPatient?.id === patientId ? "" : ""}`}
-                      >
-                        <Sparkles className="w-3 h-3 mr-1" />
-                        AI Tools
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => navigate(`${createPageUrl("PatientDetails")}?id=${patientId}`)}
-                        variant="outline"
-                        className="w-full sm:flex-1 touch-target text-xs"
-                      >
-                        View Patient
-                      </Button>
+                    <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+                    <Button
+                     size="sm"
+                     onClick={() => {
+                       setBuilderPatient(patient);
+                       setActiveTab("builder");
+                       setPlanItems([]);
+                     }}
+                     className="bg-navy-600 hover:bg-navy-700 min-h-[44px]"
+                    >
+                     <Plus className="w-4 h-4 mr-1" />
+                     <span className="hidden sm:inline">Build Plan</span>
+                     <span className="sm:hidden">Build</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={selectedPatient?.id === patientId ? "default" : "outline"}
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        setShowAITools(true);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className={`min-h-[44px] ${selectedPatient?.id === patientId ? "bg-navy-600 hover:bg-navy-700" : ""}`}
+                    >
+                      <Sparkles className="w-4 h-4 mr-1" />
+                      <span className="hidden sm:inline">AI Tools</span>
+                      <span className="sm:hidden">AI</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => navigate(`${createPageUrl("PatientDetails")}?patientId=${patientId}`)}
+                      variant="outline"
+                      className="min-h-[44px]"
+                    >
+                      <span className="hidden sm:inline">View Patient</span>
+                      <span className="sm:hidden">View</span>
+                    </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="p-3 sm:p-4 overflow-hidden">
-                  <div className="space-y-3 w-full">
+                <CardContent>
+                  <div className="space-y-3">
                     {plans.map((plan) => (
-                      <Card key={plan.id} className="bg-slate-100 dark:bg-slate-900 w-full overflow-hidden">
-                        <CardContent className="p-3 sm:p-4 overflow-hidden space-y-3">
-                          <div className="flex flex-col gap-2 w-full">
-                            <div className="flex-1 min-w-0 overflow-hidden">
-                              <div className="flex items-start gap-2 mb-1 flex-wrap">
-                                <h4 className="font-semibold text-gray-900 text-sm break-words flex-1 min-w-0">{plan.problem}</h4>
-                                <Badge className={`${getStatusColor(plan.status)} flex-shrink-0 text-xs whitespace-nowrap`}>
-                                  {plan.status.replace('_', ' ')}
+                      <Card key={plan.id} className="bg-slate-50">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="font-semibold text-slate-900">{plan.problem}</h4>
+                                <Badge className={getStatusColor(plan.status)}>
+                                  {(plan.status || '').replace('_', ' ')}
                                 </Badge>
                               </div>
-                              <p className="text-xs sm:text-sm text-gray-600 mb-2 break-words">{plan.goal}</p>
+                              <p className="text-sm text-slate-600 mb-2">{plan.goal}</p>
                               
                               {plan.interventions && plan.interventions.length > 0 && (
                                 <div className="mt-2">
-                                  <p className="text-xs font-medium text-gray-700 mb-1">Interventions:</p>
-                                  <ul className="list-disc ml-4 text-xs text-gray-600 space-y-0.5">
+                                  <p className="text-xs font-medium text-slate-700 mb-1">Interventions:</p>
+                                  <ul className="list-disc ml-5 text-xs text-slate-600 space-y-0.5">
                                     {plan.interventions.map((intervention, idx) => (
-                                      <li key={idx} className="break-words">{intervention}</li>
+                                      <li key={idx}>{intervention}</li>
                                     ))}
                                   </ul>
                                 </div>
                               )}
 
-                              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-2 text-xs text-gray-500">
-                                {plan.frequency && <span className="break-words"><strong>Frequency:</strong> {plan.frequency}</span>}
+                              <div className="flex gap-4 mt-2 text-xs text-slate-500">
+                                {plan.frequency && <span><strong>Frequency:</strong> {plan.frequency}</span>}
                                 {plan.target_date && (
-                                  <span className="whitespace-nowrap">
+                                  <span>
                                     <strong>Target:</strong> {format(new Date(plan.target_date), 'MMM d, yyyy')}
                                   </span>
                                 )}
@@ -703,35 +872,27 @@ export default function CarePlanManagement() {
                             </div>
                           </div>
 
-                          {/* Progress Tracker */}
-                          <ProgressTracker carePlan={plan} patientId={plan.patient_id} />
-
-                          {/* Collaboration Panel */}
-                          <CollaborationPanel carePlan={plan} patientId={plan.patient_id} />
-
-                          <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t w-full">
+                          <div className="flex gap-2 pt-3 border-t">
                             <Select
                               value={plan.status}
                               onValueChange={(newStatus) => handleStatusChange(plan.id, newStatus)}
                             >
-                              <SelectTrigger className="w-full sm:w-40 h-11 text-sm">
+                              <SelectTrigger className="flex-1 h-11 sm:h-9 text-sm">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="active" className="text-sm">Active</SelectItem>
-                                <SelectItem value="met" className="text-sm">Goal Met</SelectItem>
-                                <SelectItem value="not_met" className="text-sm">Not Met</SelectItem>
-                                <SelectItem value="revised" className="text-sm">Revised</SelectItem>
+                              <SelectContent className="max-h-[50vh]">
+                                <SelectItem value="active" className="py-3 sm:py-2">Active</SelectItem>
+                                <SelectItem value="met" className="py-3 sm:py-2">Goal Met</SelectItem>
+                                <SelectItem value="not_met" className="py-3 sm:py-2">Not Met</SelectItem>
+                                <SelectItem value="revised" className="py-3 sm:py-2">Revised</SelectItem>
                               </SelectContent>
                             </Select>
                             <Button
-                              size="sm"
                               variant="outline"
                               onClick={() => handleDelete(plan.id)}
-                              className="text-red-600 hover:text-red-700 touch-target w-full sm:w-auto"
+                              className="text-red-600 hover:text-red-700 min-h-[44px] px-3"
                             >
-                              <Trash2 className="w-4 h-4 mr-1 sm:mr-0" />
-                              <span className="sm:hidden">Delete</span>
+                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
                         </CardContent>
@@ -744,128 +905,35 @@ export default function CarePlanManagement() {
           })
         )}
       </div>
+        </TabsContent>
 
-      {/* Create Patient Dialog */}
-      {showCreatePatient && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Create New Patient</CardTitle>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setShowCreatePatient(false)}
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">
-                  First Name *
-                </label>
-                <input
-                  type="text"
-                  value={newPatientData.first_name}
-                  onChange={(e) =>
-                    setNewPatientData({
-                      ...newPatientData,
-                      first_name: e.target.value,
-                    })
-                  }
-                  placeholder="John"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">
-                  Last Name *
-                </label>
-                <input
-                  type="text"
-                  value={newPatientData.last_name}
-                  onChange={(e) =>
-                    setNewPatientData({
-                      ...newPatientData,
-                      last_name: e.target.value,
-                    })
-                  }
-                  placeholder="Doe"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">
-                  Date of Birth
-                </label>
-                <input
-                  type="date"
-                  value={newPatientData.date_of_birth}
-                  onChange={(e) =>
-                    setNewPatientData({
-                      ...newPatientData,
-                      date_of_birth: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">
-                  Medical Record Number
-                </label>
-                <input
-                  type="text"
-                  value={newPatientData.medical_record_number}
-                  onChange={(e) =>
-                    setNewPatientData({
-                      ...newPatientData,
-                      medical_record_number: e.target.value,
-                    })
-                  }
-                  placeholder="MRN-12345"
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowCreatePatient(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={createNewPatient}
-                  disabled={creatingPatient}
-                >
-                  {creatingPatient ? "Creating..." : "Create Patient"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+        <TabsContent value="builder">
+          {BuilderTab()}
+        </TabsContent>
+      </Tabs>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={!!planToDelete} onOpenChange={(open) => { if (!open) setPlanToDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Care Plan</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the care plan.
+              Are you sure you want to delete this care plan? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                deleteCarePlanMutation.mutate(planToDelete);
+                setPlanToDelete(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
-    </div>
-    </PremiumFeatureGate>
+    </PageContainer>
   );
 }

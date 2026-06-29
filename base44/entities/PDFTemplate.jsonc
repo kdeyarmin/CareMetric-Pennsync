@@ -1,0 +1,250 @@
+{
+  "name": "PDFTemplate",
+  "type": "object",
+  "properties": {
+    "template_name": {
+      "type": "string",
+      "description": "Name of the template"
+    },
+    "template_category": {
+      "type": "string",
+      "enum": [
+        "consent",
+        "assessment",
+        "care_plan",
+        "discharge",
+        "admission",
+        "other"
+      ],
+      "description": "Category of template"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this template is for"
+    },
+    "template_file_url": {
+      "type": "string",
+      "description": "URL to the base PDF template file"
+    },
+    "version": {
+      "type": "string",
+      "default": "1.0",
+      "description": "Version number of the template"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this template is currently active"
+    },
+    "field_mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pdf_field_name": {
+            "type": "string"
+          },
+          "data_source": {
+            "type": "string",
+            "enum": [
+              "patient",
+              "visit",
+              "care_plan",
+              "medication",
+              "custom"
+            ]
+          },
+          "field_path": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "field_type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "date",
+              "number",
+              "checkbox",
+              "select"
+            ]
+          },
+          "default_value": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Mappings between PDF fields and data sources"
+    },
+    "signature_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "description": "Signature fields configuration"
+    },
+    "visual_elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "signature",
+              "date",
+              "number",
+              "checkbox",
+              "image",
+              "rich_text"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "position": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          },
+          "size": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              }
+            }
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "defaultValue": {
+                "type": "string"
+              },
+              "fontSize": {
+                "type": "number"
+              },
+              "fontWeight": {
+                "type": "string"
+              },
+              "alignment": {
+                "type": "string"
+              },
+              "conditional": {
+                "type": "object",
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "Visual editor elements with drag-and-drop positioning and conditional display"
+    },
+    "is_packet": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when this template bundles more than one document into a packet"
+    },
+    "document_count": {
+      "type": "number",
+      "default": 1,
+      "description": "Number of documents in the packet (1 for a single-document template)"
+    },
+    "carry_forward_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_name": { "type": "string" },
+          "patient_field": { "type": "string" },
+          "label": { "type": "string" },
+          "document_id": { "type": "string" }
+        }
+      },
+      "description": "Fields whose captured value carries forward across documents in a packet"
+    },
+    "packet_documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "document_id": { "type": "string" },
+          "document_name": { "type": "string" },
+          "original_file_name": { "type": "string" },
+          "template_file_url": { "type": "string" },
+          "order": { "type": "number" },
+          "field_mappings": { "type": "array", "items": { "type": "object" } },
+          "signature_fields": { "type": "array", "items": { "type": "object" } },
+          "carry_forward_fields": { "type": "array", "items": { "type": "object" } },
+          "visual_elements": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "description": "Per-document configuration for a multi-document packet template"
+    },
+    "parent_template_id": {
+      "type": "string",
+      "description": "Reference to the template this version is based on"
+    },
+    "change_notes": {
+      "type": "string",
+      "description": "Notes about changes in this version"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times this template has been used"
+    }
+  },
+  "required": [
+    "template_name",
+    "template_category",
+    "template_file_url"
+  ]
+}

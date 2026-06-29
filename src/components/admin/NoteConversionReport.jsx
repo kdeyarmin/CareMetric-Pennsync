@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,8 +26,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
   PieChart,
   Pie,
   Cell
@@ -39,49 +37,65 @@ import {
   Users,
   Calendar
 } from "lucide-react";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { format, subDays } from "date-fns";
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+const COLORS = ['#3557b0', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#0d9488'];
 
-export default function NoteConversionReport() {
+export default function NoteEnhancementReport() {
   const [timeRange, setTimeRange] = useState("7");
 
-  const { data: conversions = [], isLoading } = useQuery({
-    queryKey: ['noteConversions'],
-    queryFn: () => base44.entities.NoteConversion.list('-created_date', 500),
+  const { data: enhancements = [], isLoading } = useQuery({
+    queryKey: ['allNoteConversions'],
+    queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
   });
 
-  // Filter by time range - no filtering, show ALL conversions
-  const filteredConversions = conversions;
+  // Filter by time range
+  const cutoffDate = subDays(new Date(), parseInt(timeRange, 10));
+  const filteredEnhancements = enhancements.filter(c => 
+    new Date(c.created_date) >= cutoffDate
+  );
 
   // Calculate stats
-  const totalConversions = filteredConversions.length;
-  const avgQualityScore = filteredConversions.length > 0
-    ? Math.round(filteredConversions.reduce((sum, c) => sum + (c.quality_score || 0), 0) / filteredConversions.length)
+  const totalEnhancements = filteredEnhancements.length;
+  const avgQualityScore = filteredEnhancements.length > 0
+    ? Math.round(filteredEnhancements.reduce((sum, c) => sum + (c.quality_score || 0), 0) / filteredEnhancements.length)
     : 0;
-  const avgConversionTime = filteredConversions.length > 0
-    ? Math.round(filteredConversions.reduce((sum, c) => sum + (c.conversion_time_ms || 0), 0) / filteredConversions.length / 60000)
+  const avgEnhancementTime = filteredEnhancements.length > 0
+    ? Math.round(filteredEnhancements.reduce((sum, c) => sum + (c.conversion_time_ms || 0), 0) / filteredEnhancements.length / 60000)
     : 0;
-  const uniqueNurses = new Set(filteredConversions.map(c => c.nurse_email)).size;
+  const uniqueNurses = new Set(filteredEnhancements.map(c => c.nurse_email)).size;
 
-  // Group by date for trend chart
-  const dailyData = {};
-  filteredConversions.forEach(c => {
-    const date = format(new Date(c.created_date), 'MM/dd');
-    if (!dailyData[date]) {
-      dailyData[date] = { date, count: 0, totalQuality: 0 };
-    }
-    dailyData[date].count++;
-    dailyData[date].totalQuality += c.quality_score || 0;
-  });
-  const trendData = Object.values(dailyData).map(d => ({
-    ...d,
-    avgQuality: d.count > 0 ? Math.round(d.totalQuality / d.count) : 0
-  })).sort((a, b) => a.date.localeCompare(b.date));
+  // Group by date for trend chart - create complete date range
+  const dailyData = [];
+  const currentDate = new Date(cutoffDate);
+  const endDate = new Date();
+  
+  while (currentDate <= endDate) {
+    const dateKey = format(currentDate, 'yyyy-MM-dd');
+    const displayDate = format(currentDate, 'M/d');
+    
+    const dayEnhancements = filteredEnhancements.filter(c => {
+      const enhancementDate = format(new Date(c.created_date), 'yyyy-MM-dd');
+      return enhancementDate === dateKey;
+    });
+    
+    const totalQuality = dayEnhancements.reduce((sum, c) => sum + (c.quality_score || 0), 0);
+    
+    dailyData.push({
+      date: displayDate,
+      fullDate: dateKey,
+      count: dayEnhancements.length,
+      avgQuality: dayEnhancements.length > 0 ? Math.round(totalQuality / dayEnhancements.length) : 0
+    });
+    
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  const trendData = dailyData;
 
   // Group by nurse
   const nurseData = {};
-  filteredConversions.forEach(c => {
+  filteredEnhancements.forEach(c => {
     const nurse = c.nurse_email || 'Unknown';
     if (!nurseData[nurse]) {
       nurseData[nurse] = { nurse, count: 0, totalQuality: 0 };
@@ -94,12 +108,11 @@ export default function NoteConversionReport() {
       ...d,
       avgQuality: d.count > 0 ? Math.round(d.totalQuality / d.count) : 0
     }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+    .sort((a, b) => b.count - a.count); // Sort by highest notes first
 
   // Group by visit type
   const visitTypeData = {};
-  filteredConversions.forEach(c => {
+  filteredEnhancements.forEach(c => {
     const type = c.visit_type || 'Unknown';
     if (!visitTypeData[type]) {
       visitTypeData[type] = { name: type.replace(/_/g, ' '), value: 0 };
@@ -111,8 +124,8 @@ export default function NoteConversionReport() {
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-gray-500">
-          Loading conversion data...
+        <CardContent className="py-8 text-center text-slate-500">
+          Loading enhancement data...
         </CardContent>
       </Card>
     );
@@ -122,8 +135,8 @@ export default function NoteConversionReport() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">AI Note Enhancement Statistics</h2>
-          <p className="text-sm text-gray-600">Track rough notes enhanced to clinical documentation</p>
+          <h2 className="text-xl font-bold text-slate-900">AI Note Enhancement Statistics</h2>
+          <p className="text-sm text-slate-600">Track rough notes enhanced to clinical documentation</p>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
           <SelectTrigger className="w-40">
@@ -147,8 +160,8 @@ export default function NoteConversionReport() {
                 <FileText className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{totalConversions}</p>
-                <p className="text-xs text-gray-500">Total Conversions</p>
+                <p className="text-2xl font-bold">{totalEnhancements}</p>
+                <p className="text-xs text-slate-500">Total Enhancements</p>
               </div>
             </div>
           </CardContent>
@@ -161,7 +174,7 @@ export default function NoteConversionReport() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{avgQualityScore}%</p>
-                <p className="text-xs text-gray-500">Avg Quality Score</p>
+                <p className="text-xs text-slate-500">Avg Quality Score</p>
               </div>
             </div>
           </CardContent>
@@ -173,8 +186,8 @@ export default function NoteConversionReport() {
                 <Clock className="w-5 h-5 text-yellow-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{avgConversionTime} min</p>
-                <p className="text-xs text-gray-500">Avg Conversion Time</p>
+                <p className="text-2xl font-bold">{avgEnhancementTime} min</p>
+                <p className="text-xs text-slate-500">Avg Enhancement Time</p>
               </div>
             </div>
           </CardContent>
@@ -182,12 +195,12 @@ export default function NoteConversionReport() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Users className="w-5 h-5 text-purple-600" />
+              <div className="p-2 bg-navy-100 rounded-lg">
+                <Users className="w-5 h-5 text-navy-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{uniqueNurses}</p>
-                <p className="text-xs text-gray-500">Active Nurses</p>
+                <p className="text-xs text-slate-500">Active Nurses</p>
               </div>
             </div>
           </CardContent>
@@ -201,7 +214,7 @@ export default function NoteConversionReport() {
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              Daily Conversions
+              Daily Enhancements
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -212,7 +225,7 @@ export default function NoteConversionReport() {
                   <XAxis dataKey="date" fontSize={12} />
                   <YAxis fontSize={12} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#3B82F6" name="Conversions" />
+                  <Bar dataKey="count" fill="#3557b0" name="Enhancements" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -238,7 +251,7 @@ export default function NoteConversionReport() {
                     labelLine={true}
                     label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                     outerRadius={70}
-                    fill="#8884d8"
+                    fill="#264491"
                     dataKey="value"
                   >
                     {visitTypePieData.map((entry, index) => (
@@ -265,16 +278,18 @@ export default function NoteConversionReport() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Rank</TableHead>
                 <TableHead>Nurse</TableHead>
-                <TableHead className="text-right">Conversions</TableHead>
+                <TableHead className="text-right">Enhancements</TableHead>
                 <TableHead className="text-right">Avg Quality</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {nurseStats.map((nurse) => (
+              {nurseStats.map((nurse, index) => (
                 <TableRow key={nurse.nurse}>
+                  <TableCell className="font-bold text-blue-600">#{index + 1}</TableCell>
                   <TableCell className="font-medium">{nurse.nurse}</TableCell>
-                  <TableCell className="text-right">{nurse.count}</TableCell>
+                  <TableCell className="text-right font-semibold">{nurse.count}</TableCell>
                   <TableCell className="text-right">
                     <Badge className={nurse.avgQuality >= 80 ? 'bg-green-100 text-green-800' : nurse.avgQuality >= 60 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}>
                       {nurse.avgQuality}%
@@ -284,7 +299,7 @@ export default function NoteConversionReport() {
               ))}
               {nurseStats.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-gray-500">
+                  <TableCell colSpan={4} className="text-center text-slate-500">
                     No data available
                   </TableCell>
                 </TableRow>

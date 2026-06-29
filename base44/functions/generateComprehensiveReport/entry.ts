@@ -1,13 +1,22 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import jsPDF from 'npm:jspdf@2.5.2';
+
+// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
+const SUPER_ADMIN_EMAIL = ((typeof Deno !== 'undefined' && Deno.env.get('SUPER_ADMIN_EMAIL')) || '').trim().toLowerCase();
+const sameEmail = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+const isAdminLike = (u) => !!u && (
+  u.role === 'admin' || u.account_type === 'agency_admin' ||
+  u.account_type === 'super_admin' || (SUPER_ADMIN_EMAIL !== '' && sameEmail(u.email, SUPER_ADMIN_EMAIL))
+);
+// <<<END SHARED HELPER: isAdminLike>>>
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
-    if (!user || user.role !== 'admin') {
-      return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 401 });
+    if (!isAdminLike(user)) {
+      return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
     const { reportType, dateRange, includeCharts = false } = await req.json();
@@ -22,15 +31,15 @@ Deno.serve(async (req) => {
     // Fetch comprehensive data
     const [visits, patients, incidents, users, carePlans, complianceAudits, trainingCompletions, noteConversions, oasisUploads, alerts] = await Promise.all([
       base44.asServiceRole.entities.Visit.list('-visit_date', 1000),
-      base44.asServiceRole.entities.Patient.list(),
+      base44.asServiceRole.entities.Patient.list('-created_date', 5000),
       base44.asServiceRole.entities.Incident.list('-incident_date', 500),
-      base44.asServiceRole.entities.User.list(),
-      base44.asServiceRole.entities.CarePlan.list(),
+      base44.asServiceRole.entities.User.list('-created_date', 5000),
+      base44.asServiceRole.entities.CarePlan.list('-created_date', 5000),
       base44.asServiceRole.entities.ComplianceAudit.list('-audit_date', 500),
-      base44.asServiceRole.entities.TrainingCompletion.list(),
-      base44.asServiceRole.entities.NoteConversion.list(),
+      base44.asServiceRole.entities.TrainingAssignment.list('-created_date', 5000),
+      base44.asServiceRole.entities.NoteConversion.list('-created_date', 5000),
       base44.asServiceRole.entities.OASISUpload.list('-created_date', 200),
-      base44.asServiceRole.entities.PatientAlert.list()
+      base44.asServiceRole.entities.PatientAlert.list('-created_date', 5000)
     ]);
 
     // Filter by date range
@@ -224,11 +233,12 @@ Deno.serve(async (req) => {
       return compDate >= startDate && compDate <= today;
     });
 
-    const completedTraining = trainingInPeriod.filter(t => t.status === 'completed').length;
+    const completedTraining = trainingInPeriod.filter(t => t.status === 'completed' || t.pass_fail_result === 'passed').length;
+    const scoredInPeriod = trainingInPeriod.filter(t => typeof t.score_percentage === 'number');
 
     addText(`Training Modules Completed: ${completedTraining}`, 10);
     addText(`Training in Progress: ${trainingInPeriod.filter(t => t.status === 'in_progress').length}`, 10);
-    addText(`Average Training Score: ${trainingInPeriod.filter(t => t.score).length > 0 ? Math.round(trainingInPeriod.reduce((sum, t) => sum + (t.score || 0), 0) / trainingInPeriod.filter(t => t.score).length) : 'N/A'}`, 10);
+    addText(`Average Training Score: ${scoredInPeriod.length > 0 ? Math.round(scoredInPeriod.reduce((sum, t) => sum + t.score_percentage, 0) / scoredInPeriod.length) : 'N/A'}`, 10);
 
     // ALERTS & RISK MANAGEMENT
     addSection('PATIENT ALERTS & RISK');
@@ -295,7 +305,6 @@ Deno.serve(async (req) => {
     console.error('Report generation error:', error);
     return Response.json({ 
       error: error.message,
-      stack: error.stack,
       details: 'Failed to generate comprehensive report'
     }, { status: 500 });
   }

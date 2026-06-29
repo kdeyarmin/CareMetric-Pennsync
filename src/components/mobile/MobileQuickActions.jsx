@@ -1,91 +1,88 @@
-import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Plus, FileText, Users, Clock, X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  FileText,
+  Users,
+  ClipboardList,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  Sparkles
+} from "lucide-react";
 
 export default function MobileQuickActions() {
-  const [isOpen, setIsOpen] = useState(false);
-  const navigate = useNavigate();
+  const [expanded, setExpanded] = useState(false);
 
-  const actions = [
-    { 
-      icon: FileText, 
-      label: "New Note", 
-      color: "bg-blue-600",
-      action: () => navigate(createPageUrl("SmartNoteAssistant"))
+  const quickActions = [
+    {
+      name: "Quick Note",
+      icon: FileText,
+      page: "QuickNote",
+      color: "from-blue-500 to-blue-600",
+      description: "Document a visit"
     },
-    { 
-      icon: Users, 
-      label: "Add Patient", 
-      color: "bg-green-600",
-      action: () => navigate(createPageUrl("Patients"))
+    {
+      name: "Patients",
+      icon: Users,
+      page: "Patients",
+      color: "from-green-500 to-green-600",
+      description: "View patient list"
     },
-    { 
-      icon: Clock, 
-      label: "New Task", 
-      color: "bg-purple-600",
-      action: () => navigate(createPageUrl("Tasks"))
+    {
+      name: "Care Plans",
+      icon: ClipboardList,
+      page: "CarePlanManagement",
+      color: "from-navy-500 to-navy-600",
+      description: "Manage care plans"
+    },
+    {
+      name: "Offline Mode",
+      icon: Download,
+      page: "OfflineMode",
+      color: "from-orange-500 to-orange-600",
+      description: "Cache patient data"
     }
   ];
 
   return (
-    <>
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="lg:hidden fixed inset-0 bg-black/40 z-[9996]"
-            onClick={() => setIsOpen(false)}
-          />
+    <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40">
+      <Card className="shadow-2xl border-2 border-blue-300">
+        {expanded && (
+          <CardContent className="p-3 grid grid-cols-2 gap-2">
+            {quickActions.map((action) => (
+              <Link key={action.page} to={createPageUrl(action.page)}>
+                <Button
+                  variant="outline"
+                  className={`w-full h-20 flex flex-col items-center justify-center gap-1 bg-gradient-to-br ${action.color} text-white border-none hover:opacity-90 active:scale-95 transition-all`}
+                >
+                  <action.icon className="w-6 h-6" />
+                  <span className="text-xs font-semibold">{action.name}</span>
+                </Button>
+              </Link>
+            ))}
+          </CardContent>
         )}
-      </AnimatePresence>
-
-      <div className="lg:hidden fixed right-4 bottom-20 z-[9997]">
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: 20 }}
-              className="flex flex-col gap-3 mb-3"
-            >
-              {actions.map((item, index) => {
-                const Icon = item.icon;
-                return (
-                  <motion.button
-                    key={item.label}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ delay: index * 0.05 }}
-                    onClick={() => {
-                      item.action();
-                      setIsOpen(false);
-                    }}
-                    className={`${item.color} text-white rounded-full px-4 py-3 shadow-lg flex items-center gap-3 min-w-[140px] touch-target active:scale-95 transition-transform`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="font-medium text-sm">{item.label}</span>
-                  </motion.button>
-                );
-              })}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className={`${
-            isOpen ? "bg-slate-600" : "bg-blue-600"
-          } text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg active:scale-95 transition-all touch-target`}
+        <Button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full bg-blue-600 hover:bg-blue-700 rounded-t-none"
         >
-          {isOpen ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-        </button>
-      </div>
-    </>
+          {expanded ? (
+            <>
+              <ChevronDown className="w-4 h-4 mr-2" />
+              Hide Quick Actions
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Quick Actions
+              <ChevronUp className="w-4 h-4 ml-2" />
+            </>
+          )}
+        </Button>
+      </Card>
+    </div>
   );
 }

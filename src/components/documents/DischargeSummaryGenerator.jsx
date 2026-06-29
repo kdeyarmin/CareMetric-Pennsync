@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { FileOutput, Sparkles } from "lucide-react";
 import { todayEastern } from "../utils/timezone";
 import SmartNotesContextPanel from "./SmartNotesContextPanel";
@@ -17,7 +18,7 @@ export default function DischargeSummaryGenerator({ patientId, patient }) {
   const [dischargeDisposition, setDischargeDisposition] = useState("");
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [generatedSummary, setGeneratedSummary] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [additionalContext, setAdditionalContext] = useState("");
 
   const { data: visits = [] } = useQuery({
@@ -42,11 +43,11 @@ export default function DischargeSummaryGenerator({ patientId, patient }) {
   });
 
   const generateSummary = async () => {
-    setIsGenerating(true);
     try {
       const completedVisits = visits.filter(v => v.status === 'completed').slice(0, 10);
       
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a comprehensive Medicare-compliant discharge summary for home health services.
 
 PATIENT INFORMATION:
@@ -126,8 +127,8 @@ Use professional medical terminology. Be detailed and specific. Include all rele
       setGeneratedSummary(result.summary);
     } catch (error) {
       console.error("Error generating discharge summary:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   return (
@@ -181,13 +182,13 @@ Use professional medical terminology. Be detailed and specific. Include all rele
             {additionalContext && (
               <div>
                 <Label>Context from Smart Notes</Label>
-                <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-sm">
-                  <p className="text-gray-700 whitespace-pre-wrap">{additionalContext}</p>
+                <div className="bg-navy-50 p-3 rounded-lg border border-navy-200 text-sm">
+                  <p className="text-slate-700 whitespace-pre-wrap">{additionalContext}</p>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => setAdditionalContext("")}
-                    className="mt-2 text-xs text-purple-600"
+                    className="mt-2 text-xs text-navy-600"
                   >
                     Clear Context
                   </Button>
@@ -204,10 +205,10 @@ Use professional medical terminology. Be detailed and specific. Include all rele
 
             <Button 
               onClick={generateSummary} 
-              disabled={isGenerating}
+              disabled={ai.loading}
               className="w-full bg-blue-600 hover:bg-blue-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" /> Generating...</>
               ) : (
                 <><Sparkles className="w-5 h-5 mr-2" /> Generate Discharge Summary</>

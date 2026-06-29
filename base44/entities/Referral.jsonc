@@ -1,0 +1,213 @@
+{
+  "name": "Referral",
+  "type": "object",
+  "properties": {
+    "patient_name": {
+      "type": "string",
+      "description": "Patient name from referral document"
+    },
+    "patient_dob": {
+      "type": "string",
+      "format": "date",
+      "description": "Patient date of birth"
+    },
+    "referral_source": {
+      "type": "string",
+      "description": "Hospital, physician, or facility that sent referral"
+    },
+    "referral_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date referral was received"
+    },
+    "document_url": {
+      "type": "string",
+      "description": "URL to uploaded original referral document (PDF, image)"
+    },
+    "processed_document_url": {
+      "type": "string",
+      "description": "URL to AI-processed admission packet PDF"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "fax",
+        "image",
+        "electronic"
+      ],
+      "default": "pdf",
+      "description": "Type of referral document"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "processing",
+        "awaiting_info",
+        "ready_for_admission",
+        "archived",
+        "declined"
+      ],
+      "default": "new",
+      "description": "Current status of referral"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "urgent",
+        "high",
+        "normal",
+        "low"
+      ],
+      "default": "normal",
+      "description": "AI-determined referral priority level"
+    },
+    "extracted_data": {
+      "type": "object",
+      "description": "AI-extracted patient and clinical data from referral"
+    },
+    "analysis_results": {
+      "type": "object",
+      "description": "AI analysis including PDGM insights and care recommendations"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Email of staff member assigned to process this referral"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Linked patient ID once patient is created"
+    },
+    "missing_information": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of critical missing information items"
+    },
+    "follow_up_notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "note": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Follow-up notes and communications"
+    },
+    "estimated_start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Target admission/start of care date"
+    },
+    "payor_type": {
+      "type": "string",
+      "description": "Insurance/payor information"
+    },
+    "diagnosis": {
+      "type": "string",
+      "description": "Primary diagnosis from referral"
+    },
+    "archived_reason": {
+      "type": "string",
+      "description": "Reason if referral was archived or declined"
+    },
+    "notification_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether notification has been sent for pending referral"
+    },
+    "requires_manual_review": {
+      "type": "boolean",
+      "description": "Flag for patient match requiring manual review"
+    },
+    "match_suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "AI-suggested patient matches for review"
+    },
+    "match_analysis": {
+      "type": "object",
+      "description": "AI analysis of patient matching"
+    },
+    "match_confidence": {
+      "type": "number",
+      "description": "Match confidence score 0-100"
+    },
+    "match_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Factors contributing to patient match"
+    },
+    "ai_generated_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "assigned_role": {
+            "type": "string"
+          },
+          "due_date": {
+            "type": "string"
+          },
+          "ai_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "AI-generated tasks based on referral analysis"
+    },
+    "page_range": {
+      "type": "string",
+      "description": "Page range within a multi-document PDF this referral was extracted from"
+    },
+    "detection_confidence": {
+      "type": "number",
+      "description": "Confidence score for multi-document detection/extraction"
+    },
+    "manually_confirmed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether a patient match was manually confirmed by staff"
+    },
+    "rejection_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the referral was rejected/declined"
+    },
+    "rejected_by": {
+      "type": "string",
+      "description": "Email of the user who rejected the referral"
+    }
+  },
+  "required": [
+    "referral_date",
+    "status"
+  ]
+}

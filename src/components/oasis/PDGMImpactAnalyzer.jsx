@@ -1,13 +1,11 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import {
-  DollarSign,
-  TrendingUp,
   Activity,
   Loader2,
   ArrowRight,
@@ -15,8 +13,7 @@ import {
   AlertCircle,
   CheckCircle2,
   BarChart3,
-  Zap,
-  Info
+  Zap
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
 
@@ -25,13 +22,12 @@ export default function PDGMImpactAnalyzer({
   suggestedChanges,
   onAnalysisComplete
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [impactAnalysis, setImpactAnalysis] = useState(null);
 
   const analyzePDGMImpact = async () => {
     if (!currentPdgmData || !suggestedChanges) return;
 
-    setIsAnalyzing(true);
 
     try {
       // Build modified PDGM data based on suggestions
@@ -66,7 +62,8 @@ export default function PDGMImpactAnalyzer({
       });
 
       // Get detailed AI analysis of the changes
-      const aiAnalysis = await base44.integrations.Core.InvokeLLM({
+      const aiAnalysis = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a PDGM reimbursement optimization expert. Analyze the impact of suggested documentation improvements on PDGM payment.
 
 CURRENT PDGM DATA:
@@ -259,9 +256,9 @@ Return detailed JSON analysis:`,
       }
     } catch (error) {
       console.error("PDGM impact analysis error:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsAnalyzing(false);
   };
 
   const formatCurrency = (amount) => {
@@ -274,7 +271,7 @@ Return detailed JSON analysis:`,
       medium: 'bg-yellow-100 text-yellow-800',
       high: 'bg-orange-100 text-orange-800'
     };
-    return colors[effort] || 'bg-gray-100 text-gray-800';
+    return colors[effort] || 'bg-slate-100 text-slate-800';
   };
 
   const getRiskColor = (risk) => {
@@ -283,7 +280,7 @@ Return detailed JSON analysis:`,
       medium: 'bg-yellow-100 text-yellow-800',
       high: 'bg-red-100 text-red-800'
     };
-    return colors[risk] || 'bg-gray-100 text-gray-800';
+    return colors[risk] || 'bg-slate-100 text-slate-800';
   };
 
   return (
@@ -297,15 +294,15 @@ Return detailed JSON analysis:`,
       <CardContent className="space-y-4 pt-4">
         {!impactAnalysis ? (
           <div className="text-center py-6">
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-slate-600 mb-4">
               Analyze the precise PDGM payment impact of suggested documentation improvements
             </p>
             <Button
               onClick={analyzePDGMImpact}
-              disabled={isAnalyzing || !currentPdgmData || !suggestedChanges}
+              disabled={ai.loading || !currentPdgmData || !suggestedChanges}
               className="bg-green-600 hover:bg-green-700"
             >
-              {isAnalyzing ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing Impact...</>
               ) : (
                 <><BarChart3 className="w-4 h-4 mr-2" /> Analyze PDGM Impact</>
@@ -318,8 +315,8 @@ Return detailed JSON analysis:`,
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-300">
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <div className="text-center">
-                  <p className="text-xs text-gray-600 mb-1">Current Payment</p>
-                  <p className="text-xl font-bold text-gray-700">
+                  <p className="text-xs text-slate-600 mb-1">Current Payment</p>
+                  <p className="text-xl font-bold text-slate-700">
                     {formatCurrency(impactAnalysis.aiAnalysis.payment_summary?.original_payment)}
                   </p>
                 </div>
@@ -327,14 +324,14 @@ Return detailed JSON analysis:`,
                   <ArrowRight className="w-6 h-6 text-green-600" />
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-gray-600 mb-1">Optimized Payment</p>
+                  <p className="text-xs text-slate-600 mb-1">Optimized Payment</p>
                   <p className="text-xl font-bold text-green-700">
                     {formatCurrency(impactAnalysis.aiAnalysis.payment_summary?.optimized_payment)}
                   </p>
                 </div>
               </div>
               <div className="text-center bg-white p-3 rounded border border-green-200">
-                <p className="text-sm text-gray-600">Total Increase</p>
+                <p className="text-sm text-slate-600">Total Increase</p>
                 <p className="text-2xl font-bold text-green-700">
                   +{formatCurrency(impactAnalysis.aiAnalysis.payment_summary?.total_increase)}
                   <span className="text-sm ml-2">
@@ -342,7 +339,7 @@ Return detailed JSON analysis:`,
                   </span>
                 </p>
                 {impactAnalysis.aiAnalysis.payment_summary?.annual_impact && (
-                  <p className="text-xs text-gray-600 mt-1">
+                  <p className="text-xs text-slate-600 mt-1">
                     Annual Impact: {formatCurrency(impactAnalysis.aiAnalysis.payment_summary.annual_impact)}
                   </p>
                 )}
@@ -351,7 +348,7 @@ Return detailed JSON analysis:`,
 
             {/* Case-Mix Component Breakdown */}
             <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                 <Activity className="w-4 h-4" />
                 Case-Mix Component Breakdown
               </h3>
@@ -382,37 +379,37 @@ Return detailed JSON analysis:`,
 
               {/* Functional Impact */}
               {impactAnalysis.aiAnalysis.case_mix_breakdown?.functional_impact && (
-                <div className="bg-purple-50 p-3 rounded border border-purple-200">
+                <div className="bg-navy-50 p-3 rounded border border-navy-200">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-semibold text-purple-900">Functional Impairment Level</p>
-                    <Badge className="bg-purple-600 text-white">
+                    <p className="text-sm font-semibold text-navy-900">Functional Impairment Level</p>
+                    <Badge className="bg-navy-600 text-white">
                       +{formatCurrency(impactAnalysis.aiAnalysis.case_mix_breakdown.functional_impact.dollar_impact)}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 text-xs mb-2">
-                    <Badge variant="outline" className="text-purple-700">
+                    <Badge variant="outline" className="text-navy-700">
                       {impactAnalysis.aiAnalysis.case_mix_breakdown.functional_impact.original_level}
                     </Badge>
-                    <ArrowRight className="w-3 h-3 text-purple-500" />
-                    <Badge className="bg-purple-600 text-white">
+                    <ArrowRight className="w-3 h-3 text-navy-500" />
+                    <Badge className="bg-navy-600 text-white">
                       {impactAnalysis.aiAnalysis.case_mix_breakdown.functional_impact.new_level}
                     </Badge>
                   </div>
                   {impactAnalysis.aiAnalysis.case_mix_breakdown.functional_impact.driving_m_items?.length > 0 && (
                     <div className="mt-2 space-y-1">
-                      <p className="text-xs font-semibold text-purple-800">Key M-Item Changes:</p>
+                      <p className="text-xs font-semibold text-navy-800">Key M-Item Changes:</p>
                       {impactAnalysis.aiAnalysis.case_mix_breakdown.functional_impact.driving_m_items.map((item, idx) => (
-                        <div key={idx} className="bg-white p-2 rounded text-xs border border-purple-100">
+                        <div key={idx} className="bg-white p-2 rounded text-xs border border-navy-100">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="font-medium text-purple-900">{item.m_item}</span>
+                            <span className="font-medium text-navy-900">{item.m_item}</span>
                             <span className="text-green-700 font-bold">+{item.points_added} pts</span>
                           </div>
-                          <div className="flex items-center gap-2 text-purple-700 mb-1">
+                          <div className="flex items-center gap-2 text-navy-700 mb-1">
                             <span>Score: {item.original_score}</span>
                             <ArrowRight className="w-3 h-3" />
                             <span className="font-bold">{item.new_score}</span>
                           </div>
-                          <p className="text-purple-600 italic">{item.clinical_justification}</p>
+                          <p className="text-navy-600 italic">{item.clinical_justification}</p>
                         </div>
                       ))}
                     </div>
@@ -458,7 +455,7 @@ Return detailed JSON analysis:`,
 
             {/* Optimization Strategy */}
             {impactAnalysis.aiAnalysis.optimization_strategy?.priority_changes && (
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-200">
+              <div className="bg-gradient-to-r from-indigo-50 to-navy-50 p-4 rounded-lg border border-indigo-200">
                 <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
                   <Zap className="w-4 h-4" />
                   Priority Optimization Strategy
@@ -471,7 +468,7 @@ Return detailed JSON analysis:`,
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <Badge className="bg-indigo-600 text-white">#{change.priority_rank}</Badge>
-                            <span className="text-sm font-medium text-gray-900">{change.change}</span>
+                            <span className="text-sm font-medium text-slate-900">{change.change}</span>
                           </div>
                           <Badge className="bg-green-600 text-white">
                             +{formatCurrency(change.payment_impact)}
@@ -481,7 +478,7 @@ Return detailed JSON analysis:`,
                           <Badge className={getEffortColor(change.implementation_effort)}>
                             {change.implementation_effort} effort
                           </Badge>
-                          <span className="text-xs text-gray-600">
+                          <span className="text-xs text-slate-600">
                             ROI Score: <strong>{change.roi_score}/10</strong>
                           </span>
                         </div>
@@ -549,8 +546,8 @@ Return detailed JSON analysis:`,
 
             {/* Implementation Roadmap */}
             {impactAnalysis.aiAnalysis.implementation_roadmap?.length > 0 && (
-              <div className="bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
-                <h3 className="font-semibold text-cyan-900 mb-3 flex items-center gap-2">
+              <div className="bg-gradient-to-r from-navy-50 to-blue-50 p-4 rounded-lg border border-navy-200">
+                <h3 className="font-semibold text-navy-900 mb-3 flex items-center gap-2">
                   <Target className="w-4 h-4" />
                   Implementation Roadmap
                 </h3>
@@ -559,17 +556,17 @@ Return detailed JSON analysis:`,
                     <div key={idx} className="bg-white p-3 rounded border">
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">{phase.phase}</p>
-                          <p className="text-xs text-gray-600">{phase.timeline}</p>
+                          <p className="text-sm font-semibold text-slate-900">{phase.phase}</p>
+                          <p className="text-xs text-slate-600">{phase.timeline}</p>
                         </div>
-                        <Badge className="bg-cyan-600 text-white">
+                        <Badge className="bg-navy-600 text-white">
                           +{formatCurrency(phase.expected_payment_gain)}
                         </Badge>
                       </div>
-                      <ul className="text-xs text-gray-700 space-y-1">
+                      <ul className="text-xs text-slate-700 space-y-1">
                         {phase.actions?.map((action, aIdx) => (
                           <li key={aIdx} className="flex items-start gap-1">
-                            <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0 text-cyan-600" />
+                            <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0 text-navy-600" />
                             {action}
                           </li>
                         ))}

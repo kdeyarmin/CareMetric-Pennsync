@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { safePercent } from "@/lib/safePercent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +20,6 @@ import {
   Trophy,
   Target,
   Lightbulb,
-  FileText,
   Play
 } from "lucide-react";
 
@@ -28,21 +29,21 @@ export default function TargetedLessonGenerator({
   onComplete,
   onExit
 }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const generatingAi = useAICall();
   const [lessonContent, setLessonContent] = useState(null);
   const [currentSection, setCurrentSection] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizResults, setQuizResults] = useState(null);
   const [practiceResponse, setPracticeResponse] = useState("");
   const [practiceFeedback, setPracticeFeedback] = useState(null);
-  const [isEvaluating, setIsEvaluating] = useState(false);
+  const evaluatingAi = useAICall();
   const [completed, setCompleted] = useState(false);
 
   const generateLesson = async () => {
-    setIsGenerating(true);
     
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await generatingAi.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a comprehensive training lesson for home health nurses on: "${module.title}"
 
 Category: ${module.category}
@@ -117,19 +118,31 @@ Make it practical, specific to home health, and immediately applicable.`,
         }
       });
 
-      setLessonContent(result);
+      // Normalize the AI result up front: none of these fields are schema-
+      // required, and the render/quiz/practice paths deref them unconditionally.
+      setLessonContent({
+        ...result,
+        sections: Array.isArray(result?.sections) ? result.sections : [],
+        quiz: Array.isArray(result?.quiz) ? result.quiz : [],
+        quick_reference: Array.isArray(result?.quick_reference) ? result.quick_reference : [],
+        practice_scenario: {
+          ...(result?.practice_scenario || {}),
+          ideal_elements: Array.isArray(result?.practice_scenario?.ideal_elements)
+            ? result.practice_scenario.ideal_elements
+            : [],
+        },
+      });
     } catch (error) {
       console.error("Error generating lesson:", error);
     }
-    setIsGenerating(false);
   };
 
   const evaluatePractice = async () => {
     if (!practiceResponse.trim()) return;
-    setIsEvaluating(true);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await evaluatingAi.run({
+        model: "claude_opus_4_8",
         prompt: `Evaluate this nurse's documentation practice response.
 
 SCENARIO:
@@ -160,7 +173,6 @@ Provide constructive feedback:`,
     } catch (error) {
       console.error("Error evaluating practice:", error);
     }
-    setIsEvaluating(false);
   };
 
   const submitQuiz = () => {
@@ -170,7 +182,7 @@ Provide constructive feedback:`,
       correctAnswer: q.correct_index
     }));
     
-    const score = Math.round((results.filter(r => r.correct).length / results.length) * 100);
+    const score = safePercent(results.filter(r => r.correct).length, results.length);
     setQuizResults({ results, score });
   };
 
@@ -197,19 +209,19 @@ Provide constructive feedback:`,
   };
 
   // Initial state - start button
-  if (!lessonContent && !isGenerating) {
+  if (!lessonContent && !generatingAi.loading) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-8 text-center">
-          <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <BookOpen className="w-8 h-8 text-purple-600" />
+          <div className="w-16 h-16 bg-navy-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <BookOpen className="w-8 h-8 text-navy-600" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">{module.title}</h2>
-          <p className="text-sm text-gray-600 mb-4">{module.description}</p>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">{module.title}</h2>
+          <p className="text-sm text-slate-600 mb-4">{module.description}</p>
           <Badge variant="outline" className="mb-6">{module.duration} minutes</Badge>
           <div className="flex justify-center gap-3">
             <Button variant="outline" onClick={onExit}>Cancel</Button>
-            <Button onClick={generateLesson} className="bg-purple-600 hover:bg-purple-700">
+            <Button onClick={generateLesson} className="bg-navy-600 hover:bg-navy-700">
               <Sparkles className="w-4 h-4 mr-2" /> Generate Lesson
             </Button>
           </div>
@@ -219,13 +231,13 @@ Provide constructive feedback:`,
   }
 
   // Loading
-  if (isGenerating) {
+  if (generatingAi.loading) {
     return (
-      <Card className="border-2 border-purple-200">
+      <Card className="border-2 border-navy-200">
         <CardContent className="p-12 text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-          <p className="text-lg font-medium text-purple-900">Creating Your Personalized Lesson...</p>
-          <p className="text-sm text-purple-700 mt-2">Tailored for: {module.category}</p>
+          <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+          <p className="text-lg font-medium text-navy-900">Creating Your Personalized Lesson...</p>
+          <p className="text-sm text-navy-700 mt-2">Tailored for: {module.category}</p>
         </CardContent>
       </Card>
     );
@@ -238,13 +250,13 @@ Provide constructive feedback:`,
       <Card className={`border-2 ${passed ? 'border-green-300 bg-green-50' : 'border-orange-300 bg-orange-50'}`}>
         <CardContent className="p-8 text-center">
           <Trophy className={`w-16 h-16 mx-auto mb-4 ${passed ? 'text-green-600' : 'text-orange-600'}`} />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">
             {passed ? 'Lesson Completed!' : 'Keep Practicing!'}
           </h2>
           <Badge className={`text-lg px-4 py-2 mb-4 ${passed ? 'bg-green-600' : 'bg-orange-600'}`}>
             Quiz Score: {quizResults?.score}%
           </Badge>
-          <p className="text-sm text-gray-600 mb-6">
+          <p className="text-sm text-slate-600 mb-6">
             {passed 
               ? 'Great job! You\'ve demonstrated understanding of this topic.'
               : 'Review the material and try again to improve your score.'}
@@ -265,8 +277,8 @@ Provide constructive feedback:`,
     if (currentSection === 0) {
       return (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">Introduction</h3>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{lessonContent.introduction}</p>
+          <h3 className="text-lg font-semibold text-slate-900">Introduction</h3>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap">{lessonContent.introduction}</p>
         </div>
       );
     }
@@ -277,8 +289,8 @@ Provide constructive feedback:`,
       const section = lessonContent.sections[contentIndex];
       return (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">{section.title}</h3>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{section.content}</p>
+          <h3 className="text-lg font-semibold text-slate-900">{section.title}</h3>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap">{section.content}</p>
           
           {section.examples?.length > 0 && (
             <div className="bg-blue-50 p-4 rounded-lg">
@@ -315,11 +327,11 @@ Provide constructive feedback:`,
           </div>
 
           {section.sample_phrases?.length > 0 && (
-            <div className="bg-purple-50 p-4 rounded-lg">
-              <p className="text-xs font-semibold text-purple-800 mb-2">Sample Documentation Phrases:</p>
+            <div className="bg-navy-50 p-4 rounded-lg">
+              <p className="text-xs font-semibold text-navy-800 mb-2">Sample Documentation Phrases:</p>
               <ul className="space-y-1">
                 {section.sample_phrases.map((p, i) => (
-                  <li key={i} className="text-xs text-purple-700 italic">"{p}"</li>
+                  <li key={i} className="text-xs text-navy-700 italic">"{p}"</li>
                 ))}
               </ul>
             </div>
@@ -332,7 +344,7 @@ Provide constructive feedback:`,
     if (currentSection === lessonContent.sections.length + 1) {
       return (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <Play className="w-5 h-5 text-green-600" /> Practice Scenario
           </h3>
           
@@ -341,9 +353,9 @@ Provide constructive feedback:`,
             <p className="text-sm text-blue-800">{lessonContent.practice_scenario.situation}</p>
           </div>
 
-          <div className="bg-purple-50 p-4 rounded-lg">
-            <p className="text-sm font-medium text-purple-900">Your Task:</p>
-            <p className="text-sm text-purple-800">{lessonContent.practice_scenario.task}</p>
+          <div className="bg-navy-50 p-4 rounded-lg">
+            <p className="text-sm font-medium text-navy-900">Your Task:</p>
+            <p className="text-sm text-navy-800">{lessonContent.practice_scenario.task}</p>
           </div>
 
           <Textarea
@@ -357,10 +369,10 @@ Provide constructive feedback:`,
           {!practiceFeedback ? (
             <Button 
               onClick={evaluatePractice} 
-              disabled={!practiceResponse.trim() || isEvaluating}
+              disabled={!practiceResponse.trim() || evaluatingAi.loading}
               className="w-full bg-green-600 hover:bg-green-700"
             >
-              {isEvaluating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Evaluating...</> : 'Submit for Feedback'}
+              {evaluatingAi.loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Evaluating...</> : 'Submit for Feedback'}
             </Button>
           ) : (
             <div className="space-y-3">
@@ -406,15 +418,15 @@ Provide constructive feedback:`,
     if (currentSection === lessonContent.sections.length + 2) {
       return (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Target className="w-5 h-5 text-purple-600" /> Knowledge Check
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Target className="w-5 h-5 text-navy-600" /> Knowledge Check
           </h3>
 
           {!quizResults ? (
             <>
               {lessonContent.quiz.map((q, qIdx) => (
-                <div key={qIdx} className="p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm font-medium text-gray-900 mb-3">{qIdx + 1}. {q.question}</p>
+                <div key={qIdx} className="p-4 bg-slate-50 rounded-lg">
+                  <p className="text-sm font-medium text-slate-900 mb-3">{qIdx + 1}. {q.question}</p>
                   <RadioGroup
                     value={quizAnswers[qIdx]?.toString()}
                     onValueChange={(val) => setQuizAnswers(prev => ({ ...prev, [qIdx]: parseInt(val) }))}
@@ -431,16 +443,16 @@ Provide constructive feedback:`,
               <Button 
                 onClick={submitQuiz} 
                 disabled={Object.keys(quizAnswers).length < lessonContent.quiz.length}
-                className="w-full bg-purple-600 hover:bg-purple-700"
+                className="w-full bg-navy-600 hover:bg-navy-700"
               >
                 Submit Quiz
               </Button>
             </>
           ) : (
             <>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <p className="text-2xl font-bold text-purple-900">{quizResults.score}%</p>
-                <p className="text-sm text-purple-700">
+              <div className="text-center p-4 bg-navy-50 rounded-lg">
+                <p className="text-2xl font-bold text-navy-900">{quizResults.score}%</p>
+                <p className="text-sm text-navy-700">
                   {quizResults.results.filter(r => r.correct).length} of {quizResults.results.length} correct
                 </p>
               </div>
@@ -456,11 +468,11 @@ Provide constructive feedback:`,
                         <XCircle className="w-4 h-4 text-red-600 mt-0.5" />
                       )}
                       <div>
-                        <p className="text-xs font-medium text-gray-900">{q.question}</p>
+                        <p className="text-xs font-medium text-slate-900">{q.question}</p>
                         {!result.correct && (
                           <p className="text-xs text-green-700 mt-1">Correct: {q.options[q.correct_index]}</p>
                         )}
-                        <p className="text-xs text-gray-600 mt-1">{q.explanation}</p>
+                        <p className="text-xs text-slate-600 mt-1">{q.explanation}</p>
                       </div>
                     </div>
                   </div>
@@ -475,7 +487,7 @@ Provide constructive feedback:`,
     // Summary/Quick Reference
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+        <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
           <Lightbulb className="w-5 h-5 text-yellow-600" /> Quick Reference
         </h3>
         <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
@@ -498,8 +510,8 @@ Provide constructive feedback:`,
   };
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm">{module.title}</CardTitle>
           <Badge variant="outline">
@@ -524,7 +536,7 @@ Provide constructive feedback:`,
           {currentSection < totalSections - 1 && (
             <Button
               onClick={() => setCurrentSection(prev => prev + 1)}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-navy-600 hover:bg-navy-700"
             >
               Next <ArrowRight className="w-4 h-4 ml-2" />
             </Button>

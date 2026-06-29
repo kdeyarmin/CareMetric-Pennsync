@@ -1,19 +1,25 @@
 import * as React from "react"
 
-import { cn } from "@/lib/utils"
+function cn(...inputs) {
+  return inputs.filter(Boolean).join(' ')
+}
 
-const Input = React.forwardRef(({ className, type, ...props }, ref) => {
+const Input = React.forwardRef((props, ref) => {
+  const { className, type = "text", ...otherProps } = props
+  
   return (
-    (<input
+    <input
       type={type}
       className={cn(
-        "flex h-9 w-full rounded-md border-2 border-blue-300 bg-blue-50 dark:border-blue-600 dark:bg-blue-900/20 px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "flex h-11 w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2 focus-visible:border-navy-500 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200",
         className
       )}
       ref={ref}
-      {...props} />)
-  );
+      {...otherProps}
+    />
+  )
 })
+
 Input.displayName = "Input"
 
 export { Input }

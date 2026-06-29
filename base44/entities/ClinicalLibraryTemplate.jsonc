@@ -1,0 +1,81 @@
+{
+  "name": "ClinicalLibraryTemplate",
+  "type": "object",
+  "properties": {
+    "phrase": {
+      "type": "string",
+      "description": "Quick phrase trigger (e.g., 'diabetic education', 'wound care provided')"
+    },
+    "folder_id": {
+      "type": "string",
+      "description": "Folder ID this template belongs to (null for uncategorized)"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "education",
+        "assessment",
+        "intervention",
+        "wound_care",
+        "medication",
+        "vital_signs",
+        "safety",
+        "communication",
+        "other"
+      ],
+      "description": "Category of the template"
+    },
+    "template_type": {
+      "type": "string",
+      "enum": [
+        "generic",
+        "patient_specific"
+      ],
+      "default": "generic",
+      "description": "Whether template applies to all patients or uses patient-specific data"
+    },
+    "expanded_text": {
+      "type": "string",
+      "description": "Full expanded compliant text"
+    },
+    "ai_prompt_instructions": {
+      "type": "string",
+      "description": "Instructions for AI to generate personalized expansion"
+    },
+    "requires_patient_data": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this template needs patient-specific information"
+    },
+    "patient_data_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Which patient fields to include (e.g., ['wounds', 'medications', 'diagnoses'])"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0,
+      "description": "How many times this template has been used"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Email of user who created this template"
+    },
+    "is_agency_wide": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether all nurses can use this template"
+    }
+  },
+  "required": [
+    "phrase",
+    "category",
+    "template_type"
+  ]
+}

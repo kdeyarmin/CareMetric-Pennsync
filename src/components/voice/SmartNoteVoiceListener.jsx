@@ -1,18 +1,16 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Mic,
   MicOff,
-  Loader2,
-  CheckCircle2,
-  Volume2,
-  Command
+  CheckCircle2
 } from "lucide-react";
+import { toast } from 'sonner';
 
 // Voice command patterns for Smart Note Assistant
-const VOICE_COMMANDS = {
+const _VOICE_COMMANDS = {
   vitals: {
     patterns: [
       /(?:blood pressure|bp)\s*(?:is\s*)?(\d{2,3})\s*(?:over|\/)\s*(\d{2,3})/i,
@@ -52,59 +50,35 @@ export default function SmartNoteVoiceListener({
   const recognitionRef = useRef(null);
   const analyserRef = useRef(null);
   const animationRef = useRef(null);
+  const streamRef = useRef(null);
+  const audioContextRef = useRef(null);
+  // Mirror isListening into a ref so the recognition.onend handler (created once,
+  // deps []) reads the LIVE value instead of the stale mount-time `false`, which
+  // previously broke continuous-listening auto-restart.
+  const isListeningRef = useRef(false);
+
+  // Stop and release the mic stream, AudioContext, and animation frame.
+  const stopAudioCapture = () => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+  };
 
   useEffect(() => {
-    // Check for Web Speech API support
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      console.log('Speech recognition not supported');
-      return;
-    }
+    isListeningRef.current = isListening;
+  }, [isListening]);
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      const lastResult = event.results[event.results.length - 1];
-      if (lastResult.isFinal) {
-        const transcript = lastResult[0].transcript.toLowerCase().trim();
-        processCommand(transcript);
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.log('Speech recognition error:', event.error);
-      if (event.error !== 'no-speech') {
-        setIsListening(false);
-      }
-    };
-
-    recognition.onend = () => {
-      // Restart if still meant to be listening
-      if (isListening && recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch (e) {
-          console.log('Recognition restart failed:', e);
-        }
-      }
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, []);
-
-  const processCommand = (transcript) => {
+  const processCommand = useCallback((transcript) => {
     // Check for vital signs
     const bpMatch = transcript.match(/(?:blood pressure|bp)\s*(?:is\s*)?(\d{2,3})\s*(?:over|\/)\s*(\d{2,3})/i);
     if (bpMatch) {
@@ -218,20 +192,69 @@ export default function SmartNoteVoiceListener({
         return;
       }
     }
-  };
+  }, [onVitalChange, onAction, onPhraseInsert]);
+
+  useEffect(() => {
+    // Check for Web Speech API support
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      const lastResult = event.results[event.results.length - 1];
+      if (lastResult.isFinal) {
+        const transcript = lastResult[0].transcript.toLowerCase().trim();
+        processCommand(transcript);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error !== 'no-speech') {
+        setIsListening(false);
+      }
+    };
+
+    recognition.onend = () => {
+      // Restart if still meant to be listening (read the ref, not stale state).
+      if (isListeningRef.current && recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch {
+          // Recognition may already be running; ignore the redundant start.
+        }
+      }
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      // Release the mic stream + AudioContext too (previously leaked on unmount).
+      stopAudioCapture();
+    };
+  }, [processCommand]);
 
   const toggleListening = async () => {
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      // Release the mic + AudioContext (previously left live after "stop").
+      stopAudioCapture();
     } else {
       try {
         // Get audio for visual feedback
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
         const audioContext = new AudioContext();
+        audioContextRef.current = audioContext;
         const source = audioContext.createMediaStreamSource(stream);
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
@@ -253,7 +276,7 @@ export default function SmartNoteVoiceListener({
         setIsListening(true);
       } catch (e) {
         console.error('Error starting voice listener:', e);
-        alert('Could not access microphone. Please grant permission.');
+        toast.error('Could not access microphone. Please grant permission.');
       }
     }
   };
@@ -262,13 +285,13 @@ export default function SmartNoteVoiceListener({
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
-      <Card className={`shadow-lg transition-all ${isListening ? 'border-green-400 bg-green-50' : 'border-gray-200'}`}>
+      <Card className={`shadow-lg transition-all ${isListening ? 'border-green-400 bg-green-50' : 'border-slate-200'}`}>
         <CardContent className="p-3">
           <div className="flex items-center gap-3">
             <Button
               size="sm"
               onClick={toggleListening}
-              className={`rounded-full w-10 h-10 ${isListening ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}`}
+              className={`rounded-full w-10 h-10 ${isListening ? 'bg-green-600 hover:bg-green-700' : 'bg-slate-600 hover:bg-slate-700'}`}
             >
               {isListening ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
             </Button>
@@ -288,12 +311,12 @@ export default function SmartNoteVoiceListener({
                       ))}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-600">Say vitals or commands</p>
+                  <p className="text-xs text-slate-600">Say vitals or commands</p>
                 </>
               ) : (
                 <>
-                  <p className="text-xs font-medium text-gray-700">Voice Commands</p>
-                  <p className="text-xs text-gray-500">Click to activate</p>
+                  <p className="text-xs font-medium text-slate-700">Voice Commands</p>
+                  <p className="text-xs text-slate-500">Click to activate</p>
                 </>
               )}
             </div>

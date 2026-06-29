@@ -1,0 +1,116 @@
+{
+  "name": "ClinicalEvent",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Reference to Visit entity where this was documented"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "medication_change",
+        "medication_started",
+        "medication_stopped",
+        "physician_appointment",
+        "hospitalization",
+        "er_visit",
+        "fall",
+        "wound_new",
+        "wound_change",
+        "lab_result",
+        "symptom_new",
+        "symptom_resolved",
+        "vital_change",
+        "cognitive_change",
+        "functional_change",
+        "pain_change",
+        "infection",
+        "surgery",
+        "therapy_change",
+        "dme_ordered",
+        "other"
+      ],
+      "description": "Type of clinical event"
+    },
+    "event_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the event occurred"
+    },
+    "event_title": {
+      "type": "string",
+      "description": "Brief title of the event"
+    },
+    "event_description": {
+      "type": "string",
+      "description": "Detailed description of the event"
+    },
+    "structured_data": {
+      "type": "object",
+      "description": "Structured event-specific data (e.g., medication name, dosage, physician name, etc.)"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "description": "Clinical significance level"
+    },
+    "requires_followup": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this event requires follow-up action"
+    },
+    "followup_notes": {
+      "type": "string",
+      "description": "Notes about required follow-up"
+    },
+    "source_text": {
+      "type": "string",
+      "description": "Original text from note where this was extracted"
+    },
+    "source_section": {
+      "type": "string",
+      "description": "Section/paragraph identifier in source document (e.g., 'assessment', 'medications', 'paragraph_3')"
+    },
+    "text_anchor_start": {
+      "type": "number",
+      "description": "Character position where relevant text starts in source document"
+    },
+    "text_anchor_end": {
+      "type": "number",
+      "description": "Character position where relevant text ends in source document"
+    },
+    "extraction_confidence": {
+      "type": "number",
+      "description": "AI confidence score 0-100"
+    },
+    "verified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether a clinician has verified this extraction"
+    },
+    "verified_by": {
+      "type": "string",
+      "description": "Email of clinician who verified"
+    },
+    "review_notes": {
+      "type": "string",
+      "description": "Notes from clinician review"
+    }
+  },
+  "required": [
+    "patient_id",
+    "event_type",
+    "event_date",
+    "event_title"
+  ]
+}

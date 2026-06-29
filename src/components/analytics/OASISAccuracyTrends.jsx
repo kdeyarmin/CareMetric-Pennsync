@@ -1,9 +1,8 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Target } from "lucide-react";
 import {
-  LineChart,
   Line,
   AreaChart,
   Area,
@@ -44,7 +43,12 @@ export default function OASISAccuracyTrends({ data = [], compact = false }) {
       weeks[weekKey].count += 1;
     });
 
+    // Sort/slice on the ISO weekKey BEFORE formatting to a year-less label —
+    // `new Date("Mar 5")` assumes the current year, so sorting on the label
+    // misorders weeks that straddle a year boundary.
     return Object.values(weeks)
+      .sort((a, b) => new Date(a.week) - new Date(b.week))
+      .slice(-8)
       .map(w => ({
         week: new Date(w.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         accuracy: w.count > 0 ? Math.round(w.accuracySum / w.count) : 0,
@@ -52,9 +56,7 @@ export default function OASISAccuracyTrends({ data = [], compact = false }) {
         compliance: w.count > 0 ? Math.round(w.complianceSum / w.count) : 0,
         revenue: w.count > 0 ? Math.round(w.revenueSum / w.count) : 0,
         count: w.count
-      }))
-      .sort((a, b) => new Date(a.week) - new Date(b.week))
-      .slice(-8);
+      }));
   }, [data]);
 
   // Calculate trend
@@ -102,7 +104,7 @@ export default function OASISAccuracyTrends({ data = [], compact = false }) {
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">No OASIS data available for this period</p>
+          <p className="text-center text-slate-500 py-8">No OASIS data available for this period</p>
         ) : (
           <div className={compact ? "" : "grid grid-cols-1 lg:grid-cols-3 gap-6"}>
             {/* Main trend chart */}
@@ -111,8 +113,8 @@ export default function OASISAccuracyTrends({ data = [], compact = false }) {
                 <AreaChart data={weeklyData}>
                   <defs>
                     <linearGradient id="accuracyGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#3557b0" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3557b0" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -126,7 +128,7 @@ export default function OASISAccuracyTrends({ data = [], compact = false }) {
                   <Area 
                     type="monotone" 
                     dataKey="accuracy" 
-                    stroke="#3b82f6" 
+                    stroke="#3557b0" 
                     fill="url(#accuracyGradient)"
                     name="Accuracy"
                   />
@@ -139,7 +141,7 @@ export default function OASISAccuracyTrends({ data = [], compact = false }) {
             {/* Score distribution */}
             {!compact && (
               <div>
-                <p className="text-sm font-medium text-gray-700 mb-3">Score Distribution</p>
+                <p className="text-sm font-medium text-slate-700 mb-3">Score Distribution</p>
                 <div className="space-y-2">
                   {scoreDistribution.map(({ range, count }) => {
                     const percentage = data.length > 0 ? (count / data.length * 100).toFixed(0) : 0;
@@ -149,14 +151,14 @@ export default function OASISAccuracyTrends({ data = [], compact = false }) {
                                   range === '60-69' ? 'bg-orange-500' : 'bg-red-500';
                     return (
                       <div key={range} className="flex items-center gap-2">
-                        <span className="text-xs text-gray-600 w-16">{range}%</span>
-                        <div className="flex-1 bg-gray-100 rounded-full h-4">
+                        <span className="text-xs text-slate-600 w-16">{range}%</span>
+                        <div className="flex-1 bg-slate-100 rounded-full h-4">
                           <div 
                             className={`${color} h-4 rounded-full transition-all`}
                             style={{ width: `${percentage}%` }}
                           />
                         </div>
-                        <span className="text-xs text-gray-700 w-8">{count}</span>
+                        <span className="text-xs text-slate-700 w-8">{count}</span>
                       </div>
                     );
                   })}

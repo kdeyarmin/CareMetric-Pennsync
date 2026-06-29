@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { invokeLLM } from "@/lib/invokeLLM";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,10 +22,9 @@ import {
   AlertTriangle,
   XCircle,
   FileText,
-  Clock,
   TrendingDown
 } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { subDays } from "date-fns";
 
 export default function AutomatedComplianceAuditor({ onAuditComplete }) {
   const queryClient = useQueryClient();
@@ -75,7 +75,8 @@ export default function AutomatedComplianceAuditor({ onAuditComplete }) {
       setAuditProgress({ current: i + 1, total: visitsToAudit.length });
 
       try {
-        const auditResult = await base44.integrations.Core.InvokeLLM({
+        const auditResult = await invokeLLM({
+          model: "claude_opus_4_8",
           prompt: `Perform a Medicare compliance audit on this clinical documentation.
 
 VISIT TYPE: ${visit.visit_type || 'routine_visit'}
@@ -130,10 +131,16 @@ Return JSON:
           }
         });
 
-        // Determine status based on score and issues
+        // Determine status based on score AND issues. A critical issue (e.g. a
+        // missing homebound statement — an automatic Medicare denial) must block
+        // regardless of the numeric score; previously escalation only ran inside
+        // the sub-threshold branch, so a high-scoring note with a critical
+        // violation was silently recorded as 'passed'.
         let status = 'passed';
-        if (auditResult.compliance_score < threshold) {
-          status = auditResult.issues?.some(i => i.severity === 'critical') ? 'critical' : 'flagged';
+        if (auditResult.issues?.some(i => i.severity === 'critical')) {
+          status = 'critical';
+        } else if (auditResult.compliance_score < threshold) {
+          status = 'flagged';
         }
 
         // Create audit record
@@ -184,18 +191,18 @@ Return JSON:
     if (onAuditComplete) onAuditComplete(results);
   };
 
-  const getStatusColor = (status) => {
+  const _getStatusColor = (status) => {
     switch (status) {
       case 'passed': return 'bg-green-100 text-green-800';
       case 'flagged': return 'bg-yellow-100 text-yellow-800';
       case 'critical': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-indigo-600" />
@@ -210,9 +217,9 @@ Return JSON:
         {/* Configuration */}
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Date Range</label>
+            <label htmlFor="date-range" className="text-xs font-medium text-slate-600 mb-1 block">Date Range</label>
             <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger>
+              <SelectTrigger id="date-range">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -224,9 +231,9 @@ Return JSON:
             </Select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Quality Threshold</label>
+            <label htmlFor="quality-threshold" className="text-xs font-medium text-slate-600 mb-1 block">Quality Threshold</label>
             <Select value={qualityThreshold} onValueChange={setQualityThreshold}>
-              <SelectTrigger>
+              <SelectTrigger id="quality-threshold">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -278,22 +285,22 @@ Return JSON:
               <div className="bg-blue-50 p-3 rounded-lg text-center">
                 <FileText className="w-5 h-5 text-blue-600 mx-auto mb-1" />
                 <p className="text-xl font-bold text-blue-700">{auditResults.audited}</p>
-                <p className="text-xs text-gray-600">Audited</p>
+                <p className="text-xs text-slate-600">Audited</p>
               </div>
               <div className="bg-green-50 p-3 rounded-lg text-center">
                 <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
                 <p className="text-xl font-bold text-green-700">{auditResults.passed}</p>
-                <p className="text-xs text-gray-600">Passed</p>
+                <p className="text-xs text-slate-600">Passed</p>
               </div>
               <div className="bg-yellow-50 p-3 rounded-lg text-center">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mx-auto mb-1" />
                 <p className="text-xl font-bold text-yellow-700">{auditResults.flagged}</p>
-                <p className="text-xs text-gray-600">Flagged</p>
+                <p className="text-xs text-slate-600">Flagged</p>
               </div>
               <div className="bg-red-50 p-3 rounded-lg text-center">
                 <XCircle className="w-5 h-5 text-red-600 mx-auto mb-1" />
                 <p className="text-xl font-bold text-red-700">{auditResults.critical}</p>
-                <p className="text-xs text-gray-600">Critical</p>
+                <p className="text-xs text-slate-600">Critical</p>
               </div>
             </div>
 
@@ -305,16 +312,16 @@ Return JSON:
                   {Object.entries(auditResults.byNurse)
                     .sort((a, b) => a[1].avgScore - b[1].avgScore)
                     .map(([email, stats]) => (
-                      <div key={email} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                      <div key={email} className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg">
                         <div className="flex-1">
                           <p className="text-sm font-medium">{email.split('@')[0]}</p>
-                          <p className="text-xs text-gray-500">{stats.total} notes audited</p>
+                          <p className="text-xs text-slate-500">{stats.total} notes audited</p>
                         </div>
                         <div className="text-right">
                           <p className={`text-lg font-bold ${stats.avgScore >= 70 ? 'text-green-600' : stats.avgScore >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
                             {stats.avgScore}%
                           </p>
-                          <p className="text-xs text-gray-500">{stats.flagged} flagged</p>
+                          <p className="text-xs text-slate-500">{stats.flagged} flagged</p>
                         </div>
                         {stats.avgScore < 70 && (
                           <Badge className="bg-orange-100 text-orange-800">

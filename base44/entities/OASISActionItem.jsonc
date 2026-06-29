@@ -1,0 +1,125 @@
+{
+  "name": "OASISActionItem",
+  "type": "object",
+  "properties": {
+    "analysis_id": {
+      "type": "string",
+      "description": "Unique identifier for the OASIS analysis session"
+    },
+    "patient_name": {
+      "type": "string",
+      "description": "Patient name from the OASIS document"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "correction",
+        "review",
+        "verification",
+        "optimization"
+      ],
+      "description": "Type of action required"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "functional_status",
+        "diagnosis",
+        "admission_source",
+        "episode_timing",
+        "comorbidity",
+        "compliance",
+        "documentation"
+      ],
+      "description": "Category of the OASIS item"
+    },
+    "oasis_item": {
+      "type": "string",
+      "description": "OASIS M-item code (e.g., M1800, M1000)"
+    },
+    "current_value": {
+      "type": "string",
+      "description": "Current documented value"
+    },
+    "proposed_value": {
+      "type": "string",
+      "description": "Proposed corrected value"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Reason for the proposed change"
+    },
+    "revenue_impact": {
+      "type": "number",
+      "description": "Estimated revenue impact in dollars"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "discrepancy",
+        "what_if_scenario",
+        "ai_recommendation",
+        "manual"
+      ],
+      "description": "Where this action originated"
+    },
+    "scenario_name": {
+      "type": "string",
+      "description": "Name of the what-if scenario if applicable"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "approved",
+        "rejected",
+        "implemented",
+        "task_created"
+      ],
+      "default": "pending_review"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Email of assigned clinician or biller"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of reviewer"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_notes": {
+      "type": "string",
+      "description": "Notes from reviewer"
+    },
+    "linked_task_id": {
+      "type": "string",
+      "description": "Reference to created Task entity"
+    },
+    "original_pdgm_payment": {
+      "type": "number",
+      "description": "PDGM payment before correction"
+    },
+    "projected_pdgm_payment": {
+      "type": "number",
+      "description": "PDGM payment after correction"
+    }
+  },
+  "required": [
+    "action_type",
+    "category",
+    "rationale"
+  ]
+}

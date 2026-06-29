@@ -1,0 +1,116 @@
+{
+  "name": "TrainingCertificate",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User email"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "User full name"
+    },
+    "assignment_id": {
+      "type": "string",
+      "description": "Reference to TrainingAssignment"
+    },
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "course_title": {
+      "type": "string",
+      "description": "Course title at time of issuance"
+    },
+    "training_category": {
+      "type": "string",
+      "description": "Training category at issuance"
+    },
+    "business_line": {
+      "type": "string",
+      "description": "Business line at issuance"
+    },
+    "annual_cycle_year": {
+      "type": "number",
+      "description": "Annual education cycle year when applicable"
+    },
+    "certificate_id": {
+      "type": "string",
+      "description": "Unique certificate ID"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Issuance date"
+    },
+    "completion_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Completion date"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Expiration date"
+    },
+    "certificate_pdf_url": {
+      "type": "string",
+      "description": "URL to certificate PDF"
+    },
+    "score": {
+      "type": "number",
+      "description": "Final score"
+    },
+    "hours": {
+      "type": "number",
+      "description": "CEU hours if applicable"
+    },
+    "verification_hash": {
+      "type": "string",
+      "description": "Verification hash for authenticity"
+    },
+    "revoked": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether certificate was revoked"
+    },
+    "revoked_by": {
+      "type": "string",
+      "description": "Who revoked the certificate"
+    },
+    "revoked_reason": {
+      "type": "string",
+      "description": "Reason for revocation"
+    },
+    "last_renewal_reminder_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the most recent renewal reminder was sent, so a same-day cron re-run doesn't re-notify."
+    }
+  },
+  "required": [
+    "user_id",
+    "course_id",
+    "issued_at",
+    "certificate_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

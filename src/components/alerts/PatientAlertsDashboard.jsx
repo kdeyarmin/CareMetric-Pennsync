@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,23 +43,15 @@ import {
   Users,
   Zap,
   Eye,
-  Send,
   X,
-  Filter,
   Search,
-  ListTodo,
-  UserCheck,
-  Phone,
-  FileText,
-  ExternalLink,
-  Sparkles
+  FileText
 } from "lucide-react";
-import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
-export default function PatientAlertsDashboard({ patientId = null, showAllPatients = true }) {
+export default function PatientAlertsDashboard({ patientId = null, _showAllPatients = true }) {
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState("");
@@ -68,27 +61,51 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
   const [activeTab, setActiveTab] = useState("active");
   const queryClient = useQueryClient();
 
-  // Fetch alerts
-  const { data: alerts = [], isLoading } = useQuery({
-    queryKey: ['patientAlerts', patientId, showAllPatients],
+  // Fetch current user FIRST — the alerts useMemo below references currentUser
+  // and isAdmin, which would hit the temporal dead zone (ReferenceError) if
+  // these consts were declared after it.
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me()
+  });
+
+  const isAdmin = currentUser?.role === 'admin';
+
+  // Fetch alerts via a SERVER-SCOPED function so the browser only receives
+  // alerts the caller is authorized for (assigned patients, or all for admins).
+  // The favorites filter below is UX-only, no longer an access boundary.
+  // Keep the ['patientAlerts'] key so the app-wide invalidations (workflow
+  // engine, alert analyzers/widgets, risk analyzers) still refresh this view.
+  const { data: allAlerts = [], isLoading } = useQuery({
+    queryKey: ['patientAlerts', patientId],
     queryFn: async () => {
-      if (patientId) {
-        return base44.entities.PatientAlert.filter({ patient_id: patientId }, '-created_date');
-      }
-      return base44.entities.PatientAlert.list('-created_date', 100);
+      const res = await base44.functions.invoke('getScopedPatientAlerts', {
+        patient_id: patientId || undefined,
+      });
+      return res?.data?.alerts || [];
     }
   });
+
+  // Filter alerts to only favorited patients (unless viewing specific patient or admin)
+  const alerts = React.useMemo(() => {
+    if (patientId || isAdmin) return allAlerts;
+    if (!currentUser?.favorited_patients) return [];
+    return allAlerts.filter(alert =>
+      currentUser.favorited_patients.some(fav => fav.id === alert.patient_id)
+    );
+  }, [allAlerts, patientId, currentUser, isAdmin]);
 
   // Fetch patients for lookup
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list()
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000)
   });
 
-  // Fetch current user
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me()
+  // Fetch clinical events for linking
+  const { data: _clinicalEvents = [] } = useQuery({
+    queryKey: ['clinicalEvents'],
+    queryFn: () => base44.entities.ClinicalEvent.list('-created_date', 200),
+    initialData: []
   });
 
   const patientMap = patients.reduce((acc, p) => {
@@ -104,6 +121,9 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
       setDetailsDialogOpen(false);
       setSelectedAlert(null);
       setResolutionNotes("");
+    },
+    onError: () => {
+      toast.error("Couldn't update the alert. Please try again.");
     }
   });
 
@@ -123,12 +143,16 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
     return matchesSeverity && matchesType && matchesStatus && matchesSearch;
   });
 
-  // Group by severity for summary
+  // Group by severity for summary. "Open" = active OR acknowledged (acknowledged
+  // is seen-but-not-resolved); the Active tab already counts both, so counting
+  // only 'active' here undercounted open alerts — an acknowledged critical alert
+  // vanished from the Critical summary while still showing in the list.
+  const isOpen = (a) => a.status === 'active' || a.status === 'acknowledged';
   const alertCounts = {
-    critical: alerts.filter(a => a.severity === 'critical' && a.status === 'active').length,
-    high: alerts.filter(a => a.severity === 'high' && a.status === 'active').length,
-    medium: alerts.filter(a => a.severity === 'medium' && a.status === 'active').length,
-    low: alerts.filter(a => a.severity === 'low' && a.status === 'active').length
+    critical: alerts.filter(a => a.severity === 'critical' && isOpen(a)).length,
+    high: alerts.filter(a => a.severity === 'high' && isOpen(a)).length,
+    medium: alerts.filter(a => a.severity === 'medium' && isOpen(a)).length,
+    low: alerts.filter(a => a.severity === 'low' && isOpen(a)).length
   };
 
   const handleAcknowledge = (alert) => {
@@ -169,35 +193,6 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
     });
   };
 
-  const createTaskFromAlert = async (alert) => {
-    try {
-      const patient = patientMap[alert.patient_id];
-      const task = await base44.entities.Task.create({
-        patient_id: alert.patient_id,
-        title: alert.title,
-        description: alert.message,
-        type: 'followup',
-        priority: alert.severity === 'critical' ? 'critical' : alert.severity,
-        status: 'pending',
-        source: 'ai_generated',
-        ai_reason: `Generated from alert: ${alert.title}`,
-        assigned_to: currentUser?.email
-      });
-      toast.success('Task created successfully');
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    } catch (error) {
-      toast.error('Failed to create task');
-    }
-  };
-
-  const assignToMe = (alert) => {
-    updateAlertMutation.mutate({
-      alertId: alert.id,
-      data: { assigned_to: currentUser?.email }
-    });
-    toast.success('Alert assigned to you');
-  };
-
   const getAlertIcon = (type) => {
     const icons = {
       vital_deterioration: Activity,
@@ -221,7 +216,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
       case 'high': return 'bg-orange-500 text-white';
       case 'medium': return 'bg-yellow-500 text-white';
       case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
@@ -231,7 +226,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
       case 'high': return 'border-l-orange-500';
       case 'medium': return 'border-l-yellow-500';
       case 'low': return 'border-l-blue-500';
-      default: return 'border-l-gray-500';
+      default: return 'border-l-slate-500';
     }
   };
 
@@ -241,7 +236,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
       case 'acknowledged': return <Badge className="bg-blue-100 text-blue-800">Acknowledged</Badge>;
       case 'in_progress': return <Badge className="bg-yellow-100 text-yellow-800">In Progress</Badge>;
       case 'resolved': return <Badge className="bg-green-100 text-green-800">Resolved</Badge>;
-      case 'dismissed': return <Badge className="bg-gray-100 text-gray-800">Dismissed</Badge>;
+      case 'dismissed': return <Badge className="bg-slate-100 text-slate-800">Dismissed</Badge>;
       default: return null;
     }
   };
@@ -260,7 +255,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-red-600">{alertCounts.critical}</p>
-                <p className="text-xs text-gray-600">Critical</p>
+                <p className="text-xs text-slate-600">Critical</p>
               </div>
               <AlertTriangle className="w-8 h-8 text-red-200" />
             </div>
@@ -271,7 +266,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-orange-600">{alertCounts.high}</p>
-                <p className="text-xs text-gray-600">High</p>
+                <p className="text-xs text-slate-600">High</p>
               </div>
               <Bell className="w-8 h-8 text-orange-200" />
             </div>
@@ -282,7 +277,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-yellow-600">{alertCounts.medium}</p>
-                <p className="text-xs text-gray-600">Medium</p>
+                <p className="text-xs text-slate-600">Medium</p>
               </div>
               <Clock className="w-8 h-8 text-yellow-200" />
             </div>
@@ -293,7 +288,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-blue-600">{alertCounts.low}</p>
-                <p className="text-xs text-gray-600">Low</p>
+                <p className="text-xs text-slate-600">Low</p>
               </div>
               <Eye className="w-8 h-8 text-blue-200" />
             </div>
@@ -307,7 +302,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
           <div className="flex flex-wrap gap-4 items-center">
             <div className="flex-1 min-w-[200px]">
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
                 <Input
                   placeholder="Search alerts..."
                   value={searchQuery}
@@ -365,12 +360,12 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
         <TabsContent value={activeTab} className="mt-4">
           {isLoading ? (
             <div className="text-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-gray-400" />
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-slate-400" />
             </div>
           ) : filteredAlerts.length === 0 ? (
             <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                <BellOff className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <CardContent className="p-8 text-center text-slate-500">
+                <BellOff className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                 <p>No alerts found</p>
               </CardContent>
             </Card>
@@ -386,7 +381,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-start gap-3 flex-1">
-                          <div className={`p-2 rounded-lg ${alert.severity === 'critical' ? 'bg-red-100' : alert.severity === 'high' ? 'bg-orange-100' : 'bg-gray-100'}`}>
+                          <div className={`p-2 rounded-lg ${alert.severity === 'critical' ? 'bg-red-100' : alert.severity === 'high' ? 'bg-orange-100' : 'bg-slate-100'}`}>
                             {getAlertIcon(alert.alert_type)}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -401,109 +396,82 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                                 </Badge>
                               )}
                               <Badge variant="outline" className="text-xs">
-                                {alert.alert_type.replace(/_/g, ' ')}
+                                {(alert.alert_type || '').replace(/_/g, ' ')}
                               </Badge>
                             </div>
                             
-                            <h3 className="font-semibold text-gray-900">{alert.title}</h3>
+                            <h3 className="font-semibold text-slate-900">{alert.title}</h3>
                             
                             {patient && (
-                              <div className="flex items-center gap-2 mt-1">
-                                <Link 
-                                  to={`${createPageUrl("PatientDetails")}?id=${patient.id}`}
-                                  className="text-sm text-blue-600 hover:underline font-medium"
-                                >
-                                  {patient.first_name} {patient.last_name}
-                                </Link>
-                                <span className="text-xs text-gray-400">•</span>
-                                <span className="text-xs text-gray-500">{patient.primary_diagnosis || 'No diagnosis'}</span>
-                                {patient.date_of_birth && (
-                                  <>
-                                    <span className="text-xs text-gray-400">•</span>
-                                    <span className="text-xs text-gray-500">{Math.floor((new Date() - new Date(patient.date_of_birth)) / 31536000000)} yo</span>
-                                  </>
+                              <Link 
+                                to={`${createPageUrl("PatientDetails")}?id=${patient.id}`}
+                                className="text-sm text-blue-600 hover:underline"
+                              >
+                                {patient.first_name} {patient.last_name}
+                              </Link>
+                            )}
+                            
+                            <p className="text-sm text-slate-600 mt-1 line-clamp-2">{alert.message}</p>
+
+                            {alert.data_sources?.clinical_event_id && (
+                              <div className="mt-2 p-2 bg-navy-50 border border-navy-200 rounded text-xs">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Activity className="w-3 h-3 text-navy-600" />
+                                  <span className="font-medium text-navy-900">Linked Clinical Event</span>
+                                </div>
+                                <div className="text-navy-700">
+                                  <span className="font-medium">Type:</span> {alert.data_sources.event_type?.replace(/_/g, ' ')}
+                                </div>
+                                {alert.data_sources.structured_data && (
+                                  <div className="text-navy-700 mt-1">
+                                    {Object.entries(alert.data_sources.structured_data).slice(0, 2).map(([key, value]) => (
+                                      <div key={key}>
+                                        <span className="font-medium">{key}:</span> {String(value)}
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
                             )}
-                            
-                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">{alert.message}</p>
-                            
-                            {alert.contributing_factors && alert.contributing_factors.length > 0 && (
-                              <div className="mt-2 text-xs text-gray-500">
-                                <span className="font-medium">Factors:</span> {alert.contributing_factors.slice(0, 2).join(', ')}
-                                {alert.contributing_factors.length > 2 && ` +${alert.contributing_factors.length - 2} more`}
+
+                            {alert.risk_score && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs text-slate-500">Risk Score:</span>
+                                <div className="flex-1 max-w-[100px] bg-slate-200 rounded-full h-2">
+                                  <div 
+                                    className={`h-2 rounded-full ${alert.risk_score >= 70 ? 'bg-red-500' : alert.risk_score >= 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                                    style={{ width: `${alert.risk_score}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-medium">{alert.risk_score}%</span>
                               </div>
                             )}
-                            
-                            <div className="flex items-center gap-3 mt-2 flex-wrap">
-                              {alert.risk_score && (
-                                <div className="flex items-center gap-2">
-                                  <Sparkles className="w-3 h-3 text-purple-500" />
-                                  <span className="text-xs text-gray-500">AI Confidence:</span>
-                                  <div className="flex-1 min-w-[60px] bg-gray-200 rounded-full h-1.5">
-                                    <div 
-                                      className={`h-1.5 rounded-full ${alert.risk_score >= 70 ? 'bg-red-500' : alert.risk_score >= 40 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                                      style={{ width: `${alert.risk_score}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs font-medium">{alert.risk_score}%</span>
-                                </div>
-                              )}
-                              {alert.assigned_to && (
-                                <div className="flex items-center gap-1 text-xs text-gray-500">
-                                  <UserCheck className="w-3 h-3" />
-                                  <span>{alert.assigned_to.split('@')[0]}</span>
-                                </div>
-                              )}
-                            </div>
-                            
-                            <p className="text-xs text-gray-400 mt-2">
-                              {formatDistanceToNow(new Date(alert.created_date), { addSuffix: true })}
+
+                            <p className="text-xs text-slate-400 mt-2">
+                              Created {formatDistanceToNow(new Date(alert.created_date), { addSuffix: true })}
                             </p>
                           </div>
                         </div>
                         
-                        <div className="flex flex-wrap gap-1 justify-end">
+                        <div className="flex flex-col gap-1">
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
                             onClick={() => openDetails(alert)}
-                            title="View details"
                           >
                             <Eye className="w-3 h-3 mr-1" /> View
                           </Button>
                           
                           {alert.status === 'active' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => handleAcknowledge(alert)}
-                                title="Acknowledge"
-                              >
-                                <CheckCircle2 className="w-3 h-3 mr-1" /> Ack
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => createTaskFromAlert(alert)}
-                                title="Create task"
-                              >
-                                <ListTodo className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => assignToMe(alert)}
-                                title="Assign to me"
-                              >
-                                <UserCheck className="w-3 h-3" />
-                              </Button>
-                            </>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => handleAcknowledge(alert)}
+                            >
+                              <CheckCircle2 className="w-3 h-3 mr-1" /> Ack
+                            </Button>
                           )}
                           
                           <Button
@@ -511,7 +479,6 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                             variant={alert.flagged_urgent ? "destructive" : "outline"}
                             className="h-7 text-xs"
                             onClick={() => handleFlagUrgent(alert)}
-                            title={alert.flagged_urgent ? "Unflag" : "Flag as urgent"}
                           >
                             <Flag className="w-3 h-3" />
                           </Button>
@@ -539,42 +506,6 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
               </DialogHeader>
               
               <div className="space-y-4">
-                {/* Patient Context Card */}
-                {patientMap[selectedAlert.patient_id] && (
-                  <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                              {patientMap[selectedAlert.patient_id].first_name} {patientMap[selectedAlert.patient_id].last_name}
-                            </h4>
-                            {patientMap[selectedAlert.patient_id].date_of_birth && (
-                              <span className="text-xs text-gray-600 dark:text-gray-400">
-                                {Math.floor((new Date() - new Date(patientMap[selectedAlert.patient_id].date_of_birth)) / 31536000000)} years old
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-700 dark:text-gray-300">
-                            <span className="font-medium">Dx:</span> {patientMap[selectedAlert.patient_id].primary_diagnosis || 'Not specified'}
-                          </p>
-                          {patientMap[selectedAlert.patient_id].allergies && (
-                            <p className="text-xs text-red-600 dark:text-red-400">
-                              <span className="font-medium">Allergies:</span> {patientMap[selectedAlert.patient_id].allergies}
-                            </p>
-                          )}
-                        </div>
-                        <Link
-                          to={`${createPageUrl("PatientDetails")}?id=${selectedAlert.patient_id}`}
-                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                        >
-                          View Chart <ExternalLink className="w-3 h-3" />
-                        </Link>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className={getSeverityColor(selectedAlert.severity)}>
                     {selectedAlert.severity}
@@ -584,14 +515,80 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                     <Badge className="bg-red-100 text-red-800">🚨 Flagged Urgent</Badge>
                   )}
                   {selectedAlert.risk_score && (
-                    <Badge variant="outline" className="gap-1">
-                      <Sparkles className="w-3 h-3" /> AI Confidence: {selectedAlert.risk_score}%
-                    </Badge>
+                    <Badge variant="outline">Risk Score: {selectedAlert.risk_score}%</Badge>
                   )}
                 </div>
 
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-700">{selectedAlert.message}</p>
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <p className="text-sm text-slate-700">{selectedAlert.message}</p>
+                </div>
+
+                {/* Clinical Event Details */}
+                {selectedAlert.data_sources?.clinical_event_id && (
+                  <Card className="border-navy-300 bg-navy-50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-navy-600" />
+                        Clinical Event Details
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="font-semibold text-slate-700">Event Type:</span>
+                          <p className="text-slate-600">{selectedAlert.data_sources.event_type?.replace(/_/g, ' ')}</p>
+                        </div>
+                        {selectedAlert.data_sources.visit_id && (
+                          <div>
+                            <span className="font-semibold text-slate-700">Visit ID:</span>
+                            <p className="text-slate-600 font-mono text-xs">{selectedAlert.data_sources.visit_id.slice(0, 8)}...</p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {selectedAlert.data_sources.structured_data && (
+                        <div>
+                          <span className="font-semibold text-slate-700 text-sm">Event Data:</span>
+                          <div className="mt-1 p-2 bg-white rounded border text-xs space-y-1">
+                            {Object.entries(selectedAlert.data_sources.structured_data).map(([key, value]) => (
+                              <div key={key} className="flex gap-2">
+                                <span className="font-medium text-navy-700">{key}:</span>
+                                <span className="text-slate-600">{String(value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2"
+                        onClick={() => {
+                          const patient = patientMap[selectedAlert.patient_id];
+                          if (patient) {
+                            window.open(createPageUrl(`PatientDetails?id=${patient.id}`), '_blank');
+                          }
+                        }}
+                      >
+                        <FileText className="w-3 h-3 mr-1" />
+                        View in Patient Chart
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-semibold text-slate-700">Created:</span>
+                    <p className="text-slate-600">{format(new Date(selectedAlert.created_date), 'PPpp')}</p>
+                  </div>
+                  {selectedAlert.expires_at && (
+                    <div>
+                      <span className="font-semibold text-slate-700">Expires:</span>
+                      <p className="text-slate-600">{format(new Date(selectedAlert.expires_at), 'PPp')}</p>
+                    </div>
+                  )}
                 </div>
 
                 {selectedAlert.contributing_factors?.length > 0 && (
@@ -634,7 +631,7 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                 )}
 
                 {selectedAlert.acknowledged_by && (
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-slate-600">
                     <p>Acknowledged by: {selectedAlert.acknowledged_by}</p>
                     <p>At: {format(new Date(selectedAlert.acknowledged_at), 'PPpp')}</p>
                   </div>
@@ -660,30 +657,9 @@ export default function PatientAlertsDashboard({ patientId = null, showAllPatien
                 )}
               </div>
 
-              <DialogFooter className="gap-2 flex-wrap">
+              <DialogFooter className="gap-2">
                 {selectedAlert.status !== 'resolved' && selectedAlert.status !== 'dismissed' && (
                   <>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        createTaskFromAlert(selectedAlert);
-                        setDetailsDialogOpen(false);
-                      }}
-                      className="flex-1"
-                    >
-                      <ListTodo className="w-4 h-4 mr-1" /> Create Task
-                    </Button>
-                    {patientMap[selectedAlert.patient_id]?.physician_phone && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          window.location.href = `tel:${patientMap[selectedAlert.patient_id].physician_phone}`;
-                        }}
-                        className="flex-1"
-                      >
-                        <Phone className="w-4 h-4 mr-1" /> Call MD
-                      </Button>
-                    )}
                     <Button
                       variant="outline"
                       onClick={() => handleDismiss(selectedAlert)}

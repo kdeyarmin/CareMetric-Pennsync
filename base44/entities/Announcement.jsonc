@@ -1,0 +1,57 @@
+{
+  "name": "Announcement",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Announcement title"
+    },
+    "content": {
+      "type": "string",
+      "description": "Announcement content"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "info",
+        "success",
+        "warning",
+        "urgent"
+      ],
+      "default": "info",
+      "description": "Type of announcement"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether announcement is currently visible"
+    },
+    "priority": {
+      "type": "number",
+      "default": 0,
+      "description": "Display priority (higher shows first)"
+    },
+    "scheduled_for": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When announcement should start showing (optional - immediate if not set)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When announcement expires (optional)"
+    }
+  },
+  "required": [
+    "title",
+    "content"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

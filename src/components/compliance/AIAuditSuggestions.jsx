@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,18 +21,18 @@ import {
   AlertTriangle
 } from "lucide-react";
 
-export default function AIAuditSuggestions({ audit, onApplySuggestion }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+export default function AIAuditSuggestions({ audit, _onApplySuggestion }) {
+  const ai = useAICall();
   const [suggestions, setSuggestions] = useState(null);
   const [expandedIssues, setExpandedIssues] = useState(new Set());
   const [copiedIdx, setCopiedIdx] = useState(null);
 
   const generateSuggestions = async () => {
     if (!audit?.issues?.length) return;
-    setIsGenerating(true);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `Analyze these compliance audit findings and provide specific, actionable improvement suggestions for each issue.
 
 AUDIT DETAILS:
@@ -92,8 +93,8 @@ Be specific to home health/hospice Medicare documentation requirements.`,
       setSuggestions(result);
     } catch (error) {
       console.error("Error generating suggestions:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const toggleIssue = (idx) => {
@@ -132,21 +133,21 @@ Be specific to home health/hospice Medicare documentation requirements.`,
   }
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50 py-3">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-indigo-50 py-3">
         <CardTitle className="text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-600" />
+            <Sparkles className="w-4 h-4 text-navy-600" />
             AI Improvement Suggestions
           </div>
           {!suggestions && (
             <Button
               size="sm"
               onClick={generateSuggestions}
-              disabled={isGenerating}
-              className="bg-purple-600 hover:bg-purple-700 h-7 text-xs"
+              disabled={ai.loading}
+              className="bg-navy-600 hover:bg-navy-700 h-7 text-xs"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
               ) : (
                 <><Sparkles className="w-3 h-3 mr-1" /> Generate Suggestions</>
@@ -157,10 +158,10 @@ Be specific to home health/hospice Medicare documentation requirements.`,
       </CardHeader>
 
       <CardContent className="p-4 space-y-4">
-        {isGenerating ? (
+        {ai.loading ? (
           <div className="text-center py-6">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Analyzing audit findings...</p>
+            <Loader2 className="w-8 h-8 animate-spin text-navy-600 mx-auto mb-2" />
+            <p className="text-sm text-slate-600">Analyzing audit findings...</p>
           </div>
         ) : suggestions ? (
           <>
@@ -183,12 +184,12 @@ Be specific to home health/hospice Medicare documentation requirements.`,
                   <Collapsible key={idx} open={isExpanded} onOpenChange={() => toggleIssue(idx)}>
                     <div className="border rounded-lg overflow-hidden">
                       <CollapsibleTrigger asChild>
-                        <div className="p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 flex items-center justify-between">
+                        <div className="p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Badge className={`text-[10px] ${getSeverityColor(issue.severity)}`}>
                               {issue.severity || 'medium'}
                             </Badge>
-                            <span className="text-sm font-medium text-gray-900">
+                            <span className="text-sm font-medium text-slate-900">
                               {issue.element || 'Documentation Issue'}
                             </span>
                             {suggestion?.category && (
@@ -243,12 +244,12 @@ Be specific to home health/hospice Medicare documentation requirements.`,
 
                               {/* Quick Phrases */}
                               {suggestion.quick_phrases?.length > 0 && (
-                                <div className="bg-purple-50 p-2 rounded">
-                                  <p className="text-xs font-semibold text-purple-800 mb-1">Quick Phrases:</p>
+                                <div className="bg-navy-50 p-2 rounded">
+                                  <p className="text-xs font-semibold text-navy-800 mb-1">Quick Phrases:</p>
                                   <div className="space-y-1">
                                     {suggestion.quick_phrases.map((phrase, pidx) => (
                                       <div key={pidx} className="flex items-center justify-between bg-white p-1.5 rounded text-xs">
-                                        <span className="text-purple-700 italic">"{phrase}"</span>
+                                        <span className="text-navy-700 italic">"{phrase}"</span>
                                         <Button
                                           size="sm"
                                           variant="ghost"
@@ -281,7 +282,7 @@ Be specific to home health/hospice Medicare documentation requirements.`,
                               {suggestion.training_area && (
                                 <div className="flex items-center gap-2 text-xs">
                                   <BookOpen className="w-3 h-3 text-indigo-600" />
-                                  <span className="text-gray-600">Recommended Training:</span>
+                                  <span className="text-slate-600">Recommended Training:</span>
                                   <Badge variant="outline" className="text-indigo-700">
                                     {suggestion.training_area}
                                   </Badge>
@@ -307,8 +308,8 @@ Be specific to home health/hospice Medicare documentation requirements.`,
                   {suggestions.recommended_training_modules.map((module, idx) => (
                     <div key={idx} className="bg-white p-2 rounded flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-medium text-gray-900">{module.module_name}</p>
-                        <p className="text-[10px] text-gray-600">{module.reason}</p>
+                        <p className="text-xs font-medium text-slate-900">{module.module_name}</p>
+                        <p className="text-[10px] text-slate-600">{module.reason}</p>
                       </div>
                       <Badge className={`text-[10px] ${
                         module.priority === 'high' ? 'bg-red-100 text-red-800' :
@@ -325,7 +326,7 @@ Be specific to home health/hospice Medicare documentation requirements.`,
           </>
         ) : (
           <div className="text-center py-4">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-500">
               Click "Generate Suggestions" to get AI-powered improvement recommendations for each flagged issue.
             </p>
           </div>

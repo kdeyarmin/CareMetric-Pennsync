@@ -1,17 +1,26 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mic, MicOff, Volume2, Settings } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Mic, MicOff, Volume2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { toast } from 'sonner';
+
+const SUPPORTED_LANGUAGES = [
+  { code: 'en-US', name: 'English (US)', flag: '🇺🇸' },
+  { code: 'en-GB', name: 'English (UK)', flag: '🇬🇧' },
+  { code: 'es-ES', name: 'Spanish', flag: '🇪🇸' },
+  { code: 'fr-FR', name: 'French', flag: '🇫🇷' },
+  { code: 'de-DE', name: 'German', flag: '🇩🇪' },
+  { code: 'it-IT', name: 'Italian', flag: '🇮🇹' },
+  { code: 'pt-BR', name: 'Portuguese', flag: '🇧🇷' },
+  { code: 'zh-CN', name: 'Chinese', flag: '🇨🇳' },
+  { code: 'ja-JP', name: 'Japanese', flag: '🇯🇵' },
+  { code: 'ko-KR', name: 'Korean', flag: '🇰🇷' },
+  { code: 'ar-SA', name: 'Arabic', flag: '🇸🇦' },
+  { code: 'hi-IN', name: 'Hindi', flag: '🇮🇳' }
+];
 
 export default function EnhancedVoiceCommands({
   onTranscription,
@@ -21,19 +30,20 @@ export default function EnhancedVoiceCommands({
   showSettings = true
 }) {
   const [listening, setListening] = useState(false);
+  const [language, setLanguage] = useState('en-US');
   const [interimText, setInterimText] = useState('');
   const [lastCommand, setLastCommand] = useState(null);
   const [commandMode, setCommandMode] = useState(mode);
   const [confidence, setConfidence] = useState(null);
   const recognitionRef = useRef(null);
+  // The recognition.onend/onerror handlers are created inside startListening
+  // BEFORE setListening(true) applies, so they captured a stale `listening`
+  // (always false) and never auto-restarted. Read this ref instead.
+  const listeningRef = useRef(false);
 
-  // Get user's preferred language from settings
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  const language = currentUser?.preferred_language || 'en-US';
+  useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
 
   useEffect(() => {
     return () => {
@@ -116,7 +126,7 @@ export default function EnhancedVoiceCommands({
 
   const startListening = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Speech recognition not supported in your browser');
+      toast.error('Speech recognition not supported in your browser');
       return;
     }
     
@@ -176,7 +186,7 @@ export default function EnhancedVoiceCommands({
     };
     
     recognition.onend = () => {
-      if (listening) {
+      if (listeningRef.current) {
         // Auto-restart if still supposed to be listening
         try {
           recognition.start();
@@ -188,11 +198,11 @@ export default function EnhancedVoiceCommands({
         setInterimText('');
       }
     };
-    
+
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       if (event.error === 'no-speech' || event.error === 'audio-capture') {
-        if (listening) {
+        if (listeningRef.current) {
           setTimeout(() => {
             try {
               recognition.start();
@@ -206,12 +216,14 @@ export default function EnhancedVoiceCommands({
         setInterimText('');
       }
     };
-    
+
+    listeningRef.current = true;
     setListening(true);
     recognition.start();
   };
 
   const stopListening = () => {
+    listeningRef.current = false;
     setListening(false);
     setInterimText('');
     if (recognitionRef.current) {
@@ -228,34 +240,41 @@ export default function EnhancedVoiceCommands({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <Button
-          size="lg"
-          variant={listening ? "destructive" : "default"}
+          size="default"
+          variant={listening ? "destructive" : "outline"}
           onClick={listening ? stopListening : startListening}
-          className="gap-2 min-h-[48px] px-6 shadow-lg"
+          className="gap-2 min-h-[44px] px-4 flex-shrink-0"
         >
-          {listening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-          <span className="font-medium">{listening ? 'Stop' : 'Voice'}</span>
+          {listening ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
+          <span className="text-sm md:text-base">{listening ? 'Stop' : 'Start'}</span>
         </Button>
         
         {showSettings && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon"
-                variant="outline"
-                disabled={listening}
-                className="h-[48px] w-[48px] shadow-lg"
-              >
-                <Settings className="w-5 h-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={toggleMode} className="gap-2">
-                <Volume2 className="w-4 h-4" />
-                Mode: {commandMode === 'command' ? 'Commands' : 'Dictation'}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <>
+            <Select value={language} onValueChange={setLanguage} disabled={listening}>
+              <SelectTrigger className="w-32 h-[44px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_LANGUAGES.map(lang => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.flag} {lang.name.split(' ')[0]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={toggleMode}
+              disabled={listening}
+              className="gap-1"
+            >
+              <Volume2 className="w-3 h-3" />
+              {commandMode === 'command' ? 'Commands' : 'Dictation'}
+            </Button>
+          </>
         )}
       </div>
       
@@ -264,7 +283,7 @@ export default function EnhancedVoiceCommands({
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2 animate-pulse">
               <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-slate-600">
                 Listening ({commandMode === 'command' ? 'Command Mode' : 'Dictation Mode'})
               </span>
             </div>

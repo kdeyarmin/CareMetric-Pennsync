@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -11,25 +10,28 @@ import {
   TrendingUp,
   FileText
 } from "lucide-react";
-import { SEVERITY } from "../utils/patientValidation";
 
 export default function ValidationSummary({ validationErrors, validRecords, totalRows }) {
+  // Normalize once: these props can be undefined before the import data loads.
+  const safeErrors = validationErrors || [];
+  const safeRecords = validRecords || [];
+
   // Categorize errors by severity
-  const criticalErrors = validationErrors.flatMap(e => 
-    e.errors?.filter(err => err.includes('required') || err.includes('Invalid') || err.includes('cannot'))
+  const criticalErrors = (safeErrors).flatMap(e =>
+    (e.errors || []).filter(err => err.includes('required') || err.includes('Invalid') || err.includes('cannot'))
   ).length;
 
-  const warnings = validationErrors.flatMap(e => 
-    e.errors?.filter(err => err.includes('recommended') || err.includes('unusual') || err.includes('verify'))
+  const warnings = (safeErrors || []).flatMap(e =>
+    (e.errors || []).filter(err => err.includes('recommended') || err.includes('unusual') || err.includes('verify'))
   ).length;
 
-  const infoMessages = validationErrors.flatMap(e => 
-    e.errors?.filter(err => err.includes('minor') || err.includes('ensure'))
+  const infoMessages = (safeErrors || []).flatMap(e =>
+    (e.errors || []).filter(err => err.includes('minor') || err.includes('ensure'))
   ).length;
 
   // Field-level error breakdown
   const errorsByField = {};
-  validationErrors.forEach(record => {
+  safeErrors.forEach(record => {
     record.errors?.forEach(error => {
       const field = extractFieldFromError(error);
       errorsByField[field] = (errorsByField[field] || 0) + 1;
@@ -40,8 +42,8 @@ export default function ValidationSummary({ validationErrors, validRecords, tota
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  const validationRate = totalRows > 0 ? Math.round((validRecords.length / totalRows) * 100) : 0;
-  const errorRate = totalRows > 0 ? Math.round((validationErrors.length / totalRows) * 100) : 0;
+  const validationRate = totalRows > 0 ? Math.round((safeRecords.length / totalRows) * 100) : 0;
+  const _errorRate = totalRows > 0 ? Math.round((safeErrors.length / totalRows) * 100) : 0;
 
   return (
     <Card className="border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50">
@@ -56,26 +58,26 @@ export default function ValidationSummary({ validationErrors, validRecords, tota
         <div className="grid grid-cols-4 gap-3">
           <div className="p-4 bg-white rounded-lg border-2 border-green-200">
             <CheckCircle2 className="w-6 h-6 text-green-600 mb-2" />
-            <p className="text-2xl font-bold text-green-700">{validRecords.length}</p>
-            <p className="text-xs text-gray-600">Valid</p>
+            <p className="text-2xl font-bold text-green-700">{safeRecords.length}</p>
+            <p className="text-xs text-slate-600">Valid</p>
           </div>
 
           <div className="p-4 bg-white rounded-lg border-2 border-red-200">
             <XCircle className="w-6 h-6 text-red-600 mb-2" />
             <p className="text-2xl font-bold text-red-700">{criticalErrors}</p>
-            <p className="text-xs text-gray-600">Critical</p>
+            <p className="text-xs text-slate-600">Critical</p>
           </div>
 
           <div className="p-4 bg-white rounded-lg border-2 border-yellow-200">
             <AlertTriangle className="w-6 h-6 text-yellow-600 mb-2" />
             <p className="text-2xl font-bold text-yellow-700">{warnings}</p>
-            <p className="text-xs text-gray-600">Warnings</p>
+            <p className="text-xs text-slate-600">Warnings</p>
           </div>
 
           <div className="p-4 bg-white rounded-lg border-2 border-blue-200">
             <Info className="w-6 h-6 text-blue-600 mb-2" />
             <p className="text-2xl font-bold text-blue-700">{infoMessages}</p>
-            <p className="text-xs text-gray-600">Info</p>
+            <p className="text-xs text-slate-600">Info</p>
           </div>
         </div>
 
@@ -86,8 +88,8 @@ export default function ValidationSummary({ validationErrors, validRecords, tota
             <span className="text-lg font-bold text-green-600">{validationRate}%</span>
           </div>
           <Progress value={validationRate} className="h-3" />
-          <p className="text-xs text-gray-500 mt-1">
-            {validRecords.length} of {totalRows} rows passed validation
+          <p className="text-xs text-slate-500 mt-1">
+            {safeRecords.length} of {totalRows} rows passed validation
           </p>
         </div>
 
@@ -101,7 +103,7 @@ export default function ValidationSummary({ validationErrors, validRecords, tota
             <div className="space-y-2">
               {topErrorFields.map(([field, count]) => (
                 <div key={field} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 capitalize">
+                  <span className="text-sm text-slate-700 capitalize">
                     {field.replace(/_/g, ' ')}
                   </span>
                   <Badge variant="outline" className="bg-red-50">
@@ -114,7 +116,7 @@ export default function ValidationSummary({ validationErrors, validRecords, tota
         )}
 
         {/* Severity Breakdown */}
-        <Alert className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+        <Alert className="bg-gradient-to-r from-blue-50 to-navy-50 border-blue-200">
           <FileText className="w-4 h-4 text-blue-600" />
           <AlertDescription>
             <div className="space-y-1 text-sm">
@@ -134,9 +136,9 @@ export default function ValidationSummary({ validationErrors, validRecords, tota
                   • <strong>{infoMessages}</strong> informational message{infoMessages !== 1 ? 's' : ''} for your awareness
                 </p>
               )}
-              {validRecords.length > 0 && (
+              {safeRecords.length > 0 && (
                 <p className="text-green-700 font-semibold mt-2">
-                  ✓ {validRecords.length} record{validRecords.length !== 1 ? 's' : ''} ready for import
+                  ✓ {safeRecords.length} record{safeRecords.length !== 1 ? 's' : ''} ready for import
                 </p>
               )}
             </div>

@@ -1,14 +1,14 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+// Standard component AI-call hook (shared timeout/retry + managed loading/error).
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   User,
-  AlertTriangle,
   Activity,
-  Heart,
   Brain,
   Loader2,
   RefreshCw,
@@ -27,7 +27,7 @@ import {
 
 export default function PatientRiskScorecard({ patient, oasisData = [], visits = [] }) {
   const [aiAnalysis, setAiAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
 
   if (!patient) return null;
 
@@ -66,9 +66,9 @@ export default function PatientRiskScorecard({ patient, oasisData = [], visits =
   const overallRisk = Math.round(riskDimensions.reduce((s, d) => s + d.value, 0) / riskDimensions.length);
 
   const runAIAnalysis = async () => {
-    setIsAnalyzing(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Provide a comprehensive risk analysis for this home health patient.
 
 PATIENT: ${patient.first_name} ${patient.last_name}
@@ -126,8 +126,8 @@ Analyze all risk factors and provide:
       setAiAnalysis(result);
     } catch (error) {
       console.error("Analysis error:", error);
+      toast.error("Couldn't complete the risk analysis. Please try again.");
     }
-    setIsAnalyzing(false);
   };
 
   const getRiskColor = (score) => {
@@ -139,24 +139,24 @@ Analyze all risk factors and provide:
   const getTrendIcon = (trend) => {
     if (trend === 'improving') return <TrendingDown className="w-3 h-3 text-green-600" />;
     if (trend === 'worsening') return <TrendingUp className="w-3 h-3 text-red-600" />;
-    return <Activity className="w-3 h-3 text-gray-500" />;
+    return <Activity className="w-3 h-3 text-slate-500" />;
   };
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="pb-2 bg-gradient-to-r from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="pb-2 bg-gradient-to-r from-navy-50 to-indigo-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <User className="w-5 h-5 text-purple-600" />
+            <User className="w-5 h-5 text-navy-600" />
             {patient.first_name} {patient.last_name} - Risk Scorecard
           </div>
           <Button
             size="sm"
             variant="outline"
             onClick={runAIAnalysis}
-            disabled={isAnalyzing}
+            disabled={ai.loading}
           >
-            {isAnalyzing ? (
+            {ai.loading ? (
               <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Analyzing...</>
             ) : aiAnalysis ? (
               <><RefreshCw className="w-4 h-4 mr-1" /> Refresh</>
@@ -172,7 +172,7 @@ Analyze all risk factors and provide:
           <div>
             <div className="text-center mb-2">
               <p className={`text-4xl font-bold ${getRiskColor(overallRisk)}`}>{overallRisk}</p>
-              <p className="text-sm text-gray-600">Overall Risk Score</p>
+              <p className="text-sm text-slate-600">Overall Risk Score</p>
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <RadarChart data={riskDimensions}>
@@ -189,7 +189,7 @@ Analyze all risk factors and provide:
             <p className="text-sm font-medium">Risk Dimensions</p>
             {riskDimensions.map((dim) => (
               <div key={dim.subject} className="flex items-center gap-3">
-                <span className="text-xs text-gray-600 w-28">{dim.subject}</span>
+                <span className="text-xs text-slate-600 w-28">{dim.subject}</span>
                 <div className="flex-1">
                   <Progress value={dim.value} className="h-2" />
                 </div>
@@ -213,12 +213,12 @@ Analyze all risk factors and provide:
               <Badge variant="outline">Confidence: {aiAnalysis.confidence}%</Badge>
             </div>
 
-            <p className="text-sm text-gray-700">{aiAnalysis.summary}</p>
+            <p className="text-sm text-slate-700">{aiAnalysis.summary}</p>
 
             {/* Risk Areas */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {aiAnalysis.risk_areas?.slice(0, 4).map((area, idx) => (
-                <div key={idx} className="p-2 bg-gray-50 rounded-lg border flex items-center justify-between">
+                <div key={idx} className="p-2 bg-slate-50 rounded-lg border flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {getTrendIcon(area.trend)}
                     <span className="text-sm">{area.area}</span>

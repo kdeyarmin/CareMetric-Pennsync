@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,12 +9,11 @@ import { Loader2, RefreshCw, TrendingUp, BookOpen, CheckCircle2, AlertTriangle }
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function AIPathwayUpdater({ pathway, onPathwayUpdated }) {
-  const [analyzing, setAnalyzing] = useState(false);
+  const ai = useAICall();
   const [recommendations, setRecommendations] = useState(null);
   const [error, setError] = useState(null);
 
   const analyzePathway = async () => {
-    setAnalyzing(true);
     setError(null);
     setRecommendations(null);
 
@@ -52,7 +52,8 @@ Also indicate:
 
 Return ONLY valid JSON.`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         add_context_from_internet: true,
         response_json_schema: {
@@ -97,8 +98,6 @@ Return ONLY valid JSON.`;
     } catch (err) {
       console.error("Pathway analysis error:", err);
       setError(err.message || "Failed to analyze pathway");
-    } finally {
-      setAnalyzing(false);
     }
   };
 
@@ -141,12 +140,12 @@ Return ONLY valid JSON.`;
       case 'high': return 'bg-orange-500 text-white';
       case 'medium': return 'bg-yellow-500 text-white';
       case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
   return (
-    <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50">
+    <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-navy-50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-blue-900">
           <RefreshCw className="w-5 h-5" />
@@ -164,10 +163,10 @@ Return ONLY valid JSON.`;
         {!recommendations && (
           <Button
             onClick={analyzePathway}
-            disabled={analyzing}
+            disabled={ai.loading}
             className="w-full bg-blue-600 hover:bg-blue-700"
           >
-            {analyzing ? (
+            {ai.loading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Analyzing Pathway Against Latest Guidelines...
@@ -193,26 +192,26 @@ Return ONLY valid JSON.`;
 
             {recommendations.overall_assessment && (
               <div className="p-3 bg-white rounded-lg border">
-                <p className="text-sm font-medium text-gray-900 mb-1">Overall Assessment</p>
-                <p className="text-sm text-gray-700">{recommendations.overall_assessment}</p>
+                <p className="text-sm font-medium text-slate-900 mb-1">Overall Assessment</p>
+                <p className="text-sm text-slate-700">{recommendations.overall_assessment}</p>
               </div>
             )}
 
             {/* Guideline Updates */}
             {recommendations.guideline_updates?.length > 0 && (
               <div className="space-y-2">
-                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-purple-600" />
+                <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-navy-600" />
                   Recent Guideline Updates
                 </h4>
                 <ScrollArea className="h-32">
                   <div className="space-y-2">
                     {recommendations.guideline_updates.map((update, idx) => (
-                      <div key={idx} className="p-2 bg-purple-50 rounded border border-purple-200">
-                        <p className="text-sm font-medium text-purple-900">{update.guideline}</p>
-                        <p className="text-xs text-purple-700 mt-1">{update.change}</p>
+                      <div key={idx} className="p-2 bg-navy-50 rounded border border-navy-200">
+                        <p className="text-sm font-medium text-navy-900">{update.guideline}</p>
+                        <p className="text-xs text-navy-700 mt-1">{update.change}</p>
                         {update.effective_date && (
-                          <p className="text-xs text-purple-600 mt-1">Effective: {update.effective_date}</p>
+                          <p className="text-xs text-navy-600 mt-1">Effective: {update.effective_date}</p>
                         )}
                       </div>
                     ))}
@@ -224,7 +223,7 @@ Return ONLY valid JSON.`;
             {/* Recommendations */}
             {recommendations.recommendations?.length > 0 && (
               <div className="space-y-2">
-                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                <h4 className="font-semibold text-slate-900 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
                   Recommendations ({recommendations.recommendations.length})
                 </h4>
@@ -238,18 +237,18 @@ Return ONLY valid JSON.`;
                               <Badge className={getPriorityColor(rec.priority)} size="sm">
                                 {rec.priority}
                               </Badge>
-                              <p className="text-xs text-gray-500 mt-1">{rec.category}</p>
+                              <p className="text-xs text-slate-500 mt-1">{rec.category}</p>
                             </div>
                           </div>
 
-                          <p className="text-sm font-medium text-gray-900">{rec.recommendation}</p>
+                          <p className="text-sm font-medium text-slate-900">{rec.recommendation}</p>
 
                           <div className="space-y-1 text-xs">
-                            <p className="text-gray-700">
+                            <p className="text-slate-700">
                               <span className="font-semibold">Rationale:</span> {rec.rationale}
                             </p>
                             {rec.impact && (
-                              <p className="text-gray-700">
+                              <p className="text-slate-700">
                                 <span className="font-semibold">Impact:</span> {rec.impact}
                               </p>
                             )}
@@ -275,14 +274,14 @@ Return ONLY valid JSON.`;
             {/* Performance Insights */}
             {recommendations.performance_insights?.length > 0 && (
               <div className="space-y-2">
-                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-cyan-600" />
+                <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-navy-600" />
                   Performance Insights
                 </h4>
-                <div className="p-3 bg-cyan-50 rounded border border-cyan-200">
+                <div className="p-3 bg-navy-50 rounded border border-navy-200">
                   <ul className="space-y-1">
                     {recommendations.performance_insights.map((insight, idx) => (
-                      <li key={idx} className="text-sm text-cyan-900">• {insight}</li>
+                      <li key={idx} className="text-sm text-navy-900">• {insight}</li>
                     ))}
                   </ul>
                 </div>

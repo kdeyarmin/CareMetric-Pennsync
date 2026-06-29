@@ -1,5 +1,9 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { safePercent } from "@/lib/safePercent";
+import { DEFAULT_PASSING_SCORE } from "@/constants/training";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,11 +60,11 @@ const quizTopics = [
   }
 ];
 
-export default function AIComplianceQuizGenerator({ nurseEmail, recommendations = [], initialTopicId = null }) {
+export default function AIComplianceQuizGenerator({ nurseEmail, _recommendations = [], initialTopicId = null }) {
   const queryClient = useQueryClient();
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [quiz, setQuiz] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
   const [showResults, setShowResults] = useState(false);
@@ -74,7 +78,8 @@ export default function AIComplianceQuizGenerator({ nurseEmail, recommendations 
         generateQuiz(topic);
       }
     }
-  }, [initialTopicId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional run-once auto-generate on mount; guarded so it can't re-fire
+  }, [initialTopicId, quiz]);
 
   const savePracticeMutation = useMutation({
     mutationFn: async (practiceData) => {
@@ -86,7 +91,6 @@ export default function AIComplianceQuizGenerator({ nurseEmail, recommendations 
   });
 
   const generateQuiz = async (topic) => {
-    setIsGenerating(true);
     try {
       const prompt = `Generate a 5-question multiple choice quiz about ${topic.title} for home health nurses.
 
@@ -113,7 +117,8 @@ Return JSON format:
   ]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -135,6 +140,10 @@ Return JSON format:
         }
       });
 
+      if (!Array.isArray(result?.questions) || result.questions.length === 0) {
+        toast.error("The quiz couldn't be generated. Please try again.");
+        return;
+      }
       setQuiz(result);
       setSelectedTopic(topic);
       setCurrentQuestionIndex(0);
@@ -142,8 +151,8 @@ Return JSON format:
       setShowResults(false);
     } catch (error) {
       console.error("Error generating quiz:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleAnswerSelect = (questionIndex, answerIndex) => {
@@ -158,8 +167,8 @@ Return JSON format:
       return count + (userAnswers[index] === question.correctAnswer ? 1 : 0);
     }, 0);
 
-    const score = Math.round((correctCount / quiz.questions.length) * 100);
-    const passed = score >= 70;
+    const score = safePercent(correctCount, quiz.questions.length);
+    const passed = score >= DEFAULT_PASSING_SCORE;
 
     const results = {
       score,
@@ -216,7 +225,7 @@ Return JSON format:
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-600" />
+            <Brain className="w-5 h-5 text-navy-600" />
             Choose a Quiz Topic
           </CardTitle>
         </CardHeader>
@@ -239,13 +248,13 @@ Return JSON format:
                     </Badge>
                   </div>
                   <h3 className="font-semibold text-lg mb-2">{topic.title}</h3>
-                  <p className="text-sm text-gray-600 mb-3">{topic.description}</p>
+                  <p className="text-sm text-slate-600 mb-3">{topic.description}</p>
                   <Button 
                     size="sm" 
                     className="w-full"
-                    disabled={isGenerating}
+                    disabled={ai.loading}
                   >
-                    {isGenerating ? (
+                    {ai.loading ? (
                       <>
                         <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                         Generating...
@@ -287,7 +296,7 @@ Return JSON format:
               </div>
               <div className="text-right">
                 <div className="text-3xl font-bold">{quizResults.score}%</div>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-slate-600">
                   {quizResults.correctCount} / {quizResults.totalQuestions} correct
                 </div>
               </div>
@@ -301,7 +310,7 @@ Return JSON format:
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Retake Quiz
               </Button>
-              <Button onClick={handleNewQuiz} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={handleNewQuiz} className="bg-navy-600 hover:bg-navy-700">
                 Try Different Topic
               </Button>
             </div>
@@ -338,7 +347,7 @@ Return JSON format:
                             ? 'bg-green-50 border-green-300'
                             : isUserAnswer
                             ? 'bg-red-50 border-red-300'
-                            : 'bg-white border-gray-200'
+                            : 'bg-white border-slate-200'
                         }`}
                       >
                         <div className="flex items-start gap-2">
@@ -365,8 +374,8 @@ Return JSON format:
 
                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                   <h4 className="font-semibold text-blue-900 mb-2">Explanation:</h4>
-                  <p className="text-sm text-gray-700 mb-2">{question.explanation}</p>
-                  <p className="text-xs text-gray-600 italic">Reference: {question.references}</p>
+                  <p className="text-sm text-slate-700 mb-2">{question.explanation}</p>
+                  <p className="text-xs text-slate-600 italic">Reference: {question.references}</p>
                 </div>
               </CardContent>
             </Card>
@@ -382,17 +391,17 @@ Return JSON format:
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+      <Card className="bg-gradient-to-r from-navy-50 to-gold-50 border-navy-200">
         <CardHeader>
           <div className="flex items-center justify-between mb-2">
             <CardTitle className="flex items-center gap-2">
-              <Brain className="w-5 h-5 text-purple-600" />
+              <Brain className="w-5 h-5 text-navy-600" />
               {selectedTopic.title} Quiz
             </CardTitle>
             <Badge>{selectedTopic.difficulty}</Badge>
           </div>
           <div className="space-y-2">
-            <div className="flex justify-between text-sm text-gray-600">
+            <div className="flex justify-between text-sm text-slate-600">
               <span>Question {currentQuestionIndex + 1} of {quiz.questions.length}</span>
               <span>{Object.keys(userAnswers).length} answered</span>
             </div>
@@ -408,7 +417,7 @@ Return JSON format:
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <p className="text-gray-900 font-medium">{currentQuestion.question}</p>
+          <p className="text-slate-900 font-medium">{currentQuestion.question}</p>
 
           <RadioGroup
             value={userAnswers[currentQuestionIndex]?.toString()}
@@ -416,7 +425,7 @@ Return JSON format:
           >
             <div className="space-y-3">
               {currentQuestion.options.map((option, index) => (
-                <div key={index} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer">
+                <div key={index} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-slate-50 cursor-pointer">
                   <RadioGroupItem value={index.toString()} id={`q${currentQuestionIndex}-option${index}`} />
                   <Label htmlFor={`q${currentQuestionIndex}-option${index}`} className="flex-1 cursor-pointer">
                     {option}
@@ -445,7 +454,7 @@ Return JSON format:
               <Button
                 onClick={handleSubmitQuiz}
                 disabled={!allAnswered}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="bg-navy-600 hover:bg-navy-700"
               >
                 Submit Quiz
               </Button>

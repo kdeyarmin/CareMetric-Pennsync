@@ -1,0 +1,61 @@
+{
+  "name": "SmsConsent",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Associated patient if known"
+    },
+    "phone_e164": {
+      "type": "string",
+      "description": "Phone number this consent record applies to (E.164)"
+    },
+    "consent_status": {
+      "type": "string",
+      "enum": [
+        "opted_in",
+        "opted_out",
+        "unknown"
+      ],
+      "default": "unknown",
+      "description": "Current TCPA texting consent state for the number"
+    },
+    "consent_source": {
+      "type": "string",
+      "description": "How consent was captured (keyword_stop, keyword_start, manual_opt_in, manual_opt_out, admin_manual, etc.)"
+    },
+    "captured_by": {
+      "type": "string",
+      "description": "Email of the user who recorded this consent (null for automatic keyword capture)"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When consent was captured"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text context for the consent record"
+    }
+  },
+  "required": [
+    "phone_e164",
+    "consent_status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "captured_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "captured_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

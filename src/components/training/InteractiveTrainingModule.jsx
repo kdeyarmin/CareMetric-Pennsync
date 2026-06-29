@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -24,7 +24,7 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [showFeedback, setShowFeedback] = useState(false);
   const [startTime] = useState(Date.now());
-  const [score, setScore] = useState(0);
+  const [_score, setScore] = useState(0);
 
   const content = trainingData.training_content;
 
@@ -45,7 +45,9 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
       if (quizStep < content.quiz.length - 1) {
         setQuizStep(quizStep + 1);
         setShowFeedback(false);
-        setSelectedAnswers({});
+        // Do NOT clear selectedAnswers here: the final score iterates over every
+        // quiz question's answer (keyed by its index), so wiping between
+        // questions left only the last answer and capped a perfect run at 1/N.
       } else {
         // Calculate final score
         let correctCount = 0;
@@ -80,10 +82,10 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{content.title}</h1>
+                <h1 className="text-2xl font-bold text-slate-900">{content.title}</h1>
                 <div className="flex items-center gap-3 mt-2">
                   <Badge className="bg-blue-600">{currentStep}</Badge>
-                  <div className="flex items-center gap-1 text-sm text-gray-600">
+                  <div className="flex items-center gap-1 text-sm text-slate-600">
                     <Clock className="w-4 h-4" />
                     <span>{trainingData.estimated_duration} min</span>
                   </div>
@@ -109,13 +111,13 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                 <div className="space-y-6 pr-4">
                   {/* Learning Objectives */}
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center gap-2">
                       <Target className="w-5 h-5 text-blue-600" />
                       Learning Objectives
                     </h3>
                     <ul className="space-y-2">
                       {content.learning_objectives.map((obj, idx) => (
-                        <li key={idx} className="flex items-start gap-2 text-gray-700">
+                        <li key={idx} className="flex items-start gap-2 text-slate-700">
                           <CheckCircle2 className="w-4 h-4 text-green-600 mt-1 flex-shrink-0" />
                           <span>{obj}</span>
                         </li>
@@ -125,18 +127,18 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
 
                   {/* Introduction */}
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Introduction</h3>
-                    <p className="text-gray-700 leading-relaxed">{content.lesson_content.introduction}</p>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-3">Introduction</h3>
+                    <p className="text-slate-700 leading-relaxed">{content.lesson_content.introduction}</p>
                   </div>
 
                   {/* Key Concepts */}
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Key Concepts</h3>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-3">Key Concepts</h3>
                     <div className="space-y-4">
                       {content.lesson_content.key_concepts.map((concept, idx) => (
                         <div key={idx} className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                           <h4 className="font-semibold text-blue-900 mb-2">{concept.concept}</h4>
-                          <p className="text-gray-700">{concept.explanation}</p>
+                          <p className="text-slate-700">{concept.explanation}</p>
                         </div>
                       ))}
                     </div>
@@ -147,7 +149,7 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                     <h3 className="text-lg font-semibold text-green-900 mb-3">Best Practices</h3>
                     <ul className="space-y-2">
                       {content.lesson_content.best_practices.map((practice, idx) => (
-                        <li key={idx} className="flex items-start gap-2 text-gray-700 bg-green-50 p-3 rounded-lg">
+                        <li key={idx} className="flex items-start gap-2 text-slate-700 bg-green-50 p-3 rounded-lg">
                           <CheckCircle2 className="w-4 h-4 text-green-600 mt-1 flex-shrink-0" />
                           <span>{practice}</span>
                         </li>
@@ -160,7 +162,7 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                     <h3 className="text-lg font-semibold text-red-900 mb-3">Common Mistakes to Avoid</h3>
                     <ul className="space-y-2">
                       {content.lesson_content.common_mistakes.map((mistake, idx) => (
-                        <li key={idx} className="flex items-start gap-2 text-gray-700 bg-red-50 p-3 rounded-lg">
+                        <li key={idx} className="flex items-start gap-2 text-slate-700 bg-red-50 p-3 rounded-lg">
                           <XCircle className="w-4 h-4 text-red-600 mt-1 flex-shrink-0" />
                           <span>{mistake}</span>
                         </li>
@@ -182,30 +184,30 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
         {/* Scenario */}
         {currentStep === 'scenario' && (
           <Card>
-            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+            <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
               <CardTitle>Clinical Scenario</CardTitle>
             </CardHeader>
             <CardContent className="p-6">
               <div className="space-y-4">
-                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                  <h3 className="font-semibold text-purple-900 mb-2">{content.scenario.title}</h3>
-                  <p className="text-gray-700 mb-3">{content.scenario.patient_background}</p>
-                  <p className="text-gray-800 font-medium">{content.scenario.situation}</p>
+                <div className="bg-navy-50 rounded-lg p-4 border border-navy-200">
+                  <h3 className="font-semibold text-navy-900 mb-2">{content.scenario.title}</h3>
+                  <p className="text-slate-700 mb-3">{content.scenario.patient_background}</p>
+                  <p className="text-slate-800 font-medium">{content.scenario.situation}</p>
                 </div>
 
                 {/* Decision Point */}
                 <div className="bg-white rounded-lg p-4 border">
-                  <h4 className="font-semibold text-gray-900 mb-4">
+                  <h4 className="font-semibold text-slate-900 mb-4">
                     Decision Point {scenarioStep + 1} of {content.scenario.decision_points.length}
                   </h4>
-                  <p className="text-gray-800 mb-4">{content.scenario.decision_points[scenarioStep].question}</p>
+                  <p className="text-slate-800 mb-4">{content.scenario.decision_points[scenarioStep].question}</p>
 
                   <RadioGroup
                     value={selectedAnswers[scenarioStep]?.toString()}
                     onValueChange={(value) => setSelectedAnswers({ ...selectedAnswers, [scenarioStep]: parseInt(value) })}
                   >
                     {content.scenario.decision_points[scenarioStep].options.map((option, idx) => (
-                      <div key={idx} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-gray-50">
+                      <div key={idx} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-slate-50">
                         <RadioGroupItem value={idx.toString()} id={`scenario-${idx}`} />
                         <Label htmlFor={`scenario-${idx}`} className="flex-1 cursor-pointer">{option}</Label>
                       </div>
@@ -227,7 +229,7 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                           ? '✓ Correct!'
                           : '✗ Incorrect'}
                       </p>
-                      <p className="text-gray-700">{content.scenario.decision_points[scenarioStep].rationale}</p>
+                      <p className="text-slate-700">{content.scenario.decision_points[scenarioStep].rationale}</p>
                     </div>
                   )}
                 </div>
@@ -241,12 +243,12 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                     <Button
                       onClick={handleCheckAnswer}
                       disabled={selectedAnswers[scenarioStep] === undefined}
-                      className="bg-purple-600 hover:bg-purple-700"
+                      className="bg-navy-600 hover:bg-navy-700"
                     >
                       Check Answer
                     </Button>
                   ) : (
-                    <Button onClick={handleNextStep} className="bg-purple-600 hover:bg-purple-700">
+                    <Button onClick={handleNextStep} className="bg-navy-600 hover:bg-navy-700">
                       {scenarioStep < content.scenario.decision_points.length - 1 ? 'Next Question' : 'Continue to Quiz'}
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
@@ -269,21 +271,21 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
             <CardContent className="p-6">
               <div className="space-y-4">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-slate-600">
                     Question {quizStep + 1} of {content.quiz.length}
                   </span>
                   <Progress value={(quizStep + 1) / content.quiz.length * 100} className="w-48 h-2" />
                 </div>
 
                 <div className="bg-white rounded-lg p-4 border">
-                  <p className="text-gray-900 font-medium mb-4">{content.quiz[quizStep].question}</p>
+                  <p className="text-slate-900 font-medium mb-4">{content.quiz[quizStep].question}</p>
 
                   <RadioGroup
                     value={selectedAnswers[quizStep]?.toString()}
                     onValueChange={(value) => setSelectedAnswers({ ...selectedAnswers, [quizStep]: parseInt(value) })}
                   >
                     {content.quiz[quizStep].options.map((option, idx) => (
-                      <div key={idx} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-gray-50">
+                      <div key={idx} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-slate-50">
                         <RadioGroupItem value={idx.toString()} id={`quiz-${idx}`} />
                         <Label htmlFor={`quiz-${idx}`} className="flex-1 cursor-pointer">{option}</Label>
                       </div>
@@ -305,7 +307,7 @@ export default function InteractiveTrainingModule({ trainingData, onComplete, on
                           ? '✓ Correct!'
                           : '✗ Incorrect'}
                       </p>
-                      <p className="text-gray-700">{content.quiz[quizStep].explanation}</p>
+                      <p className="text-slate-700">{content.quiz[quizStep].explanation}</p>
                     </div>
                   )}
                 </div>

@@ -1,0 +1,86 @@
+{
+  "name": "AutomaticCarePlanTrigger",
+  "type": "object",
+  "properties": {
+    "trigger_type": {
+      "type": "string",
+      "enum": [
+        "diagnosis",
+        "medication"
+      ],
+      "description": "What triggers this care plan - a diagnosis or medication"
+    },
+    "trigger_value": {
+      "type": "string",
+      "description": "The specific diagnosis or medication name that triggers this care plan"
+    },
+    "care_type": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "both"
+      ],
+      "default": "both",
+      "description": "Which care line(s) this trigger applies to"
+    },
+    "problem": {
+      "type": "string",
+      "description": "The nursing diagnosis/problem"
+    },
+    "goal": {
+      "type": "string",
+      "description": "The measurable goal"
+    },
+    "interventions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Nursing interventions"
+    },
+    "frequency": {
+      "type": "string",
+      "description": "How often to assess (e.g., 'Each visit', 'Weekly')"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "default": "medium",
+      "description": "Priority level"
+    },
+    "baseline_measurement": {
+      "type": "string",
+      "description": "What to measure at baseline"
+    },
+    "days_until_target": {
+      "type": "number",
+      "default": 60,
+      "description": "Number of days to set as target date from admission"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this trigger is currently active"
+    }
+  },
+  "required": [
+    "trigger_type",
+    "trigger_value",
+    "problem",
+    "goal",
+    "interventions"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

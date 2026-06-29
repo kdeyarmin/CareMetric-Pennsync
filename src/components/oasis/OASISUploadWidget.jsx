@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,7 +90,7 @@ export default function OASISUploadWidget() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors bg-white">
+        <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors bg-white">
           <input
             type="file"
             accept=".pdf"
@@ -98,11 +98,11 @@ export default function OASISUploadWidget() {
             className="hidden"
             id="quick-oasis-upload"
           />
-          <FileText className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-          <p className="text-sm text-gray-600 mb-2">
+          <FileText className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+          <p className="text-sm text-slate-600 mb-2">
             {file ? file.name : "No file selected"}
           </p>
-          <p className="text-xs text-gray-400 mb-4">Upload OASIS PDF for analysis</p>
+          <p className="text-xs text-slate-400 mb-4">Upload OASIS PDF for analysis</p>
           <Button 
             className="bg-blue-600 hover:bg-blue-700"
             onClick={() => document.getElementById('quick-oasis-upload').click()}
@@ -146,7 +146,7 @@ export default function OASISUploadWidget() {
         {isUploading && (
           <div>
             <Progress value={uploadProgress} className="h-2" />
-            <p className="text-xs text-gray-500 mt-2 text-center">
+            <p className="text-xs text-slate-500 mt-2 text-center">
               Processing OASIS document...
             </p>
           </div>
@@ -169,7 +169,7 @@ export default function OASISUploadWidget() {
         )}
 
         <div className="pt-2 border-t">
-          <Link to={createPageUrl("OASIS")}>
+          <Link to={createPageUrl("SmartOASISAssessment")}>
             <Button variant="outline" size="sm" className="w-full">
               <ExternalLink className="w-4 h-4 mr-2" />
               Go to Full OASIS Analyzer

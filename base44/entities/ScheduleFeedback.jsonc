@@ -1,0 +1,46 @@
+{
+  "name": "ScheduleFeedback",
+  "type": "object",
+  "properties": {
+    "visit_id": {
+      "type": "string",
+      "description": "Reference to the visit being given feedback on"
+    },
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of nurse providing feedback"
+    },
+    "schedule_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the schedule"
+    },
+    "feedback_type": {
+      "type": "string",
+      "enum": [
+        "good",
+        "timing_issue",
+        "route_issue",
+        "bad"
+      ],
+      "description": "Type of feedback"
+    },
+    "feedback_text": {
+      "type": "string",
+      "description": "Detailed feedback text"
+    },
+    "suggested_time": {
+      "type": "string",
+      "description": "AI suggested time"
+    },
+    "actual_preference": {
+      "type": "string",
+      "description": "Nurse's preferred time or notes"
+    }
+  },
+  "required": [
+    "nurse_email",
+    "schedule_date",
+    "feedback_type"
+  ]
+}

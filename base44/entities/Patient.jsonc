@@ -1,0 +1,282 @@
+{
+  "name": "Patient",
+  "type": "object",
+  "properties": {
+    "first_name": {
+      "type": "string"
+    },
+    "middle_name": {
+      "type": "string",
+      "description": "Middle name or middle initial"
+    },
+    "last_name": {
+      "type": "string"
+    },
+    "date_of_birth": {
+      "type": "string",
+      "format": "date"
+    },
+    "medical_record_number": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "payor": {
+      "type": "string",
+      "description": "Primary payor or insurance type"
+    },
+    "emergency_contact_name": {
+      "type": "string"
+    },
+    "emergency_contact_phone": {
+      "type": "string"
+    },
+    "emergency_contact_relationship": {
+      "type": "string"
+    },
+    "physician_name": {
+      "type": "string"
+    },
+    "physician_phone": {
+      "type": "string"
+    },
+    "physician_email": {
+      "type": "string",
+      "format": "email"
+    },
+    "caregiver_name": {
+      "type": "string"
+    },
+    "caregiver_email": {
+      "type": "string",
+      "format": "email"
+    },
+    "caregiver_phone": {
+      "type": "string"
+    },
+    "primary_diagnosis": {
+      "type": "string"
+    },
+    "secondary_diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allergies": {
+      "type": "string"
+    },
+    "current_medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "dosage": { "type": "string" },
+          "frequency": { "type": "string" },
+          "route": { "type": "string" },
+          "prescriber": { "type": "string" },
+          "start_date": { "type": "string" },
+          "indication": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      },
+      "description": "Patient's current medication list (read across the app as patient.current_medications). Populated from referral/import extraction."
+    },
+    "past_medical_history": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "past_hospitalizations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "family_medical_history": {
+      "type": "string"
+    },
+    "baseline_vitals": {
+      "type": "object"
+    },
+    "functional_status": {
+      "type": "object"
+    },
+    "social_history": {
+      "type": "object"
+    },
+    "mental_health": {
+      "type": "object"
+    },
+    "pain_management": {
+      "type": "object"
+    },
+    "wounds": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "advance_directives": {
+      "type": "object"
+    },
+    "insurance_primary": {
+      "type": "object"
+    },
+    "insurance_secondary": {
+      "type": "object"
+    },
+    "admission_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "discharge_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "admission_source": {
+      "type": "string",
+      "enum": [
+        "home",
+        "hospital",
+        "skilled_nursing_facility",
+        "rehab",
+        "other"
+      ]
+    },
+    "discharge_disposition": {
+      "type": "string",
+      "enum": [
+        "home",
+        "hospital",
+        "skilled_nursing_facility",
+        "deceased",
+        "other"
+      ]
+    },
+    "care_type": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice"
+      ],
+      "default": "home_health"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "discharged",
+        "hospitalized",
+        "merged"
+      ],
+      "default": "active"
+    },
+    "is_archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the patient should be hidden from active rosters"
+    },
+    "clinical_notes": {
+      "type": "string"
+    },
+    "goals_of_care": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "enhanced_notes_history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "assigned_nurses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of nurse emails who have documented visits for this patient"
+    },
+    "data_completeness_score": {
+      "type": "number",
+      "description": "Percentage of critical fields completed (0-100)"
+    },
+    "missing_critical_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of missing critical patient safety fields"
+    },
+    "validation_overrides": {
+      "type": "object",
+      "description": "Audit trail of validation warnings the user explicitly overrode, keyed by field name"
+    },
+    "merged_into_id": {
+      "type": "string",
+      "description": "ID of the surviving patient this record was merged into during deduplication"
+    },
+    "merged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this patient record was merged into another during deduplication"
+    },
+    "merged_by": {
+      "type": "string",
+      "description": "Email of the user who merged this patient record"
+    }
+  },
+  "required": [
+    "first_name",
+    "last_name",
+    "date_of_birth",
+    "phone",
+    "address",
+    "emergency_contact_name",
+    "emergency_contact_phone"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "assigned_nurses": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "assigned_nurses": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

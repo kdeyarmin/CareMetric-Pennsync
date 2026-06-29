@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,13 +21,11 @@ import {
   Loader2,
   FileText,
   AlertTriangle,
-  CheckCircle2,
   Info,
   Bookmark,
   BookmarkCheck,
   Lightbulb,
-  Clock,
-  Star
+  Clock
 } from "lucide-react";
 
 // CMS OASIS-E 2024 Reference Data (embedded for reliability)
@@ -326,7 +324,7 @@ const CMS_OASIS_REFERENCE = {
 
 export default function CMSComplianceReference({ oasisItem, onInsertGuidance, compact = false }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const ai = useAICall();
   const [liveUpdates, setLiveUpdates] = useState(null);
   const [selectedItem, setSelectedItem] = useState(oasisItem || null);
   const [activeTab, setActiveTab] = useState("all");
@@ -348,9 +346,9 @@ export default function CMSComplianceReference({ oasisItem, onInsertGuidance, co
   }, [bookmarkedItems]);
 
   const fetchLiveUpdates = async () => {
-    setIsLoading(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Check for any recent CMS OASIS-E updates or guidance changes effective 2024-2025. Focus on:
 1. Any changes to functional scoring (GG items, M1800-M1860)
 2. PDGM calculation updates
@@ -383,7 +381,6 @@ Return JSON:
     } catch (error) {
       console.error("Error fetching updates:", error);
     }
-    setIsLoading(false);
   };
 
   const toggleBookmark = (itemKey) => {
@@ -442,15 +439,15 @@ Return JSON:
     <div
       key={itemKey}
       className={`p-3 rounded-lg border ${
-        selectedItem === itemKey ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 hover:bg-gray-100'
+        selectedItem === itemKey ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 hover:bg-slate-100'
       } cursor-pointer transition-colors`}
       onClick={() => setSelectedItem(itemKey)}
     >
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
-          <h4 className="font-semibold text-gray-900">{itemKey}: {item.name}</h4>
+          <h4 className="font-semibold text-slate-900">{itemKey}: {item.name}</h4>
           {item.description && (
-            <p className="text-xs text-gray-600 mt-1">{item.description}</p>
+            <p className="text-xs text-slate-600 mt-1">{item.description}</p>
           )}
         </div>
         <div className="flex gap-1 items-center ml-2">
@@ -465,9 +462,9 @@ Return JSON:
               className="h-8 w-8 p-0"
             >
               {bookmarkedItems[itemKey] ? (
-                <BookmarkCheck className="w-4 h-4 text-purple-600" />
+                <BookmarkCheck className="w-4 h-4 text-navy-600" />
               ) : (
-                <Bookmark className="w-4 h-4 text-gray-400" />
+                <Bookmark className="w-4 h-4 text-slate-400" />
               )}
             </Button>
           )}
@@ -489,7 +486,7 @@ Return JSON:
       
       {item.scoringScale && (
         <div className="mt-2">
-          <p className="text-xs font-medium text-gray-700 mb-1">Scoring Scale:</p>
+          <p className="text-xs font-medium text-slate-700 mb-1">Scoring Scale:</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs">
             {Object.entries(item.scoringScale).map(([score, desc]) => (
               <div key={score} className="bg-white p-1.5 rounded border">
@@ -502,7 +499,7 @@ Return JSON:
 
       {item.subItems && (
         <div className="mt-2">
-          <p className="text-xs font-medium text-gray-700 mb-1">Sub-items:</p>
+          <p className="text-xs font-medium text-slate-700 mb-1">Sub-items:</p>
           <div className="flex flex-wrap gap-1">
             {item.subItems.map((sub, idx) => (
               <Badge key={idx} variant="outline" className="text-xs">{sub}</Badge>
@@ -521,9 +518,9 @@ Return JSON:
       )}
 
       {item.interpretiveGuidelines && (
-        <Alert className="mt-2 py-1.5 px-2 bg-purple-50 border-purple-200">
-          <FileText className="w-3 h-3 text-purple-600" />
-          <AlertDescription className="text-xs text-purple-800">
+        <Alert className="mt-2 py-1.5 px-2 bg-navy-50 border-navy-200">
+          <FileText className="w-3 h-3 text-navy-600" />
+          <AlertDescription className="text-xs text-navy-800">
             <strong>Interpretive Guidelines:</strong> {item.interpretiveGuidelines}
           </AlertDescription>
         </Alert>
@@ -548,8 +545,8 @@ Return JSON:
             <BookOpen className="w-4 h-4" />
             CMS Reference
           </h4>
-          <Button size="sm" variant="ghost" onClick={fetchLiveUpdates} disabled={isLoading}>
-            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+          <Button size="sm" variant="ghost" onClick={fetchLiveUpdates} disabled={ai.loading}>
+            {ai.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           </Button>
         </div>
         {selectedItem && findItemByKey(selectedItem) && (
@@ -583,7 +580,7 @@ Return JSON:
       <CardContent className="space-y-4">
         {/* Search */}
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input
             placeholder="Search OASIS items, keywords (e.g., M1830, pressure ulcer, bathing)..."
             value={searchTerm}
@@ -597,10 +594,10 @@ Return JSON:
           <Button
             size="sm"
             onClick={fetchLiveUpdates}
-            disabled={isLoading}
+            disabled={ai.loading}
             className="bg-blue-600 hover:bg-blue-700"
           >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            {ai.loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             Check for CMS Updates
           </Button>
           {liveUpdates && (
@@ -723,8 +720,8 @@ Return JSON:
           {/* Bookmarks Tab */}
           <TabsContent value="bookmarks" className="mt-4">
             {Object.keys(bookmarkedItems).length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <div className="text-center py-8 text-slate-500">
+                <Bookmark className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p className="text-sm">No bookmarked items yet.</p>
                 <p className="text-xs mt-1">Click the bookmark icon on any item to save it for quick access.</p>
               </div>
@@ -754,16 +751,16 @@ Return JSON:
                     'bg-red-100 border-red-300'
                   }`}>
                     <p className="font-bold capitalize">{level}</p>
-                    <p className="text-gray-700">{data.range}</p>
-                    <p className="text-gray-600">×{data.multiplier}</p>
+                    <p className="text-slate-700">{data.range}</p>
+                    <p className="text-slate-600">×{data.multiplier}</p>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Clinical Groups */}
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 mb-4">
-              <h4 className="font-semibold text-purple-900 mb-2">PDGM Clinical Groups</h4>
+            <div className="bg-navy-50 p-4 rounded-lg border border-navy-200 mb-4">
+              <h4 className="font-semibold text-navy-900 mb-2">PDGM Clinical Groups</h4>
               <div className="flex flex-wrap gap-1">
                 {CMS_OASIS_REFERENCE.pdgmRules.clinicalGroups.map((group, idx) => (
                   <Badge key={idx} variant="outline" className="text-xs bg-white">{group}</Badge>
@@ -773,7 +770,7 @@ Return JSON:
 
             {/* External Resources */}
             <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <ExternalLink className="w-4 h-4" />
                 Official CMS Resources
               </h4>
@@ -784,13 +781,13 @@ Return JSON:
                     href={resource.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                    className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border hover:bg-blue-50 hover:border-blue-200 transition-colors"
                   >
                     <ExternalLink className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-sm font-medium text-blue-600">{resource.name}</p>
                       {resource.description && (
-                        <p className="text-xs text-gray-600 mt-0.5">{resource.description}</p>
+                        <p className="text-xs text-slate-600 mt-0.5">{resource.description}</p>
                       )}
                     </div>
                   </a>

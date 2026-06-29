@@ -1,0 +1,113 @@
+{
+  "name": "ScheduledSms",
+  "type": "object",
+  "properties": {
+    "to_number": {
+      "type": "string",
+      "description": "Recipient phone number (E.164)"
+    },
+    "from_number": {
+      "type": "string",
+      "description": "Sender work number (E.164)"
+    },
+    "body": {
+      "type": "string",
+      "description": "Message text to send"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Associated patient if known"
+    },
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse who scheduled the message"
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Conversation thread id (sorted pair of E.164 numbers)"
+    },
+    "send_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When to send the message"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "sending",
+        "sent",
+        "failed",
+        "canceled"
+      ],
+      "default": "pending",
+      "description": "Scheduled message status"
+    },
+    "template_label": {
+      "type": "string",
+      "description": "Optional label of the template used to compose the message"
+    },
+    "attempts": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of dispatch attempts made"
+    },
+    "claimed_by": {
+      "type": "string",
+      "description": "Per-run token claiming this row for dispatch (concurrency guard)"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this row was claimed for dispatch"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the message was actually sent"
+    },
+    "provider_message_id": {
+      "type": "string",
+      "description": "Telnyx message id once dispatched"
+    },
+    "sms_message_id": {
+      "type": "string",
+      "description": "Id of the SmsMessage record created in the nurse's thread when sent"
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Reason for failure if applicable"
+    },
+    "canceled_by": {
+      "type": "string",
+      "description": "Email of the user who canceled the scheduled message"
+    },
+    "canceled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the scheduled message was canceled"
+    }
+  },
+  "required": [
+    "to_number",
+    "from_number",
+    "body",
+    "send_at"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "nurse_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "nurse_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

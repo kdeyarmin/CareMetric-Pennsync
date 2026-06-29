@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,27 +13,20 @@ import {
   CheckCircle2,
   Sparkles,
   RefreshCw,
-  ArrowRight,
   Target,
   Activity
 } from "lucide-react";
 
 export default function AIHealthInsights({ patientId, patient, visits, carePlans, alerts, oasisData }) {
   const [insights, setInsights] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
 
-  useEffect(() => {
-    if (patientId && visits.length > 0) {
-      generateInsights();
-    }
-  }, [patientId]);
-
-  const generateInsights = async () => {
-    setIsAnalyzing(true);
+  const generateInsights = useCallback(async () => {
     try {
       const completedVisits = visits.filter(v => v.status === 'completed').slice(0, 10);
       
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a clinical AI analyst specializing in home health patient care. Analyze this patient's health trends and provide actionable insights.
 
 PATIENT INFORMATION:
@@ -156,9 +150,21 @@ Provide comprehensive health trend analysis:
       setInsights(result);
     } catch (error) {
       console.error("Error generating health insights:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [visits, patient, carePlans, alerts, oasisData]);
+
+  // Auto-run once per patient. generateInsights' identity changes whenever a query
+  // dependency array (visits/carePlans/alerts/…) is refetched, so without this gate
+  // the effect would re-fire an expensive LLM call on every such churn.
+  const autoRunForRef = useRef(null);
+  useEffect(() => {
+    if (patientId && visits.length > 0 && autoRunForRef.current !== patientId) {
+      autoRunForRef.current = patientId;
+      generateInsights();
+    }
+  }, [patientId, visits.length, generateInsights]);
 
   const getTrendIcon = (trend) => {
     switch (trend) {
@@ -175,25 +181,25 @@ Provide comprehensive health trend analysis:
       case 'stable': return 'bg-blue-50 border-blue-200';
       case 'declining': return 'bg-orange-50 border-orange-200';
       case 'concerning': return 'bg-red-50 border-red-200';
-      default: return 'bg-gray-50 border-gray-200';
+      default: return 'bg-slate-50 border-slate-200';
     }
   };
 
   return (
-    <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 via-white to-indigo-50 mb-6">
+    <Card className="border-2 border-navy-200 bg-gradient-to-br from-navy-50 via-white to-indigo-50 mb-6">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Brain className="w-6 h-6 text-purple-600" />
+            <Brain className="w-6 h-6 text-navy-600" />
             AI Health Insights & Trends
           </CardTitle>
           <Button
             onClick={generateInsights}
-            disabled={isAnalyzing}
+            disabled={ai.loading}
             size="sm"
-            className="bg-purple-600 hover:bg-purple-700"
+            className="bg-navy-600 hover:bg-navy-700"
           >
-            {isAnalyzing ? (
+            {ai.loading ? (
               <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
             ) : (
               <><Sparkles className="w-4 h-4 mr-2" /> Refresh Insights</>
@@ -203,10 +209,10 @@ Provide comprehensive health trend analysis:
       </CardHeader>
 
       <CardContent>
-        {isAnalyzing ? (
+        {ai.loading ? (
           <div className="text-center py-12">
-            <Brain className="w-12 h-12 text-purple-400 mx-auto mb-4 animate-pulse" />
-            <p className="text-gray-600">AI analyzing patient health trends...</p>
+            <Brain className="w-12 h-12 text-navy-400 mx-auto mb-4 animate-pulse" />
+            <p className="text-slate-600">AI analyzing patient health trends...</p>
           </div>
         ) : insights ? (
           <div className="space-y-6">
@@ -214,10 +220,10 @@ Provide comprehensive health trend analysis:
             <Alert className={getTrendColor(insights.overall_health_trend)}>
               {getTrendIcon(insights.overall_health_trend)}
               <AlertDescription>
-                <p className="font-semibold text-gray-900 mb-1">
+                <p className="font-semibold text-slate-900 mb-1">
                   Health Status: {insights.overall_health_trend?.toUpperCase()}
                 </p>
-                <p className="text-sm text-gray-700">{insights.trend_summary}</p>
+                <p className="text-sm text-slate-700">{insights.trend_summary}</p>
               </AlertDescription>
             </Alert>
 
@@ -243,8 +249,8 @@ Provide comprehensive health trend analysis:
                           {flag.urgency}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-700 mb-2">{flag.action_required}</p>
-                      <p className="text-xs text-gray-600">Timeframe: {flag.timeframe}</p>
+                      <p className="text-sm text-slate-700 mb-2">{flag.action_required}</p>
+                      <p className="text-xs text-slate-600">Timeframe: {flag.timeframe}</p>
                     </div>
                   ))}
                 </CardContent>
@@ -264,10 +270,10 @@ Provide comprehensive health trend analysis:
                   {insights.priority_actions.slice(0, 3).map((action, idx) => (
                     <div key={idx} className="bg-white p-3 rounded border border-orange-200">
                       <div className="flex items-start justify-between mb-1">
-                        <p className="font-semibold text-sm text-gray-900">{action.action}</p>
+                        <p className="font-semibold text-sm text-slate-900">{action.action}</p>
                         <Badge variant="outline">{action.urgency?.replace(/_/g, ' ')}</Badge>
                       </div>
-                      <p className="text-xs text-gray-600 mb-2">{action.rationale}</p>
+                      <p className="text-xs text-slate-600 mb-2">{action.rationale}</p>
                       <p className="text-xs text-green-700">
                         <strong>Impact:</strong> {action.expected_impact}
                       </p>
@@ -286,7 +292,7 @@ Provide comprehensive health trend analysis:
                       {getTrendIcon(insight.trend)}
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
-                          <p className="font-semibold text-sm text-gray-900">{insight.category?.replace(/_/g, ' ').toUpperCase()}</p>
+                          <p className="font-semibold text-sm text-slate-900">{insight.category?.replace(/_/g, ' ').toUpperCase()}</p>
                           <Badge className={
                             insight.trend === 'improving' ? 'bg-green-500' :
                             insight.trend === 'stable' ? 'bg-blue-500' :
@@ -295,8 +301,8 @@ Provide comprehensive health trend analysis:
                             {insight.trend}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-700 mb-2">{insight.finding}</p>
-                        <p className="text-xs text-gray-600 mb-2">{insight.clinical_significance}</p>
+                        <p className="text-sm text-slate-700 mb-2">{insight.finding}</p>
+                        <p className="text-xs text-slate-600 mb-2">{insight.clinical_significance}</p>
                         <p className="text-xs text-indigo-700 font-medium">
                           → {insight.recommendation}
                         </p>
@@ -317,26 +323,26 @@ Provide comprehensive health trend analysis:
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-gray-700 mb-3">{insights.vital_signs_analysis.narrative}</p>
+                  <p className="text-sm text-slate-700 mb-3">{insights.vital_signs_analysis.narrative}</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div className="bg-white p-2 rounded border">
-                      <p className="text-xs text-gray-600">Blood Pressure</p>
+                      <p className="text-xs text-slate-600">Blood Pressure</p>
                       <p className="font-semibold text-sm">{insights.vital_signs_analysis.blood_pressure_trend}</p>
                     </div>
                     <div className="bg-white p-2 rounded border">
-                      <p className="text-xs text-gray-600">Heart Rate</p>
+                      <p className="text-xs text-slate-600">Heart Rate</p>
                       <p className="font-semibold text-sm">{insights.vital_signs_analysis.heart_rate_trend}</p>
                     </div>
                     <div className="bg-white p-2 rounded border">
-                      <p className="text-xs text-gray-600">Weight</p>
+                      <p className="text-xs text-slate-600">Weight</p>
                       <p className="font-semibold text-sm">{insights.vital_signs_analysis.weight_trend}</p>
                     </div>
                     <div className="bg-white p-2 rounded border">
-                      <p className="text-xs text-gray-600">O2 Saturation</p>
+                      <p className="text-xs text-slate-600">O2 Saturation</p>
                       <p className="font-semibold text-sm">{insights.vital_signs_analysis.oxygen_trend}</p>
                     </div>
                     <div className="bg-white p-2 rounded border">
-                      <p className="text-xs text-gray-600">Pain Level</p>
+                      <p className="text-xs text-slate-600">Pain Level</p>
                       <p className="font-semibold text-sm">{insights.vital_signs_analysis.pain_trend}</p>
                     </div>
                   </div>
@@ -368,18 +374,18 @@ Provide comprehensive health trend analysis:
 
             {/* Predictive Insights */}
             {insights.predictive_insights?.length > 0 && (
-              <Card className="border-purple-200 bg-purple-50">
+              <Card className="border-navy-200 bg-navy-50">
                 <CardHeader className="py-3">
-                  <CardTitle className="text-sm flex items-center gap-2 text-purple-900">
+                  <CardTitle className="text-sm flex items-center gap-2 text-navy-900">
                     <Brain className="w-5 h-5" />
                     Predictive Insights
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {insights.predictive_insights.map((pred, idx) => (
-                    <div key={idx} className="bg-white p-3 rounded border border-purple-200">
+                    <div key={idx} className="bg-white p-3 rounded border border-navy-200">
                       <div className="flex items-start justify-between mb-2">
-                        <p className="font-semibold text-sm text-gray-900">{pred.prediction}</p>
+                        <p className="font-semibold text-sm text-slate-900">{pred.prediction}</p>
                         <Badge className={
                           pred.likelihood === 'high' ? 'bg-red-100 text-red-800' :
                           pred.likelihood === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
@@ -388,13 +394,13 @@ Provide comprehensive health trend analysis:
                           {pred.likelihood} likelihood
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-600 mb-2">Expected: {pred.timeframe}</p>
+                      <p className="text-xs text-slate-600 mb-2">Expected: {pred.timeframe}</p>
                       {pred.preventive_measures?.length > 0 && (
-                        <div className="bg-purple-50 p-2 rounded mt-2">
-                          <p className="text-xs font-semibold text-purple-900 mb-1">Prevention:</p>
+                        <div className="bg-navy-50 p-2 rounded mt-2">
+                          <p className="text-xs font-semibold text-navy-900 mb-1">Prevention:</p>
                           <ul className="space-y-1">
                             {pred.preventive_measures.map((measure, i) => (
-                              <li key={i} className="text-xs text-purple-800">• {measure}</li>
+                              <li key={i} className="text-xs text-navy-800">• {measure}</li>
                             ))}
                           </ul>
                         </div>
@@ -407,11 +413,11 @@ Provide comprehensive health trend analysis:
           </div>
         ) : (
           <div className="text-center py-12">
-            <Brain className="w-16 h-16 text-purple-300 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">Generate AI-powered health insights for this patient</p>
+            <Brain className="w-16 h-16 text-navy-300 mx-auto mb-4" />
+            <p className="text-slate-600 mb-4">Generate AI-powered health insights for this patient</p>
             <Button
               onClick={generateInsights}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-navy-600 hover:bg-navy-700"
             >
               <Sparkles className="w-4 h-4 mr-2" />
               Generate Health Insights

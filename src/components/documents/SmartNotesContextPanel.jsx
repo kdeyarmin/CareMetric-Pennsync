@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +39,7 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
   };
 
   const extractKeySnippets = (noteText) => {
-    if (!noteText || noteText.length < 50) return [noteText];
+    if (!noteText || noteText.length < 50) return noteText ? [noteText] : [];
     
     // Split by common delimiters
     const sentences = noteText.split(/\.\s+/).filter(s => s.trim().length > 20);
@@ -60,18 +60,18 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
   }
 
   return (
-    <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white">
+    <Card className="border-2 border-navy-200 bg-gradient-to-br from-navy-50 to-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Brain className="w-5 h-5 text-purple-600" />
+          <Brain className="w-5 h-5 text-navy-600" />
           Smart Notes Context
-          <Badge className="ml-2 bg-purple-600 text-white">{visits.length} visits</Badge>
+          <Badge className="ml-2 bg-navy-600 text-white">{visits.length} visits</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="Search visit notes..."
             value={searchTerm}
@@ -83,18 +83,18 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
         {/* Visit Notes List */}
         <div className="space-y-3 max-h-[500px] overflow-y-auto">
           {filteredVisits.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">No matching notes found</p>
+            <p className="text-sm text-slate-500 text-center py-4">No matching notes found</p>
           ) : (
             filteredVisits.map((visit, index) => {
               const snippets = extractKeySnippets(visit.nurse_notes);
               
               return (
-                <div key={visit.id} className="bg-white p-3 rounded-lg border border-purple-200">
+                <div key={visit.id} className="bg-white p-3 rounded-lg border border-navy-200">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <FileText className="w-4 h-4 text-purple-600" />
-                        <span className="text-sm font-semibold text-gray-900">
+                        <FileText className="w-4 h-4 text-navy-600" />
+                        <span className="text-sm font-semibold text-slate-900">
                           {visit.visit_type?.replace(/_/g, ' ').toUpperCase()}
                         </span>
                         <Badge variant="outline" className="text-xs">
@@ -107,8 +107,8 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
                   {/* Snippets */}
                   <div className="space-y-2">
                     {snippets.map((snippet, sIdx) => (
-                      <div key={sIdx} className="bg-purple-50 p-2 rounded text-sm">
-                        <p className="text-gray-700 mb-2">{snippet}</p>
+                      <div key={sIdx} className="bg-navy-50 p-2 rounded text-sm">
+                        <p className="text-slate-700 mb-2">{snippet}</p>
                         <div className="flex gap-2">
                           <Button
                             size="sm"
@@ -125,7 +125,7 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
                           <Button
                             size="sm"
                             onClick={() => handleInsertSnippet(snippet)}
-                            className="h-7 text-xs bg-purple-600 hover:bg-purple-700"
+                            className="h-7 text-xs bg-navy-600 hover:bg-navy-700"
                           >
                             <Plus className="w-3 h-3 mr-1" />
                             Insert
@@ -140,7 +140,7 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
                         size="sm"
                         variant="ghost"
                         onClick={() => handleInsertSnippet(visit.nurse_notes)}
-                        className="w-full text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                        className="w-full text-xs text-navy-600 hover:text-navy-700 hover:bg-navy-50"
                       >
                         Insert Full Note ({visit.nurse_notes.length} chars)
                       </Button>

@@ -1,0 +1,48 @@
+{
+  "name": "TrainingFeedback",
+  "type": "object",
+  "properties": {
+    "course_id": {
+      "type": "string",
+      "description": "Reference to the TrainingCourse being rated"
+    },
+    "course_title": {
+      "type": "string",
+      "description": "Course title at time of rating"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Email of the user who submitted the rating"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Display name of the rater"
+    },
+    "rating": {
+      "type": "number",
+      "description": "Star rating from 1 to 5"
+    },
+    "would_recommend": {
+      "type": "boolean",
+      "description": "Whether the learner would recommend this course"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "too_easy",
+        "just_right",
+        "too_hard"
+      ],
+      "description": "Perceived difficulty"
+    },
+    "comment": {
+      "type": "string",
+      "description": "Optional free-text feedback"
+    }
+  },
+  "required": [
+    "course_id",
+    "user_id",
+    "rating"
+  ]
+}

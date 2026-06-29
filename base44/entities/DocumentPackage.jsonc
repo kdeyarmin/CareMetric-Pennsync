@@ -1,0 +1,75 @@
+{
+  "name": "DocumentPackage",
+  "type": "object",
+  "properties": {
+    "package_name": {
+      "type": "string",
+      "description": "Name of the document package (e.g., Admission Onboarding)"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "document_signatures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of DocumentSignature IDs in this package"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "declined"
+      ],
+      "default": "pending",
+      "description": "Overall package status"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When package should be completed"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When all documents were signed"
+    },
+    "sent_to_patient_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When package was sent to patient"
+    },
+    "auto_reminder_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether automated email reminders should be sent"
+    },
+    "reminder_days_before": {
+      "type": "number",
+      "default": 3,
+      "description": "Days before due date to send reminder"
+    },
+    "last_reminder_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the last reminder was sent"
+    },
+    "signer_email": {
+      "type": "string",
+      "description": "Primary signer email for reminder notifications"
+    },
+    "signer_name": {
+      "type": "string",
+      "description": "Signer name for personalized reminders"
+    }
+  },
+  "required": [
+    "package_name",
+    "patient_id",
+    "document_signatures"
+  ]
+}

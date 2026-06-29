@@ -1,21 +1,19 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileText, Download, Loader2, Copy, Check } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from 'sonner';
 
 export default function PatientSummaryGenerator({ patient, visits, carePlans, incidents }) {
   const [summaryFormat, setSummaryFormat] = useState("concise");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [summaries, setSummaries] = useState({});
   const [copied, setCopied] = useState(false);
 
   const generateSummary = async (format) => {
-    setIsGenerating(true);
     setSummaryFormat(format);
 
     try {
@@ -151,7 +149,8 @@ Provide actionable handoff information including:
         };
       }
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: schema
       });
@@ -159,9 +158,8 @@ Provide actionable handoff information including:
       setSummaries(prev => ({ ...prev, [format]: result }));
     } catch (error) {
       console.error('Summary generation error:', error);
-      alert('Failed to generate summary. Please try again.');
+      toast.error('Failed to generate summary. Please try again.');
     }
-    setIsGenerating(false);
   };
 
   const copyToClipboard = async (text) => {
@@ -169,8 +167,8 @@ Provide actionable handoff information including:
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      alert('Failed to copy to clipboard');
+    } catch {
+      toast.error('Failed to copy to clipboard');
     }
   };
 
@@ -189,12 +187,12 @@ Provide actionable handoff information including:
 
   return (
     <Card className="border-blue-200 shadow-lg">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-blue-100">
+      <CardHeader className="bg-gradient-to-r from-blue-50 to-navy-50 border-b border-blue-100">
         <CardTitle className="flex items-center gap-2">
           <FileText className="w-6 h-6 text-blue-600" />
           Patient Summary Generator
         </CardTitle>
-        <p className="text-sm text-gray-600 mt-2">
+        <p className="text-sm text-slate-600 mt-2">
           Generate patient summaries in different formats for various clinical needs
         </p>
       </CardHeader>
@@ -210,15 +208,15 @@ Provide actionable handoff information including:
           <TabsContent value="concise" className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-gray-900">Concise Summary</h3>
-                <p className="text-sm text-gray-600">Quick overview for rapid review (3-4 sentences)</p>
+                <h3 className="font-semibold text-slate-900">Concise Summary</h3>
+                <p className="text-sm text-slate-600">Quick overview for rapid review (3-4 sentences)</p>
               </div>
               <Button
                 onClick={() => generateSummary('concise')}
-                disabled={isGenerating}
+                disabled={ai.loading}
                 size="sm"
               >
-                {isGenerating && summaryFormat === 'concise' ? (
+                {ai.loading && summaryFormat === 'concise' ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Generating...
@@ -229,15 +227,15 @@ Provide actionable handoff information including:
               </Button>
             </div>
             {summaries.concise && (
-              <Card className="bg-gray-50">
+              <Card className="bg-slate-50">
                 <CardContent className="p-4">
-                  <p className="text-sm text-gray-900 mb-4 leading-relaxed">{summaries.concise.summary}</p>
+                  <p className="text-sm text-slate-900 mb-4 leading-relaxed">{summaries.concise.summary}</p>
                   {summaries.concise.key_points && summaries.concise.key_points.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 mb-2">Key Points:</p>
+                      <p className="text-xs font-semibold text-slate-500 mb-2">Key Points:</p>
                       <ul className="space-y-1">
                         {summaries.concise.key_points.map((point, idx) => (
-                          <li key={idx} className="text-sm text-gray-700">• {point}</li>
+                          <li key={idx} className="text-sm text-slate-700">• {point}</li>
                         ))}
                       </ul>
                     </div>
@@ -269,15 +267,15 @@ Provide actionable handoff information including:
           <TabsContent value="detailed" className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-gray-900">Detailed Summary</h3>
-                <p className="text-sm text-gray-600">Comprehensive narrative for thorough understanding</p>
+                <h3 className="font-semibold text-slate-900">Detailed Summary</h3>
+                <p className="text-sm text-slate-600">Comprehensive narrative for thorough understanding</p>
               </div>
               <Button
                 onClick={() => generateSummary('detailed')}
-                disabled={isGenerating}
+                disabled={ai.loading}
                 size="sm"
               >
-                {isGenerating && summaryFormat === 'detailed' ? (
+                {ai.loading && summaryFormat === 'detailed' ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Generating...
@@ -288,52 +286,52 @@ Provide actionable handoff information including:
               </Button>
             </div>
             {summaries.detailed && (
-              <Card className="bg-gray-50">
+              <Card className="bg-slate-50">
                 <CardContent className="p-4">
                   <ScrollArea className="max-h-96">
                     <div className="space-y-4 text-sm">
                       {summaries.detailed.executive_summary && (
                         <div>
-                          <p className="font-semibold text-gray-900 mb-1">Executive Summary</p>
-                          <p className="text-gray-700 leading-relaxed">{summaries.detailed.executive_summary}</p>
+                          <p className="font-semibold text-slate-900 mb-1">Executive Summary</p>
+                          <p className="text-slate-700 leading-relaxed">{summaries.detailed.executive_summary}</p>
                         </div>
                       )}
                       {summaries.detailed.clinical_overview && (
                         <div>
-                          <p className="font-semibold text-gray-900 mb-1">Clinical Overview</p>
-                          <p className="text-gray-700 leading-relaxed">{summaries.detailed.clinical_overview}</p>
+                          <p className="font-semibold text-slate-900 mb-1">Clinical Overview</p>
+                          <p className="text-slate-700 leading-relaxed">{summaries.detailed.clinical_overview}</p>
                         </div>
                       )}
                       {summaries.detailed.treatment_progress && (
                         <div>
-                          <p className="font-semibold text-gray-900 mb-1">Treatment Progress</p>
-                          <p className="text-gray-700 leading-relaxed">{summaries.detailed.treatment_progress}</p>
+                          <p className="font-semibold text-slate-900 mb-1">Treatment Progress</p>
+                          <p className="text-slate-700 leading-relaxed">{summaries.detailed.treatment_progress}</p>
                         </div>
                       )}
                       {summaries.detailed.current_focus && (
                         <div>
-                          <p className="font-semibold text-gray-900 mb-1">Current Focus</p>
-                          <p className="text-gray-700 leading-relaxed">{summaries.detailed.current_focus}</p>
+                          <p className="font-semibold text-slate-900 mb-1">Current Focus</p>
+                          <p className="text-slate-700 leading-relaxed">{summaries.detailed.current_focus}</p>
                         </div>
                       )}
                       {summaries.detailed.barriers_challenges && (
                         <div>
-                          <p className="font-semibold text-gray-900 mb-1">Barriers & Challenges</p>
-                          <p className="text-gray-700 leading-relaxed">{summaries.detailed.barriers_challenges}</p>
+                          <p className="font-semibold text-slate-900 mb-1">Barriers & Challenges</p>
+                          <p className="text-slate-700 leading-relaxed">{summaries.detailed.barriers_challenges}</p>
                         </div>
                       )}
                       {summaries.detailed.strengths_supports && (
                         <div>
-                          <p className="font-semibold text-gray-900 mb-1">Strengths & Supports</p>
-                          <p className="text-gray-700 leading-relaxed">{summaries.detailed.strengths_supports}</p>
+                          <p className="font-semibold text-slate-900 mb-1">Strengths & Supports</p>
+                          <p className="text-slate-700 leading-relaxed">{summaries.detailed.strengths_supports}</p>
                         </div>
                       )}
                       {summaries.detailed.next_steps && summaries.detailed.next_steps.length > 0 && (
                         <div>
-                          <p className="font-semibold text-gray-900 mb-2">Next Steps</p>
+                          <p className="font-semibold text-slate-900 mb-2">Next Steps</p>
                           <ul className="space-y-1">
                             {summaries.detailed.next_steps.map((step, idx) => (
-                              <li key={idx} className="text-gray-700">• {step}</li>
+                              <li key={idx} className="text-slate-700">• {step}</li>
                             ))}
                           </ul>
                         </div>
@@ -367,15 +365,15 @@ Provide actionable handoff information including:
           <TabsContent value="handoff" className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-gray-900">Handoff Summary</h3>
-                <p className="text-sm text-gray-600">Nurse-to-nurse communication for shift changes</p>
+                <h3 className="font-semibold text-slate-900">Handoff Summary</h3>
+                <p className="text-sm text-slate-600">Nurse-to-nurse communication for shift changes</p>
               </div>
               <Button
                 onClick={() => generateSummary('handoff')}
-                disabled={isGenerating}
+                disabled={ai.loading}
                 size="sm"
               >
-                {isGenerating && summaryFormat === 'handoff' ? (
+                {ai.loading && summaryFormat === 'handoff' ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Generating...
@@ -386,49 +384,49 @@ Provide actionable handoff information including:
               </Button>
             </div>
             {summaries.handoff && (
-              <Card className="bg-gray-50">
+              <Card className="bg-slate-50">
                 <CardContent className="p-4">
                   <div className="space-y-4 text-sm">
                     {summaries.handoff.current_status && (
                       <div>
-                        <p className="font-semibold text-gray-900 mb-1">Current Status</p>
-                        <p className="text-gray-700 leading-relaxed">{summaries.handoff.current_status}</p>
+                        <p className="font-semibold text-slate-900 mb-1">Current Status</p>
+                        <p className="text-slate-700 leading-relaxed">{summaries.handoff.current_status}</p>
                       </div>
                     )}
                     {summaries.handoff.watch_for && summaries.handoff.watch_for.length > 0 && (
                       <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-                        <p className="font-semibold text-gray-900 mb-2">⚠️ Watch For</p>
+                        <p className="font-semibold text-slate-900 mb-2">⚠️ Watch For</p>
                         <ul className="space-y-1">
                           {summaries.handoff.watch_for.map((item, idx) => (
-                            <li key={idx} className="text-gray-700">• {item}</li>
+                            <li key={idx} className="text-slate-700">• {item}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                     {summaries.handoff.pending_actions && summaries.handoff.pending_actions.length > 0 && (
                       <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                        <p className="font-semibold text-gray-900 mb-2">📋 Pending Actions</p>
+                        <p className="font-semibold text-slate-900 mb-2">📋 Pending Actions</p>
                         <ul className="space-y-1">
                           {summaries.handoff.pending_actions.map((action, idx) => (
-                            <li key={idx} className="text-gray-700">• {action}</li>
+                            <li key={idx} className="text-slate-700">• {action}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                     {summaries.handoff.safety_concerns && summaries.handoff.safety_concerns.length > 0 && (
                       <div className="bg-red-50 border border-red-200 p-3 rounded-lg">
-                        <p className="font-semibold text-gray-900 mb-2">🛡️ Safety Concerns</p>
+                        <p className="font-semibold text-slate-900 mb-2">🛡️ Safety Concerns</p>
                         <ul className="space-y-1">
                           {summaries.handoff.safety_concerns.map((concern, idx) => (
-                            <li key={idx} className="text-gray-700">• {concern}</li>
+                            <li key={idx} className="text-slate-700">• {concern}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                     {summaries.handoff.patient_family_notes && (
                       <div>
-                        <p className="font-semibold text-gray-900 mb-1">Patient/Family Considerations</p>
-                        <p className="text-gray-700 leading-relaxed">{summaries.handoff.patient_family_notes}</p>
+                        <p className="font-semibold text-slate-900 mb-1">Patient/Family Considerations</p>
+                        <p className="text-slate-700 leading-relaxed">{summaries.handoff.patient_family_notes}</p>
                       </div>
                     )}
                   </div>

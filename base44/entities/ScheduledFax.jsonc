@@ -1,0 +1,79 @@
+{
+  "name": "ScheduledFax",
+  "type": "object",
+  "properties": {
+    "scheduled_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When to send the fax"
+    },
+    "from_number": {
+      "type": "string"
+    },
+    "to_numbers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "document_url": {
+      "type": "string"
+    },
+    "document_name": {
+      "type": "string"
+    },
+    "cover_page_details": {
+      "type": "object"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "urgent",
+        "normal",
+        "low"
+      ],
+      "default": "normal"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "sent",
+        "cancelled",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "patient_id": {
+      "type": "string"
+    },
+    "claimed_by": {
+      "type": "string"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "scheduled_time",
+    "from_number",
+    "to_numbers",
+    "document_url"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

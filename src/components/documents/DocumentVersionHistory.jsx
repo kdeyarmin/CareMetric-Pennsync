@@ -1,240 +1,143 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { History, Upload } from "lucide-react";
-import { toast } from "sonner";
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ChevronDown, ChevronUp, Download, Eye } from 'lucide-react';
 
-export default function DocumentVersionHistory({ document, onVersionUpdated }) {
-  const [isUploadingNewVersion, setIsUploadingNewVersion] = useState(false);
-  const [changeNotes, setChangeNotes] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
+export default function DocumentVersionHistory({ documentSignatureId, _packageId }) {
+  const [expandedVersion, setExpandedVersion] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
-  const handleUploadNewVersion = async () => {
-    if (!selectedFile) {
-      toast.error("Please select a file");
-      return;
-    }
+  const { data: versions = [], isLoading } = useQuery({
+    queryKey: ['document-versions', documentSignatureId],
+    queryFn: () =>
+      base44.entities.DocumentVersion.filter(
+        { document_signature_id: documentSignatureId },
+        '-version_number'
+      ),
+    initialData: []
+  });
 
-    if (!changeNotes.trim()) {
-      toast.error("Please enter change notes");
-      return;
-    }
-
-    setIsUploadingNewVersion(true);
-    try {
-      const uploadedFile = await base44.integrations.Core.UploadFile({
-        file: selectedFile,
-      });
-
-      const user = await base44.auth.me();
-
-      // Store current version in history
-      const previousVersions = document.previous_versions || [];
-      previousVersions.push({
-        version_number: document.version_number,
-        file_url: document.file_url,
-        uploaded_by: document.uploaded_by,
-        uploaded_date: document.created_date,
-        change_notes: "Previous version",
-      });
-
-      // Update document with new version
-      await base44.entities.DocumentRecord.update(document.id, {
-        file_url: uploadedFile.file_url,
-        file_name: selectedFile.name,
-        file_type: selectedFile.type,
-        file_size: selectedFile.size,
-        version_number: document.version_number + 1,
-        previous_versions: previousVersions,
-        uploaded_by: user.email,
-      });
-
-      toast.success("New version uploaded successfully");
-      setSelectedFile(null);
-      setChangeNotes("");
-      if (onVersionUpdated) {
-        onVersionUpdated();
-      }
-    } catch (error) {
-      toast.error("Failed to upload new version");
-      console.error(error);
-    } finally {
-      setIsUploadingNewVersion(false);
-    }
+  const handlePreview = (url) => {
+    setPreviewUrl(url);
+    setPreviewOpen(true);
   };
 
-  const handleRestoreVersion = async (versionData) => {
-    if (!window.confirm("Restore this version? Current version will be preserved.")) {
-      return;
-    }
-
-    try {
-      const currentVersion = {
-        version_number: document.version_number,
-        file_url: document.file_url,
-        uploaded_by: document.uploaded_by,
-        uploaded_date: document.created_date,
-        change_notes: "Replaced by version restoration",
-      };
-
-      const previousVersions = document.previous_versions || [];
-      previousVersions.push(currentVersion);
-
-      await base44.entities.DocumentRecord.update(document.id, {
-        file_url: versionData.file_url,
-        file_name: `${document.file_name} (v${versionData.version_number})`,
-        version_number: document.version_number + 1,
-        previous_versions: previousVersions,
-      });
-
-      toast.success("Version restored successfully");
-      if (onVersionUpdated) {
-        onVersionUpdated();
-      }
-    } catch (error) {
-      toast.error("Failed to restore version");
-      console.error(error);
-    }
+  const handleDownload = (url, name) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${name}.pdf`;
+    link.click();
   };
+
+  if (isLoading) {
+    return <div className="text-sm text-slate-500">Loading version history...</div>;
+  }
+
+  if (versions.length === 0) {
+    return <div className="text-sm text-slate-500">No version history available</div>;
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2">
-            <History className="w-5 h-5" />
-            Version History
-          </span>
-          <span className="text-sm font-normal text-gray-600">
-            Current: v{document.version_number}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button className="w-full gap-2">
-              <Upload className="w-4 h-4" />
-              Upload New Version
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Upload New Version</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors">
-                <input
-                  type="file"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0])}
-                  className="hidden"
-                  id="version-file-input"
-                />
-                <label
-                  htmlFor="version-file-input"
-                  className="cursor-pointer flex flex-col items-center gap-2"
-                >
-                  <Upload className="w-6 h-6 text-gray-400" />
-                  <span className="text-sm">Click to upload file</span>
-                </label>
-              </div>
+    <>
+      <div className="space-y-2">
+        <h4 className="font-semibold text-sm text-slate-700">Version History ({versions.length})</h4>
+        <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
+          {versions.map((version) => (
+            <div key={version.id} className="p-3 hover:bg-slate-50 transition-colors">
+              <button
+                onClick={() => setExpandedVersion(expandedVersion === version.id ? null : version.id)}
+                className="w-full text-left flex items-start justify-between gap-2 py-1"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">
+                      Version {version.version_number}
+                      {version.is_current && (
+                        <Badge className="ml-2 bg-green-100 text-green-800">Current</Badge>
+                      )}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-600 mt-1">
+                    Uploaded {new Date(version.uploaded_at).toLocaleDateString()} by {version.uploaded_by}
+                  </div>
+                  {version.change_reason && (
+                    <div className="text-xs text-slate-500 mt-1">Reason: {version.change_reason}</div>
+                  )}
+                </div>
+                {expandedVersion === version.id ? (
+                  <ChevronUp className="w-4 h-4 text-slate-400 shrink-0 mt-1" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 mt-1" />
+                )}
+              </button>
 
-              {selectedFile && (
-                <div className="p-3 bg-gray-50 rounded">
-                  <p className="text-sm font-medium">{selectedFile.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
+              {expandedVersion === version.id && (
+                <div className="mt-3 pt-3 border-t space-y-3 pl-4">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-600">Signature Status:</span>
+                      <Badge className="ml-1" variant="outline">
+                        {version.signature_status_at_version || 'Unknown'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="text-slate-600">Invalidated Previous:</span>
+                      <Badge className="ml-1" variant={version.invalidated_previous_signatures ? 'destructive' : 'secondary'}>
+                        {version.invalidated_previous_signatures ? 'Yes' : 'No'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {version.change_summary && (
+                    <div className="text-xs bg-slate-50 p-2 rounded border">
+                      <p className="text-slate-700">{version.change_summary}</p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handlePreview(version.pdf_url)}
+                      className="flex-1 gap-1"
+                    >
+                      <Eye className="w-3 h-3" />
+                      Preview
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDownload(version.pdf_url, version.document_name)}
+                      className="flex-1 gap-1"
+                    >
+                      <Download className="w-3 h-3" />
+                      Download
+                    </Button>
+                  </div>
                 </div>
               )}
-
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Change Notes *
-                </label>
-                <Textarea
-                  placeholder="Describe what changed in this version"
-                  value={changeNotes}
-                  onChange={(e) => setChangeNotes(e.target.value)}
-                  className="h-20"
-                />
-              </div>
-
-              <Button
-                onClick={handleUploadNewVersion}
-                disabled={isUploadingNewVersion || !selectedFile}
-                className="w-full"
-              >
-                {isUploadingNewVersion ? "Uploading..." : "Create Version"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Version History Timeline */}
-        <div className="space-y-3">
-          <div className="p-3 border-l-4 border-blue-500 bg-blue-50 rounded">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <p className="font-medium">v{document.version_number} (Current)</p>
-                <p className="text-xs text-gray-600">
-                  {new Date(document.created_date).toLocaleString()}
-                </p>
-                {document.uploaded_by && (
-                  <p className="text-xs text-gray-500">by {document.uploaded_by}</p>
-                )}
-              </div>
-              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded">
-                Current
-              </span>
-            </div>
-          </div>
-
-          {document.previous_versions?.map((version, idx) => (
-            <div key={idx} className="p-3 border border-gray-200 rounded">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="font-medium">v{version.version_number}</p>
-                  <p className="text-xs text-gray-600">
-                    {new Date(version.uploaded_date).toLocaleString()}
-                  </p>
-                  {version.change_notes && (
-                    <p className="text-xs text-gray-700 mt-1">
-                      {version.change_notes}
-                    </p>
-                  )}
-                  {version.uploaded_by && (
-                    <p className="text-xs text-gray-500">by {version.uploaded_by}</p>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleRestoreVersion(version)}
-                >
-                  Restore
-                </Button>
-              </div>
             </div>
           ))}
-
-          {!document.previous_versions || document.previous_versions.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-4">
-              No previous versions
-            </p>
-          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* PDF Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Document Preview</DialogTitle>
+          </DialogHeader>
+          <div className="w-full h-[70vh] border rounded-lg overflow-hidden">
+            {previewUrl && (
+              <iframe src={previewUrl} className="w-full h-full" title="Document Preview" />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

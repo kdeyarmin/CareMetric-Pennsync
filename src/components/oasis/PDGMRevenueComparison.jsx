@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DollarSign,
@@ -13,7 +11,6 @@ import {
   Loader2,
   FileDown,
   ArrowRight,
-  CheckCircle2,
   Info,
   ChevronDown,
   ChevronUp,
@@ -30,10 +27,10 @@ import {
 } from "lucide-react";
 import { calculatePDGM } from "@/functions/calculatePDGM";
 import { generatePDGMComparisonPDF } from "@/functions/generatePDGMComparisonPDF";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import PDGMWhatIfBuilder from "./PDGMWhatIfBuilder";
 import TopOptimizationOpportunities from "./TopOptimizationOpportunities";
-import debounce from "lodash/debounce";
+import { debounce } from "@/lib/debounce";
 
 function DataValidationWarnings({ validation }) {
   if (!validation?.hasDiscrepancies) return null;
@@ -51,18 +48,18 @@ function DataValidationWarnings({ validation }) {
           <div key={idx} className="bg-white rounded-lg p-3 border border-yellow-200">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-800">{d.message}</p>
+                <p className="text-sm font-medium text-slate-800">{d.message}</p>
                 <div className="flex items-center gap-2 mt-1 text-xs">
                   <Badge variant="outline" className="text-xs">
                     Expected: {d.expected}
                   </Badge>
-                  <ArrowRight className="w-3 h-3 text-gray-400" />
+                  <ArrowRight className="w-3 h-3 text-slate-400" />
                   <Badge variant="outline" className="text-xs bg-red-50 text-red-700">
                     Actual: {d.actual}
                   </Badge>
                 </div>
                 {d.evidence && (
-                  <p className="text-xs text-gray-500 mt-1">Evidence: {d.evidence}</p>
+                  <p className="text-xs text-slate-500 mt-1">Evidence: {d.evidence}</p>
                 )}
               </div>
               <Badge className={`text-xs ${d.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -106,35 +103,35 @@ function AlternativeScenarios({ scenarios, currentKey }) {
               className={`p-3 rounded-lg border-2 ${
                 isCurrent ? 'bg-blue-100 border-blue-400' :
                 isHighest ? 'bg-green-50 border-green-300' :
-                isLowest ? 'bg-gray-50 border-gray-300' :
-                'bg-white border-gray-200'
+                isLowest ? 'bg-slate-50 border-slate-300' :
+                'bg-white border-slate-200'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1">
                   {data.admissionSource === 'institutional' ? (
-                    <Building2 className="w-3 h-3 text-purple-500" />
+                    <Building2 className="w-3 h-3 text-navy-500" />
                   ) : (
                     <Activity className="w-3 h-3 text-blue-500" />
                   )}
                   <span className="text-xs font-medium capitalize">{data.admissionSource}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-gray-500" />
+                  <Clock className="w-3 h-3 text-slate-500" />
                   <span className="text-xs capitalize">{data.episodeTiming}</span>
                 </div>
               </div>
               <p className={`text-lg font-bold ${
                 isHighest ? 'text-green-700' : 
-                isLowest ? 'text-gray-600' : 
-                'text-gray-800'
+                isLowest ? 'text-slate-600' : 
+                'text-slate-800'
               }`}>
                 {formatCurrency(data.totalPayment)}
               </p>
               <div className="flex items-center gap-1 mt-1">
                 {isCurrent && <Badge className="text-xs bg-blue-600">Current</Badge>}
                 {isHighest && <Badge className="text-xs bg-green-600">Highest</Badge>}
-                {isLowest && !isHighest && <Badge className="text-xs bg-gray-500">Lowest</Badge>}
+                {isLowest && !isHighest && <Badge className="text-xs bg-slate-500">Lowest</Badge>}
               </div>
             </div>
           );
@@ -150,7 +147,7 @@ function AlternativeScenarios({ scenarios, currentKey }) {
   );
 }
 
-function CaseMixBreakdown({ original, corrected }) {
+function _CaseMixBreakdown({ original, corrected }) {
   if (!original) return null;
 
   const componentData = [
@@ -200,10 +197,10 @@ function CaseMixBreakdown({ original, corrected }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-700">Case-Mix Weight Breakdown</p>
+        <p className="text-sm font-medium text-slate-700">Case-Mix Weight Breakdown</p>
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 bg-gray-400 rounded"></span> Original
+            <span className="w-3 h-3 bg-slate-400 rounded"></span> Original
           </span>
           {hasChanges && (
             <span className="flex items-center gap-1">
@@ -214,7 +211,7 @@ function CaseMixBreakdown({ original, corrected }) {
       </div>
 
       {/* Radar Chart */}
-      <div className="bg-gray-50 rounded-lg p-3">
+      <div className="bg-slate-50 rounded-lg p-3">
         <ResponsiveContainer width="100%" height={200}>
           <RadarChart data={radarData}>
             <PolarGrid stroke="#e5e7eb" />
@@ -232,7 +229,7 @@ function CaseMixBreakdown({ original, corrected }) {
       {/* Component Details Table */}
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-xs">
-          <thead className="bg-gray-100">
+          <thead className="bg-slate-100">
             <tr>
               <th className="text-left p-2 font-medium">Component</th>
               <th className="text-center p-2 font-medium">Original</th>
@@ -240,12 +237,12 @@ function CaseMixBreakdown({ original, corrected }) {
               <th className="text-center p-2 font-medium">Weight</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-slate-100">
             <tr className="bg-blue-50">
               <td className="p-2 font-medium">Clinical Group</td>
               <td className="p-2 text-center">
-                <span className="block text-gray-600">{original.clinicalGroup?.replace('MMTA_', '')}</span>
-                <span className="text-gray-400">{original.clinicalWeight?.toFixed(4)}</span>
+                <span className="block text-slate-600">{original.clinicalGroup?.replace('MMTA_', '')}</span>
+                <span className="text-slate-400">{original.clinicalWeight?.toFixed(4)}</span>
               </td>
               {hasChanges && (
                 <td className="p-2 text-center">
@@ -260,18 +257,18 @@ function CaseMixBreakdown({ original, corrected }) {
             <tr>
               <td className="p-2 font-medium">
                 Functional Level
-                <span className="block text-gray-400 font-normal">Points: {original.functionalPoints || 0}{hasChanges && corrected.functionalPoints !== original.functionalPoints ? ` → ${corrected.functionalPoints}` : ''}</span>
+                <span className="block text-slate-400 font-normal">Points: {original.functionalPoints || 0}{hasChanges && corrected.functionalPoints !== original.functionalPoints ? ` → ${corrected.functionalPoints}` : ''}</span>
               </td>
               <td className="p-2 text-center">
-                <span className="block text-gray-600 capitalize">{original.functionalLevel}</span>
-                <span className="text-gray-400">×{original.functionalMultiplier?.toFixed(2)}</span>
+                <span className="block text-slate-600 capitalize">{original.functionalLevel}</span>
+                <span className="text-slate-400">×{original.functionalMultiplier?.toFixed(2)}</span>
               </td>
               {hasChanges && (
                 <td className="p-2 text-center">
-                  <span className={`block capitalize ${corrected.functionalLevel !== original.functionalLevel ? 'text-green-600' : 'text-gray-600'}`}>
+                  <span className={`block capitalize ${corrected.functionalLevel !== original.functionalLevel ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.functionalLevel}
                   </span>
-                  <span className={corrected.functionalMultiplier !== original.functionalMultiplier ? 'text-green-500' : 'text-gray-400'}>
+                  <span className={corrected.functionalMultiplier !== original.functionalMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.functionalMultiplier?.toFixed(2)}
                   </span>
                 </td>
@@ -283,18 +280,18 @@ function CaseMixBreakdown({ original, corrected }) {
             <tr className="bg-blue-50">
               <td className="p-2 font-medium">
                 Comorbidity Adj.
-                <span className="block text-gray-400 font-normal">Count: {original.comorbidityCount || 0}{hasChanges && corrected.comorbidityCount !== original.comorbidityCount ? ` → ${corrected.comorbidityCount}` : ''}</span>
+                <span className="block text-slate-400 font-normal">Count: {original.comorbidityCount || 0}{hasChanges && corrected.comorbidityCount !== original.comorbidityCount ? ` → ${corrected.comorbidityCount}` : ''}</span>
               </td>
               <td className="p-2 text-center">
-                <span className="block text-gray-600 capitalize">{original.comorbidityLevel}</span>
-                <span className="text-gray-400">×{original.comorbidityMultiplier?.toFixed(2)}</span>
+                <span className="block text-slate-600 capitalize">{original.comorbidityLevel}</span>
+                <span className="text-slate-400">×{original.comorbidityMultiplier?.toFixed(2)}</span>
               </td>
               {hasChanges && (
                 <td className="p-2 text-center">
-                  <span className={`block capitalize ${corrected.comorbidityLevel !== original.comorbidityLevel ? 'text-green-600' : 'text-gray-600'}`}>
+                  <span className={`block capitalize ${corrected.comorbidityLevel !== original.comorbidityLevel ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.comorbidityLevel}
                   </span>
-                  <span className={corrected.comorbidityMultiplier !== original.comorbidityMultiplier ? 'text-green-500' : 'text-gray-400'}>
+                  <span className={corrected.comorbidityMultiplier !== original.comorbidityMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.comorbidityMultiplier?.toFixed(2)}
                   </span>
                 </td>
@@ -306,15 +303,15 @@ function CaseMixBreakdown({ original, corrected }) {
             <tr>
               <td className="p-2 font-medium">Admission Source</td>
               <td className="p-2 text-center">
-                <span className="block text-gray-600 capitalize">{original.admissionSource}</span>
-                <span className="text-gray-400">×{original.admissionMultiplier?.toFixed(2)}</span>
+                <span className="block text-slate-600 capitalize">{original.admissionSource}</span>
+                <span className="text-slate-400">×{original.admissionMultiplier?.toFixed(2)}</span>
               </td>
               {hasChanges && (
                 <td className="p-2 text-center">
-                  <span className={`block capitalize ${corrected.admissionSource !== original.admissionSource ? 'text-green-600' : 'text-gray-600'}`}>
+                  <span className={`block capitalize ${corrected.admissionSource !== original.admissionSource ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.admissionSource}
                   </span>
-                  <span className={corrected.admissionMultiplier !== original.admissionMultiplier ? 'text-green-500' : 'text-gray-400'}>
+                  <span className={corrected.admissionMultiplier !== original.admissionMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.admissionMultiplier?.toFixed(2)}
                   </span>
                 </td>
@@ -326,15 +323,15 @@ function CaseMixBreakdown({ original, corrected }) {
             <tr className="bg-blue-50">
               <td className="p-2 font-medium">Episode Timing</td>
               <td className="p-2 text-center">
-                <span className="block text-gray-600 capitalize">{original.episodeTiming}</span>
-                <span className="text-gray-400">×{original.timingMultiplier?.toFixed(2)}</span>
+                <span className="block text-slate-600 capitalize">{original.episodeTiming}</span>
+                <span className="text-slate-400">×{original.timingMultiplier?.toFixed(2)}</span>
               </td>
               {hasChanges && (
                 <td className="p-2 text-center">
-                  <span className={`block capitalize ${corrected.episodeTiming !== original.episodeTiming ? 'text-green-600' : 'text-gray-600'}`}>
+                  <span className={`block capitalize ${corrected.episodeTiming !== original.episodeTiming ? 'text-green-600' : 'text-slate-600'}`}>
                     {corrected.episodeTiming}
                   </span>
-                  <span className={corrected.timingMultiplier !== original.timingMultiplier ? 'text-green-500' : 'text-gray-400'}>
+                  <span className={corrected.timingMultiplier !== original.timingMultiplier ? 'text-green-500' : 'text-slate-400'}>
                     ×{corrected.timingMultiplier?.toFixed(2)}
                   </span>
                 </td>
@@ -347,7 +344,7 @@ function CaseMixBreakdown({ original, corrected }) {
           <tfoot className="bg-indigo-100">
             <tr>
               <td className="p-2 font-semibold">Final Case-Mix Weight</td>
-              <td className="p-2 text-center font-mono font-semibold text-gray-700">
+              <td className="p-2 text-center font-mono font-semibold text-slate-700">
                 {original.caseMixWeight?.toFixed(4)}
               </td>
               {hasChanges && (
@@ -385,19 +382,11 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
   const [hasAutoCalculated, setHasAutoCalculated] = useState(false);
   const [showCorrections, setShowCorrections] = useState(false);
   const [activeTab, setActiveTab] = useState("analysis");
-  const [whatIfScenario, setWhatIfScenario] = useState(null);
+  const [_whatIfScenario, setWhatIfScenario] = useState(null);
   const [whatIfRevenue, setWhatIfRevenue] = useState(null);
   const [isCalculatingWhatIf, setIsCalculatingWhatIf] = useState(false);
   const [dataValidation, setDataValidation] = useState(null);
   const [alternativeScenarios, setAlternativeScenarios] = useState(null);
-
-  // Auto-calculate when pdgmData becomes available
-  useEffect(() => {
-    if (pdgmData && !revenueData && !isCalculating && !hasAutoCalculated) {
-      calculateRevenue();
-      setHasAutoCalculated(true);
-    }
-  }, [pdgmData]);
 
   // Reset when pdgmData changes
   useEffect(() => {
@@ -409,11 +398,19 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
     }
   }, [pdgmData]);
 
+  // Guards so an in-flight calculatePDGM await (which debounce.cancel() can't
+  // stop once dispatched) can't write stale revenue when pdgmData changes, or
+  // setState after the component unmounts.
+  const whatIfReqIdRef = useRef(0);
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
+
   // Debounced What-If calculation
-  const calculateWhatIfRevenue = useCallback(
-    debounce(async (scenarioData) => {
+  const calculateWhatIfRevenue = useMemo(
+    () => debounce(async (scenarioData) => {
       if (!pdgmData || !scenarioData) return;
-      
+
+      const myReqId = ++whatIfReqIdRef.current;
       setIsCalculatingWhatIf(true);
       try {
         const mergedScenario = {
@@ -430,14 +427,22 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
           correctedPdgmData: mergedScenario
         });
 
-        setWhatIfRevenue(response.data?.corrected?.totalPayment || 0);
+        if (isMountedRef.current && myReqId === whatIfReqIdRef.current) {
+          setWhatIfRevenue(response.data?.corrected?.totalPayment || 0);
+        }
       } catch (err) {
         console.error("What-If calculation error:", err);
+      } finally {
+        if (isMountedRef.current && myReqId === whatIfReqIdRef.current) {
+          setIsCalculatingWhatIf(false);
+        }
       }
-      setIsCalculatingWhatIf(false);
     }, 500),
     [pdgmData]
   );
+
+  // Cancel any pending debounced What-If calculation on unmount
+  useEffect(() => () => calculateWhatIfRevenue.cancel(), [calculateWhatIfRevenue]);
 
   // Handle What-If scenario changes
   const handleScenarioChange = (scenarioData) => {
@@ -445,7 +450,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
     calculateWhatIfRevenue(scenarioData);
   };
 
-  const calculateRevenue = async () => {
+  const calculateRevenue = useCallback(async () => {
     if (!pdgmData) return;
 
     setIsCalculating(true);
@@ -486,7 +491,15 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
             }
 
             setIsCalculating(false);
-          };
+          }, [pdgmData, analysisResults, onRevenueCalculated, onPaymentCalculated]);
+
+  // Auto-calculate when pdgmData becomes available
+  useEffect(() => {
+    if (pdgmData && !revenueData && !isCalculating && !hasAutoCalculated) {
+      calculateRevenue();
+      setHasAutoCalculated(true);
+    }
+  }, [pdgmData, revenueData, isCalculating, hasAutoCalculated, calculateRevenue]);
 
   const buildCorrectedPdgmData = (original, analysis) => {
     const corrected = JSON.parse(JSON.stringify(original)); // Deep clone
@@ -695,8 +708,8 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
         {isCalculating ? (
           <div className="text-center py-6">
             <Loader2 className="w-8 h-8 animate-spin text-green-600 mx-auto mb-3" />
-            <p className="text-sm text-gray-600">Calculating PDGM revenue based on OASIS data...</p>
-            <p className="text-xs text-gray-400 mt-1">Applying CMS PDGM rules and corrections</p>
+            <p className="text-sm text-slate-600">Calculating PDGM revenue based on OASIS data...</p>
+            <p className="text-xs text-slate-400 mt-1">Applying CMS PDGM rules and corrections</p>
           </div>
         ) : !revenueData ? (
           <>
@@ -718,7 +731,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
             </Button>
 
             {!pdgmData && (
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-slate-500 text-center">
                 PDGM data not available. Run analysis first.
               </p>
             )}
@@ -751,7 +764,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                   scenarioRevenue={isCalculatingWhatIf ? null : whatIfRevenue}
                 />
                 {isCalculatingWhatIf && (
-                  <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                  <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Recalculating...
                   </div>
@@ -793,12 +806,12 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                                 {/* Revenue Comparison */}
                                 <div className="grid grid-cols-2 gap-4">
                                   {/* Original Revenue */}
-                                  <div className="p-4 bg-gray-50 rounded-lg border">
-                                    <p className="text-xs text-gray-500 mb-1">Current Documentation</p>
-                                    <p className="text-2xl font-bold text-gray-700">
+                                  <div className="p-4 bg-slate-50 rounded-lg border">
+                                    <p className="text-xs text-slate-500 mb-1">Current Documentation</p>
+                                    <p className="text-2xl font-bold text-slate-700">
                                       {formatCurrency(revenueData.original?.totalPayment || 0)}
                                     </p>
-                                    <p className="text-xs text-gray-500 mt-1">
+                                    <p className="text-xs text-slate-500 mt-1">
                                       Case-Mix: {revenueData.original?.caseMixWeight?.toFixed(4)}
                                     </p>
                                     {revenueData.original?.wageIndex && revenueData.original.wageIndex !== 1.0 && (
@@ -825,13 +838,13 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
               <div className={`p-4 rounded-lg border-2 ${
                 revenueData.revenueDifference > 0 
                   ? 'bg-gradient-to-r from-green-100 to-emerald-100 border-green-300' 
-                  : 'bg-gray-100 border-gray-300'
+                  : 'bg-slate-100 border-slate-300'
               }`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-600 mb-1">Potential Revenue Increase</p>
+                    <p className="text-xs text-slate-600 mb-1">Potential Revenue Increase</p>
                     <p className={`text-3xl font-bold ${
-                      revenueData.revenueDifference > 0 ? 'text-green-700' : 'text-gray-700'
+                      revenueData.revenueDifference > 0 ? 'text-green-700' : 'text-slate-700'
                     }`}>
                       {revenueData.revenueDifference > 0 ? '+' : ''}{formatCurrency(revenueData.revenueDifference)}
                     </p>
@@ -875,28 +888,28 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
 
             {/* Applied Corrections Detail */}
             {revenueData.corrected?._correctionCount > 0 && (
-              <div className="border border-purple-200 rounded-lg overflow-hidden">
+              <div className="border border-navy-200 rounded-lg overflow-hidden">
                 <button
                   onClick={() => setShowCorrections(!showCorrections)}
-                  className="w-full flex items-center justify-between p-3 bg-purple-50 hover:bg-purple-100 transition-colors"
+                  className="w-full flex items-center justify-between p-3 bg-navy-50 hover:bg-navy-100 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <Wrench className="w-4 h-4 text-purple-600" />
-                    <span className="text-sm font-medium text-purple-800">
+                    <Wrench className="w-4 h-4 text-navy-600" />
+                    <span className="text-sm font-medium text-navy-800">
                       {revenueData.corrected._correctionCount} Corrections Applied
                     </span>
                   </div>
                   {showCorrections ? (
-                    <ChevronUp className="w-4 h-4 text-purple-600" />
+                    <ChevronUp className="w-4 h-4 text-navy-600" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-purple-600" />
+                    <ChevronDown className="w-4 h-4 text-navy-600" />
                   )}
                 </button>
                 
                 {showCorrections && revenueData.corrected._appliedCorrections && (
                   <div className="p-3 bg-white space-y-2 max-h-64 overflow-y-auto">
                     {revenueData.corrected._appliedCorrections.map((correction, idx) => (
-                      <div key={idx} className="flex items-start gap-2 p-2 bg-gray-50 rounded text-xs">
+                      <div key={idx} className="flex items-start gap-2 p-2 bg-slate-50 rounded text-xs">
                         {correction.type === 'functional' && (
                           <Activity className="w-3.5 h-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
                         )}
@@ -907,15 +920,15 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                           <ClipboardList className="w-3.5 h-3.5 text-orange-500 mt-0.5 flex-shrink-0" />
                         )}
                         {(correction.type === 'therapy' || correction.type === 'admission' || correction.type === 'other') && (
-                          <Wrench className="w-3.5 h-3.5 text-purple-500 mt-0.5 flex-shrink-0" />
+                          <Wrench className="w-3.5 h-3.5 text-navy-500 mt-0.5 flex-shrink-0" />
                         )}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <Badge variant="outline" className="text-xs py-0 capitalize">
-                              {correction.type.replace('_', ' ')}
+                              {(correction.type || '').replace('_', ' ')}
                             </Badge>
                             {correction.item && correction.item !== 'multiple' && (
-                              <span className="font-mono text-purple-700">{correction.item}</span>
+                              <span className="font-mono text-navy-700">{correction.item}</span>
                             )}
                             {correction.change && (
                               <span className="text-green-600 font-medium">{correction.change}</span>
@@ -931,7 +944,7 @@ export default function PDGMRevenueComparison({ analysisResults, pdgmData, onPay
                               </Badge>
                             )}
                           </div>
-                          <p className="text-gray-600 mt-0.5">
+                          <p className="text-slate-600 mt-0.5">
                             {correction.type === 'functional' && correction.item === 'multiple' && 
                               'Increased functional impairment scores (bathing, ambulation, transferring)'}
                             {correction.type === 'functional' && correction.item !== 'multiple' && 

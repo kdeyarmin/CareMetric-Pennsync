@@ -1,0 +1,62 @@
+{
+  "name": "OfflineDataCache",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "User who cached this data"
+    },
+    "data_type": {
+      "type": "string",
+      "enum": [
+        "patient",
+        "visit_draft",
+        "vital_signs",
+        "care_plan"
+      ],
+      "description": "Type of cached data"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID of the entity being cached"
+    },
+    "cached_data": {
+      "type": "object",
+      "description": "The cached data"
+    },
+    "is_synced": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this has been synced to server"
+    },
+    "cached_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When data was cached"
+    },
+    "synced_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When data was synced"
+    }
+  },
+  "required": [
+    "user_email",
+    "data_type",
+    "cached_data"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "user_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "user_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

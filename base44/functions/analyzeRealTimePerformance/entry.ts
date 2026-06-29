@@ -1,4 +1,21 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
+// response_json_schema, because the provider rejects deeply-nested object
+// schemas that lack an explicit `required` array at every level.
+function parseLLMJson(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  const text = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end <= start) return null;
+    try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  }
+}
 
 Deno.serve(async (req) => {
   try {
@@ -10,6 +27,12 @@ Deno.serve(async (req) => {
     }
 
     const { nurse_email, training_module_id, session_id } = await req.json();
+    // Only admins may analyze another nurse's real-time performance metrics.
+    // Mirrors analyzeNurseDeficits; without it any user reads another nurse's
+    // RealTimePerformanceMetric + an AI critique of them.
+    if (nurse_email && nurse_email !== user.email && user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const targetEmail = nurse_email || user.email;
 
     // Fetch real-time metrics for this session
@@ -43,10 +66,13 @@ Deno.serve(async (req) => {
     };
 
     metrics.forEach(m => {
-      if (m.question_difficulty && m.is_correct !== undefined) {
-        difficultyPerformance[m.question_difficulty].total++;
+      // Guard on bucket membership, not just truthiness: an out-of-enum
+      // difficulty (e.g. "expert") would index to undefined and throw on .total++.
+      const bucket = difficultyPerformance[m.question_difficulty];
+      if (bucket && m.is_correct !== undefined) {
+        bucket.total++;
         if (m.is_correct) {
-          difficultyPerformance[m.question_difficulty].correct++;
+          bucket.correct++;
         }
       }
     });
@@ -109,22 +135,14 @@ Provide:
 4. Suggested difficulty level
 5. Motivational message
 
-Return JSON format.
+Return ONLY valid JSON, no prose or code fences, with this shape:
+{"strengths":[""],"improvement_areas":[""],"next_steps":[""],"recommended_difficulty":"","motivation":""}
 `;
 
-    const aiResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          strengths: { type: 'array', items: { type: 'string' } },
-          improvement_areas: { type: 'array', items: { type: 'string' } },
-          next_steps: { type: 'array', items: { type: 'string' } },
-          recommended_difficulty: { type: 'string' },
-          motivation: { type: 'string' }
-        }
-      }
-    });
+    const aiResponse = parseLLMJson(await base44.asServiceRole.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
+      prompt
+    })) || {};
 
     return Response.json({
       recommendation,
@@ -137,10 +155,10 @@ Return JSON format.
       },
       avg_time_seconds: avgTime,
       hints_used: hintsUsed,
-      insights: [...insights, ...aiResponse.strengths],
-      improvement_areas: aiResponse.improvement_areas,
-      next_steps: aiResponse.next_steps,
-      motivation_message: aiResponse.motivation
+      insights: [...insights, ...(aiResponse.strengths || [])],
+      improvement_areas: aiResponse.improvement_areas || [],
+      next_steps: aiResponse.next_steps || [],
+      motivation_message: aiResponse.motivation || ''
     });
 
   } catch (error) {

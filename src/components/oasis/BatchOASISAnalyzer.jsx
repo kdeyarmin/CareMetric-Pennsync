@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from "react";
+import { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { toCsvRows } from "@/components/admin/csvExport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +33,13 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
   const [files, setFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [isCancelled, setIsCancelled] = useState(false);
+  // Only the setter is needed for UI state; the loop reads cancelledRef instead.
+  const [, setIsCancelled] = useState(false);
+  // The async processBatch loop closes over state values captured at call time,
+  // so toggling isPaused/isCancelled via setState never reaches the running loop.
+  // Mirror them into refs the loop can read live.
+  const pausedRef = useRef(false);
+  const cancelledRef = useRef(false);
   const [currentStep, setCurrentStep] = useState('');
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [batchResults, setBatchResults] = useState(null);
@@ -85,6 +92,8 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
     setIsProcessing(true);
     setIsPaused(false);
     setIsCancelled(false);
+    pausedRef.current = false;
+    cancelledRef.current = false;
     setError(null);
     setBatchResults(null);
     setOverallProgress(0);
@@ -99,12 +108,12 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
       setCurrentStep('uploading');
       for (let i = 0; i < files.length; i++) {
         // Check for pause
-        while (isPaused && !isCancelled) {
+        while (pausedRef.current && !cancelledRef.current) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
 
         // Check for cancel
-        if (isCancelled) {
+        if (cancelledRef.current) {
           setError('Batch processing cancelled by user');
           break;
         }
@@ -142,7 +151,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
         setOverallProgress(Math.round(((i + 1) / files.length) * 30));
       }
 
-      if (isCancelled) {
+      if (cancelledRef.current) {
         setIsProcessing(false);
         return;
       }
@@ -168,7 +177,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
 
       // Update file statuses based on results
       if (response.data?.results) {
-        response.data.results.forEach((result, idx) => {
+        response.data.results.forEach((result, _idx) => {
           const fileIndex = files.findIndex(f => f.name === result.fileName);
           if (fileIndex !== -1) {
             updatedFiles[fileIndex] = {
@@ -210,14 +219,18 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
   };
 
   const handlePause = () => {
+    pausedRef.current = true;
     setIsPaused(true);
   };
 
   const handleResume = () => {
+    pausedRef.current = false;
     setIsPaused(false);
   };
 
   const handleCancel = () => {
+    cancelledRef.current = true;
+    pausedRef.current = false;
     setIsCancelled(true);
     setIsPaused(false);
   };
@@ -289,18 +302,8 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
       ];
     });
 
-    // Create CSV content
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => {
-        const value = String(cell || '');
-        // Escape commas and quotes
-        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      }).join(','))
-    ].join('\n');
+    // Create CSV content (escaping + formula-injection neutralization via toCsvRows)
+    const csvContent = toCsvRows([headers, ...rows]);
 
     // Download
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -316,26 +319,26 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'pending': return <FileText className="w-4 h-4 text-gray-400" />;
+      case 'pending': return <FileText className="w-4 h-4 text-slate-400" />;
       case 'uploading': return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
       case 'uploaded': return <CheckCircle2 className="w-4 h-4 text-blue-500" />;
-      case 'analyzing': return <Loader2 className="w-4 h-4 text-purple-500 animate-spin" />;
+      case 'analyzing': return <Loader2 className="w-4 h-4 text-navy-500 animate-spin" />;
       case 'success': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
       case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
-      default: return <FileText className="w-4 h-4 text-gray-400" />;
+      default: return <FileText className="w-4 h-4 text-slate-400" />;
     }
   };
 
   const getStatusBadge = (status) => {
     const variants = {
-      pending: "bg-gray-100 text-gray-700",
+      pending: "bg-slate-100 text-slate-700",
       uploading: "bg-blue-100 text-blue-700",
       uploaded: "bg-blue-100 text-blue-700",
-      analyzing: "bg-purple-100 text-purple-700",
+      analyzing: "bg-navy-100 text-navy-700",
       success: "bg-green-100 text-green-700",
       error: "bg-red-100 text-red-700"
     };
-    return variants[status] || "bg-gray-100 text-gray-700";
+    return variants[status] || "bg-slate-100 text-slate-700";
   };
 
   const successCount = files.filter(f => f.status === 'success').length;
@@ -428,7 +431,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Upload Zone */}
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors">
+        <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors">
           <input
             type="file"
             accept=".pdf"
@@ -439,11 +442,11 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
             disabled={isProcessing}
           />
           <label htmlFor="batch-upload" className={`cursor-pointer ${isProcessing ? 'opacity-50' : ''}`}>
-            <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-            <p className="text-sm text-gray-600 mb-1">
+            <Upload className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+            <p className="text-sm text-slate-600 mb-1">
               Click to select multiple OASIS PDFs
             </p>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-slate-400">
               PDF files only • Select multiple files at once
             </p>
           </label>
@@ -453,7 +456,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
         {files.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-slate-700">
                 {files.length} document{files.length !== 1 ? 's' : ''} selected
               </span>
               <Button 
@@ -476,7 +479,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                     className={`flex items-center justify-between p-2 rounded-lg border ${
                       file.status === 'error' ? 'bg-red-50 border-red-200' :
                       file.status === 'success' ? 'bg-green-50 border-green-200' :
-                      'bg-gray-50 border-gray-200'
+                      'bg-slate-50 border-slate-200'
                     }`}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -504,7 +507,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                           onClick={() => removeFile(idx)}
                           className="h-6 w-6 p-0"
                         >
-                          <XCircle className="w-4 h-4 text-gray-400" />
+                          <XCircle className="w-4 h-4 text-slate-400" />
                         </Button>
                       )}
                       {file.status === 'success' && file.result && (
@@ -530,7 +533,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
         {isProcessing && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">
+              <span className="text-slate-600">
                 {isPaused && '⏸ Paused - '}
                 {currentStep === 'uploading' && `Uploading files (${currentFileIndex + 1}/${files.length})...`}
                 {currentStep === 'analyzing' && 'Analyzing documents with AI...'}
@@ -541,7 +544,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
             <Progress value={overallProgress} className="h-2" />
             
             {estimatedTimeRemaining && (
-              <div className="text-xs text-gray-500 text-center">
+              <div className="text-xs text-slate-500 text-center">
                 Estimated time remaining: ~{formatTime(estimatedTimeRemaining)}
               </div>
             )}
@@ -610,7 +613,7 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                         size="sm" 
                         variant="outline"
                         onClick={() => setShowComparison(!showComparison)} 
-                        className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                        className="border-navy-300 text-navy-700 hover:bg-navy-50"
                       >
                         <GitCompare className="w-4 h-4 mr-1" />
                         {showComparison ? 'Hide' : 'Compare'}
@@ -687,9 +690,9 @@ export default function BatchOASISAnalyzer({ onSingleAnalysis, onBatchComplete }
                 <CardContent>
                   <div className="space-y-4">
                     {getGroupedResults().map((group, gIdx) => (
-                      <div key={gIdx} className="border rounded-lg p-3 bg-gray-50">
+                      <div key={gIdx} className="border rounded-lg p-3 bg-slate-50">
                         <div className="flex items-center justify-between mb-3">
-                          <h3 className="font-semibold text-gray-900">{group.label}</h3>
+                          <h3 className="font-semibold text-slate-900">{group.label}</h3>
                           <Badge className="bg-blue-100 text-blue-800">
                             {group.files.length} document{group.files.length !== 1 ? 's' : ''}
                           </Badge>

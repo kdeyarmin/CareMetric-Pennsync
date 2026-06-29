@@ -1,19 +1,19 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2,
   Target,
-  TrendingUp,
   CheckCircle2,
   DollarSign,
   Stethoscope,
-  AlertTriangle,
   Sparkles,
   Activity,
   ClipboardList,
@@ -29,11 +29,18 @@ export default function AIPathwayRecommender({
   navigationData,
   onPathwaysActivated 
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [recommendations, setRecommendations] = useState(null);
   const [selectedPathways, setSelectedPathways] = useState([]);
   const [expandedPathway, setExpandedPathway] = useState(null);
   const queryClient = useQueryClient();
+
+  // Current user — assigned_to is required on Task; without it the bulkCreate of
+  // generated pathway tasks is rejected and nothing is created.
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
 
   const { data: availablePathways = [] } = useQuery({
     queryKey: ['clinicalPathways'],
@@ -47,17 +54,11 @@ export default function AIPathwayRecommender({
     }
   });
 
-  useEffect(() => {
-    if (pdgmData && analysisResults && !recommendations && !isAnalyzing) {
-      analyzePathways();
-    }
-  }, [pdgmData, analysisResults]);
-
-  const analyzePathways = async () => {
-    setIsAnalyzing(true);
+  const analyzePathways = useCallback(async () => {
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a home health clinical pathway specialist and PDGM revenue analyst. Analyze this OASIS data and recommend specific clinical pathways and interventions.
 
 OASIS DATA:
@@ -216,11 +217,22 @@ Return JSON:
       setRecommendations({ error: "Failed to generate pathway recommendations." });
     }
 
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [analysisResults, availablePathways, navigationData, patientId, pdgmData]);
+
+  useEffect(() => {
+    if (pdgmData && analysisResults && !recommendations && !ai.loading) {
+      analyzePathways();
+    }
+  }, [pdgmData, analysisResults, analyzePathways, ai.loading, recommendations]);
 
   const handleActivatePathways = async () => {
     if (!recommendations || selectedPathways.length === 0) return;
+    // assigned_to is required on Task; abort if the current user isn't resolved yet.
+    if (!currentUser?.email) {
+      toast.error('Could not determine the current user. Please refresh and try again.');
+      return;
+    }
 
     const tasksToCreate = [];
     
@@ -231,6 +243,7 @@ Return JSON:
           tasksToCreate.push({
             ...task,
             patient_id: patientId,
+            assigned_to: currentUser?.email,
             source: 'ai_generated',
             ai_reason: `Generated from ${pathway.pathway_name} pathway`
           });
@@ -260,7 +273,7 @@ Return JSON:
       critical: 'bg-red-600 text-white',
       high: 'bg-orange-500 text-white',
       medium: 'bg-blue-500 text-white',
-      low: 'bg-gray-400 text-white'
+      low: 'bg-slate-400 text-white'
     };
     return colors[priority] || colors.medium;
   };
@@ -276,31 +289,31 @@ Return JSON:
   }
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="pb-3 bg-gradient-to-r from-navy-50 to-gold-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Target className="w-5 h-5 text-purple-600" />
+            <Target className="w-5 h-5 text-navy-600" />
             AI Clinical Pathway Recommender
           </div>
           {recommendations?.recommended_pathways?.length > 0 && (
-            <Badge className="bg-purple-600 text-white">
+            <Badge className="bg-navy-600 text-white">
               {recommendations.recommended_pathways.length} pathways
             </Badge>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
-        {isAnalyzing ? (
+        {ai.loading ? (
           <div className="text-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-3" />
-            <p className="text-sm text-gray-600">Analyzing clinical pathways and interventions...</p>
-            <p className="text-xs text-gray-400 mt-1">Evaluating diagnosis, functional status, and PDGM optimization</p>
+            <Loader2 className="w-8 h-8 animate-spin text-navy-600 mx-auto mb-3" />
+            <p className="text-sm text-slate-600">Analyzing clinical pathways and interventions...</p>
+            <p className="text-xs text-slate-400 mt-1">Evaluating diagnosis, functional status, and PDGM optimization</p>
           </div>
         ) : !recommendations ? (
           <Button
             onClick={analyzePathways}
-            className="w-full bg-purple-600 hover:bg-purple-700"
+            className="w-full bg-navy-600 hover:bg-navy-700"
           >
             <Sparkles className="w-4 h-4 mr-2" /> Generate Pathway Recommendations
           </Button>
@@ -311,7 +324,7 @@ Return JSON:
         ) : (
           <>
             {/* Overall Strategy */}
-            <Alert className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-300">
+            <Alert className="bg-gradient-to-r from-indigo-50 to-navy-50 border-indigo-300">
               <Sparkles className="w-4 h-4 text-indigo-600" />
               <AlertDescription className="text-indigo-900">
                 <strong>Recommended Strategy:</strong> {recommendations.overall_strategy}
@@ -327,8 +340,8 @@ Return JSON:
                 </div>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div className="bg-white p-2 rounded text-center">
-                    <p className="text-xs text-gray-500">Current Estimate</p>
-                    <p className="text-lg font-bold text-gray-700">
+                    <p className="text-xs text-slate-500">Current Estimate</p>
+                    <p className="text-lg font-bold text-slate-700">
                       {formatCurrency(recommendations.revenue_optimization_summary.current_estimated_payment)}
                     </p>
                   </div>
@@ -340,7 +353,7 @@ Return JSON:
                   </div>
                 </div>
                 <div className="bg-white p-2 rounded border">
-                  <p className="text-xs font-medium text-gray-700 mb-1">Key Drivers:</p>
+                  <p className="text-xs font-medium text-slate-700 mb-1">Key Drivers:</p>
                   <div className="flex flex-wrap gap-1">
                     {recommendations.revenue_optimization_summary.key_drivers?.map((driver, idx) => (
                       <Badge key={idx} variant="outline" className="text-xs">{driver}</Badge>
@@ -360,8 +373,8 @@ Return JSON:
                 <div className="space-y-2">
                   {recommendations.quick_wins.map((win, idx) => (
                     <div key={idx} className="bg-white p-2 rounded border text-xs">
-                      <p className="font-medium text-gray-800 mb-1">{win.action}</p>
-                      <p className="text-gray-600">Pathway: <span className="font-semibold">{win.pathway}</span></p>
+                      <p className="font-medium text-slate-800 mb-1">{win.action}</p>
+                      <p className="text-slate-600">Pathway: <span className="font-semibold">{win.pathway}</span></p>
                       <p className="text-green-700">Impact: {win.impact}</p>
                     </div>
                   ))}
@@ -372,8 +385,8 @@ Return JSON:
             {/* Pathway Recommendations */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-700">Recommended Pathways</p>
-                <p className="text-xs text-gray-500">{selectedPathways.length} selected</p>
+                <p className="text-sm font-semibold text-slate-700">Recommended Pathways</p>
+                <p className="text-xs text-slate-500">{selectedPathways.length} selected</p>
               </div>
 
               {recommendations.recommended_pathways?.map((pathway, idx) => {
@@ -384,11 +397,11 @@ Return JSON:
                   <div 
                     key={idx}
                     className={`rounded-lg border-2 overflow-hidden ${
-                      isSelected ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-200'
+                      isSelected ? 'border-navy-400 ring-2 ring-navy-200' : 'border-slate-200'
                     }`}
                   >
                     {/* Pathway Header */}
-                    <div className={`p-3 ${isSelected ? 'bg-purple-50' : 'bg-gray-50'}`}>
+                    <div className={`p-3 ${isSelected ? 'bg-navy-50' : 'bg-slate-50'}`}>
                       <div className="flex items-start gap-3">
                         <Checkbox
                           checked={isSelected}
@@ -404,7 +417,7 @@ Return JSON:
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-semibold text-gray-900">{pathway.pathway_name}</h4>
+                              <h4 className="font-semibold text-slate-900">{pathway.pathway_name}</h4>
                               <Badge className={getPriorityColor(pathway.priority)}>
                                 {pathway.priority}
                               </Badge>
@@ -419,14 +432,14 @@ Return JSON:
                             </Badge>
                           </div>
 
-                          <p className="text-sm text-gray-700 mb-2">{pathway.clinical_rationale}</p>
+                          <p className="text-sm text-slate-700 mb-2">{pathway.clinical_rationale}</p>
 
                           <div className="flex flex-wrap gap-2 mb-2">
                             <Badge className="bg-blue-100 text-blue-800 text-xs">
                               <Stethoscope className="w-3 h-3 mr-1" />
                               {pathway.primary_trigger}
                             </Badge>
-                            <span className="text-xs text-gray-600">{pathway.trigger_details}</span>
+                            <span className="text-xs text-slate-600">{pathway.trigger_details}</span>
                           </div>
 
                           {/* PDGM Impact Summary */}
@@ -443,7 +456,7 @@ Return JSON:
                                   </Badge>
                                 )}
                               </div>
-                              <p className="text-xs text-gray-700">{pathway.pdgm_impact.payment_impact_explanation}</p>
+                              <p className="text-xs text-slate-700">{pathway.pdgm_impact.payment_impact_explanation}</p>
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {pathway.pdgm_impact.affects_functional_level && (
                                   <Badge variant="outline" className="text-xs">
@@ -487,10 +500,10 @@ Return JSON:
                         {/* Expected Outcomes */}
                         {pathway.expected_outcomes?.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Expected Outcomes:</p>
+                            <p className="text-xs font-semibold text-slate-700 mb-1">Expected Outcomes:</p>
                             <ul className="space-y-1">
                               {pathway.expected_outcomes.map((outcome, oIdx) => (
-                                <li key={oIdx} className="text-xs text-gray-700 flex items-start gap-1">
+                                <li key={oIdx} className="text-xs text-slate-700 flex items-start gap-1">
                                   <CheckCircle2 className="w-3 h-3 text-green-600 mt-0.5 flex-shrink-0" />
                                   {outcome}
                                 </li>
@@ -506,11 +519,11 @@ Return JSON:
                             {pathway.documentation_requirements.map((req, rIdx) => (
                               <div key={rIdx} className="bg-white p-2 rounded border mb-2 last:mb-0">
                                 <div className="flex items-center justify-between mb-1">
-                                  <p className="text-xs font-medium text-gray-800">{req.area}</p>
+                                  <p className="text-xs font-medium text-slate-800">{req.area}</p>
                                   <Badge variant="outline" className="text-xs">{req.frequency}</Badge>
                                 </div>
                                 {req.m_items_affected?.length > 0 && (
-                                  <p className="text-xs text-purple-700 mb-1">
+                                  <p className="text-xs text-navy-700 mb-1">
                                     M-items: {req.m_items_affected.join(', ')}
                                   </p>
                                 )}
@@ -531,10 +544,10 @@ Return JSON:
                             {pathway.recommended_interventions.map((intervention, iIdx) => (
                               <div key={iIdx} className="bg-white p-2 rounded border mb-2 last:mb-0">
                                 <div className="flex items-center justify-between mb-1">
-                                  <p className="text-xs font-medium text-gray-800">{intervention.intervention}</p>
+                                  <p className="text-xs font-medium text-slate-800">{intervention.intervention}</p>
                                   <Badge variant="outline" className="text-xs">{intervention.frequency}</Badge>
                                 </div>
-                                <p className="text-xs text-gray-600 mb-1">
+                                <p className="text-xs text-slate-600 mb-1">
                                   <strong>Skilled Rationale:</strong> {intervention.skilled_rationale}
                                 </p>
                                 <p className="text-xs text-green-700">
@@ -547,22 +560,22 @@ Return JSON:
 
                         {/* Detailed PDGM Impact */}
                         {pathway.pdgm_impact && (
-                          <div className="bg-purple-50 p-3 rounded border border-purple-200">
-                            <p className="text-xs font-semibold text-purple-800 mb-2">📊 Detailed PDGM Impact:</p>
+                          <div className="bg-navy-50 p-3 rounded border border-navy-200">
+                            <p className="text-xs font-semibold text-navy-800 mb-2">📊 Detailed PDGM Impact:</p>
                             <div className="space-y-2 text-xs">
                               {pathway.pdgm_impact.clinical_group_change && (
                                 <div className="bg-white p-2 rounded">
-                                  <p className="text-gray-600">Clinical Group: {pathway.pdgm_impact.clinical_group_change}</p>
+                                  <p className="text-slate-600">Clinical Group: {pathway.pdgm_impact.clinical_group_change}</p>
                                 </div>
                               )}
                               {pathway.pdgm_impact.functional_improvement_potential && (
                                 <div className="bg-white p-2 rounded">
-                                  <p className="text-gray-600">Functional: {pathway.pdgm_impact.functional_improvement_potential}</p>
+                                  <p className="text-slate-600">Functional: {pathway.pdgm_impact.functional_improvement_potential}</p>
                                 </div>
                               )}
                               {pathway.pdgm_impact.comorbidity_opportunities && (
                                 <div className="bg-white p-2 rounded">
-                                  <p className="text-gray-600">Comorbidity: {pathway.pdgm_impact.comorbidity_opportunities}</p>
+                                  <p className="text-slate-600">Comorbidity: {pathway.pdgm_impact.comorbidity_opportunities}</p>
                                 </div>
                               )}
                             </div>
@@ -571,19 +584,19 @@ Return JSON:
 
                         {/* Tasks Preview */}
                         {pathway.tasks_to_generate?.length > 0 && (
-                          <div className="bg-gray-50 p-2 rounded border">
-                            <p className="text-xs font-medium text-gray-700 mb-1">
+                          <div className="bg-slate-50 p-2 rounded border">
+                            <p className="text-xs font-medium text-slate-700 mb-1">
                               {pathway.tasks_to_generate.length} tasks will be created
                             </p>
                             <div className="space-y-1">
                               {pathway.tasks_to_generate.slice(0, 3).map((task, tIdx) => (
-                                <div key={tIdx} className="text-xs text-gray-600 flex items-center gap-1">
-                                  <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                                <div key={tIdx} className="text-xs text-slate-600 flex items-center gap-1">
+                                  <span className="w-1 h-1 bg-slate-400 rounded-full"></span>
                                   {task.title}
                                 </div>
                               ))}
                               {pathway.tasks_to_generate.length > 3 && (
-                                <p className="text-xs text-gray-500">+{pathway.tasks_to_generate.length - 3} more</p>
+                                <p className="text-xs text-slate-500">+{pathway.tasks_to_generate.length - 3} more</p>
                               )}
                             </div>
                           </div>
@@ -597,13 +610,13 @@ Return JSON:
 
             {/* Activate Button */}
             {selectedPathways.length > 0 && (
-              <div className="bg-gradient-to-r from-purple-100 to-pink-100 p-4 rounded-lg border-2 border-purple-300">
+              <div className="bg-gradient-to-r from-navy-100 to-gold-100 p-4 rounded-lg border-2 border-navy-300">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-purple-900">
+                    <p className="text-sm font-semibold text-navy-900">
                       Activate {selectedPathways.length} selected pathway{selectedPathways.length > 1 ? 's' : ''}
                     </p>
-                    <p className="text-xs text-purple-700">
+                    <p className="text-xs text-navy-700">
                       This will generate {selectedPathways.reduce((sum, idx) => 
                         sum + (recommendations.recommended_pathways[idx]?.tasks_to_generate?.length || 0), 0
                       )} tasks
@@ -611,7 +624,7 @@ Return JSON:
                   </div>
                   <Button
                     onClick={handleActivatePathways}
-                    className="bg-purple-600 hover:bg-purple-700"
+                    className="bg-navy-600 hover:bg-navy-700"
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     Activate Pathways

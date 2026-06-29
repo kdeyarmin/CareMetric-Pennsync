@@ -1,20 +1,21 @@
-import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Activity,
   Calendar,
   Target,
-  AlertTriangle,
-  TrendingUp,
-  Clock
+  AlertTriangle
 } from "lucide-react";
-import { formatEastern } from "../utils/timezone";
+import { formatEastern, todayEastern } from "../utils/timezone";
 
-export default function QuickStatsGrid({ visits, carePlans, alerts, incidents, patient }) {
+export default function QuickStatsGrid({ visits, carePlans, alerts, incidents, _patient }) {
+  // visit_date is a date-only string ("YYYY-MM-DD"); compare against today's
+  // Eastern date string so a visit scheduled for today isn't dropped during the
+  // workday (new Date("YYYY-MM-DD") parses as midnight UTC, which is in the past
+  // by Eastern daytime).
+  const today = todayEastern();
   const completedVisits = visits.filter(v => v.status === 'completed').length;
-  const upcomingVisits = visits.filter(v => 
-    v.status === 'scheduled' && new Date(v.visit_date) >= new Date()
+  const upcomingVisits = visits.filter(v =>
+    v.status === 'scheduled' && v.visit_date >= today
   ).length;
   
   const activeCarePlans = carePlans.filter(cp => cp.status === 'active').length;
@@ -30,7 +31,7 @@ export default function QuickStatsGrid({ visits, carePlans, alerts, incidents, p
   }).length;
 
   const lastVisit = visits.find(v => v.status === 'completed');
-  const nextVisit = visits.find(v => v.status === 'scheduled' && new Date(v.visit_date) >= new Date());
+  const nextVisit = visits.find(v => v.status === 'scheduled' && v.visit_date >= today);
 
   const stats = [
     {
@@ -46,8 +47,8 @@ export default function QuickStatsGrid({ visits, carePlans, alerts, incidents, p
       label: "Care Plans",
       value: activeCarePlans,
       subtitle: `${metGoals} goals met`,
-      color: "from-purple-500 to-purple-600",
-      textColor: "text-purple-600"
+      color: "from-navy-500 to-navy-600",
+      textColor: "text-navy-600"
     },
     {
       icon: AlertTriangle,
@@ -73,9 +74,9 @@ export default function QuickStatsGrid({ visits, carePlans, alerts, incidents, p
         {stats.map((stat, idx) => (
           <Card key={idx} className="overflow-hidden">
             <CardContent className="p-4">
-              <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-              <p className="text-sm font-medium text-gray-600">{stat.label}</p>
-              <p className="text-xs text-gray-500 mt-1">{stat.subtitle}</p>
+              <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+              <p className="text-sm font-medium text-slate-600">{stat.label}</p>
+              <p className="text-xs text-slate-500 mt-1">{stat.subtitle}</p>
             </CardContent>
           </Card>
         ))}
@@ -86,9 +87,9 @@ export default function QuickStatsGrid({ visits, carePlans, alerts, incidents, p
         {lastVisit && (
           <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
             <CardContent className="p-4">
-              <p className="text-sm font-medium text-gray-600">Last Visit</p>
-              <p className="font-semibold text-gray-900">{formatEastern(lastVisit.visit_date, 'MMM d, yyyy')}</p>
-              <p className="text-xs text-gray-600">{lastVisit.visit_type?.replace(/_/g, ' ')}</p>
+              <p className="text-sm font-medium text-slate-600">Last Visit</p>
+              <p className="font-semibold text-slate-900">{formatEastern(lastVisit.visit_date, 'MMM d, yyyy')}</p>
+              <p className="text-xs text-slate-600">{lastVisit.visit_type?.replace(/_/g, ' ')}</p>
             </CardContent>
           </Card>
         )}
@@ -96,9 +97,9 @@ export default function QuickStatsGrid({ visits, carePlans, alerts, incidents, p
         {nextVisit && (
           <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
             <CardContent className="p-4">
-              <p className="text-sm font-medium text-gray-600">Next Visit</p>
-              <p className="font-semibold text-gray-900">{formatEastern(nextVisit.visit_date, 'MMM d, yyyy')}</p>
-              <p className="text-xs text-gray-600">{nextVisit.visit_type?.replace(/_/g, ' ')}</p>
+              <p className="text-sm font-medium text-slate-600">Next Visit</p>
+              <p className="font-semibold text-slate-900">{formatEastern(nextVisit.visit_date, 'MMM d, yyyy')}</p>
+              <p className="text-xs text-slate-600">{nextVisit.visit_type?.replace(/_/g, ' ')}</p>
             </CardContent>
           </Card>
         )}

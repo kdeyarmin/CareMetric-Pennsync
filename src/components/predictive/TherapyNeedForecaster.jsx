@@ -1,16 +1,12 @@
-import React, { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useMemo } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   TrendingUp,
-  Activity,
-  Loader2,
-  ArrowUpRight,
-  ArrowDownRight,
-  Minus
+  Loader2
 } from "lucide-react";
 import {
   RadarChart,
@@ -34,7 +30,7 @@ export default function TherapyNeedForecaster({
   selectedPatientId = ''
 }) {
   const [forecasts, setForecasts] = useState({});
-  const [isForecasting, setIsForecasting] = useState(false);
+  const ai = useAICall();
   const [forecastingPatientId, setForecastingPatientId] = useState(null);
 
   // Calculate therapy need indicators
@@ -108,7 +104,6 @@ export default function TherapyNeedForecaster({
 
   // Get AI forecast for patient
   const getForecast = async (patientId) => {
-    setIsForecasting(true);
     setForecastingPatientId(patientId);
 
     const patient = patients.find(p => p.id === patientId);
@@ -116,7 +111,8 @@ export default function TherapyNeedForecaster({
     const patientVisits = visits.filter(v => v.patient_id === patientId);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Analyze this patient's therapy needs and forecast required therapy services.
 
 PATIENT: ${patient?.first_name} ${patient?.last_name}
@@ -190,9 +186,9 @@ Provide therapy need forecast including:
       setForecasts(prev => ({ ...prev, [patientId]: result }));
     } catch (error) {
       console.error("Forecast error:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsForecasting(false);
     setForecastingPatientId(null);
   };
 
@@ -235,7 +231,7 @@ Provide therapy need forecast including:
                 <Bar dataKey="count" fill="#8b5cf6" />
               </BarChart>
             </ResponsiveContainer>
-            <p className="text-xs text-gray-500 text-center mt-2">
+            <p className="text-xs text-slate-500 text-center mt-2">
               Patients with ≥50% therapy need indicator
             </p>
           </CardContent>
@@ -277,7 +273,7 @@ Provide therapy need forecast including:
           </CardHeader>
           <CardContent className="space-y-2 max-h-96 overflow-y-auto">
             {displayPatients.map(patient => (
-              <div key={patient.id} className="p-3 bg-gray-50 rounded-lg border">
+              <div key={patient.id} className="p-3 bg-slate-50 rounded-lg border">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-medium text-sm">{patient.first_name} {patient.last_name}</p>
                   <Badge variant="outline">{patient.primary_diagnosis?.slice(0, 20) || 'No dx'}</Badge>
@@ -292,9 +288,9 @@ Provide therapy need forecast including:
                     <p className="text-lg font-bold text-green-700">{patient.indicators.ot.need}%</p>
                     <p className="text-xs text-green-600">OT</p>
                   </div>
-                  <div className="text-center p-2 bg-purple-50 rounded">
-                    <p className="text-lg font-bold text-purple-700">{patient.indicators.slp.need}%</p>
-                    <p className="text-xs text-purple-600">SLP</p>
+                  <div className="text-center p-2 bg-navy-50 rounded">
+                    <p className="text-lg font-bold text-navy-700">{patient.indicators.slp.need}%</p>
+                    <p className="text-xs text-navy-600">SLP</p>
                   </div>
                 </div>
 
@@ -303,9 +299,9 @@ Provide therapy need forecast including:
                   variant="outline"
                   className="w-full text-xs"
                   onClick={() => getForecast(patient.id)}
-                  disabled={isForecasting && forecastingPatientId === patient.id}
+                  disabled={ai.loading && forecastingPatientId === patient.id}
                 >
-                  {isForecasting && forecastingPatientId === patient.id ? (
+                  {ai.loading && forecastingPatientId === patient.id ? (
                     <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Forecasting...</>
                   ) : (
                     <><TrendingUp className="w-3 h-3 mr-1" /> Get AI Forecast</>
@@ -320,7 +316,7 @@ Provide therapy need forecast including:
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-purple-600" />
+              <TrendingUp className="w-4 h-4 text-navy-600" />
               AI Therapy Forecast
             </CardTitle>
           </CardHeader>
@@ -337,13 +333,13 @@ Provide therapy need forecast including:
                         <span className="font-medium uppercase">{type}</span>
                         <Badge className="bg-blue-600 text-white">{therapy.probability}% recommended</Badge>
                       </div>
-                      <p className="text-sm text-gray-700">
+                      <p className="text-sm text-slate-700">
                         <strong>Frequency:</strong> {therapy.frequency} for {therapy.duration_weeks} weeks
                       </p>
                       {therapy.goals?.length > 0 && (
                         <div className="mt-2">
-                          <p className="text-xs text-gray-600 font-medium">Goals:</p>
-                          <ul className="text-xs text-gray-600 list-disc list-inside">
+                          <p className="text-xs text-slate-600 font-medium">Goals:</p>
+                          <ul className="text-xs text-slate-600 list-disc list-inside">
                             {therapy.goals.slice(0, 3).map((g, i) => <li key={i}>{g}</li>)}
                           </ul>
                         </div>
@@ -376,7 +372,7 @@ Provide therapy need forecast including:
                 )}
               </div>
             ) : (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-slate-500">
                 <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">Click "Get AI Forecast" on a patient for detailed therapy predictions</p>
               </div>

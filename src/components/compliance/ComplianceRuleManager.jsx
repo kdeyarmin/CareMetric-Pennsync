@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,20 +34,18 @@ import {
   Edit,
   Trash2,
   Shield,
-  FileText,
   AlertTriangle,
-  CheckCircle2,
   Search,
   Loader2
 } from "lucide-react";
 
 const RULE_CATEGORIES = [
   { value: 'oasis', label: 'OASIS', color: 'bg-blue-100 text-blue-800' },
-  { value: 'medicare_cop', label: 'Medicare CoP', color: 'bg-purple-100 text-purple-800' },
+  { value: 'medicare_cop', label: 'Medicare CoP', color: 'bg-navy-100 text-navy-800' },
   { value: 'state_regulation', label: 'State Regulation', color: 'bg-green-100 text-green-800' },
   { value: 'agency_policy', label: 'Agency Policy', color: 'bg-orange-100 text-orange-800' },
   { value: 'hipaa', label: 'HIPAA', color: 'bg-red-100 text-red-800' },
-  { value: 'quality_measure', label: 'Quality Measure', color: 'bg-teal-100 text-teal-800' },
+  { value: 'quality_measure', label: 'Quality Measure', color: 'bg-navy-100 text-navy-800' },
 ];
 
 const SEVERITY_OPTIONS = [
@@ -280,7 +278,7 @@ export default function ComplianceRuleManager({ onRulesUpdated }) {
         {/* Filters */}
         <div className="flex gap-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               placeholder="Search rules..."
               value={searchTerm}
@@ -307,8 +305,8 @@ export default function ComplianceRuleManager({ onRulesUpdated }) {
             <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
           </div>
         ) : filteredRules.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <Shield className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <div className="text-center py-8 text-slate-500">
+            <Shield className="w-12 h-12 mx-auto mb-3 text-slate-300" />
             <p>No compliance rules configured yet.</p>
             <p className="text-sm">Click "Load Default Rules" to get started with standard rules.</p>
           </div>
@@ -330,7 +328,7 @@ export default function ComplianceRuleManager({ onRulesUpdated }) {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{rule.rule_name}</span>
                         {rule.rule_code && (
-                          <span className="text-xs text-gray-500 font-mono">{rule.rule_code}</span>
+                          <span className="text-xs text-slate-500 font-mono">{rule.rule_code}</span>
                         )}
                       </div>
                     </div>
@@ -342,11 +340,11 @@ export default function ComplianceRuleManager({ onRulesUpdated }) {
                 </AccordionTrigger>
                 <AccordionContent>
                   <div className="py-3 space-y-3">
-                    <p className="text-sm text-gray-600">{rule.description}</p>
+                    <p className="text-sm text-slate-600">{rule.description}</p>
                     
                     {rule.required_elements?.length > 0 && (
                       <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-1">Required Elements:</p>
+                        <p className="text-xs font-semibold text-slate-500 mb-1">Required Elements:</p>
                         <div className="flex flex-wrap gap-1">
                           {rule.required_elements.map((el, idx) => (
                             <Badge key={idx} variant="outline" className="text-xs">{el}</Badge>

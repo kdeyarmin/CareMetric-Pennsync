@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
@@ -16,39 +16,25 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    // Fetch the webpage content directly
-    const response = await fetch(url);
-    if (!response.ok) {
-      return Response.json({ error: `Failed to fetch URL: ${response.statusText}` }, { status: 500 });
+    // Fetch the webpage content
+    const fetchResult = await fetch('https://api.base44.com/v1/fetch-website', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': req.headers.get('Authorization')
+      },
+      body: JSON.stringify({
+        url: url,
+        formats: ['markdown']
+      })
+    });
+
+    if (!fetchResult.ok) {
+      return Response.json({ error: 'Failed to fetch content from URL' }, { status: 500 });
     }
-    
-    const html = await response.text();
-    
-    // Extract basic text content from HTML
-    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].replace(' | CMS', '').trim() : 'Medicare Guideline';
-    
-    // Extract main content
-    let markdownContent = '';
-    const mainContentMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) || 
-                           html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-    
-    if (mainContentMatch) {
-      const textMatches = mainContentMatch[1].match(/<(h[1-6]|p)[^>]*>(.*?)<\/\1>/gi);
-      if (textMatches) {
-        markdownContent = textMatches
-          .map(tag => tag.replace(/<[^>]+>/g, '').trim())
-          .filter(text => text.length > 20)
-          .join('\n\n')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'")
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
-    }
+
+    const websiteData = await fetchResult.json();
+    const markdownContent = websiteData.markdown || '';
 
     if (!markdownContent) {
       return Response.json({ error: 'No content extracted from URL' }, { status: 400 });
@@ -71,36 +57,22 @@ Extract and return JSON with:
   "regulatory_citation": "Official citation if found in content (e.g., 42 CFR 484.55)"
 }`;
 
-    let analysis = {
-      title: title,
-      summary: markdownContent.substring(0, 300),
-      extracted_keywords: [],
-      related_diagnoses: [],
-      applies_to_visit_types: [],
-      effective_date: null,
-      regulatory_citation: null
-    };
-    
-    try {
-      const aiAnalysis = await base44.integrations.Core.InvokeLLM({
-        prompt: analysisPrompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            summary: { type: "string" },
-            extracted_keywords: { type: "array", items: { type: "string" } },
-            related_diagnoses: { type: "array", items: { type: "string" } },
-            applies_to_visit_types: { type: "array", items: { type: "string" } },
-            effective_date: { type: "string" },
-            regulatory_citation: { type: "string" }
-          }
+    const analysis = await base44.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
+      prompt: analysisPrompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          summary: { type: "string" },
+          extracted_keywords: { type: "array", items: { type: "string" } },
+          related_diagnoses: { type: "array", items: { type: "string" } },
+          applies_to_visit_types: { type: "array", items: { type: "string" } },
+          effective_date: { type: ["string", "null"] },
+          regulatory_citation: { type: ["string", "null"] }
         }
-      });
-      analysis = { ...analysis, ...aiAnalysis };
-    } catch (error) {
-      console.error('AI analysis failed, using fallback:', error);
-    }
+      }
+    });
 
     // Combine user-provided keywords with AI-extracted ones
     const allKeywords = [

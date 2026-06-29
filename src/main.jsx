@@ -1,12 +1,17 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import '@fontsource-variable/inter'
 import App from '@/App.jsx'
 import '@/index.css'
+import { installAlertToToastShim } from '@/lib/alert-shim'
+
+// Surface legacy window.alert() notifications as on-brand toasts.
+installAlertToToastShim()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  // <React.StrictMode>
-  <App />
-  // </React.StrictMode>,
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
 )
 
 if (import.meta.hot) {

@@ -1,0 +1,66 @@
+{
+  "name": "SkillBadge",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Badge name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Badge description"
+    },
+    "badge_type": {
+      "type": "string",
+      "enum": [
+        "early_completion",
+        "streak",
+        "high_score",
+        "perfect_score",
+        "fast_learner",
+        "competency_master",
+        "course_completion",
+        "milestone"
+      ],
+      "description": "Type of badge"
+    },
+    "icon_name": {
+      "type": "string",
+      "description": "Icon identifier"
+    },
+    "color": {
+      "type": "string",
+      "description": "Badge color hex code"
+    },
+    "points": {
+      "type": "number",
+      "default": 10,
+      "description": "Points awarded for earning this badge"
+    },
+    "criteria_json": {
+      "type": "object",
+      "description": "Criteria for earning this badge"
+    },
+    "rarity": {
+      "type": "string",
+      "enum": [
+        "common",
+        "uncommon",
+        "rare",
+        "epic",
+        "legendary"
+      ],
+      "default": "common",
+      "description": "Badge rarity"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether badge is active"
+    }
+  },
+  "required": [
+    "name",
+    "badge_type"
+  ]
+}

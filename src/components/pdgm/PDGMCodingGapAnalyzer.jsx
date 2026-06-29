@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,13 +21,12 @@ import {
 } from "lucide-react";
 
 export default function PDGMCodingGapAnalyzer({ patient, visits = [], carePlans = [], onCodeSuggestion }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [analysis, setAnalysis] = useState(null);
   const [expandedGaps, setExpandedGaps] = useState([]);
   const [copiedCode, setCopiedCode] = useState(null);
 
   const analyzecodingGaps = async () => {
-    setIsAnalyzing(true);
 
     try {
       // Gather all documentation
@@ -95,7 +95,8 @@ Return JSON:
   "top_recommendations": ["prioritized list of 3-5 actions"]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -111,9 +112,9 @@ Return JSON:
       setAnalysis(result);
     } catch (error) {
       console.error("Coding gap analysis error:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsAnalyzing(false);
   };
 
   const toggleGap = (index) => {
@@ -133,9 +134,9 @@ Return JSON:
       missing_diagnosis: "bg-red-100 text-red-800",
       underspecified: "bg-yellow-100 text-yellow-800",
       comorbidity_opportunity: "bg-blue-100 text-blue-800",
-      hcc_opportunity: "bg-purple-100 text-purple-800"
+      hcc_opportunity: "bg-navy-100 text-navy-800"
     };
-    return colors[type] || "bg-gray-100 text-gray-800";
+    return colors[type] || "bg-slate-100 text-slate-800";
   };
 
   const getPriorityColor = (priority) => {
@@ -144,7 +145,7 @@ Return JSON:
       medium: "bg-yellow-500",
       low: "bg-blue-500"
     };
-    return colors[priority] || "bg-gray-500";
+    return colors[priority] || "bg-slate-500";
   };
 
   return (
@@ -157,11 +158,11 @@ Return JSON:
           </div>
           <Button
             onClick={analyzecodingGaps}
-            disabled={isAnalyzing || !patient}
+            disabled={ai.loading || !patient}
             size="sm"
             className="bg-amber-600 hover:bg-amber-700"
           >
-            {isAnalyzing ? (
+            {ai.loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
             ) : (
               <><Search className="w-4 h-4 mr-2" /> Analyze Coding</>
@@ -170,7 +171,7 @@ Return JSON:
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-4 space-y-4">
-        {!analysis && !isAnalyzing && (
+        {!analysis && !ai.loading && (
           <Alert className="bg-amber-50 border-amber-200">
             <Lightbulb className="w-4 h-4 text-amber-600" />
             <AlertDescription className="text-amber-800 text-sm">
@@ -190,7 +191,7 @@ Return JSON:
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="bg-white p-2 rounded border">
-                    <p className="text-xs text-gray-500">Clinical Group</p>
+                    <p className="text-xs text-slate-500">Clinical Group</p>
                     <p className="font-medium">
                       {analysis.pdgm_optimization_summary.current_clinical_group}
                       {analysis.pdgm_optimization_summary.potential_clinical_group !== analysis.pdgm_optimization_summary.current_clinical_group && (
@@ -199,7 +200,7 @@ Return JSON:
                     </p>
                   </div>
                   <div className="bg-white p-2 rounded border">
-                    <p className="text-xs text-gray-500">Comorbidity Tier</p>
+                    <p className="text-xs text-slate-500">Comorbidity Tier</p>
                     <p className="font-medium capitalize">
                       {analysis.pdgm_optimization_summary.current_comorbidity_tier}
                       {analysis.pdgm_optimization_summary.potential_comorbidity_tier !== analysis.pdgm_optimization_summary.current_comorbidity_tier && (
@@ -233,11 +234,11 @@ Return JSON:
                     <span>{analysis.current_coding_assessment.primary_diagnosis_feedback}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Comorbidity Capture Rate:</span>
+                    <span className="text-slate-600">Comorbidity Capture Rate:</span>
                     <Badge variant="outline">{analysis.current_coding_assessment.comorbidity_capture_rate}</Badge>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">HCC Optimization Score:</span>
+                    <span className="text-slate-600">HCC Optimization Score:</span>
                     <Badge className={analysis.current_coding_assessment.hcc_optimization_score >= 70 ? "bg-green-500" : "bg-yellow-500"}>
                       {analysis.current_coding_assessment.hcc_optimization_score}%
                     </Badge>
@@ -249,7 +250,7 @@ Return JSON:
             {/* Coding Gaps */}
             {analysis.coding_gaps?.length > 0 && (
               <div className="space-y-2">
-                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                <h4 className="font-semibold text-slate-900 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   Identified Coding Gaps ({analysis.coding_gaps.length})
                 </h4>
@@ -259,7 +260,7 @@ Return JSON:
                       <div key={idx} className="border rounded-lg overflow-hidden">
                         <button
                           onClick={() => toggleGap(idx)}
-                          className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                          className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors"
                         >
                           <div className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${getPriorityColor(gap.priority)}`} />
@@ -271,9 +272,9 @@ Return JSON:
                             </span>
                           </div>
                           {expandedGaps.includes(idx) ? (
-                            <ChevronUp className="w-4 h-4 text-gray-500" />
+                            <ChevronUp className="w-4 h-4 text-slate-500" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                            <ChevronDown className="w-4 h-4 text-slate-500" />
                           )}
                         </button>
                         
@@ -287,7 +288,7 @@ Return JSON:
 
                             {/* Suggested Codes */}
                             <div>
-                              <p className="text-xs text-gray-500 font-medium mb-2">Suggested ICD-10 Codes:</p>
+                              <p className="text-xs text-slate-500 font-medium mb-2">Suggested ICD-10 Codes:</p>
                               <div className="space-y-2">
                                 {gap.suggested_codes?.map((code, cIdx) => (
                                   <div key={cIdx} className="flex items-start justify-between p-2 bg-green-50 rounded border border-green-200">
@@ -307,7 +308,7 @@ Return JSON:
                                           )}
                                         </Button>
                                       </div>
-                                      <p className="text-xs text-gray-700">{code.description}</p>
+                                      <p className="text-xs text-slate-700">{code.description}</p>
                                       <div className="flex gap-2 mt-1">
                                         <Badge variant="outline" className="text-xs py-0">
                                           PDGM: {code.pdgm_impact}

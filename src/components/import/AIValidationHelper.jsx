@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,22 +7,20 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sparkles,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   Loader2,
   Lightbulb,
   RefreshCw
 } from "lucide-react";
+import { toast } from 'sonner';
 
-export default function AIValidationHelper({ validationErrors, onApplySuggestions }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+export default function AIValidationHelper({ validationErrors, _onApplySuggestions }) {
+  const ai = useAICall();
   const [suggestions, setSuggestions] = useState(null);
 
   const generateSuggestions = async () => {
-    setIsGenerating(true);
     try {
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `Analyze these patient data validation errors and provide specific correction suggestions:
 
 ${JSON.stringify(validationErrors, null, 2)}
@@ -67,9 +65,8 @@ Return a JSON array with this structure:
       setSuggestions(response.suggestions || []);
     } catch (error) {
       console.error('Failed to generate AI suggestions:', error);
-      alert('Failed to generate suggestions. Please try again.');
+      toast.error('Failed to generate suggestions. Please try again.');
     }
-    setIsGenerating(false);
   };
 
   const getSeverityColor = (error) => {
@@ -83,25 +80,25 @@ Return a JSON array with this structure:
   };
 
   return (
-    <Card className="border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
+    <Card className="border-navy-300 bg-gradient-to-br from-navy-50 to-gold-50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-purple-600" />
+          <Sparkles className="w-5 h-5 text-navy-600" />
           AI Validation Assistant
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {!suggestions ? (
           <div className="text-center py-6">
-            <p className="text-gray-600 mb-4">
+            <p className="text-slate-600 mb-4">
               Get AI-powered suggestions to fix validation errors automatically
             </p>
             <Button
               onClick={generateSuggestions}
-              disabled={isGenerating}
-              className="bg-purple-600 hover:bg-purple-700"
+              disabled={ai.loading}
+              className="bg-navy-600 hover:bg-navy-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Analyzing Errors...
@@ -117,7 +114,7 @@ Return a JSON array with this structure:
         ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-700">
+              <p className="text-sm font-semibold text-slate-700">
                 AI Analysis Complete • {suggestions.length} Suggestion{suggestions.length !== 1 ? 's' : ''}
               </p>
               <Button
@@ -133,8 +130,8 @@ Return a JSON array with this structure:
             <ScrollArea className="h-96">
               <div className="space-y-3 pr-4">
                 {suggestions.map((suggestion, idx) => (
-                  <Alert key={idx} className="bg-white border-purple-200">
-                    <Lightbulb className="w-4 h-4 text-purple-600" />
+                  <Alert key={idx} className="bg-white border-navy-200">
+                    <Lightbulb className="w-4 h-4 text-navy-600" />
                     <AlertDescription>
                       <div className="space-y-2">
                         <div className="flex items-start justify-between">
@@ -148,8 +145,8 @@ Return a JSON array with this structure:
                           </div>
                         </div>
 
-                        <div className="pl-4 border-l-2 border-purple-200 space-y-1">
-                          <p className="text-xs text-gray-600">
+                        <div className="pl-4 border-l-2 border-navy-200 space-y-1">
+                          <p className="text-xs text-slate-600">
                             <strong>Issue:</strong> {suggestion.explanation}
                           </p>
                           <p className="text-xs text-green-700 bg-green-50 p-2 rounded">

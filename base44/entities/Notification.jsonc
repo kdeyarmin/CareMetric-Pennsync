@@ -1,0 +1,125 @@
+{
+  "name": "Notification",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of user who should receive this notification"
+    },
+    "title": {
+      "type": "string",
+      "description": "Notification title"
+    },
+    "message": {
+      "type": "string",
+      "description": "Notification message"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "report_ready",
+        "compliance_alert",
+        "critical_alert",
+        "patient_alert",
+        "task_assigned",
+        "task_due_soon",
+        "new_referral",
+        "referral_urgent",
+        "training_due",
+        "system_update",
+        "message_received",
+        "sms_failed",
+        "sms_urgent",
+        "sms_received",
+        "fax_delivered",
+        "fax_failed",
+        "voicemail",
+        "info",
+        "expiration_warning",
+        "credential_expiration",
+        "admin_expiration_summary",
+        "care_plan_proposal",
+        "signature_request"
+      ],
+      "description": "Type of notification"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "default": "medium",
+      "description": "Notification priority"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether notification has been read"
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When notification was read"
+    },
+    "action_url": {
+      "type": "string",
+      "description": "Optional URL to navigate to when clicked"
+    },
+    "action_label": {
+      "type": "string",
+      "description": "Label for action button"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata for the notification (patient_id, referral_id, task_id, etc.)"
+    },
+    "email_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether email notification was sent"
+    },
+    "push_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether push notification was sent"
+    },
+    "dismissed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether user dismissed this notification"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When notification should be auto-archived"
+    }
+  },
+  "required": [
+    "user_email",
+    "title",
+    "message",
+    "type"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

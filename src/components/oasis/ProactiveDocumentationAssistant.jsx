@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Sparkles,
   AlertTriangle,
@@ -30,22 +29,15 @@ export default function ProactiveDocumentationAssistant({
   autoAnalyze = true,
   onApplySuggestion
 }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [gaps, setGaps] = useState(null);
   const [expandedGap, setExpandedGap] = useState(null);
   const [editingNarrative, setEditingNarrative] = useState({});
   const [appliedSuggestions, setAppliedSuggestions] = useState(new Set());
 
-  useEffect(() => {
-    if (autoAnalyze && oasisData && clinicalNotes) {
-      analyzeDocumentation();
-    }
-  }, [oasisData?.id, autoAnalyze]);
-
-  const analyzeDocumentation = async () => {
+  const analyzeDocumentation = useCallback(async () => {
     if (!oasisData) return;
 
-    setIsAnalyzing(true);
     try {
       const prompt = `You are a Medicare documentation expert. Analyze OASIS data and clinical notes to identify documentation gaps that could impact reimbursement, quality scores, or compliance.
 
@@ -109,7 +101,8 @@ For EACH gap found, provide:
 - Priority level
 - Estimated revenue/quality impact`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -158,9 +151,16 @@ For EACH gap found, provide:
       setGaps(result);
     } catch (error) {
       console.error('Documentation analysis error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsAnalyzing(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [oasisData, clinicalNotes, patientData]);
+
+  useEffect(() => {
+    if (autoAnalyze && oasisData && clinicalNotes) {
+      analyzeDocumentation();
+    }
+  }, [oasisData, clinicalNotes, autoAnalyze, analyzeDocumentation]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -168,7 +168,7 @@ For EACH gap found, provide:
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'low': return 'bg-blue-100 text-blue-800 border-blue-300';
-      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+      default: return 'bg-slate-100 text-slate-800 border-slate-300';
     }
   };
 
@@ -217,16 +217,16 @@ For EACH gap found, provide:
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-pink-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-gold-50">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             AI Documentation Assistant
-            {isAnalyzing && <Loader2 className="w-4 h-4 animate-spin text-purple-500" />}
+            {ai.loading && <Loader2 className="w-4 h-4 animate-spin text-navy-500" />}
           </CardTitle>
-          {!gaps && !isAnalyzing && (
-            <Button onClick={analyzeDocumentation} className="bg-purple-600 hover:bg-purple-700">
+          {!gaps && !ai.loading && (
+            <Button onClick={analyzeDocumentation} className="bg-navy-600 hover:bg-navy-700">
               <Sparkles className="w-4 h-4 mr-2" />
               Analyze Documentation
             </Button>
@@ -235,11 +235,11 @@ For EACH gap found, provide:
       </CardHeader>
 
       <CardContent>
-        {isAnalyzing && (
+        {ai.loading && (
           <div className="text-center py-12">
-            <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-            <p className="text-purple-700 font-medium">AI analyzing documentation for gaps...</p>
-            <p className="text-sm text-gray-600 mt-2">Checking reimbursement, quality, and compliance areas</p>
+            <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+            <p className="text-navy-700 font-medium">AI analyzing documentation for gaps...</p>
+            <p className="text-sm text-slate-600 mt-2">Checking reimbursement, quality, and compliance areas</p>
           </div>
         )}
 
@@ -247,25 +247,25 @@ For EACH gap found, provide:
           <div className="space-y-4">
             {/* Summary Card */}
             <div className="grid grid-cols-3 gap-3">
-              <div className="bg-white p-3 rounded-lg border-2 border-purple-300 text-center">
-                <p className="text-xs text-gray-600 mb-1">Documentation Score</p>
+              <div className="bg-white p-3 rounded-lg border-2 border-navy-300 text-center">
+                <p className="text-xs text-slate-600 mb-1">Documentation Score</p>
                 <p className={`text-3xl font-bold ${getScoreColor(gaps.overall_documentation_score)}`}>
                   {gaps.overall_documentation_score}%
                 </p>
               </div>
               <div className="bg-white p-3 rounded-lg border-2 border-orange-300 text-center">
-                <p className="text-xs text-gray-600 mb-1">Gaps Found</p>
+                <p className="text-xs text-slate-600 mb-1">Gaps Found</p>
                 <p className="text-3xl font-bold text-orange-600">{gaps.total_gaps_found}</p>
               </div>
               <div className="bg-white p-3 rounded-lg border-2 border-green-300 text-center">
-                <p className="text-xs text-gray-600 mb-1">Applied</p>
+                <p className="text-xs text-slate-600 mb-1">Applied</p>
                 <p className="text-3xl font-bold text-green-600">{appliedSuggestions.size}</p>
               </div>
             </div>
 
             {/* Summary */}
-            <Alert className="bg-purple-100 border-purple-300">
-              <AlertDescription className="text-purple-900">{gaps.summary}</AlertDescription>
+            <Alert className="bg-navy-100 border-navy-300">
+              <AlertDescription className="text-navy-900">{gaps.summary}</AlertDescription>
             </Alert>
 
             {/* Quick Wins */}
@@ -279,7 +279,7 @@ For EACH gap found, provide:
                   {gaps.quick_wins.map((win, idx) => (
                     <div key={idx} className="bg-white p-3 rounded border border-green-200">
                       <p className="font-semibold text-sm text-green-900">{win.title}</p>
-                      <p className="text-sm text-gray-700 mt-1">{win.action}</p>
+                      <p className="text-sm text-slate-700 mt-1">{win.action}</p>
                       <Badge className="mt-2 bg-green-600 text-white text-xs">{win.impact}</Badge>
                     </div>
                   ))}
@@ -289,12 +289,12 @@ For EACH gap found, provide:
 
             {/* Documentation Gaps */}
             <div className="space-y-3">
-              <h3 className="font-semibold text-purple-900">Documentation Gaps & AI Suggestions</h3>
+              <h3 className="font-semibold text-navy-900">Documentation Gaps & AI Suggestions</h3>
               {gaps.gaps?.map((gap, idx) => (
                 <div
                   key={idx}
                   className={`bg-white rounded-lg border-2 ${
-                    appliedSuggestions.has(idx) ? 'border-green-400 bg-green-50' : 'border-purple-200'
+                    appliedSuggestions.has(idx) ? 'border-green-400 bg-green-50' : 'border-navy-200'
                   } overflow-hidden`}
                 >
                   <div className="p-4">
@@ -303,7 +303,7 @@ For EACH gap found, provide:
                         {getSeverityIcon(gap.severity)}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-semibold text-gray-900">{gap.gap_title}</h4>
+                            <h4 className="font-semibold text-slate-900">{gap.gap_title}</h4>
                             <Badge className={getSeverityColor(gap.severity)}>
                               {gap.severity}
                             </Badge>
@@ -314,10 +314,10 @@ For EACH gap found, provide:
                               </Badge>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <div className="flex items-center gap-2 text-xs text-slate-600">
                             <Badge variant="outline" className="text-xs">{gap.category}</Badge>
                             {gap.m_item_affected && (
-                              <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">
+                              <span className="font-mono bg-slate-100 px-2 py-0.5 rounded">
                                 {gap.m_item_affected}
                               </span>
                             )}
@@ -373,9 +373,9 @@ For EACH gap found, provide:
                     </div>
 
                     {/* Suggested Narrative */}
-                    <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-3 rounded-lg border-2 border-purple-300 mb-3">
+                    <div className="bg-gradient-to-r from-navy-50 to-indigo-50 p-3 rounded-lg border-2 border-navy-300 mb-3">
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-semibold text-purple-900 flex items-center gap-1">
+                        <p className="text-xs font-semibold text-navy-900 flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />
                           AI-Generated Narrative
                         </p>
@@ -406,20 +406,20 @@ For EACH gap found, provide:
                           className="text-sm mb-2 min-h-[100px]"
                         />
                       ) : (
-                        <p className="text-sm text-gray-800 italic bg-white p-3 rounded border">
+                        <p className="text-sm text-slate-800 italic bg-white p-3 rounded border">
                           "{gap.suggested_narrative}"
                         </p>
                       )}
 
                       <div className="flex items-center justify-between mt-2">
-                        <p className="text-xs text-purple-600">
+                        <p className="text-xs text-navy-600">
                           <strong>Add to:</strong> {gap.where_to_add}
                         </p>
                         <Button
                           onClick={() => handleApplySuggestion(gap, idx)}
                           disabled={appliedSuggestions.has(idx)}
                           size="sm"
-                          className="bg-purple-600 hover:bg-purple-700"
+                          className="bg-navy-600 hover:bg-navy-700"
                         >
                           {appliedSuggestions.has(idx) ? (
                             <><CheckCircle2 className="w-3 h-3 mr-2" /> Applied</>
@@ -470,9 +470,9 @@ For EACH gap found, provide:
                         )}
 
                         {gap.documentation_tips?.length > 0 && (
-                          <div className="bg-purple-50 p-2 rounded border border-purple-200">
-                            <p className="text-xs font-semibold text-purple-900 mb-1">Documentation Tips</p>
-                            <ul className="text-xs text-purple-800 space-y-1">
+                          <div className="bg-navy-50 p-2 rounded border border-navy-200">
+                            <p className="text-xs font-semibold text-navy-900 mb-1">Documentation Tips</p>
+                            <ul className="text-xs text-navy-800 space-y-1">
                               {gap.documentation_tips.map((tip, i) => (
                                 <li key={i}>✓ {tip}</li>
                               ))}
@@ -491,10 +491,10 @@ For EACH gap found, provide:
               onClick={analyzeDocumentation}
               variant="outline"
               size="sm"
-              disabled={isAnalyzing}
+              disabled={ai.loading}
               className="w-full"
             >
-              {isAnalyzing ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Re-analyzing...</>
               ) : (
                 'Re-analyze Documentation'

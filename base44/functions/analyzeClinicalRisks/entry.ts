@@ -1,21 +1,42 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+// Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
+// response_json_schema, because the provider rejects deeply-nested object
+// schemas that lack an explicit `required` array at every level.
+function parseLLMJson(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  const text = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end <= start) return null;
+    try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+  }
+}
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     const { patientId } = await req.json();
 
     if (!patientId) {
       return Response.json({ error: 'Patient ID required' }, { status: 400 });
     }
 
-    // Fetch comprehensive patient data
+    // Fetch via the RLS-scoped client (NOT asServiceRole) so the platform
+    // enforces that this caller may access this patient — prevents
+    // cross-patient IDOR via a guessed patientId.
     const [patient, visits, oasisRecords, carePlans, incidents] = await Promise.all([
-      base44.asServiceRole.entities.Patient.filter({ id: patientId }),
-      base44.asServiceRole.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
-      base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 3),
-      base44.asServiceRole.entities.CarePlan.filter({ patient_id: patientId }),
-      base44.asServiceRole.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 10)
+      base44.entities.Patient.filter({ id: patientId }),
+      base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
+      base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 3),
+      base44.entities.CarePlan.filter({ patient_id: patientId }),
+      base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 10)
     ]);
 
     if (!patient[0]) {
@@ -115,100 +136,32 @@ For EACH identified risk or concern, provide:
 - **Patient Education Topics**: What patient/family should understand
 - **Nurse Education Resources**: If nurse needs training in this area
 
-Return comprehensive JSON analysis:`;
+Return comprehensive JSON analysis.
 
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          overall_risk_score: { type: "number" },
-          risk_level: { type: "string" },
-          clinical_alerts: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                alert_type: { type: "string" },
-                severity: { type: "string" },
-                title: { type: "string" },
-                clinical_evidence: { type: "array", items: { type: "string" } },
-                recommended_interventions: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      intervention: { type: "string" },
-                      priority: { type: "number" },
-                      rationale: { type: "string" },
-                      expected_outcome: { type: "string" }
-                    }
-                  }
-                },
-                patient_education_topics: { type: "array", items: { type: "string" } },
-                nurse_education_resources: { type: "array", items: { type: "string" } },
-                monitoring_frequency: { type: "string" },
-                escalation_criteria: { type: "string" }
-              }
-            }
-          },
-          trend_analysis: {
-            type: "object",
-            properties: {
-              vital_signs_trend: { type: "string" },
-              functional_status_trend: { type: "string" },
-              care_plan_progress: { type: "string" },
-              incident_frequency: { type: "string" }
-            }
-          },
-          care_plan_deviations: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                care_plan_problem: { type: "string" },
-                deviation_description: { type: "string" },
-                corrective_action: { type: "string" }
-              }
-            }
-          },
-          medication_concerns: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                concern_type: { type: "string" },
-                medications_involved: { type: "array", items: { type: "string" } },
-                risk_description: { type: "string" },
-                recommendation: { type: "string" }
-              }
-            }
-          },
-          predictive_insights: {
-            type: "object",
-            properties: {
-              readmission_risk: { type: "string" },
-              fall_risk: { type: "string" },
-              infection_risk: { type: "string" },
-              deterioration_risk: { type: "string" }
-            }
-          }
-        }
-      }
-    });
+Return ONLY valid JSON, no prose or code fences, with this shape:
+{"overall_risk_score":0,"risk_level":"","clinical_alerts":[{"alert_type":"","severity":"","title":"","clinical_evidence":[""],"recommended_interventions":[{"intervention":"","priority":0,"rationale":"","expected_outcome":""}],"patient_education_topics":[""],"nurse_education_resources":[""],"monitoring_frequency":"","escalation_criteria":""}],"trend_analysis":{"vital_signs_trend":"","functional_status_trend":"","care_plan_progress":"","incident_frequency":""},"care_plan_deviations":[{"care_plan_problem":"","deviation_description":"","corrective_action":""}],"medication_concerns":[{"concern_type":"","medications_involved":[""],"risk_description":"","recommendation":""}],"predictive_insights":{"readmission_risk":"","fall_risk":"","infection_risk":"","deterioration_risk":""}}`;
+
+    const raw = await base44.integrations.Core.InvokeLLM({ model: "claude_opus_4_8", prompt });
+    const result = parseLLMJson(raw) || {};
 
     return Response.json({
       success: true,
       patient_id: patientId,
       analysis_date: new Date().toISOString(),
-      ...result
+      clinical_alerts: result?.clinical_alerts || [],
+      trend_analysis: result?.trend_analysis || {},
+      care_plan_deviations: result?.care_plan_deviations || [],
+      medication_concerns: result?.medication_concerns || [],
+      predictive_insights: result?.predictive_insights || {},
+      overall_risk_score: result?.overall_risk_score || 0,
+      risk_level: result?.risk_level || 'unknown'
     });
 
   } catch (error) {
     console.error('Error analyzing clinical risks:', error);
-    return Response.json({ 
+    return Response.json({
       success: false,
-      error: error.message 
+      error: error.message
     }, { status: 500 });
   }
 });

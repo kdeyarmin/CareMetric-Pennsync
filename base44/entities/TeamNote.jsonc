@@ -1,0 +1,36 @@
+{
+  "name": "TeamNote",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to the Patient the note pertains to"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Reference to the Visit the note was created during (optional)"
+    },
+    "note": {
+      "type": "string",
+      "description": "Team collaboration note (continuity tips, safety alerts, patient preferences)"
+    },
+    "flagged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the note is flagged for special attention by the care team"
+    }
+  },
+  "required": [
+    "patient_id",
+    "note"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

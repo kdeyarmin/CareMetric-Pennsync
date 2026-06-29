@@ -1,5 +1,5 @@
 {
-  "name": "CareMetric AI",
+  "name": "PENNSync",
   "site": {
     "installCommand": "npm install",
     "buildCommand": "npm run build",

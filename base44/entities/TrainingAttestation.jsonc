@@ -1,0 +1,79 @@
+{
+  "name": "TrainingAttestation",
+  "type": "object",
+  "properties": {
+    "assignment_id": {
+      "type": "string",
+      "description": "Reference to TrainingAssignment"
+    },
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User email"
+    },
+    "statement": {
+      "type": "string",
+      "description": "Attestation statement presented to the learner"
+    },
+    "acknowledged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether learner acknowledged the statement"
+    },
+    "signed_name": {
+      "type": "string",
+      "description": "Typed signature name"
+    },
+    "attestation_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When attestation was completed"
+    },
+    "device_metadata": {
+      "type": "object",
+      "description": "Device and browser metadata"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address if available"
+    }
+  },
+  "required": [
+    "assignment_id",
+    "course_id",
+    "user_id",
+    "statement",
+    "acknowledged",
+    "signed_name",
+    "attestation_timestamp"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

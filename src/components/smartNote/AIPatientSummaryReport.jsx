@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,21 +11,17 @@ import {
   Copy,
   CheckCircle2,
   AlertTriangle,
-  Heart,
   Activity,
   Target,
   Clock,
   TrendingUp,
   TrendingDown,
   Minus,
-  User,
-  Pill,
   Calendar,
   ChevronDown,
   ChevronUp,
   Sparkles
 } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
 
 export default function AIPatientSummaryReport({
   patient,
@@ -34,14 +31,13 @@ export default function AIPatientSummaryReport({
   compact = false
 }) {
   const [summary, setSummary] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(!compact);
 
   const generateSummary = async () => {
     if (!patient) return;
 
-    setIsGenerating(true);
     try {
       const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
       const recentVisits = previousVisits.slice(0, 5);
@@ -55,7 +51,8 @@ export default function AIPatientSummaryReport({
         notes: v.nurse_notes?.substring(0, 300)
       }));
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Generate a concise clinical summary report for this patient. This will be used by nurses for quick context before/during visits.
 
 PATIENT INFORMATION:
@@ -129,8 +126,8 @@ Return JSON:
       setIsExpanded(true);
     } catch (error) {
       console.error("Error generating summary:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = () => {
@@ -153,7 +150,7 @@ Return JSON:
       case 'improving': return 'bg-blue-100 text-blue-800 border-blue-300';
       case 'declining': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'critical': return 'bg-red-100 text-red-800 border-red-300';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -171,7 +168,7 @@ Return JSON:
     switch (trend) {
       case 'improving': return <TrendingUp className="w-3 h-3 text-green-600" />;
       case 'worsening': return <TrendingDown className="w-3 h-3 text-red-600" />;
-      default: return <Minus className="w-3 h-3 text-gray-500" />;
+      default: return <Minus className="w-3 h-3 text-slate-500" />;
     }
   };
 
@@ -180,9 +177,9 @@ Return JSON:
   }
 
   return (
-    <Card className={`border-2 ${summary ? 'border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50' : 'border-gray-200'}`}>
+    <Card className={`border-2 ${summary ? 'border-indigo-300 bg-gradient-to-br from-indigo-50 to-navy-50' : 'border-slate-200'}`}>
       <CardHeader 
-        className="py-2 cursor-pointer hover:bg-gray-50 transition-colors"
+        className="py-2 cursor-pointer hover:bg-slate-50 transition-colors"
         onClick={() => summary && setIsExpanded(!isExpanded)}
       >
         <CardTitle className="text-sm flex items-center justify-between">
@@ -206,11 +203,11 @@ Return JSON:
         {!summary ? (
           <Button
             onClick={generateSummary}
-            disabled={isGenerating}
+            disabled={ai.loading}
             className="w-full bg-indigo-600 hover:bg-indigo-700"
             size="sm"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Summary...</>
             ) : (
               <><FileText className="w-4 h-4 mr-2" /> Generate Patient Summary</>
@@ -220,25 +217,25 @@ Return JSON:
           <div className="space-y-3">
             {/* One-liner Overview */}
             <div className="bg-white p-2 rounded-lg border">
-              <p className="text-sm font-medium text-gray-900">{summary.one_liner}</p>
+              <p className="text-sm font-medium text-slate-900">{summary.one_liner}</p>
             </div>
 
             {/* Quick Stats */}
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div className="bg-white p-2 rounded border text-center">
-                <Calendar className="w-3 h-3 mx-auto mb-1 text-gray-500" />
+                <Calendar className="w-3 h-3 mx-auto mb-1 text-slate-500" />
                 <span className="font-bold">{summary.total_visits || previousVisits.length}</span>
-                <p className="text-gray-500">Visits</p>
+                <p className="text-slate-500">Visits</p>
               </div>
               <div className="bg-white p-2 rounded border text-center">
-                <Clock className="w-3 h-3 mx-auto mb-1 text-gray-500" />
+                <Clock className="w-3 h-3 mx-auto mb-1 text-slate-500" />
                 <span className="font-bold">{summary.days_on_service || '—'}</span>
-                <p className="text-gray-500">Days</p>
+                <p className="text-slate-500">Days</p>
               </div>
               <div className="bg-white p-2 rounded border text-center">
-                <Target className="w-3 h-3 mx-auto mb-1 text-gray-500" />
+                <Target className="w-3 h-3 mx-auto mb-1 text-slate-500" />
                 <span className="font-bold">{carePlans.filter(cp => cp.status === 'active').length}</span>
-                <p className="text-gray-500">Goals</p>
+                <p className="text-slate-500">Goals</p>
               </div>
             </div>
 
@@ -266,7 +263,7 @@ Return JSON:
             {/* Vital Trends */}
             {summary.vital_trends?.length > 0 && (
               <div className="bg-white p-2 rounded-lg border">
-                <p className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                <p className="text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
                   <Activity className="w-3 h-3" /> Vital Trends
                 </p>
                 <div className="space-y-1">
@@ -274,7 +271,7 @@ Return JSON:
                     <div key={idx} className="flex items-center gap-2 text-xs">
                       {getTrendIcon(v.trend)}
                       <span className="font-medium">{v.vital}:</span>
-                      <span className="text-gray-600">{v.detail}</span>
+                      <span className="text-slate-600">{v.detail}</span>
                     </div>
                   ))}
                 </div>
@@ -284,8 +281,8 @@ Return JSON:
             {/* Care Priorities */}
             {summary.care_priorities?.length > 0 && (
               <div className="bg-white p-2 rounded-lg border">
-                <p className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                  <Target className="w-3 h-3 text-purple-600" /> Care Priorities
+                <p className="text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                  <Target className="w-3 h-3 text-navy-600" /> Care Priorities
                 </p>
                 <div className="flex flex-wrap gap-1">
                   {summary.care_priorities.map((p, idx) => (
@@ -326,14 +323,14 @@ Return JSON:
               variant="ghost"
               className="w-full text-xs"
               onClick={generateSummary}
-              disabled={isGenerating}
+              disabled={ai.loading}
             >
-              {isGenerating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
+              {ai.loading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
               Refresh Summary
             </Button>
           </div>
         ) : (
-          <div className="text-xs text-gray-600">
+          <div className="text-xs text-slate-600">
             <p className="truncate">{summary.one_liner}</p>
             <p className="text-indigo-600 mt-1">Click to expand</p>
           </div>

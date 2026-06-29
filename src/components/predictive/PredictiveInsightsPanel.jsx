@@ -1,6 +1,8 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -21,13 +23,12 @@ export default function PredictiveInsightsPanel({
   oasisData = [], 
   visits = [],
   alerts = [],
-  selectedPatientId = ''
+  _selectedPatientId = ''
 }) {
   const [insights, setInsights] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
 
   const generateInsights = async () => {
-    setIsGenerating(true);
 
     // Build population summary
     const populationSummary = {
@@ -54,7 +55,8 @@ export default function PredictiveInsightsPanel({
     });
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Analyze this home health agency's patient population and provide strategic predictive insights.
 
 POPULATION SUMMARY:
@@ -146,38 +148,38 @@ Provide comprehensive predictive insights including:
       setInsights(result);
     } catch (error) {
       console.error("Insights generation error:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsGenerating(false);
   };
 
   const getDirectionIcon = (direction) => {
     if (direction === 'increasing') return <TrendingUp className="w-4 h-4 text-orange-600" />;
     if (direction === 'decreasing') return <TrendingUp className="w-4 h-4 text-green-600 rotate-180" />;
-    return <span className="w-4 h-4 text-gray-500">→</span>;
+    return <span className="w-4 h-4 text-slate-500">→</span>;
   };
 
   return (
     <div className="space-y-6">
       {/* Generate Button */}
-      <Card className="bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+      <Card className="bg-gradient-to-r from-navy-50 to-indigo-50 border-navy-200">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Brain className="w-8 h-8 text-purple-600" />
+              <Brain className="w-8 h-8 text-navy-600" />
               <div>
-                <h3 className="font-semibold text-purple-900">AI Predictive Insights Engine</h3>
-                <p className="text-sm text-purple-700">
+                <h3 className="font-semibold text-navy-900">AI Predictive Insights Engine</h3>
+                <p className="text-sm text-navy-700">
                   Analyze {patients.length} patients, {oasisData.length} OASIS records, {visits.length} visits
                 </p>
               </div>
             </div>
             <Button
               onClick={generateInsights}
-              disabled={isGenerating}
-              className="bg-purple-600 hover:bg-purple-700"
+              disabled={ai.loading}
+              className="bg-navy-600 hover:bg-navy-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Insights...</>
               ) : insights ? (
                 <><RefreshCw className="w-4 h-4 mr-2" /> Regenerate Insights</>
@@ -210,12 +212,12 @@ Provide comprehensive predictive insights including:
               </CardHeader>
               <CardContent className="space-y-3">
                 {insights.population_trends?.map((trend, idx) => (
-                  <div key={idx} className="p-3 bg-gray-50 rounded-lg border">
+                  <div key={idx} className="p-3 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-2 mb-1">
                       {getDirectionIcon(trend.direction)}
                       <span className="font-medium text-sm">{trend.trend}</span>
                     </div>
-                    <p className="text-xs text-gray-600 mb-1">{trend.impact}</p>
+                    <p className="text-xs text-slate-600 mb-1">{trend.impact}</p>
                     <p className="text-xs text-blue-700 bg-blue-50 p-1 rounded">
                       💡 {trend.recommendation}
                     </p>
@@ -241,7 +243,7 @@ Provide comprehensive predictive insights including:
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700">Key Risk Drivers:</p>
+                  <p className="text-xs font-medium text-slate-700">Key Risk Drivers:</p>
                   {insights.risk_stratification?.key_risk_drivers?.map((driver, idx) => (
                     <Badge key={idx} variant="outline" className="mr-1 mb-1 text-xs">
                       {driver}
@@ -250,9 +252,9 @@ Provide comprehensive predictive insights including:
                 </div>
 
                 <div className="mt-3 space-y-1">
-                  <p className="text-xs font-medium text-gray-700">Intervention Priorities:</p>
+                  <p className="text-xs font-medium text-slate-700">Intervention Priorities:</p>
                   {insights.risk_stratification?.intervention_priorities?.slice(0, 3).map((priority, idx) => (
-                    <p key={idx} className="text-xs text-gray-600">• {priority}</p>
+                    <p key={idx} className="text-xs text-slate-600">• {priority}</p>
                   ))}
                 </div>
               </CardContent>
@@ -271,7 +273,7 @@ Provide comprehensive predictive insights including:
                   <div key={idx} className="p-2 bg-yellow-50 rounded border border-yellow-200">
                     <p className="text-sm font-medium text-yellow-800">{opp.opportunity}</p>
                     <p className="text-xs text-yellow-700">Impact: {opp.potential_impact}</p>
-                    <p className="text-xs text-gray-600">{opp.implementation}</p>
+                    <p className="text-xs text-slate-600">{opp.implementation}</p>
                   </div>
                 ))}
               </CardContent>
@@ -290,7 +292,7 @@ Provide comprehensive predictive insights including:
                   <div key={idx} className="p-2 bg-green-50 rounded border border-green-200">
                     <p className="text-sm font-medium text-green-800">{fin.insight}</p>
                     <p className="text-xs text-green-700">Est. Impact: {fin.estimated_impact}</p>
-                    <p className="text-xs text-gray-600">{fin.action}</p>
+                    <p className="text-xs text-slate-600">{fin.action}</p>
                   </div>
                 ))}
               </CardContent>
@@ -301,16 +303,16 @@ Provide comprehensive predictive insights including:
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-600" />
+                <Sparkles className="w-4 h-4 text-navy-600" />
                 30-Day Predictions
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {insights.predictions_30day?.map((prediction, idx) => (
-                  <div key={idx} className="flex items-start gap-2 p-2 bg-purple-50 rounded">
-                    <CheckCircle2 className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-purple-800">{prediction}</p>
+                  <div key={idx} className="flex items-start gap-2 p-2 bg-navy-50 rounded">
+                    <CheckCircle2 className="w-4 h-4 text-navy-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-navy-800">{prediction}</p>
                   </div>
                 ))}
               </div>
@@ -326,35 +328,33 @@ Provide comprehensive predictive insights including:
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="text-left p-2">Area</th>
-                      <th className="text-left p-2">Current State</th>
-                      <th className="text-left p-2">Recommended Action</th>
-                      <th className="text-left p-2">Expected Outcome</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {insights.resource_recommendations?.map((rec, idx) => (
-                      <tr key={idx}>
-                        <td className="p-2 font-medium">{rec.area}</td>
-                        <td className="p-2 text-gray-600">{rec.current_state}</td>
-                        <td className="p-2 text-blue-700">{rec.recommended_action}</td>
-                        <td className="p-2 text-green-700">{rec.expected_outcome}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Area</TableHead>
+                    <TableHead>Current State</TableHead>
+                    <TableHead>Recommended Action</TableHead>
+                    <TableHead>Expected Outcome</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {insights.resource_recommendations?.map((rec, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">{rec.area}</TableCell>
+                      <TableCell className="text-slate-600">{rec.current_state}</TableCell>
+                      <TableCell className="text-navy-700">{rec.recommended_action}</TableCell>
+                      <TableCell className="text-emerald-700">{rec.expected_outcome}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </>
       )}
 
-      {!insights && !isGenerating && (
-        <div className="text-center py-12 text-gray-500">
+      {!insights && !ai.loading && (
+        <div className="text-center py-12 text-slate-500">
           <Brain className="w-16 h-16 mx-auto mb-4 opacity-20" />
           <p>Click "Generate Insights" to run AI analysis on your patient population</p>
         </div>

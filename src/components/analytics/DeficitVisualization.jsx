@@ -1,10 +1,9 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { AlertTriangle, TrendingDown, Target } from "lucide-react";
 
-const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'];
+const _COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3557b0', '#8b5cf6'];
 
 export default function DeficitVisualization({ analysis, compact = false }) {
   if (!analysis || analysis.totalSuggestions === 0) {
@@ -12,7 +11,7 @@ export default function DeficitVisualization({ analysis, compact = false }) {
       <Card>
         <CardContent className="p-8 text-center">
           <Target className="w-12 h-12 text-green-500 mx-auto mb-2" />
-          <p className="text-gray-600">No deficits identified - excellent performance!</p>
+          <p className="text-slate-600">No deficits identified - excellent performance!</p>
         </CardContent>
       </Card>
     );
@@ -24,7 +23,7 @@ export default function DeficitVisualization({ analysis, compact = false }) {
     .sort((a, b) => b.value - a.value);
 
   const deficitData = analysis.deficits.slice(0, 5).map(d => ({
-    name: d.name.length > 15 ? d.name.substring(0, 15) + '...' : d.name,
+    name: (d.name || '').length > 15 ? (d.name || '').substring(0, 15) + '...' : (d.name || ''),
     count: d.count,
     percentage: d.percentage,
     severity: d.severity
@@ -92,7 +91,7 @@ export default function DeficitVisualization({ analysis, compact = false }) {
                 labelLine={false}
                 label={({ name, value }) => `${name}: ${value}`}
                 outerRadius={80}
-                fill="#8884d8"
+                fill="#264491"
                 dataKey="value"
               >
                 {severityData.map((entry, index) => (
@@ -117,7 +116,7 @@ export default function DeficitVisualization({ analysis, compact = false }) {
               <XAxis type="number" fontSize={12} />
               <YAxis dataKey="name" type="category" width={100} fontSize={12} />
               <Tooltip />
-              <Bar dataKey="value" fill="#3b82f6" radius={[0, 8, 8, 0]} />
+              <Bar dataKey="value" fill="#3557b0" radius={[0, 8, 8, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

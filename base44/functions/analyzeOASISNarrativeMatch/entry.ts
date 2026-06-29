@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
 
     // Step 2: AI Analysis to match narratives with questions
     const matchAnalysis = await base44.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
       prompt: `You are an expert OASIS auditor. Analyze this OASIS document for consistency between coded responses and narrative documentation.
 
 FULL DOCUMENT CONTENT:
@@ -182,7 +183,6 @@ Return JSON with detailed findings:`,
     console.error('OASIS narrative analysis error:', error);
     return Response.json({ 
       error: error.message,
-      stack: error.stack 
     }, { status: 500 });
   }
 });

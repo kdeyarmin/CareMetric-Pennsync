@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { BookOpen, Plus, ExternalLink, Sparkles } from "lucide-react";
+import { BookOpen, Plus, ExternalLink } from "lucide-react";
 import { retrieveRelevantGuidelines } from "../smartNote/GuidelineContextRetriever";
 
 export default function InlineGuidelineSuggester({
@@ -22,13 +21,7 @@ export default function InlineGuidelineSuggester({
   const [relevantGuidelines, setRelevantGuidelines] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (selectedText && selectedText.length > 10) {
-      loadContextualGuidelines();
-    }
-  }, [selectedText]);
-
-  const loadContextualGuidelines = async () => {
+  const loadContextualGuidelines = useCallback(async () => {
     setIsLoading(true);
     try {
       const guidelines = await retrieveRelevantGuidelines({
@@ -45,7 +38,13 @@ export default function InlineGuidelineSuggester({
       console.error('Error loading guidelines:', error);
     }
     setIsLoading(false);
-  };
+  }, [diagnosis, visitType, selectedText]);
+
+  useEffect(() => {
+    if (selectedText && selectedText.length > 10) {
+      loadContextualGuidelines();
+    }
+  }, [selectedText, loadContextualGuidelines]);
 
   if (!selectedText || selectedText.length < 10) return null;
 
@@ -67,21 +66,21 @@ export default function InlineGuidelineSuggester({
       </PopoverTrigger>
       <PopoverContent className="w-80 p-2">
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-700 mb-2">
+          <p className="text-xs font-semibold text-slate-700 mb-2">
             Relevant Guidelines:
           </p>
           {relevantGuidelines.map((guideline, idx) => (
             <Card key={idx} className="border-blue-200">
               <CardContent className="p-2">
                 <div className="flex items-start justify-between gap-2 mb-1">
-                  <p className="text-xs font-medium text-gray-900 flex-1">
+                  <p className="text-xs font-medium text-slate-900 flex-1">
                     {guideline.title}
                   </p>
                   <Badge variant="outline" className="text-xs flex-shrink-0">
                     {guideline.regulatory_citation}
                   </Badge>
                 </div>
-                <p className="text-xs text-gray-600 mb-2 line-clamp-2">
+                <p className="text-xs text-slate-600 mb-2 line-clamp-2">
                   {guideline.summary}
                 </p>
                 <div className="flex gap-1">
@@ -110,7 +109,7 @@ export default function InlineGuidelineSuggester({
             </Card>
           ))}
           {relevantGuidelines.length === 0 && !isLoading && (
-            <p className="text-xs text-gray-500 text-center py-2">
+            <p className="text-xs text-slate-500 text-center py-2">
               No specific guidelines found for selected text
             </p>
           )}

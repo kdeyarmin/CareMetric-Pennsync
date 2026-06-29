@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,20 +21,21 @@ import {
   Calendar,
   ArrowRight
 } from "lucide-react";
+import { toast } from 'sonner';
 
 export default function NextStepsSummaryGenerator({ patient, educationMaterial, diagnosis }) {
   const [sessionNotes, setSessionNotes] = useState("");
   const [medicationsDiscussed, setMedicationsDiscussed] = useState("");
   const [followUpDays, setFollowUpDays] = useState("7");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [summary, setSummary] = useState(null);
   const [copied, setCopied] = useState(false);
   const [selectedItems, setSelectedItems] = useState({});
 
   const generateSummary = async () => {
-    setIsGenerating(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt: `You are creating a personalized "Next Steps" and "What to Watch For" summary for a patient after an education session. This should be simple, actionable, and easy for patients/caregivers to follow at home.
 
 PATIENT: ${patient ? `${patient.first_name} ${patient.last_name}` : 'Unknown'}
@@ -140,9 +141,8 @@ Return JSON:
       setSelectedItems(initialSelected);
     } catch (error) {
       console.error("Error generating summary:", error);
-      alert("Error generating summary. Please try again.");
+      toast.error("Error generating summary. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = () => {
@@ -155,12 +155,27 @@ Return JSON:
 
   const handlePrint = () => {
     if (!summary) return;
+
+    // Respect the selection checkboxes — an unchecked step/daily item is excluded
+    // from the printed patient handout (previously every item was always printed).
+    const selectedSteps = (summary.immediate_next_steps || []).filter((_, idx) => selectedItems[`step_${idx}`]);
+    const selectedDaily = (summary.daily_checklist || []).filter((_, idx) => selectedItems[`daily_${idx}`]);
+
+    const escapeHtml = (str) => {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
     
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
       <html>
         <head>
-          <title>Next Steps - ${summary.patient_name}</title>
+          <title>Next Steps - ${escapeHtml(summary.patient_name)}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; font-size: 14px; }
             h1 { color: #1e40af; border-bottom: 3px solid #1e40af; padding-bottom: 10px; font-size: 24px; }
@@ -177,46 +192,46 @@ Return JSON:
         </head>
         <body>
           <h1>📋 Your Next Steps</h1>
-          <p><strong>Patient:</strong> ${summary.patient_name} | <strong>Date:</strong> ${summary.summary_date} | <strong>Focus:</strong> ${summary.condition_focus}</p>
+          <p><strong>Patient:</strong> ${escapeHtml(summary.patient_name)} | <strong>Date:</strong> ${escapeHtml(summary.summary_date)} | <strong>Focus:</strong> ${escapeHtml(summary.condition_focus)}</p>
           
           <div class="section">
             <h2>✅ Do This First</h2>
             <ul class="checklist">
-              ${summary.immediate_next_steps?.map(step => `<li><strong>${step.action}</strong> - ${step.when}<br><small>${step.how}</small></li>`).join('') || ''}
+              ${selectedSteps.map(step => `<li><strong>${escapeHtml(step.action)}</strong> - ${escapeHtml(step.when)}<br><small>${escapeHtml(step.how)}</small></li>`).join('') || ''}
             </ul>
           </div>
           
           <div class="section">
             <h2>📅 Daily Checklist</h2>
             <ul class="checklist">
-              ${summary.daily_checklist?.map(item => `<li><strong>${item.item}</strong> (${item.time_of_day})<br><small>${item.details}</small></li>`).join('') || ''}
+              ${selectedDaily.map(item => `<li><strong>${escapeHtml(item.item)}</strong> (${escapeHtml(item.time_of_day)})<br><small>${escapeHtml(item.details)}</small></li>`).join('') || ''}
             </ul>
           </div>
           
           <div class="warning">
             <h2>⚠️ Watch For These Signs</h2>
             <ul>
-              ${summary.warning_signs_to_watch?.map(sign => `<li><strong>${sign.sign}</strong> → ${sign.what_to_do}</li>`).join('') || ''}
+              ${summary.warning_signs_to_watch?.map(sign => `<li><strong>${escapeHtml(sign.sign)}</strong> → ${escapeHtml(sign.what_to_do)}</li>`).join('') || ''}
             </ul>
           </div>
           
           <div class="section">
             <h2>📞 Call Your Nurse If:</h2>
-            <ul>${summary.call_nurse_if?.map(item => `<li>${item}</li>`).join('') || ''}</ul>
+            <ul>${summary.call_nurse_if?.map(item => `<li>${escapeHtml(item)}</li>`).join('') || ''}</ul>
           </div>
           
           <div class="emergency">
             <h2>🚨 Call 911 If:</h2>
-            <ul>${summary.call_911_if?.map(item => `<li><strong>${item}</strong></li>`).join('') || ''}</ul>
+            <ul>${summary.call_911_if?.map(item => `<li><strong>${escapeHtml(item)}</strong></li>`).join('') || ''}</ul>
           </div>
           
           <div class="section">
             <h2>💊 Medication Reminders</h2>
-            <ul>${summary.medication_reminders?.map(med => `<li><strong>${med.medication}:</strong> ${med.reminder}<br><small>Tip: ${med.tip}</small></li>`).join('') || ''}</ul>
+            <ul>${summary.medication_reminders?.map(med => `<li><strong>${escapeHtml(med.medication)}:</strong> ${escapeHtml(med.reminder)}<br><small>Tip: ${escapeHtml(med.tip)}</small></li>`).join('') || ''}</ul>
           </div>
           
           <div class="encouragement">
-            <p>💚 ${summary.encouragement_message}</p>
+            <p>💚 ${escapeHtml(summary.encouragement_message)}</p>
           </div>
         </body>
       </html>
@@ -230,7 +245,7 @@ Return JSON:
       case 'urgent': return 'bg-red-100 text-red-800 border-red-300';
       case 'concerning': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'monitor': return 'bg-blue-100 text-blue-800 border-blue-300';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -282,10 +297,10 @@ Return JSON:
 
             <Button
               onClick={generateSummary}
-              disabled={isGenerating}
+              disabled={ai.loading}
               className="w-full bg-green-600 hover:bg-green-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Summary...</>
               ) : (
                 <><ListChecks className="w-4 h-4 mr-2" /> Generate Patient Summary</>
@@ -298,7 +313,7 @@ Return JSON:
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-lg">{summary.patient_name}'s Next Steps</h3>
-                <p className="text-sm text-gray-600">{summary.condition_focus} | {summary.summary_date}</p>
+                <p className="text-sm text-slate-600">{summary.condition_focus} | {summary.summary_date}</p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={handleCopy}>
@@ -324,7 +339,7 @@ Return JSON:
                     />
                     <div className="flex-1">
                       <p className="font-medium text-sm">{step.action}</p>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-slate-600">
                         <Clock className="w-3 h-3 inline mr-1" />{step.when} — {step.how}
                       </p>
                     </div>
@@ -348,7 +363,7 @@ Return JSON:
                     <div className="flex-1">
                       <p className="font-medium text-sm">{item.item}</p>
                       <Badge variant="outline" className="text-xs">{item.time_of_day}</Badge>
-                      <p className="text-xs text-gray-600 mt-1">{item.details}</p>
+                      <p className="text-xs text-slate-600 mt-1">{item.details}</p>
                     </div>
                   </div>
                 ))}
@@ -369,7 +384,7 @@ Return JSON:
                         <span className="font-medium text-sm">{sign.sign}</span>
                         <Badge className={getSeverityColor(sign.severity)}>{sign.severity}</Badge>
                       </div>
-                      <p className="text-xs text-gray-600">→ {sign.what_to_do}</p>
+                      <p className="text-xs text-slate-600">→ {sign.what_to_do}</p>
                     </div>
                   </div>
                 ))}
@@ -401,16 +416,16 @@ Return JSON:
             </div>
 
             {/* Medication Reminders */}
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-              <h4 className="font-semibold text-purple-900 mb-3 flex items-center gap-2">
+            <div className="bg-navy-50 p-4 rounded-lg border border-navy-200">
+              <h4 className="font-semibold text-navy-900 mb-3 flex items-center gap-2">
                 <Pill className="w-4 h-4" /> Medication Reminders
               </h4>
               <div className="space-y-2">
                 {summary.medication_reminders?.map((med, idx) => (
                   <div key={idx} className="bg-white p-2 rounded border">
                     <p className="font-medium text-sm">{med.medication}</p>
-                    <p className="text-xs text-gray-700">{med.reminder}</p>
-                    <p className="text-xs text-purple-600 mt-1">💡 {med.tip}</p>
+                    <p className="text-xs text-slate-700">{med.reminder}</p>
+                    <p className="text-xs text-navy-600 mt-1">💡 {med.tip}</p>
                   </div>
                 ))}
               </div>

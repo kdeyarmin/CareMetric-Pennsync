@@ -1,25 +1,16 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import {
   AlertTriangle,
-  Clock,
   FileText,
   Shield,
   TrendingUp,
   Calendar,
-  User,
-  ChevronRight,
   Bell,
   CheckCircle2,
-  XCircle,
-  RefreshCw
+  XCircle
 } from "lucide-react";
 import { format, differenceInDays, addDays } from "date-fns";
 
@@ -75,7 +66,7 @@ export default function ComplianceAlertAggregator() {
             title: 'Overdue Visit Documentation',
             message: `Visit for ${patient?.first_name || 'Patient'} ${patient?.last_name || ''} on ${format(visitDate, 'MMM d')} needs documentation`,
             daysOverdue: daysSince,
-            link: `${createPageUrl("DocumentVisit")}?visitId=${visit.id}`,
+            link: `${createPageUrl("ClinicalDocumentation")}?visitId=${visit.id}`,
             linkText: 'Document Now',
             category: 'Documentation'
           });
@@ -153,7 +144,7 @@ export default function ComplianceAlertAggregator() {
         id: `incident-${incident.id}`,
         type: 'incident',
         severity: incident.severity === 'high' ? 'critical' : 'warning',
-        title: `Unresolved ${incident.incident_type.replace(/_/g, ' ')} Incident`,
+        title: `Unresolved ${(incident.incident_type || 'incident').replace(/_/g, ' ')} Incident`,
         message: `${patient?.first_name || 'Patient'} ${patient?.last_name || ''} - reported ${daysSince} days ago`,
         daysAgo: daysSince,
         link: `${createPageUrl("PatientDetails")}?patientId=${incident.patient_id}`,
@@ -177,7 +168,7 @@ export default function ComplianceAlertAggregator() {
         title: 'Security Events Detected',
         message: `${recentSecurityEvents.length} security event(s) in the last 7 days require review`,
         count: recentSecurityEvents.length,
-        link: createPageUrl("AdminDashboard"),
+        link: createPageUrl("AdminOperations"),
         linkText: 'View Logs',
         category: 'Security'
       });
@@ -197,7 +188,7 @@ export default function ComplianceAlertAggregator() {
         title: 'Incomplete Visit Documentation',
         message: `${incompleteVisits.length} completed visit(s) have minimal documentation`,
         count: incompleteVisits.length,
-        link: createPageUrl("QualityDashboard"),
+        link: createPageUrl("ComplianceCenter"),
         linkText: 'Review Quality',
         category: 'Quality Measures'
       });
@@ -231,7 +222,7 @@ export default function ComplianceAlertAggregator() {
       case 'critical': return 'bg-red-50 border-red-300';
       case 'warning': return 'bg-orange-50 border-orange-300';
       case 'info': return 'bg-blue-50 border-blue-300';
-      default: return 'bg-gray-50 border-gray-300';
+      default: return 'bg-slate-50 border-slate-300';
     }
   };
 

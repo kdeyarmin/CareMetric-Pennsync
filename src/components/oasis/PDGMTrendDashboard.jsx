@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +29,13 @@ import {
   Legend,
   ResponsiveContainer
 } from "recharts";
-import { TrendingUp, Filter, Download, Calendar, DollarSign, Users, Activity, Loader2, AlertTriangle, Play, RotateCcw } from "lucide-react";
+import { TrendingUp, Filter, Download, DollarSign, Activity, Loader2, AlertTriangle, Play } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toCsvRows } from "@/components/admin/csvExport";
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+const COLORS = ['#3557b0', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0d9488', '#06b6d4', '#84cc16'];
 
 export default function PDGMTrendDashboard() {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -239,7 +241,8 @@ export default function PDGMTrendDashboard() {
       const last3 = chartData.paymentTrend.slice(-3);
       const avg = Math.round(last3.reduce((s, d) => s + d.avgPayment, 0) / 3);
       
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt: `Last 3 months avg payment: $${avg}. Predict next 3 months.`,
         response_json_schema: {
           type: "object",
@@ -277,7 +280,8 @@ export default function PDGMTrendDashboard() {
       const topGroup = chartData.groupDist[0]?.name || 'N/A';
       const topFunc = chartData.funcDist[0]?.name || 'N/A';
       
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt: `Top PDGM drivers for $${stats.avgPayment} avg. Top group: ${topGroup}. Top func: ${topFunc}. List 3 key drivers.`,
         response_json_schema: {
           type: "object",
@@ -322,7 +326,8 @@ export default function PDGMTrendDashboard() {
       const complianceData = chartData.complianceTrend.slice(-6);
       const topGroups = chartData.groupDist.slice(0, 3);
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt: `Analyze PDGM trends and forecast next 6 months.
 
 HISTORICAL DATA (Last 6 months):
@@ -420,7 +425,8 @@ Provide:
         estimated_payment: u.estimated_payment
       }));
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt: `Analyze patient assessments to identify at-risk cases requiring proactive intervention.
 
 RECENT ASSESSMENTS:
@@ -492,7 +498,8 @@ For each at-risk patient, provide:
         totalRevenue: stats.totalRevenue
       };
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeLLM({
+        model: "claude_opus_4_8",
         prompt: `Simulate the impact of implementing a new care pathway on PDGM outcomes.
 
 CURRENT BASELINE:
@@ -586,13 +593,13 @@ Provide optimistic, realistic, and conservative scenarios.`,
   };
 
   const exportData = () => {
-    const csv = [
-      ['Month', 'Assessments', 'Avg Payment', 'Avg Case Mix', 'Total Revenue', 'Compliance Rate'].join(','),
+    const csv = toCsvRows([
+      ['Month', 'Assessments', 'Avg Payment', 'Avg Case Mix', 'Total Revenue', 'Compliance Rate'],
       ...chartData.paymentTrend.map((d, idx) => {
         const compliance = chartData.complianceTrend[idx]?.avgCompliance || 0;
-        return [d.month, d.count, d.avgPayment, d.avgCaseMix, d.total, compliance].join(',');
+        return [d.month, d.count, d.avgPayment, d.avgCaseMix, d.total, compliance];
       })
-    ].join('\n');
+    ]);
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -609,7 +616,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
     return (
       <Card>
         <CardContent className="p-6 text-center">
-          <p className="text-gray-600">Loading trend data...</p>
+          <p className="text-slate-600">Loading trend data...</p>
         </CardContent>
       </Card>
     );
@@ -730,8 +737,8 @@ Provide optimistic, realistic, and conservative scenarios.`,
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-600">Total Assessments</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalAssessments}</p>
+                <p className="text-xs text-slate-600">Total Assessments</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.totalAssessments}</p>
               </div>
               <Activity className="w-8 h-8 text-blue-600" />
             </div>
@@ -742,7 +749,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-600">Avg Payment</p>
+                <p className="text-xs text-slate-600">Avg Payment</p>
                 <p className="text-2xl font-bold text-green-600">${stats.avgPayment.toLocaleString()}</p>
               </div>
               <DollarSign className="w-8 h-8 text-green-600" />
@@ -754,10 +761,10 @@ Provide optimistic, realistic, and conservative scenarios.`,
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-600">Avg Case Mix</p>
-                <p className="text-2xl font-bold text-purple-600">{stats.avgCaseMix}</p>
+                <p className="text-xs text-slate-600">Avg Case Mix</p>
+                <p className="text-2xl font-bold text-navy-600">{stats.avgCaseMix}</p>
               </div>
-              <TrendingUp className="w-8 h-8 text-purple-600" />
+              <TrendingUp className="w-8 h-8 text-navy-600" />
             </div>
           </CardContent>
         </Card>
@@ -766,7 +773,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-600">Total Revenue</p>
+                <p className="text-xs text-slate-600">Total Revenue</p>
                 <p className="text-2xl font-bold text-indigo-600">${stats.totalRevenue.toLocaleString()}</p>
               </div>
               <DollarSign className="w-8 h-8 text-indigo-600" />
@@ -777,10 +784,10 @@ Provide optimistic, realistic, and conservative scenarios.`,
 
       {/* AI Predictions */}
       {predictions && (
-        <Card className="border-2 border-purple-300 bg-gradient-to-r from-purple-50 to-pink-50">
+        <Card className="border-2 border-navy-300 bg-gradient-to-r from-navy-50 to-gold-50">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-purple-600" />
+              <TrendingUp className="w-5 h-5 text-navy-600" />
               AI Payment Predictions - Next 3 Months
             </CardTitle>
           </CardHeader>
@@ -789,25 +796,25 @@ Provide optimistic, realistic, and conservative scenarios.`,
               <p className="text-sm text-red-600">{predictions.error}</p>
             ) : (
               <>
-                <Badge className="bg-purple-600 text-white mb-2">
+                <Badge className="bg-navy-600 text-white mb-2">
                   Trend: {predictions.trend_direction}
                 </Badge>
                 <div className="grid grid-cols-3 gap-3">
                   {predictions.predictions?.map((pred, idx) => (
                     <div key={idx} className="bg-white p-3 rounded-lg border">
-                      <p className="text-xs text-gray-500">{pred.month}</p>
-                      <p className="text-xl font-bold text-purple-700">${Math.round(pred.predicted_payment).toLocaleString()}</p>
-                      <p className="text-xs text-gray-600">~{pred.predicted_count} cases</p>
+                      <p className="text-xs text-slate-500">{pred.month}</p>
+                      <p className="text-xl font-bold text-navy-700">${Math.round(pred.predicted_payment).toLocaleString()}</p>
+                      <p className="text-xs text-slate-600">~{pred.predicted_count} cases</p>
                       <Badge variant="outline" className="text-xs mt-1">{pred.confidence}</Badge>
                     </div>
                   ))}
                 </div>
                 {predictions.key_insights?.length > 0 && (
                   <div className="bg-white p-3 rounded border">
-                    <p className="text-sm font-semibold text-purple-900 mb-2">Key Insights:</p>
+                    <p className="text-sm font-semibold text-navy-900 mb-2">Key Insights:</p>
                     <ul className="space-y-1">
                       {predictions.key_insights.map((insight, idx) => (
-                        <li key={idx} className="text-sm text-purple-800">• {insight}</li>
+                        <li key={idx} className="text-sm text-navy-800">• {insight}</li>
                       ))}
                     </ul>
                   </div>
@@ -835,7 +842,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
               <XAxis dataKey="month" />
               <YAxis />
               <Tooltip formatter={(value, name, props) => {
-                if (name === "avgPayment") return `$${value.toLocaleString()}${props.payload.isPrediction ? ' (predicted)' : ''}`;
+                if (name === "avgPayment") return `$${(value ?? 0).toLocaleString()}${props.payload?.isPrediction ? ' (predicted)' : ''}`;
                 return value;
               }} />
               <Legend />
@@ -850,7 +857,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
               <Line 
                 type="monotone" 
                 dataKey="count" 
-                stroke="#3b82f6" 
+                stroke="#3557b0" 
                 strokeWidth={2}
                 name="Assessments"
               />
@@ -886,7 +893,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
 
       {/* Key Drivers Analysis */}
       {driverAnalysis && (
-        <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-cyan-50">
+        <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-navy-50">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Activity className="w-5 h-5 text-blue-600" />
@@ -901,7 +908,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
                 {driverAnalysis.key_drivers?.map((driver, idx) => (
                   <div key={idx} className="bg-white p-3 rounded-lg border">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="font-semibold text-gray-900">{driver.driver}</p>
+                      <p className="font-semibold text-slate-900">{driver.driver}</p>
                       <Badge className={
                         driver.impact === 'high' ? 'bg-red-100 text-red-800' :
                         driver.impact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
@@ -912,11 +919,11 @@ Provide optimistic, realistic, and conservative scenarios.`,
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div className="text-sm">
-                        <span className="text-gray-600">Correlation:</span>
+                        <span className="text-slate-600">Correlation:</span>
                         <span className="ml-2 font-medium">{driver.correlation}</span>
                       </div>
                       <div className="text-sm">
-                        <span className="text-gray-600">Avg Effect:</span>
+                        <span className="text-slate-600">Avg Effect:</span>
                         <span className="ml-2 font-medium">{driver.average_effect}</span>
                       </div>
                     </div>
@@ -973,7 +980,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
                   labelLine={false}
                   label={(entry) => `${entry.name}: ${entry.value}`}
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill="#264491"
                   dataKey="value"
                 >
                   {chartData.groupDist.map((entry, index) => (
@@ -999,7 +1006,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="value" fill="#3b82f6" name="Patients" />
+                <Bar dataKey="value" fill="#3557b0" name="Patients" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -1092,7 +1099,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
                         <Tooltip />
                         <Legend />
                         <Line type="monotone" dataKey="upper_bound" stroke="#10b981" strokeDasharray="3 3" name="Upper Bound" />
-                        <Line type="monotone" dataKey="predicted_payment" stroke="#3b82f6" strokeWidth={3} name="Predicted Payment" />
+                        <Line type="monotone" dataKey="predicted_payment" stroke="#3557b0" strokeWidth={3} name="Predicted Payment" />
                         <Line type="monotone" dataKey="lower_bound" stroke="#ef4444" strokeDasharray="3 3" name="Lower Bound" />
                       </LineChart>
                     </ResponsiveContainer>
@@ -1158,15 +1165,15 @@ Provide optimistic, realistic, and conservative scenarios.`,
                 </div>
 
                 {/* Strategic Recommendations */}
-                <Card className="border-2 border-purple-300 bg-purple-50">
+                <Card className="border-2 border-navy-300 bg-navy-50">
                   <CardHeader>
-                    <CardTitle className="text-lg text-purple-900">Strategic Recommendations</CardTitle>
+                    <CardTitle className="text-lg text-navy-900">Strategic Recommendations</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <ol className="space-y-2">
                       {forecast.strategic_recommendations?.map((rec, idx) => (
-                        <li key={idx} className="text-sm text-purple-900 flex items-start gap-2">
-                          <span className="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs flex-shrink-0">
+                        <li key={idx} className="text-sm text-navy-900 flex items-start gap-2">
+                          <span className="bg-navy-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs flex-shrink-0">
                             {idx + 1}
                           </span>
                           {rec}
@@ -1244,8 +1251,8 @@ Provide optimistic, realistic, and conservative scenarios.`,
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            <p className="font-semibold text-gray-900">{patient.patient_name}</p>
-                            <p className="text-xs text-gray-600">ID: {patient.patient_id}</p>
+                            <p className="font-semibold text-slate-900">{patient.patient_name}</p>
+                            <p className="text-xs text-slate-600">ID: {patient.patient_id}</p>
                           </div>
                           <div className="text-right">
                             <Badge className={`${
@@ -1255,20 +1262,20 @@ Provide optimistic, realistic, and conservative scenarios.`,
                             } text-white`}>
                               {patient.risk_level} - {patient.risk_score}%
                             </Badge>
-                            <p className="text-xs text-gray-600 mt-1">{patient.urgency}</p>
+                            <p className="text-xs text-slate-600 mt-1">{patient.urgency}</p>
                           </div>
                         </div>
 
                         <div className="mb-3">
-                          <p className="text-sm font-semibold text-gray-700 mb-1">Risk Category: {patient.risk_category}</p>
-                          <p className="text-xs text-gray-600">{patient.potential_impact}</p>
+                          <p className="text-sm font-semibold text-slate-700 mb-1">Risk Category: {patient.risk_category}</p>
+                          <p className="text-xs text-slate-600">{patient.potential_impact}</p>
                         </div>
 
                         <div className="bg-white p-2 rounded border mb-2">
-                          <p className="text-xs font-semibold text-gray-700 mb-1">Risk Factors:</p>
+                          <p className="text-xs font-semibold text-slate-700 mb-1">Risk Factors:</p>
                           <ul className="space-y-0.5">
                             {patient.risk_factors?.map((factor, fIdx) => (
-                              <li key={fIdx} className="text-xs text-gray-800">• {factor}</li>
+                              <li key={fIdx} className="text-xs text-slate-800">• {factor}</li>
                             ))}
                           </ul>
                         </div>
@@ -1299,10 +1306,10 @@ Provide optimistic, realistic, and conservative scenarios.`,
 
         {/* Pathway Simulation Tab */}
         <TabsContent value="simulation" className="space-y-6 mt-6">
-          <Card className="border-2 border-purple-300">
+          <Card className="border-2 border-navy-300">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-purple-600" />
+                <Activity className="w-5 h-5 text-navy-600" />
                 Care Pathway Impact Simulation
               </CardTitle>
             </CardHeader>
@@ -1348,7 +1355,7 @@ Provide optimistic, realistic, and conservative scenarios.`,
                   <Button
                     onClick={simulateCarePathway}
                     disabled={isSimulating || filteredData.length < 10}
-                    className="w-full mt-5 bg-purple-600 hover:bg-purple-700"
+                    className="w-full mt-5 bg-navy-600 hover:bg-navy-700"
                   >
                     {isSimulating ? (
                       <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Simulating...</>
@@ -1385,15 +1392,15 @@ Provide optimistic, realistic, and conservative scenarios.`,
                         </CardHeader>
                         <CardContent className="space-y-2">
                           <div className="text-sm">
-                            <p className="text-xs text-gray-600">Payment Change</p>
+                            <p className="text-xs text-slate-600">Payment Change</p>
                             <p className="font-bold">{pathwaySimulation.scenarios?.[scenario]?.avg_payment_change}</p>
                           </div>
                           <div className="text-sm">
-                            <p className="text-xs text-gray-600">Case Mix Change</p>
+                            <p className="text-xs text-slate-600">Case Mix Change</p>
                             <p className="font-bold">{pathwaySimulation.scenarios?.[scenario]?.case_mix_change}</p>
                           </div>
                           <div className="text-sm">
-                            <p className="text-xs text-gray-600">Revenue Impact</p>
+                            <p className="text-xs text-slate-600">Revenue Impact</p>
                             <p className="font-bold">{pathwaySimulation.scenarios?.[scenario]?.revenue_impact}</p>
                           </div>
                           <Badge variant="outline" className="text-xs">

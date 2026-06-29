@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ import {
   FileText
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { toast } from "sonner";
 
 export default function PendingPatientUpdates() {
   const [expandedUpdates, setExpandedUpdates] = useState({});
@@ -40,16 +41,17 @@ export default function PendingPatientUpdates() {
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: []
   });
 
   const approveMutation = useMutation({
-    mutationFn: async ({ updateId, updates }) => {
-      const update = pendingUpdates.find(u => u.id === updateId);
-      
-      // Apply the changes to the patient
-      await base44.entities.Patient.update(update.patient_id, updates);
+    mutationFn: async ({ updateId, patientId, updates }) => {
+      // patientId is passed by the caller (it has the row) instead of re-finding
+      // it in pendingUpdates — the list invalidates on every approve/reject and on
+      // ['patients'] changes, so find() could return undefined between render and
+      // click and crash on update.patient_id.
+      await base44.entities.Patient.update(patientId, updates);
       
       // Mark as approved
       await base44.entities.PendingPatientUpdate.update(updateId, {
@@ -64,6 +66,10 @@ export default function PendingPatientUpdates() {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       setReviewingUpdate(null);
       setReviewNotes("");
+    },
+    onError: (error) => {
+      // Keep the dialog open so the reviewer can retry; surface the failure.
+      toast.error(`Failed to approve update: ${error?.message || 'Unknown error'}`);
     }
   });
 
@@ -80,6 +86,10 @@ export default function PendingPatientUpdates() {
       queryClient.invalidateQueries({ queryKey: ['pendingPatientUpdates'] });
       setReviewingUpdate(null);
       setReviewNotes("");
+    },
+    onError: (error) => {
+      // Keep the dialog open so the reviewer can retry; surface the failure.
+      toast.error(`Failed to reject update: ${error?.message || 'Unknown error'}`);
     }
   });
 
@@ -110,6 +120,7 @@ export default function PendingPatientUpdates() {
   const handleApprove = (update) => {
     approveMutation.mutate({
       updateId: update.id,
+      patientId: update.patient_id,
       updates: update.proposed_updates
     });
   };
@@ -121,7 +132,7 @@ export default function PendingPatientUpdates() {
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-gray-500">
+        <CardContent className="p-12 text-center text-slate-500">
           Loading pending updates...
         </CardContent>
       </Card>
@@ -143,7 +154,7 @@ export default function PendingPatientUpdates() {
       </CardHeader>
       <CardContent>
         {pendingUpdates.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-slate-500">
             <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-500" />
             <p>No pending updates requiring review</p>
           </div>
@@ -168,7 +179,7 @@ export default function PendingPatientUpdates() {
                         <div className="flex items-center gap-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold text-gray-900">
+                              <span className="font-semibold text-slate-900">
                                 {patient.first_name} {patient.last_name}
                               </span>
                               {getSeverityBadge(update.change_type)}
@@ -179,7 +190,7 @@ export default function PendingPatientUpdates() {
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-sm text-gray-600">
+                            <p className="text-sm text-slate-600">
                               {(update.field_changes || []).length} field{(update.field_changes || []).length > 1 ? 's' : ''} to review
                               {(update.field_changes || []).filter(c => c.is_critical).length > 0 && (
                                 <span className="text-red-600 ml-2">
@@ -223,12 +234,12 @@ export default function PendingPatientUpdates() {
                           <div
                             key={changeIdx}
                             className={`p-3 rounded border ${
-                              change.is_critical ? 'border-red-300 bg-white' : 'border-gray-200 bg-white'
+                              change.is_critical ? 'border-red-300 bg-white' : 'border-slate-200 bg-white'
                             }`}
                           >
                             <div className="flex items-start justify-between mb-2">
-                              <span className="font-medium text-gray-900">
-                                {change.field.replace(/_/g, ' ')}
+                              <span className="font-medium text-slate-900">
+                                {(change.field || '').replace(/_/g, ' ')}
                               </span>
                               {change.is_critical && (
                                 <Badge variant="destructive" className="text-xs">Critical</Badge>
@@ -238,17 +249,17 @@ export default function PendingPatientUpdates() {
                               <div className="flex items-start gap-2">
                                 <span className="text-red-600 font-mono">-</span>
                                 <span className="text-red-600 flex-1">
-                                  {typeof change.oldValue === 'object' 
-                                    ? JSON.stringify(change.oldValue) 
-                                    : change.oldValue || '(empty)'}
+                                  {typeof change.old_value === 'object'
+                                    ? JSON.stringify(change.old_value)
+                                    : change.old_value || '(empty)'}
                                 </span>
                               </div>
                               <div className="flex items-start gap-2">
                                 <span className="text-green-600 font-mono">+</span>
                                 <span className="text-green-600 flex-1">
-                                  {typeof change.newValue === 'object' 
-                                    ? JSON.stringify(change.newValue) 
-                                    : change.newValue}
+                                  {typeof change.new_value === 'object'
+                                    ? JSON.stringify(change.new_value)
+                                    : change.new_value}
                                 </span>
                               </div>
                             </div>
@@ -318,24 +329,24 @@ export default function PendingPatientUpdates() {
                   <h4 className="font-semibold">Proposed Changes:</h4>
                   {(reviewingUpdate.field_changes || []).map((change, idx) => (
                     <div key={idx} className={`p-3 rounded border ${
-                      change.is_critical ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'
+                      change.is_critical ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'
                     }`}>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium">{change.field.replace(/_/g, ' ')}</span>
+                        <span className="font-medium">{(change.field || '').replace(/_/g, ' ')}</span>
                         {change.is_critical && (
                           <Badge variant="destructive" className="text-xs">Critical Field</Badge>
                         )}
                       </div>
                       <div className="space-y-1 text-sm">
                         <div className="text-red-600">
-                          Old: {typeof change.oldValue === 'object' 
-                            ? JSON.stringify(change.oldValue, null, 2) 
-                            : change.oldValue || '(empty)'}
+                          Old: {typeof change.old_value === 'object'
+                            ? JSON.stringify(change.old_value, null, 2)
+                            : change.old_value || '(empty)'}
                         </div>
                         <div className="text-green-600">
-                          New: {typeof change.newValue === 'object' 
-                            ? JSON.stringify(change.newValue, null, 2) 
-                            : change.newValue}
+                          New: {typeof change.new_value === 'object'
+                            ? JSON.stringify(change.new_value, null, 2)
+                            : change.new_value}
                         </div>
                       </div>
                     </div>
@@ -343,8 +354,9 @@ export default function PendingPatientUpdates() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Review Notes (Optional)</label>
+                  <label htmlFor="pending-review-notes" className="block text-sm font-medium mb-2">Review Notes (Optional)</label>
                   <Textarea
+                    id="pending-review-notes"
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
                     placeholder="Add any notes about this review..."

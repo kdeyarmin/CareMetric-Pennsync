@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import {
   BarChart3,
-  TrendingUp,
   Award,
   Target,
   AlertCircle,
@@ -27,20 +26,20 @@ export default function NurseLearningDashboard({
   onStartQuiz
 }) {
   const [deficitAnalysis, setDeficitAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [_isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const loadDeficitAnalysis = useCallback(async () => {
+    setIsAnalyzing(true);
+    const analysis = await analyzeNurseDeficits(nurseEmail);
+    setDeficitAnalysis(analysis);
+    setIsAnalyzing(false);
+  }, [nurseEmail]);
 
   useEffect(() => {
     if (nurseEmail) {
       loadDeficitAnalysis();
     }
-  }, [nurseEmail]);
-
-  const loadDeficitAnalysis = async () => {
-    setIsAnalyzing(true);
-    const analysis = await analyzeNurseDeficits(nurseEmail);
-    setDeficitAnalysis(analysis);
-    setIsAnalyzing(false);
-  };
+  }, [nurseEmail, loadDeficitAnalysis]);
   // Calculate statistics
   const totalCompleted = trainingProgress.filter(p => p.status === 'completed').length;
   const totalInProgress = trainingProgress.filter(p => p.status === 'in_progress').length;
@@ -82,16 +81,16 @@ export default function NurseLearningDashboard({
     <div className="space-y-6">
       {/* AI-Identified Deficits with Auto-Recommendations */}
       {deficitAnalysis?.deficits && deficitAnalysis.deficits.length > 0 && (
-        <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+        <Card className="bg-gradient-to-r from-navy-50 to-gold-50 border-navy-200">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-600" />
+              <Sparkles className="w-5 h-5 text-navy-600" />
               AI-Detected Documentation Patterns
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="bg-white/70 p-3 rounded-lg border border-purple-200">
-              <p className="text-sm text-purple-900 mb-2">
+            <div className="bg-white/70 p-3 rounded-lg border border-navy-200">
+              <p className="text-sm text-navy-900 mb-2">
                 Based on {deficitAnalysis.totalSuggestions} AI suggestions from your recent documentation, 
                 we've identified areas where additional training could strengthen your skills:
               </p>
@@ -112,7 +111,7 @@ export default function NurseLearningDashboard({
                           {deficit.count} AI suggestions
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">
+                      <p className="text-sm text-slate-600 mb-2">
                         AI has provided assistance in this area {deficit.count} times across your recent notes
                       </p>
                     </div>
@@ -121,10 +120,10 @@ export default function NurseLearningDashboard({
                   {/* Recent examples */}
                   {deficit.examples.length > 0 && (
                     <div className="mb-3 space-y-1">
-                      <p className="text-xs font-semibold text-gray-700">Recent examples:</p>
+                      <p className="text-xs font-semibold text-slate-700">Recent examples:</p>
                       {deficit.examples.slice(0, 2).map((ex, i) => (
-                        <p key={i} className="text-xs text-gray-600 italic pl-3 border-l-2 border-gray-200">
-                          "{ex.text.substring(0, 100)}..." - from {ex.source}
+                        <p key={i} className="text-xs text-slate-600 italic pl-3 border-l-2 border-slate-200">
+                          "{(ex.text || '').substring(0, 100)}..." - from {ex.source}
                         </p>
                       ))}
                     </div>
@@ -138,8 +137,8 @@ export default function NurseLearningDashboard({
                     </p>
                     <div className="space-y-2">
                       {deficitAnalysis.recommendations
-                        .find(r => r.category === deficit.category)
-                        ?.suggestedScenarios.slice(0, 2).map((scenarioId, i) => (
+                        ?.find(r => r.category === deficit.category)
+                        ?.suggestedScenarios?.slice(0, 2).map((scenarioId, i) => (
                           <Button
                             key={i}
                             size="sm"
@@ -155,8 +154,8 @@ export default function NurseLearningDashboard({
                           </Button>
                         ))}
                       {deficitAnalysis.recommendations
-                        .find(r => r.category === deficit.category)
-                        ?.suggestedQuizzes.slice(0, 1).map((quizId, i) => (
+                        ?.find(r => r.category === deficit.category)
+                        ?.suggestedQuizzes?.slice(0, 1).map((quizId, i) => (
                           <Button
                             key={i}
                             size="sm"
@@ -186,8 +185,8 @@ export default function NurseLearningDashboard({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Completion Rate</p>
-                <p className="text-3xl font-bold text-gray-900">
+                <p className="text-sm text-slate-600 mb-1">Completion Rate</p>
+                <p className="text-3xl font-bold text-slate-900">
                   {trainingProgress.length > 0 
                     ? Math.round((totalCompleted / trainingProgress.length) * 100)
                     : 0}%
@@ -206,8 +205,8 @@ export default function NurseLearningDashboard({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Average Score</p>
-                <p className="text-3xl font-bold text-gray-900">{averageScore.toFixed(0)}%</p>
+                <p className="text-sm text-slate-600 mb-1">Average Score</p>
+                <p className="text-3xl font-bold text-slate-900">{averageScore.toFixed(0)}%</p>
               </div>
               <Award className="w-12 h-12 text-yellow-600" />
             </div>
@@ -219,9 +218,9 @@ export default function NurseLearningDashboard({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Total Modules</p>
-                <p className="text-3xl font-bold text-gray-900">{trainingProgress.length}</p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-sm text-slate-600 mb-1">Total Modules</p>
+                <p className="text-3xl font-bold text-slate-900">{trainingProgress.length}</p>
+                <p className="text-xs text-slate-500 mt-1">
                   {totalInProgress} in progress
                 </p>
               </div>
@@ -245,8 +244,8 @@ export default function NurseLearningDashboard({
               {weakAreas.map((area) => (
                 <div key={area.area} className="flex items-center justify-between p-3 bg-white rounded-lg border">
                   <div>
-                    <p className="font-medium text-gray-900">{area.area}</p>
-                    <p className="text-sm text-gray-600">
+                    <p className="font-medium text-slate-900">{area.area}</p>
+                    <p className="text-sm text-slate-600">
                       {area.completed} / {area.total} completed
                     </p>
                   </div>
@@ -274,11 +273,11 @@ export default function NurseLearningDashboard({
               <div key={stat.area} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-gray-500" />
-                    <span className="font-medium text-gray-900">{stat.area}</span>
+                    <Target className="w-4 h-4 text-slate-500" />
+                    <span className="font-medium text-slate-900">{stat.area}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-slate-600">
                       {stat.completed} / {stat.total} modules
                     </span>
                     <Badge 
@@ -297,8 +296,8 @@ export default function NurseLearningDashboard({
             ))}
 
             {skillAreaStats.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                <Brain className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <div className="text-center py-8 text-slate-500">
+                <Brain className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p>No training completed yet. Start with a practice scenario or quiz!</p>
               </div>
             )}
@@ -317,19 +316,19 @@ export default function NurseLearningDashboard({
         <CardContent>
           <div className="space-y-3">
             {recentActivity.map((activity) => (
-              <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div key={activity.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
                 <div className={`p-2 rounded-lg ${
-                  activity.module_type === 'quiz' ? 'bg-purple-100' : 'bg-indigo-100'
+                  activity.module_type === 'quiz' ? 'bg-navy-100' : 'bg-indigo-100'
                 }`}>
                   {activity.module_type === 'quiz' ? (
-                    <Brain className="w-4 h-4 text-purple-600" />
+                    <Brain className="w-4 h-4 text-navy-600" />
                   ) : (
                     <FileText className="w-4 h-4 text-indigo-600" />
                   )}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="font-medium text-gray-900">{activity.skill_area}</p>
+                    <p className="font-medium text-slate-900">{activity.skill_area}</p>
                     <Badge className={
                       activity.status === 'completed' ? 'bg-green-100 text-green-800' :
                       activity.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
@@ -338,7 +337,7 @@ export default function NurseLearningDashboard({
                       {activity.status}
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
                     <span className="capitalize">{activity.module_type}</span>
                     {activity.score && (
                       <>
@@ -354,8 +353,8 @@ export default function NurseLearningDashboard({
             ))}
 
             {recentActivity.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                <Clock className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <div className="text-center py-8 text-slate-500">
+                <Clock className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p>No recent activity. Start your learning journey today!</p>
               </div>
             )}
@@ -387,8 +386,8 @@ export default function NurseLearningDashboard({
                           {rec.severity}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-700">{rec.recommendation_text}</p>
-                      <p className="text-xs text-gray-500 mt-1">Source: {rec.source}</p>
+                      <p className="text-sm text-slate-700">{rec.recommendation_text}</p>
+                      <p className="text-xs text-slate-500 mt-1">Source: {rec.source}</p>
                     </div>
                   </div>
                 </div>

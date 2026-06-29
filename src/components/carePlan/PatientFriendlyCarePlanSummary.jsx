@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,21 +17,21 @@ import {
   User
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from 'sonner';
 
-export default function PatientFriendlyCarePlanSummary({ patient, carePlans, onEmailSummary }) {
+export default function PatientFriendlyCarePlanSummary({ patient, carePlans, _onEmailSummary }) {
   const [summary, setSummary] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [copied, setCopied] = useState(false);
 
   const activeCarePlans = (carePlans || []).filter(cp => cp.status === 'active');
 
   const generateSummary = async () => {
     if (!patient || activeCarePlans.length === 0) {
-      alert('No active care plans to summarize');
+      toast.error('No active care plans to summarize');
       return;
     }
 
-    setIsGenerating(true);
     try {
       const carePlanData = activeCarePlans.map(cp => ({
         problem: cp.problem,
@@ -76,7 +77,8 @@ Return JSON:
   "questions_to_ask": ["Suggested questions for the patient to ask"]
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_sonnet_4_6",
         prompt,
         response_json_schema: {
           type: "object",
@@ -108,9 +110,8 @@ Return JSON:
       setSummary(result);
     } catch (error) {
       console.error('Error generating summary:', error);
-      alert('Failed to generate summary. Please try again.');
+      toast.error('Failed to generate summary. Please try again.');
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = () => {
@@ -155,7 +156,7 @@ Generated on ${format(new Date(), 'MMMM d, yyyy')}
 
   const handleEmail = async () => {
     if (!summary || !patient?.email) {
-      alert('Patient email not available');
+      toast.error('Patient email not available');
       return;
     }
 
@@ -192,10 +193,10 @@ Your Care Team
         body: body,
         from_name: 'Penn Sync Care Team'
       });
-      alert('Summary sent to patient!');
+      toast.success('Summary sent to patient!');
     } catch (error) {
       console.error('Failed to send email:', error);
-      alert('Failed to send email. Please try again.');
+      toast.error('Failed to send email. Please try again.');
     }
   };
 
@@ -211,11 +212,11 @@ Your Care Team
           </CardTitle>
           <Button
             onClick={generateSummary}
-            disabled={isGenerating || activeCarePlans.length === 0}
+            disabled={ai.loading || activeCarePlans.length === 0}
             size="sm"
             className="bg-green-600 hover:bg-green-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <>
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                 Creating...
@@ -231,17 +232,17 @@ Your Care Team
       </CardHeader>
       <CardContent className="pt-4">
         {activeCarePlans.length === 0 && (
-          <div className="text-center py-6 text-gray-500">
-            <FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+          <div className="text-center py-6 text-slate-500">
+            <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <p className="text-sm">No active care plans to summarize</p>
           </div>
         )}
 
-        {activeCarePlans.length > 0 && !summary && !isGenerating && (
-          <div className="text-center py-6 text-gray-500">
-            <User className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+        {activeCarePlans.length > 0 && !summary && !ai.loading && (
+          <div className="text-center py-6 text-slate-500">
+            <User className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <p className="text-sm">Generate a patient-friendly version of the care plan</p>
-            <p className="text-xs text-gray-400 mt-1">Easy to understand for patients and caregivers</p>
+            <p className="text-xs text-slate-400 mt-1">Easy to understand for patients and caregivers</p>
           </div>
         )}
 
@@ -276,13 +277,13 @@ Your Care Team
 
             {/* Goals Explained */}
             <div className="space-y-3">
-              <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+              <h4 className="font-semibold text-slate-900 flex items-center gap-2">
                 🎯 Your Care Goals
               </h4>
               {summary.goals_explained?.map((goal, idx) => (
-                <Card key={idx} className="bg-white border border-gray-200">
+                <Card key={idx} className="bg-white border border-slate-200">
                   <CardContent className="p-4">
-                    <h5 className="font-semibold text-gray-900 mb-2">{goal.goal_title}</h5>
+                    <h5 className="font-semibold text-slate-900 mb-2">{goal.goal_title}</h5>
                     <div className="space-y-2 text-sm">
                       <p><strong>What this means:</strong> {goal.what_it_means}</p>
                       <p><strong>How we'll help:</strong> {goal.how_we_help}</p>
@@ -321,18 +322,18 @@ Your Care Team
             )}
 
             {/* Encouragement */}
-            <Alert className="bg-purple-50 border-purple-200">
-              <Sparkles className="w-4 h-4 text-purple-600" />
-              <AlertDescription className="text-purple-900 italic">
+            <Alert className="bg-navy-50 border-navy-200">
+              <Sparkles className="w-4 h-4 text-navy-600" />
+              <AlertDescription className="text-navy-900 italic">
                 {summary.encouragement}
               </AlertDescription>
             </Alert>
 
             {/* Questions to Ask */}
             {summary.questions_to_ask?.length > 0 && (
-              <div className="p-4 bg-gray-50 rounded-lg border">
-                <p className="font-semibold text-gray-900 mb-2">❓ Questions to Ask Your Nurse</p>
-                <ul className="list-disc ml-5 text-sm text-gray-700">
+              <div className="p-4 bg-slate-50 rounded-lg border">
+                <p className="font-semibold text-slate-900 mb-2">❓ Questions to Ask Your Nurse</p>
+                <ul className="list-disc ml-5 text-sm text-slate-700">
                   {summary.questions_to_ask.map((q, idx) => (
                     <li key={idx}>{q}</li>
                   ))}

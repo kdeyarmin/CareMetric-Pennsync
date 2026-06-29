@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,14 +15,14 @@ import {
   Calendar,
   Activity,
   FileText,
-  Pill,
   Target
 } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
+import { format } from "date-fns";
+import { toast } from 'sonner';
 
 export default function AIPatientSummary({ patient }) {
   const [summary, setSummary] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [copied, setCopied] = useState(false);
 
   const { data: visits } = useQuery({
@@ -47,11 +48,10 @@ export default function AIPatientSummary({ patient }) {
 
   const generateSummary = async () => {
     if (!patient) {
-      alert('No patient selected');
+      toast.error('No patient selected');
       return;
     }
     
-    setIsGenerating(true);
     try {
       const recentVisits = visits.slice(0, 5);
       const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
@@ -70,7 +70,7 @@ PATIENT PROFILE:
 - Allergies: ${patient.allergies || 'NKDA'}
 
 RECENT VISITS (Last 5):
-${recentVisits.length > 0 ? recentVisits.map(v => `- ${v.visit_date}: ${v.visit_type.replace(/_/g, ' ')} - ${v.status}
+${recentVisits.length > 0 ? recentVisits.map(v => `- ${v.visit_date}: ${(v.visit_type || '').replace(/_/g, ' ')} - ${v.status}
   ${v.vital_signs ? `Vitals: BP ${v.vital_signs.blood_pressure_systolic || '?'}/${v.vital_signs.blood_pressure_diastolic || '?'}, HR ${v.vital_signs.heart_rate || '?'}, O2 ${v.vital_signs.oxygen_saturation || '?'}%` : ''}
   ${v.nurse_notes ? `Notes excerpt: ${v.nurse_notes.substring(0, 200)}...` : ''}`).join('\n') : 'No recent visits'}
 
@@ -80,7 +80,7 @@ ${activeCarePlans.length > 0 ? activeCarePlans.map(cp => `- Problem: ${cp.proble
   Status: ${cp.status}`).join('\n') : 'No active care plans'}
 
 RECENT INCIDENTS:
-${recentIncidents.length > 0 ? recentIncidents.map(i => `- ${i.incident_date}: ${i.incident_type.replace(/_/g, ' ')} (${i.severity || 'unknown'} severity)`).join('\n') : 'No recent incidents'}
+${recentIncidents.length > 0 ? recentIncidents.map(i => `- ${i.incident_date}: ${(i.incident_type || '').replace(/_/g, ' ')} (${i.severity || 'unknown'} severity)`).join('\n') : 'No recent incidents'}
 
 Generate a clinical summary in JSON format:
 {
@@ -94,7 +94,8 @@ Generate a clinical summary in JSON format:
   "priority_level": "low|medium|high|critical"
 }`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -120,9 +121,8 @@ Generate a clinical summary in JSON format:
       });
     } catch (error) {
       console.error('Error generating summary:', error);
-      alert('Failed to generate summary. Please try again.');
+      toast.error('Failed to generate summary. Please try again.');
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = () => {
@@ -163,27 +163,27 @@ ${summary.recommendations?.map(r => `• ${r}`).join('\n')}
       case 'high': return 'bg-orange-500 text-white';
       case 'medium': return 'bg-yellow-500 text-black';
       case 'low': return 'bg-green-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      default: return 'bg-slate-500 text-white';
     }
   };
 
   if (!patient) return null;
 
   return (
-    <Card className="border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-gold-50">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+            <Sparkles className="w-5 h-5 text-navy-600" />
             AI Patient Summary
           </CardTitle>
           <Button
             onClick={generateSummary}
-            disabled={isGenerating}
+            disabled={ai.loading}
             size="sm"
-            className="bg-purple-600 hover:bg-purple-700"
+            className="bg-navy-600 hover:bg-navy-700"
           >
-            {isGenerating ? (
+            {ai.loading ? (
               <>
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                 Generating...
@@ -198,9 +198,9 @@ ${summary.recommendations?.map(r => `• ${r}`).join('\n')}
         </div>
       </CardHeader>
       <CardContent className="pt-4">
-        {!summary && !isGenerating && (
-          <div className="text-center py-8 text-gray-500">
-            <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+        {!summary && !ai.loading && (
+          <div className="text-center py-8 text-slate-500">
+            <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <p>Click "Generate Summary" to create an AI-powered clinical overview</p>
             <p className="text-sm mt-2">
               Synthesizes data from {visits.length} visits, {incidents.length} incidents, and {carePlans.filter(cp => cp.status === 'active').length} active care plans
@@ -216,7 +216,7 @@ ${summary.recommendations?.map(r => `• ${r}`).join('\n')}
                 <Badge className={getPriorityColor(summary.priority_level)}>
                   {summary.priority_level?.toUpperCase()} Priority
                 </Badge>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-slate-500">
                   Generated {format(new Date(summary.generated_at), 'MMM d, h:mm a')}
                 </span>
               </div>
@@ -245,27 +245,27 @@ ${summary.recommendations?.map(r => `• ${r}`).join('\n')}
             </div>
 
             {/* Overview */}
-            <Alert className="bg-purple-50 border-purple-200">
-              <AlertDescription className="text-purple-900">
+            <Alert className="bg-navy-50 border-navy-200">
+              <AlertDescription className="text-navy-900">
                 <strong>Overview:</strong> {summary.overview}
               </AlertDescription>
             </Alert>
 
             {/* Clinical Status */}
             <div>
-              <h4 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-1">
+              <h4 className="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-1">
                 <Activity className="w-4 h-4" /> Clinical Status
               </h4>
-              <p className="text-sm text-gray-700">{summary.clinical_status}</p>
+              <p className="text-sm text-slate-700">{summary.clinical_status}</p>
             </div>
 
             {/* Key Findings */}
             {summary.key_findings?.length > 0 && (
               <div>
-                <h4 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-1">
+                <h4 className="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-1">
                   <FileText className="w-4 h-4" /> Key Findings
                 </h4>
-                <ul className="list-disc ml-5 text-sm text-gray-700 space-y-1">
+                <ul className="list-disc ml-5 text-sm text-slate-700 space-y-1">
                   {summary.key_findings.map((finding, idx) => (
                     <li key={idx}>{finding}</li>
                   ))}
@@ -276,7 +276,7 @@ ${summary.recommendations?.map(r => `• ${r}`).join('\n')}
             {/* Active Issues */}
             {summary.active_issues?.length > 0 && (
               <div>
-                <h4 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-1">
+                <h4 className="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-1">
                   <AlertTriangle className="w-4 h-4 text-orange-600" /> Active Issues
                 </h4>
                 <div className="flex flex-wrap gap-1">
@@ -292,7 +292,7 @@ ${summary.recommendations?.map(r => `• ${r}`).join('\n')}
             {/* Risk Factors */}
             {summary.risk_factors?.length > 0 && (
               <div>
-                <h4 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-1">
+                <h4 className="font-semibold text-slate-900 text-sm mb-1 flex items-center gap-1">
                   <AlertTriangle className="w-4 h-4 text-red-600" /> Risk Factors
                 </h4>
                 <div className="flex flex-wrap gap-1">

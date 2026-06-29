@@ -3,10 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { base44 } from "@/api/base44Client";
-import { 
-  TrendingUp, 
-  Target, 
+import { getAccessToken } from "@base44/sdk";
+import { appParams } from "@/lib/app-params";
+import {
+  Target,
   Award,
   BarChart3,
   CheckCircle2,
@@ -14,24 +14,38 @@ import {
   Download,
   Loader2
 } from "lucide-react";
+import { toast } from 'sonner';
 
-export default function TrainingProgressTracker({ userEmail, trainingProgress, practiceSubmissions }) {
+export default function TrainingProgressTracker({ _userEmail, trainingProgress, practiceSubmissions }) {
   const [isDownloading, setIsDownloading] = React.useState(false);
   
   const completedTutorials = trainingProgress.filter(t => t.status === 'completed').length;
-  const totalTutorials = 3; // Based on TUTORIALS array
-  const tutorialProgress = (completedTutorials / totalTutorials) * 100;
+  // Derive the total from the actual tutorial records rather than a hardcoded
+  // count; never let completed exceed the total. Clamp progress to <= 100.
+  const totalTutorials = Math.max(trainingProgress.length, completedTutorials);
+  const tutorialProgress = totalTutorials > 0
+    ? Math.min(100, (completedTutorials / totalTutorials) * 100)
+    : 0;
 
-  const practiceScores = practiceSubmissions
+  // Sort submissions oldest -> newest so the improvement trend is computed
+  // against a known ordering (the source order is not guaranteed).
+  const submissionDate = (s) => new Date(s.created_date || s.created_at || 0).getTime();
+  const submissionsByDateAsc = [...practiceSubmissions].sort(
+    (a, b) => submissionDate(a) - submissionDate(b)
+  );
+
+  const practiceScores = submissionsByDateAsc
     .filter(s => s.score != null)
     .map(s => s.score);
   const averagePracticeScore = practiceScores.length > 0
     ? practiceScores.reduce((sum, score) => sum + score, 0) / practiceScores.length
     : 0;
 
-  const recentPractice = practiceSubmissions.slice(0, 5);
+  // Recent = newest first.
+  const recentPractice = [...submissionsByDateAsc].reverse().slice(0, 5);
+  // Trend = newest score - oldest score (positive = improving).
   const improvementTrend = practiceScores.length >= 2
-    ? practiceScores[0] - practiceScores[practiceScores.length - 1]
+    ? practiceScores[practiceScores.length - 1] - practiceScores[0]
     : 0;
 
   // Identify weak areas
@@ -43,16 +57,36 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
   const downloadCertificate = async (completion) => {
     setIsDownloading(true);
     try {
-      const moduleMatch = completion.training_module_id.match(/documentation-(.+)/);
+      const moduleMatch = completion.training_module_id?.match(/documentation-(.+)/);
       const moduleName = moduleMatch ? moduleMatch[1].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Documentation Training';
       
-      const response = await base44.functions.invoke('generateTrainingCertificate', {
-        moduleName,
-        completionDate: completion.completion_date,
-        score: completion.score
-      });
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+      // generateTrainingCertificate returns raw PDF bytes; POST to the function
+      // endpoint and read the body as a blob so the binary isn't decoded/
+      // corrupted by the axios JSON path that base44.functions.invoke uses.
+      const { serverUrl, appId, token } = appParams;
+      const accessToken = token || getAccessToken();
+      const response = await fetch(
+        `${serverUrl}/api/apps/${appId}/functions/generateTrainingCertificate`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-App-Id': String(appId),
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+          },
+          body: JSON.stringify({
+            moduleName,
+            completionDate: completion.completion_date,
+            score: completion.score
+          })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Certificate request failed (${response.status})`);
+      }
+
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -63,7 +97,7 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
       a.remove();
     } catch (error) {
       console.error('Error downloading certificate:', error);
-      alert('Failed to generate certificate');
+      toast.error('Failed to generate certificate');
     }
     setIsDownloading(false);
   };
@@ -71,7 +105,7 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
   return (
     <div className="space-y-6">
       {/* Overall Progress */}
-      <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50">
+      <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-navy-50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Award className="w-5 h-5 text-indigo-600" />
@@ -90,7 +124,7 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
           {/* Completed Tutorials with Certificates */}
           {trainingProgress.filter(t => t.status === 'completed').length > 0 && (
             <div className="pt-3 border-t">
-              <p className="text-xs font-semibold text-gray-600 mb-2">Completed Modules:</p>
+              <p className="text-xs font-semibold text-slate-600 mb-2">Completed Modules:</p>
               <div className="space-y-2">
                 {trainingProgress.filter(t => t.status === 'completed').map((completion) => (
                   <div key={completion.id} className="flex items-center justify-between p-2 bg-white rounded border">
@@ -134,13 +168,13 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
           <div className="grid grid-cols-2 gap-4 pt-4 border-t">
             <div className="text-center">
               <p className="text-3xl font-bold text-indigo-900">{Math.round(averagePracticeScore)}%</p>
-              <p className="text-xs text-gray-600">Average Score</p>
+              <p className="text-xs text-slate-600">Average Score</p>
             </div>
             <div className="text-center">
               <p className={`text-3xl font-bold ${improvementTrend >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
                 {improvementTrend >= 0 ? '+' : ''}{Math.round(improvementTrend)}%
               </p>
-              <p className="text-xs text-gray-600">Improvement Trend</p>
+              <p className="text-xs text-slate-600">Improvement Trend</p>
             </div>
           </div>
         </CardContent>
@@ -161,10 +195,10 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
                 <h4 className="text-sm font-semibold mb-3">Recent Practice Scores</h4>
                 <div className="space-y-2">
                   {recentPractice.map((submission, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded">
                       <div className="flex-1">
                         <p className="text-sm font-medium">{submission.skill_area}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-slate-500">
                           {new Date(submission.created_date).toLocaleDateString()}
                         </p>
                       </div>
@@ -185,7 +219,7 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
               </div>
             </>
           ) : (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-500">
               <p className="text-sm">No practice submissions yet</p>
               <p className="text-xs mt-1">Complete practice exercises to see your progress</p>
             </div>
@@ -207,12 +241,12 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
               {weakAreas.map((area, idx) => (
                 <div key={idx} className="bg-white p-4 rounded border border-orange-200">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-medium text-gray-900">{area.area}</p>
+                    <p className="text-sm font-medium text-slate-900">{area.area}</p>
                     <Badge variant="outline" className="bg-orange-100 text-orange-800">
                       {Math.round(area.score)}%
                     </Badge>
                   </div>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-slate-600">
                     Focus on improving this area through additional practice exercises
                   </p>
                 </div>
@@ -223,18 +257,18 @@ export default function TrainingProgressTracker({ userEmail, trainingProgress, p
       )}
 
       {/* Skill Level Badge */}
-      <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+      <Card className="border-navy-200 bg-gradient-to-br from-navy-50 to-gold-50">
         <CardContent className="p-6 text-center">
-          <Target className="w-12 h-12 text-purple-600 mx-auto mb-3" />
-          <h3 className="text-2xl font-bold text-purple-900 mb-1">
+          <Target className="w-12 h-12 text-navy-600 mx-auto mb-3" />
+          <h3 className="text-2xl font-bold text-navy-900 mb-1">
             {averagePracticeScore >= 90 ? 'Expert Documenter' :
              averagePracticeScore >= 80 ? 'Advanced' :
              averagePracticeScore >= 70 ? 'Intermediate' :
              averagePracticeScore >= 60 ? 'Developing' : 'Beginner'}
           </h3>
-          <p className="text-sm text-purple-700">Current Documentation Skill Level</p>
+          <p className="text-sm text-navy-700">Current Documentation Skill Level</p>
           {averagePracticeScore < 90 && (
-            <p className="text-xs text-gray-600 mt-2">
+            <p className="text-xs text-slate-600 mt-2">
               {90 - Math.round(averagePracticeScore)}% more to reach Expert level
             </p>
           )}

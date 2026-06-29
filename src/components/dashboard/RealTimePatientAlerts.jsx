@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,36 +7,48 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import {
   AlertTriangle,
-  TrendingDown,
   Clock,
   Target,
   ChevronRight,
   RefreshCw,
   Activity,
-  Heart,
-  Pill
+  Heart
 } from "lucide-react";
 import { format, differenceInDays, parseISO } from "date-fns";
+
+const parseValidDate = (value) => {
+  if (!value) return null;
+  const date = parseISO(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 export default function RealTimePatientAlerts({ 
   patients = [], 
   visits = [], 
   carePlans = [],
-  incidents = []
+  incidents = [],
+  currentUser = null
 }) {
   const [alerts, setAlerts] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    generateAlerts();
-  }, [patients, visits, carePlans, incidents]);
-
-  const generateAlerts = () => {
+  const generateAlerts = useCallback(() => {
     const newAlerts = [];
     const today = new Date();
 
+    // Get favorited patient IDs
+    const favoritedPatientIds = currentUser?.favorited_patients?.map(p => p.id) || [];
+    
+    // Only check favorited patients - if none, show no alerts
+    if (favoritedPatientIds.length === 0) {
+      setAlerts([]);
+      return;
+    }
+    
+    const patientsToCheck = (patients || []).filter(p => favoritedPatientIds.includes(p.id));
+
     // Check each patient
-    (patients || []).forEach(patient => {
+    patientsToCheck.forEach(patient => {
       const patientVisits = (visits || []).filter(v => v.patient_id === patient.id);
       const patientCarePlans = (carePlans || []).filter(cp => cp.patient_id === patient.id);
       const patientIncidents = (incidents || []).filter(i => i.patient_id === patient.id);
@@ -45,10 +56,12 @@ export default function RealTimePatientAlerts({
       // Alert: No recent visits (>7 days)
       const lastVisit = patientVisits
         .filter(v => v.status === 'completed')
-        .sort((a, b) => new Date(b.visit_date) - new Date(a.visit_date))[0];
+        .map(v => ({ visit: v, date: parseValidDate(v.visit_date) }))
+        .filter(({ date }) => date)
+        .sort((a, b) => b.date - a.date)[0];
       
       if (lastVisit) {
-        const daysSinceVisit = differenceInDays(today, parseISO(lastVisit.visit_date));
+        const daysSinceVisit = differenceInDays(today, lastVisit.date);
         if (daysSinceVisit > 7) {
           newAlerts.push({
             type: 'overdue_visit',
@@ -65,7 +78,9 @@ export default function RealTimePatientAlerts({
       patientCarePlans
         .filter(cp => cp.status === 'active' && cp.target_date)
         .forEach(cp => {
-          const daysUntilTarget = differenceInDays(parseISO(cp.target_date), today);
+          const targetDate = parseValidDate(cp.target_date);
+          if (!targetDate) return;
+          const daysUntilTarget = differenceInDays(targetDate, today);
           if (daysUntilTarget <= 7 && daysUntilTarget >= 0) {
             newAlerts.push({
               type: 'goal_deadline',
@@ -80,17 +95,20 @@ export default function RealTimePatientAlerts({
 
       // Alert: Recent incidents
       const recentIncidents = patientIncidents.filter(i => {
-        const incidentDate = parseISO(i.incident_date);
+        const incidentDate = parseValidDate(i.incident_date);
+        if (!incidentDate) return false;
         return differenceInDays(today, incidentDate) <= 3;
       });
 
       recentIncidents.forEach(incident => {
+        const incidentDate = parseValidDate(incident.incident_date);
+        if (!incidentDate) return;
         newAlerts.push({
           type: 'recent_incident',
           severity: 'high',
           patientId: patient.id,
           patientName: `${patient.first_name} ${patient.last_name}`,
-          message: `Recent ${incident.incident_name || incident.incident_type}: ${format(parseISO(incident.incident_date), 'MMM d')}`,
+          message: `Recent ${incident.incident_name || incident.incident_type}: ${format(incidentDate, 'MMM d')}`,
           icon: AlertTriangle
         });
       });
@@ -105,7 +123,7 @@ export default function RealTimePatientAlerts({
           v.visit_date === format(today, 'yyyy-MM-dd') && v.status !== 'cancelled'
         );
         if (!todayVisit && lastVisit) {
-          const daysSince = differenceInDays(today, parseISO(lastVisit.visit_date));
+          const daysSince = differenceInDays(today, lastVisit.date);
           if (daysSince >= 3) {
             newAlerts.push({
               type: 'high_risk',
@@ -125,14 +143,18 @@ export default function RealTimePatientAlerts({
     newAlerts.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
     setAlerts(newAlerts.slice(0, 10)); // Limit to 10 alerts
-  };
+  }, [patients, visits, carePlans, incidents, currentUser]);
+
+  useEffect(() => {
+    generateAlerts();
+  }, [generateAlerts]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
       case 'high': return 'bg-red-100 border-red-300 text-red-800';
       case 'medium': return 'bg-yellow-100 border-yellow-300 text-yellow-800';
       case 'low': return 'bg-blue-100 border-blue-300 text-blue-800';
-      default: return 'bg-gray-100 border-gray-300 text-gray-800';
+      default: return 'bg-slate-100 border-slate-300 text-slate-800';
     }
   };
 

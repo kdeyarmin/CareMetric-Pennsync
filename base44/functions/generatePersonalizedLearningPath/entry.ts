@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 Deno.serve(async (req) => {
   try {
@@ -9,108 +9,119 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { provider_email, provider_type } = await req.json();
-
-    if (!provider_email || !provider_type) {
-      return Response.json(
-        { error: 'Missing provider_email or provider_type' },
-        { status: 400 }
-      );
+    const { nurse_email } = await req.json();
+    // Only admins may build a path from another nurse's PHI/performance data.
+    if (nurse_email && nurse_email !== user.email && user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const targetEmail = nurse_email || user.email;
 
-    // Fetch provider's usage patterns, training history, and compliance data
-    const [completions, badges, visits] = await Promise.all([
-      base44.entities.TrainingCompletion.filter({ nurse_email: provider_email }),
-      base44.entities.ProviderBadge.filter({ provider_email: provider_email }),
-      base44.entities.Visit.filter({ created_by: provider_email }, '-created_date', 20)
+    // Fetch nurse performance data
+    const [assignments, recommendations, audits, visits, skills] = await Promise.all([
+      base44.asServiceRole.entities.TrainingAssignment.filter({ assigned_to_user_id: targetEmail }),
+      base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }),
+      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
+      base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }),
+      base44.asServiceRole.entities.NurseSkill.filter({ nurse_email: targetEmail })
     ]);
 
-    // Determine skill gaps based on usage
-    const skillGaps = [];
-    const recommendedFeatures = [];
+    // Analyze performance and gaps
+    const recentAudits = audits.slice(0, 10);
+    const avgComplianceScore = recentAudits.length > 0
+      ? recentAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / recentAudits.length
+      : 0;
 
-    // Analyze visit patterns
-    const recentVisits = visits.slice(0, 10);
-    const hasUsedSmartNotes = recentVisits.some(v => v.ai_tags?.includes('smart_notes'));
-    const hasUsedScribe = recentVisits.some(v => v.ai_tags?.includes('scribe'));
-    const avgNoteLength = recentVisits.reduce((sum, v) => sum + (v.nurse_notes?.length || 0), 0) / (recentVisits.length || 1);
-
-    if (!hasUsedSmartNotes) {
-      skillGaps.push('Smart Notes Fundamentals');
-      recommendedFeatures.push('SmartNoteAssistant');
-    }
-
-    if (!hasUsedScribe) {
-      skillGaps.push('Voice-Powered Documentation');
-      recommendedFeatures.push('MedicalScribe');
-    }
-
-    if (avgNoteLength < 500) {
-      skillGaps.push('Comprehensive Documentation');
-    }
-
-    // Role-based learning path
-    const roleModules = {
-      RN: ['smart-notes-101', 'ai-scribe-mastery', 'care-plan-optimization', 'oasis-compliance-pro'],
-      LPN: ['smart-notes-101', 'ai-scribe-mastery', 'documentation-best-practices'],
-      PT: ['smart-notes-101', 'telehealth-guidance', 'care-plan-optimization'],
-      OT: ['smart-notes-101', 'telehealth-guidance', 'care-plan-optimization'],
-      MD: ['smart-notes-101', 'ai-scribe-mastery', 'care-plan-optimization']
-    };
-
-    const modules = (roleModules[provider_type] || roleModules.RN).map((moduleId, idx) => ({
-      module_id: moduleId,
-      sequence: idx,
-      status: completions.some(c => c.training_module_id === moduleId) ? 'completed' : 'not_started',
-      score: completions.find(c => c.training_module_id === moduleId)?.score
-    }));
-
-    const completedCount = modules.filter(m => m.status === 'completed').length;
-    const completionPercentage = Math.round((completedCount / modules.length) * 100);
-
-    // Create or update learning path
-    const existingPath = await base44.entities.PersonalizedLearningPath.filter({
-      provider_email: provider_email
+    const completedTrainingCount = assignments.filter(a => a.status === 'completed' || a.pass_fail_result === 'passed').length;
+    const unaddressedRecs = recommendations.filter(r => !r.addressed);
+    const weakAreas = {};
+    
+    unaddressedRecs.forEach(rec => {
+      weakAreas[rec.recommendation_type] = (weakAreas[rec.recommendation_type] || 0) + 1;
     });
 
-    const pathData = {
-      provider_email: provider_email,
-      provider_type: provider_type,
-      path_name: `${provider_type} Mastery Path`,
-      path_description: `Personalized learning path for ${provider_type} providers to master advanced features`,
-      modules: modules,
-      skill_gaps: skillGaps,
-      recommended_features: recommendedFeatures,
-      completion_percentage: completionPercentage,
-      estimated_hours: modules.length * 0.5,
-      next_recommended_module: modules.find(m => m.status === 'not_started')?.module_id,
-      based_on: {
-        usage_patterns: true,
-        role: true,
-        skill_gaps: skillGaps.length > 0,
-        compliance_needs: provider_type === 'RN'
-      }
-    };
+    recentAudits.forEach(audit => {
+      audit.issues?.forEach(issue => {
+        weakAreas[issue.element] = (weakAreas[issue.element] || 0) + 1;
+      });
+    });
 
-    let path;
-    if (existingPath.length > 0) {
-      await base44.entities.PersonalizedLearningPath.update(existingPath[0].id, pathData);
-      path = { ...existingPath[0], ...pathData };
-    } else {
-      path = await base44.entities.PersonalizedLearningPath.create(pathData);
-    }
+    // Get all available training modules
+    const allModules = await base44.asServiceRole.entities.TrainingModule.filter({});
+
+    // Use AI to generate personalized learning path
+    const prompt = `
+You are an expert nursing education specialist. Analyze this nurse's performance data and create a personalized learning path.
+
+Performance Data:
+- Compliance Score: ${avgComplianceScore.toFixed(1)}%
+- Completed Training: ${completedTrainingCount}
+- Unaddressed Recommendations: ${unaddressedRecs.length}
+- Weak Areas: ${Object.entries(weakAreas).map(([area, count]) => `${area} (${count} issues)`).join(', ')}
+- Documented Skills: ${skills.length}
+
+Available Training Modules:
+${allModules.map(m => `- ${m.title} (${m.category}, ${m.difficulty_level}, ${m.module_type})`).join('\n')}
+
+Create a personalized learning path with:
+1. Priority ranking (critical/high/medium/low)
+2. Recommended sequence of modules
+3. Estimated completion timeline
+4. Specific learning objectives for each module
+5. Personalized motivation message
+
+Return JSON format.
+`;
+
+    const aiResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
+      model: "claude_opus_4_8",
+      prompt,
+      response_json_schema: {
+        type: 'object',
+        properties: {
+          learning_path: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                module_id: { type: 'string' },
+                priority: { type: 'string' },
+                sequence: { type: 'number' },
+                estimated_days: { type: 'number' },
+                learning_objectives: { type: 'array', items: { type: 'string' } },
+                why_recommended: { type: 'string' }
+              }
+            }
+          },
+          motivation_message: { type: 'string' },
+          overall_goal: { type: 'string' },
+          estimated_completion_weeks: { type: 'number' }
+        }
+      }
+    });
+
+    // Enrich with module details
+    const enrichedPath = (aiResponse?.learning_path || []).map(item => {
+      const module = allModules.find(m => m.id === item.module_id || m.title === item.module_id);
+      return {
+        ...item,
+        module: module || null
+      };
+    });
 
     return Response.json({
-      success: true,
-      path: path,
-      skill_gaps: skillGaps,
-      recommended_features: recommendedFeatures
+      learning_path: enrichedPath,
+      motivation_message: aiResponse.motivation_message,
+      overall_goal: aiResponse.overall_goal,
+      estimated_completion_weeks: aiResponse.estimated_completion_weeks,
+      performance_summary: {
+        compliance_score: avgComplianceScore,
+        completed_training: completedTrainingCount,
+        identified_gaps: Object.keys(weakAreas).length
+      }
     });
+
   } catch (error) {
     console.error('Error generating learning path:', error);
-    return Response.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return Response.json({ error: error.message }, { status: 500 });
   }
 });

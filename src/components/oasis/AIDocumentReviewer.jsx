@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -16,18 +16,11 @@ import {
 } from "lucide-react";
 
 export default function AIDocumentReviewer({ oasisData, autoReview = true }) {
-  const [isReviewing, setIsReviewing] = useState(false);
+  const ai = useAICall();
   const [reviewResults, setReviewResults] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (autoReview && oasisData && !reviewResults) {
-      performAIReview();
-    }
-  }, [oasisData, autoReview]);
-
-  const performAIReview = async () => {
-    setIsReviewing(true);
+  const performAIReview = useCallback(async () => {
     setError(null);
 
     try {
@@ -63,7 +56,8 @@ Perform a comprehensive review and identify:
 
 Provide actionable, specific feedback for each issue found.`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -147,10 +141,15 @@ Provide actionable, specific feedback for each issue found.`;
     } catch (err) {
       setError(err.message);
       console.error("AI review error:", err);
-    } finally {
-      setIsReviewing(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [oasisData]);
+
+  useEffect(() => {
+    if (autoReview && oasisData && !reviewResults) {
+      performAIReview();
+    }
+  }, [oasisData, autoReview, reviewResults, performAIReview]);
 
   const getSeverityColor = (severity) => {
     const colors = {
@@ -177,18 +176,18 @@ Provide actionable, specific feedback for each issue found.`;
   }
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="bg-gradient-to-r from-navy-50 to-blue-50">
         <CardTitle className="flex items-center gap-2">
-          <FileSearch className="w-6 h-6 text-purple-600" />
+          <FileSearch className="w-6 h-6 text-navy-600" />
           AI Document Review
         </CardTitle>
       </CardHeader>
       <CardContent className="p-6 space-y-4">
-        {isReviewing && (
+        {ai.loading && (
           <div className="text-center py-8">
-            <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-            <p className="text-gray-600">AI is reviewing the OASIS document...</p>
+            <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+            <p className="text-slate-600">AI is reviewing the OASIS document...</p>
           </div>
         )}
 
@@ -201,16 +200,16 @@ Provide actionable, specific feedback for each issue found.`;
           </Alert>
         )}
 
-        {!isReviewing && !reviewResults && (
+        {!ai.loading && !reviewResults && (
           <div className="text-center py-8">
-            <FileSearch className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <FileSearch className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
               AI Review Available
             </h3>
-            <p className="text-gray-600 mb-4">
+            <p className="text-slate-600 mb-4">
               Get AI-powered analysis of this OASIS document for errors and compliance issues
             </p>
-            <Button onClick={performAIReview} className="bg-purple-600 hover:bg-purple-700">
+            <Button onClick={performAIReview} className="bg-navy-600 hover:bg-navy-700">
               <FileSearch className="w-4 h-4 mr-2" />
               Start AI Review
             </Button>
@@ -223,13 +222,13 @@ Provide actionable, specific feedback for each issue found.`;
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
                 <CardContent className="p-4">
-                  <p className="text-sm text-gray-600 mb-2">Quality Score</p>
+                  <p className="text-sm text-slate-600 mb-2">Quality Score</p>
                   <div className="flex items-center gap-3">
-                    <div className="text-4xl font-bold text-purple-600">
+                    <div className="text-4xl font-bold text-navy-600">
                       {reviewResults.overall_score}
                     </div>
                     <div className="flex-1">
-                      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
                         <div
                           className={`h-full ${
                             reviewResults.overall_score >= 80 ? "bg-green-600" :
@@ -246,7 +245,7 @@ Provide actionable, specific feedback for each issue found.`;
 
               <Card>
                 <CardContent className="p-4">
-                  <p className="text-sm text-gray-600 mb-2">Compliance Status</p>
+                  <p className="text-sm text-slate-600 mb-2">Compliance Status</p>
                   <Badge className={`${getComplianceStatusColor(reviewResults.compliance_status)} text-white text-lg px-4 py-2`}>
                     {reviewResults.compliance_status?.replace(/_/g, ' ').toUpperCase()}
                   </Badge>
@@ -278,8 +277,8 @@ Provide actionable, specific feedback for each issue found.`;
                       <div className="flex items-start gap-2 mb-2">
                         <XCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
-                          <p className="font-semibold text-gray-900">{error.field}</p>
-                          <p className="text-sm text-gray-700 mt-1">{error.issue}</p>
+                          <p className="font-semibold text-slate-900">{error.field}</p>
+                          <p className="text-sm text-slate-700 mt-1">{error.issue}</p>
                         </div>
                       </div>
                       <div className="ml-6 space-y-1 text-sm">
@@ -332,8 +331,8 @@ Provide actionable, specific feedback for each issue found.`;
                 <CardContent className="space-y-2">
                   {reviewResults.warnings.map((warning, idx) => (
                     <div key={idx} className="p-3 bg-yellow-50 rounded border border-yellow-200">
-                      <p className="font-semibold text-sm text-gray-900">{warning.field}</p>
-                      <p className="text-sm text-gray-700 mt-1">{warning.issue}</p>
+                      <p className="font-semibold text-sm text-slate-900">{warning.field}</p>
+                      <p className="text-sm text-slate-700 mt-1">{warning.issue}</p>
                       <p className="text-sm text-blue-700 mt-1">
                         <strong>Recommendation:</strong> {warning.recommendation}
                       </p>
@@ -355,8 +354,8 @@ Provide actionable, specific feedback for each issue found.`;
                 <CardContent className="space-y-2">
                   {reviewResults.missing_information.map((missing, idx) => (
                     <div key={idx} className="p-3 bg-blue-50 rounded border border-blue-200">
-                      <p className="font-semibold text-sm text-gray-900">{missing.field}</p>
-                      <p className="text-sm text-gray-700 mt-1">{missing.reason_required}</p>
+                      <p className="font-semibold text-sm text-slate-900">{missing.field}</p>
+                      <p className="text-sm text-slate-700 mt-1">{missing.reason_required}</p>
                       <p className="text-sm text-orange-700 mt-1">
                         <strong>Impact:</strong> {missing.impact_if_missing}
                       </p>
@@ -378,11 +377,11 @@ Provide actionable, specific feedback for each issue found.`;
                 <CardContent className="space-y-2">
                   {reviewResults.best_practices.map((practice, idx) => (
                     <div key={idx} className="p-3 bg-green-50 rounded border border-green-200">
-                      <p className="font-semibold text-sm text-gray-900">{practice.area}</p>
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="font-semibold text-sm text-slate-900">{practice.area}</p>
+                      <p className="text-sm text-slate-600 mt-1">
                         <strong>Current:</strong> {practice.current_status}
                       </p>
-                      <p className="text-sm text-gray-700 mt-1">{practice.recommendation}</p>
+                      <p className="text-sm text-slate-700 mt-1">{practice.recommendation}</p>
                       <p className="text-sm text-green-700 mt-1">
                         <strong>Benefit:</strong> {practice.expected_benefit}
                       </p>
@@ -406,7 +405,7 @@ Provide actionable, specific feedback for each issue found.`;
                     {reviewResults.strengths.map((strength, idx) => (
                       <li key={idx} className="flex items-start gap-2">
                         <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span className="text-sm text-gray-900">{strength}</span>
+                        <span className="text-sm text-slate-900">{strength}</span>
                       </li>
                     ))}
                   </ul>

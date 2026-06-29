@@ -1,11 +1,9 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   FileEdit,
   CheckCircle2,
-  AlertCircle,
   Lightbulb,
   BookOpen,
   ChevronDown,
@@ -141,14 +139,14 @@ export default function DocumentationQualitySuggestions({ analysisResults }) {
       case 'high': return 'bg-red-100 text-red-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'low': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
   const getColorClasses = (color) => {
     const colors = {
       blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', icon: 'text-blue-600' },
-      purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', icon: 'text-purple-600' },
+      purple: { bg: 'bg-navy-50', border: 'border-navy-200', text: 'text-navy-700', icon: 'text-navy-600' },
       green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', icon: 'text-green-600' },
       orange: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', icon: 'text-orange-600' }
     };
@@ -197,16 +195,16 @@ export default function DocumentationQualitySuggestions({ analysisResults }) {
                     </Badge>
                   </div>
                   {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-gray-500" />
+                    <ChevronUp className="w-4 h-4 text-slate-500" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                    <ChevronDown className="w-4 h-4 text-slate-500" />
                   )}
                 </button>
 
                 {isExpanded && (
                   <div className="p-3 bg-white space-y-3">
                     {section.items.map((item, idx) => (
-                      <div key={idx} className="p-3 bg-gray-50 rounded-lg border">
+                      <div key={idx} className="p-3 bg-slate-50 rounded-lg border">
                         <div className="flex items-start justify-between mb-2">
                           <Badge variant="outline" className="text-xs font-mono">
                             {item.item}
@@ -218,15 +216,15 @@ export default function DocumentationQualitySuggestions({ analysisResults }) {
 
                         {item.current && (
                           <div className="mb-2">
-                            <p className="text-xs text-gray-500">Current Issue:</p>
-                            <p className="text-xs text-gray-700">{item.current}</p>
+                            <p className="text-xs text-slate-500">Current Issue:</p>
+                            <p className="text-xs text-slate-700">{item.current}</p>
                           </div>
                         )}
 
                         {item.problem && (
                           <div className="mb-2">
-                            <p className="text-xs text-gray-500">Problem:</p>
-                            <p className="text-xs text-gray-700">{item.problem}</p>
+                            <p className="text-xs text-slate-500">Problem:</p>
+                            <p className="text-xs text-slate-700">{item.problem}</p>
                           </div>
                         )}
 
@@ -241,7 +239,7 @@ export default function DocumentationQualitySuggestions({ analysisResults }) {
                         </div>
 
                         {item.rationale && (
-                          <p className="text-xs text-gray-500 mt-2 italic">
+                          <p className="text-xs text-slate-500 mt-2 italic">
                             Why: {item.rationale}
                           </p>
                         )}

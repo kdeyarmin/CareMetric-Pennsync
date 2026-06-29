@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
+import { isSafeExternalUrl } from "@/components/utils/security";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,13 +13,12 @@ import {
   CheckCircle2,
   TrendingDown,
   DollarSign,
-  FileText,
   Lightbulb,
   ArrowRight,
   Loader2,
   Shield
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 export default function AIDataValidationEngine({
   oasisData,
@@ -27,20 +28,13 @@ export default function AIDataValidationEngine({
   autoValidate = false,
   onCorrection
 }) {
-  const [isValidating, setIsValidating] = useState(false);
+  const ai = useAICall();
   const [validationResults, setValidationResults] = useState(null);
   const [appliedCorrections, setAppliedCorrections] = useState(new Set());
 
-  useEffect(() => {
-    if (autoValidate && oasisData && patientData) {
-      performValidation();
-    }
-  }, [autoValidate, oasisData?.id]);
-
-  const performValidation = async () => {
+  const performValidation = useCallback(async () => {
     if (!oasisData || !patientData) return;
 
-    setIsValidating(true);
     try {
       const prompt = `You are an expert OASIS validator and Medicare compliance specialist. Analyze OASIS data for accuracy, consistency, and reimbursement optimization.
 
@@ -83,7 +77,8 @@ For each issue found, provide:
 - Plain-language explanation of the rule
 - Specific do's and don'ts examples`;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt,
         response_json_schema: {
           type: "object",
@@ -199,11 +194,18 @@ For each issue found, provide:
       setValidationResults(result);
     } catch (error) {
       console.error('Validation error:', error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsValidating(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [oasisData, patientData, clinicalNotes, patientHistory]);
 
-  const applyCorrection = (correction) => {
+  useEffect(() => {
+    if (autoValidate && oasisData && patientData) {
+      performValidation();
+    }
+  }, [autoValidate, oasisData?.id, oasisData, patientData, performValidation]);
+
+  const applyCorrection = (correction, key) => {
     if (onCorrection) {
       onCorrection({
         m_item_code: correction.m_item_code,
@@ -212,7 +214,9 @@ For each issue found, provide:
         justification: correction.clinical_evidence || correction.justification
       });
     }
-    setAppliedCorrections(prev => new Set([...prev, correction.m_item_code]));
+    // Key on a stable per-row id so issues that share a missing/duplicate
+    // m_item_code don't ALL flip to "Applied" when one of them is applied.
+    setAppliedCorrections(prev => new Set([...prev, key ?? correction.m_item_code]));
   };
 
   const getSeverityColor = (severity) => {
@@ -221,7 +225,7 @@ For each issue found, provide:
       case 'high': return 'border-orange-500 bg-orange-50';
       case 'medium': return 'border-yellow-500 bg-yellow-50';
       case 'low': return 'border-blue-500 bg-blue-50';
-      default: return 'border-gray-300 bg-gray-50';
+      default: return 'border-slate-300 bg-slate-50';
     }
   };
 
@@ -232,20 +236,20 @@ For each issue found, provide:
       medium: 'bg-yellow-600 text-white',
       low: 'bg-blue-600 text-white'
     };
-    return colors[risk] || 'bg-gray-600 text-white';
+    return colors[risk] || 'bg-slate-600 text-white';
   };
 
   return (
-    <Card className="border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-300 bg-gradient-to-br from-navy-50 to-indigo-50">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-600" />
+            <Brain className="w-5 h-5 text-navy-600" />
             AI Data Validation Engine
-            {isValidating && <Loader2 className="w-4 h-4 animate-spin text-purple-500" />}
+            {ai.loading && <Loader2 className="w-4 h-4 animate-spin text-navy-500" />}
           </CardTitle>
-          {!validationResults && !isValidating && (
-            <Button onClick={performValidation} className="bg-purple-600 hover:bg-purple-700">
+          {!validationResults && !ai.loading && (
+            <Button onClick={performValidation} className="bg-navy-600 hover:bg-navy-700">
               <Brain className="w-4 h-4 mr-2" />
               Validate Data
             </Button>
@@ -254,17 +258,17 @@ For each issue found, provide:
       </CardHeader>
 
       <CardContent>
-        {isValidating && (
+        {ai.loading && (
           <div className="text-center py-8">
-            <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-            <p className="text-sm text-purple-700">Analyzing OASIS data for accuracy and optimization...</p>
+            <Loader2 className="w-12 h-12 animate-spin text-navy-600 mx-auto mb-4" />
+            <p className="text-sm text-navy-700">Analyzing OASIS data for accuracy and optimization...</p>
           </div>
         )}
 
-        {!isValidating && !validationResults && (
+        {!ai.loading && !validationResults && (
           <div className="text-center py-8">
-            <Shield className="w-12 h-12 text-purple-400 mx-auto mb-4" />
-            <p className="text-sm text-gray-600">Click "Validate Data" to check for inconsistencies and optimization opportunities</p>
+            <Shield className="w-12 h-12 text-navy-400 mx-auto mb-4" />
+            <p className="text-sm text-slate-600">Click "Validate Data" to check for inconsistencies and optimization opportunities</p>
           </div>
         )}
 
@@ -313,18 +317,18 @@ For each issue found, provide:
                               </Badge>
                             </div>
                             <Badge variant="outline" className="text-xs">
-                              {issue.inconsistency_type.replace(/_/g, ' ')}
+                              {issue.inconsistency_type?.replace(/_/g, ' ')}
                             </Badge>
                           </div>
                         </div>
 
                         <div className="space-y-2 mb-3">
                           <div className="flex items-center gap-2 text-sm">
-                            <span className="text-gray-600">Current:</span>
+                            <span className="text-slate-600">Current:</span>
                             <span className="font-medium line-through text-red-600">{issue.current_value}</span>
                           </div>
                           <div className="flex items-center gap-2 text-sm">
-                            <span className="text-gray-600">Suggested:</span>
+                            <span className="text-slate-600">Suggested:</span>
                             <span className="font-medium text-green-600">{issue.suggested_value}</span>
                             <Badge variant="outline" className="text-xs">
                               {issue.confidence}% confidence
@@ -333,8 +337,8 @@ For each issue found, provide:
                         </div>
 
                         <div className="bg-white/80 rounded p-2 mb-3 text-sm">
-                          <p className="font-medium text-xs text-gray-600 mb-1">Clinical Evidence:</p>
-                          <p className="text-gray-700">{issue.clinical_evidence}</p>
+                          <p className="font-medium text-xs text-slate-600 mb-1">Clinical Evidence:</p>
+                          <p className="text-slate-700">{issue.clinical_evidence}</p>
                         </div>
 
                         {issue.cms_regulation && (
@@ -346,7 +350,7 @@ For each issue found, provide:
                             <p className="text-xs text-indigo-800 mb-2">{issue.cms_regulation}</p>
                             {issue.cms_reference_link && (
                               <a 
-                                href={issue.cms_reference_link} 
+                                href={isSafeExternalUrl(issue.cms_reference_link) ? issue.cms_reference_link : undefined}
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="text-xs text-indigo-600 underline hover:text-indigo-800"
@@ -405,17 +409,17 @@ For each issue found, provide:
                           </div>
                         )}
 
-                        {!appliedCorrections.has(issue.m_item_code) && (
+                        {!appliedCorrections.has(`inc-${issue.m_item_code || idx}`) && (
                           <Button
                             size="sm"
-                            onClick={() => applyCorrection(issue)}
+                            onClick={() => applyCorrection(issue, `inc-${issue.m_item_code || idx}`)}
                             className="bg-green-600 hover:bg-green-700 text-white"
                           >
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Apply Correction
                           </Button>
                         )}
-                        {appliedCorrections.has(issue.m_item_code) && (
+                        {appliedCorrections.has(`inc-${issue.m_item_code || idx}`) && (
                           <Badge className="bg-green-600 text-white">
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Applied
@@ -456,16 +460,16 @@ For each issue found, provide:
 
                       <div className="space-y-2 mb-3">
                         <div className="text-sm">
-                          <span className="text-gray-600">Current: </span>
+                          <span className="text-slate-600">Current: </span>
                           <span className="font-medium">{opt.current_value}</span>
-                          <ArrowRight className="w-4 h-4 inline mx-2 text-gray-400" />
+                          <ArrowRight className="w-4 h-4 inline mx-2 text-slate-400" />
                           <span className="font-medium text-green-600">{opt.suggested_value}</span>
                         </div>
                       </div>
 
                       <div className="bg-white rounded p-2 mb-2 text-sm">
-                        <p className="font-medium text-xs text-gray-600 mb-1">Justification:</p>
-                        <p className="text-gray-700">{opt.justification}</p>
+                        <p className="font-medium text-xs text-slate-600 mb-1">Justification:</p>
+                        <p className="text-slate-700">{opt.justification}</p>
                       </div>
 
                       <div className="bg-blue-50 rounded p-2 mb-2 text-sm">
@@ -482,10 +486,10 @@ For each issue found, provide:
                         </Alert>
                       )}
 
-                      {!appliedCorrections.has(opt.m_item_code) && (
+                      {!appliedCorrections.has(`opt-${opt.m_item_code || idx}`) && (
                         <Button
                           size="sm"
-                          onClick={() => applyCorrection(opt)}
+                          onClick={() => applyCorrection(opt, `opt-${opt.m_item_code || idx}`)}
                           className="bg-green-600 hover:bg-green-700 text-white mt-2"
                         >
                           Apply Optimization
@@ -549,7 +553,7 @@ For each issue found, provide:
                           <p className="text-xs text-indigo-800 mb-1">{risk.cms_regulation}</p>
                           {risk.cms_reference_link && (
                             <a 
-                              href={risk.cms_reference_link} 
+                              href={isSafeExternalUrl(risk.cms_reference_link) ? risk.cms_reference_link : undefined}
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="text-xs text-indigo-600 underline hover:text-indigo-800"
@@ -630,7 +634,7 @@ For each issue found, provide:
                         <p className="text-xs text-indigo-800 mb-1">{exp.cms_requirement}</p>
                         {exp.cms_reference_link && (
                           <a 
-                            href={exp.cms_reference_link} 
+                            href={isSafeExternalUrl(exp.cms_reference_link) ? exp.cms_reference_link : undefined} 
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="text-xs text-indigo-600 underline hover:text-indigo-800"

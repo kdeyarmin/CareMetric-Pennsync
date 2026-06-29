@@ -1,10 +1,9 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Activity, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 
-export default function HealthTrendsChart({ visits, patient }) {
+export default function HealthTrendsChart({ visits, _patient }) {
   const completedVisits = visits
     .filter(v => v.status === 'completed' && v.vital_signs)
     .slice(0, 10)
@@ -30,7 +29,7 @@ export default function HealthTrendsChart({ visits, patient }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-center py-8">
-          <p className="text-gray-500">No vital signs data available</p>
+          <p className="text-slate-500">No vital signs data available</p>
         </CardContent>
       </Card>
     );
@@ -70,7 +69,7 @@ export default function HealthTrendsChart({ visits, patient }) {
             <Line 
               type="monotone" 
               dataKey="hr" 
-              stroke="#3b82f6" 
+              stroke="#3557b0" 
               name="Heart Rate"
               strokeWidth={2}
               dot={{ r: 4 }}

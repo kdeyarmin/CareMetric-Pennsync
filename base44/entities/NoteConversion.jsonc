@@ -1,0 +1,69 @@
+{
+  "name": "NoteConversion",
+  "type": "object",
+  "properties": {
+    "nurse_email": {
+      "type": "string",
+      "description": "Email of the nurse who created the note"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Patient ID if available"
+    },
+    "visit_type": {
+      "type": "string",
+      "description": "Type of visit"
+    },
+    "diagnosis": {
+      "type": "string",
+      "description": "Diagnosis for the visit"
+    },
+    "rough_note_length": {
+      "type": "number",
+      "description": "Character count of rough note"
+    },
+    "enhanced_note_length": {
+      "type": "number",
+      "description": "Character count of enhanced note"
+    },
+    "quality_score": {
+      "type": "number",
+      "description": "AI quality score 0-100"
+    },
+    "compliance_score": {
+      "type": "number",
+      "description": "Final compliance score after enhancement"
+    },
+    "rough_note_compliance": {
+      "type": "number",
+      "description": "Compliance score of rough draft before enhancement"
+    },
+    "enhanced_note_compliance": {
+      "type": "number",
+      "description": "Compliance score after AI enhancement"
+    },
+    "compliance_improvement": {
+      "type": "number",
+      "description": "Percentage point improvement (enhanced - rough)"
+    },
+    "conversion_time_ms": {
+      "type": "number",
+      "description": "Time taken for enhancement in milliseconds"
+    },
+    "draft_presence_score": {
+      "type": "number",
+      "description": "Presence/compliance score of the rough draft before enhancement"
+    },
+    "rough_len": {
+      "type": "number",
+      "description": "Character count of the rough note"
+    },
+    "enhanced_len": {
+      "type": "number",
+      "description": "Character count of the enhanced note"
+    }
+  },
+  "required": [
+    "nurse_email"
+  ]
+}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,18 +16,18 @@ import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { 
   ArrowRight, 
-  User, 
   Phone, 
   Mail, 
   MapPin, 
-  Calendar, 
-  FileText,
+  Calendar,
   AlertTriangle,
   CheckCircle2,
   GitMerge
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
+import { mergePatientInto } from "./mergePatients";
 
 export default function PatientMergeDialog({ 
   open, 
@@ -68,21 +68,15 @@ export default function PatientMergeDialog({
     mutationFn: async () => {
       const primaryPatient = selectedPrimary === 'patient1' ? patient1 : patient2;
       const secondaryPatient = selectedPrimary === 'patient1' ? patient2 : patient1;
-      const secondaryVisits = selectedPrimary === 'patient1' ? patient2Visits : patient1Visits;
-      const secondaryCarePlans = selectedPrimary === 'patient1' ? patient2CarePlans : patient1CarePlans;
 
-      // Update all visits from secondary to point to primary
-      for (const visit of secondaryVisits) {
-        await base44.entities.Visit.update(visit.id, { patient_id: primaryPatient.id });
-      }
-
-      // Update all care plans from secondary to point to primary
-      for (const carePlan of secondaryCarePlans) {
-        await base44.entities.CarePlan.update(carePlan.id, { patient_id: primaryPatient.id });
-      }
-
-      // Delete the secondary patient
-      await base44.entities.Patient.delete(secondaryPatient.id);
+      // Use the shared merge helper: it reassigns the secondary's clinical history
+      // to the primary and SOFT-archives the secondary (status 'merged',
+      // is_archived, merged_into_id) — mirroring the deduplicatePatients backend.
+      // The previous inline path hard-deleted the secondary after moving only
+      // visits and care plans, orphaning every other clinical record (OASIS,
+      // incidents, documents, alerts, …) and destroying the patient irrecoverably.
+      const me = await base44.auth.me().catch(() => null);
+      await mergePatientInto(primaryPatient.id, secondaryPatient.id, { mergedBy: me?.email || null });
 
       return { primaryPatient, secondaryPatient };
     },
@@ -95,9 +89,15 @@ export default function PatientMergeDialog({
         merged_patient: `${secondaryPatient.first_name} ${secondaryPatient.last_name}`,
         page: 'Patients'
       });
+      toast.success('Patients merged. The duplicate was archived (recoverable).');
       onOpenChange(false);
       setStep(1);
       setSelectedPrimary(null);
+    },
+    onError: (error) => {
+      // Surface failures instead of leaving the button stuck and the merge silently
+      // half-applied with no feedback.
+      toast.error(`Merge failed: ${error?.message || 'Please try again.'}`);
     },
   });
 
@@ -121,13 +121,13 @@ export default function PatientMergeDialog({
         className={`block cursor-pointer rounded-lg border-2 p-4 transition-all ${
           isSelected 
             ? 'border-blue-600 bg-blue-50' 
-            : 'border-gray-200 hover:border-gray-300'
+            : 'border-slate-200 hover:border-slate-300'
         }`}
       >
         <div className="flex items-start justify-between mb-3">
           <div>
             <h3 className="font-semibold text-lg">{patient.first_name} {patient.last_name}</h3>
-            <p className="text-xs text-gray-500">MRN: {patient.medical_record_number || 'N/A'}</p>
+            <p className="text-xs text-slate-500">MRN: {patient.medical_record_number || 'N/A'}</p>
           </div>
           {isSelected && (
             <Badge className="bg-blue-600">Primary</Badge>
@@ -135,24 +135,24 @@ export default function PatientMergeDialog({
         </div>
 
         <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2 text-gray-600">
+          <div className="flex items-center gap-2 text-slate-600">
             <Calendar className="w-4 h-4" />
             <span>DOB: {patient.date_of_birth || 'N/A'}</span>
           </div>
           {patient.phone && (
-            <div className="flex items-center gap-2 text-gray-600">
+            <div className="flex items-center gap-2 text-slate-600">
               <Phone className="w-4 h-4" />
               <span>{patient.phone}</span>
             </div>
           )}
           {patient.email && (
-            <div className="flex items-center gap-2 text-gray-600">
+            <div className="flex items-center gap-2 text-slate-600">
               <Mail className="w-4 h-4" />
               <span>{patient.email}</span>
             </div>
           )}
           {patient.address && (
-            <div className="flex items-start gap-2 text-gray-600">
+            <div className="flex items-start gap-2 text-slate-600">
               <MapPin className="w-4 h-4 mt-0.5" />
               <span className="text-xs">{patient.address}</span>
             </div>
@@ -161,17 +161,17 @@ export default function PatientMergeDialog({
 
         <div className="flex gap-4 mt-3 pt-3 border-t">
           <div className="text-center">
-            <p className="text-xs text-gray-500">Visits</p>
+            <p className="text-xs text-slate-500">Visits</p>
             <p className="text-lg font-semibold text-blue-600">{visits.length}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-500">Care Plans</p>
+            <p className="text-xs text-slate-500">Care Plans</p>
             <p className="text-lg font-semibold text-green-600">{carePlans.length}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-500">Created</p>
-            <p className="text-xs font-medium text-gray-700">
-              {format(new Date(patient.created_date), 'MM/dd/yyyy')}
+            <p className="text-xs text-slate-500">Created</p>
+            <p className="text-xs font-medium text-slate-700">
+              {Number.isNaN(new Date(patient.created_date).getTime()) ? '—' : format(new Date(patient.created_date), 'MM/dd/yyyy')}
             </p>
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function PatientMergeDialog({
               <AlertTriangle className="w-4 h-4" />
               <AlertDescription>
                 <p className="font-medium mb-1">Select Primary Patient Record</p>
-                <p className="text-xs">The primary patient's information will be kept. All visits and care plans from the other patient will be transferred.</p>
+                <p className="text-xs">The primary patient's information will be kept. The other patient's clinical history will be transferred to it, and the duplicate record will be archived (recoverable), not deleted.</p>
               </AlertDescription>
             </Alert>
 
@@ -240,7 +240,7 @@ export default function PatientMergeDialog({
                     {(selectedPrimary === 'patient1' ? patient1 : patient2).first_name}{' '}
                     {(selectedPrimary === 'patient1' ? patient1 : patient2).last_name}
                   </h3>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-slate-600">
                     MRN: {(selectedPrimary === 'patient1' ? patient1 : patient2).medical_record_number || 'N/A'}
                   </p>
                 </CardContent>
@@ -252,14 +252,14 @@ export default function PatientMergeDialog({
 
               <Card className="border-2 border-red-300 bg-red-50">
                 <CardHeader className="pb-2">
-                  <Badge className="bg-red-600 w-fit">Secondary (Merge & Delete)</Badge>
+                  <Badge className="bg-red-600 w-fit">Secondary (Merge &amp; Archive)</Badge>
                 </CardHeader>
                 <CardContent>
                   <h3 className="font-semibold">
                     {(selectedPrimary === 'patient1' ? patient2 : patient1).first_name}{' '}
                     {(selectedPrimary === 'patient1' ? patient2 : patient1).last_name}
                   </h3>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-slate-600">
                     MRN: {(selectedPrimary === 'patient1' ? patient2 : patient1).medical_record_number || 'N/A'}
                   </p>
                 </CardContent>
@@ -280,8 +280,12 @@ export default function PatientMergeDialog({
                   <span>Transfer {(selectedPrimary === 'patient1' ? patient2CarePlans : patient1CarePlans).length} care plans to primary patient</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5" />
-                  <span className="text-red-700 font-medium">Delete secondary patient record permanently</span>
+                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5" />
+                  <span>Transfer the secondary patient's other clinical records (OASIS, alerts, pending updates) to primary</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                  <span className="text-amber-700 font-medium">Archive the secondary patient record (recoverable, not deleted)</span>
                 </div>
               </CardContent>
             </Card>
@@ -295,17 +299,17 @@ export default function PatientMergeDialog({
               <AlertDescription>
                 <p className="font-medium text-red-900 mb-1">⚠️ Final Confirmation Required</p>
                 <p className="text-xs text-red-800">
-                  This action is permanent and cannot be undone. The secondary patient record will be deleted after merging all data.
+                  The secondary patient's clinical history will be transferred to the primary and the duplicate record will be archived. This is recoverable (the duplicate is marked merged, not deleted), but please confirm the primary selection is correct.
                 </p>
               </AlertDescription>
             </Alert>
 
-            <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="bg-slate-50 p-4 rounded-lg">
               <p className="text-sm font-medium mb-2">You are about to:</p>
-              <ul className="space-y-1 text-sm text-gray-700">
+              <ul className="space-y-1 text-sm text-slate-700">
                 <li>• Merge {(selectedPrimary === 'patient1' ? patient2 : patient1).first_name} {(selectedPrimary === 'patient1' ? patient2 : patient1).last_name} into {(selectedPrimary === 'patient1' ? patient1 : patient2).first_name} {(selectedPrimary === 'patient1' ? patient1 : patient2).last_name}</li>
-                <li>• Transfer {(selectedPrimary === 'patient1' ? patient2Visits.length : patient1Visits.length)} visits and {(selectedPrimary === 'patient1' ? patient2CarePlans.length : patient1CarePlans.length)} care plans</li>
-                <li>• Permanently delete the secondary patient record</li>
+                <li>• Transfer {(selectedPrimary === 'patient1' ? patient2Visits.length : patient1Visits.length)} visits and {(selectedPrimary === 'patient1' ? patient2CarePlans.length : patient1CarePlans.length)} care plans (plus alerts and other clinical history)</li>
+                <li>• Archive the secondary patient record (recoverable, not deleted)</li>
               </ul>
             </div>
           </div>
@@ -334,10 +338,10 @@ export default function PatientMergeDialog({
             ) : (
               <Button
                 onClick={() => mergeMutation.mutate()}
-                disabled={mergeMutation.isLoading}
+                disabled={mergeMutation.isPending}
                 className="bg-red-600 hover:bg-red-700"
               >
-                {mergeMutation.isLoading ? 'Merging...' : 'Merge Patients'}
+                {mergeMutation.isPending ? 'Merging...' : 'Merge Patients'}
               </Button>
             )}
           </div>

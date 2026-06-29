@@ -1,38 +1,29 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import {
-  DollarSign,
   TrendingUp,
-  Activity,
   Loader2,
   ArrowRight,
   Info,
-  BarChart3,
   PieChart
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function EnhancedPDGMCaseMixAnalyzer({ pdgmData, navigationData }) {
   const [caseMixAnalysis, setCaseMixAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
 
-  useEffect(() => {
-    if (pdgmData && navigationData?.case_mix_calculation && !caseMixAnalysis) {
-      performCaseMixAnalysis();
-    }
-  }, [pdgmData, navigationData]);
-
-  const performCaseMixAnalysis = async () => {
+  const performCaseMixAnalysis = useCallback(async () => {
     if (!pdgmData || !navigationData?.case_mix_calculation) return;
 
-    setIsAnalyzing(true);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Perform detailed PDGM case-mix component analysis showing the dollar contribution of each factor.
 
 PDGM DATA:
@@ -174,10 +165,17 @@ Return detailed JSON with exact dollar amounts:`,
       setCaseMixAnalysis(result);
     } catch (error) {
       console.error("Case-mix analysis error:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsAnalyzing(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [pdgmData, navigationData]);
+
+  useEffect(() => {
+    if (pdgmData && navigationData?.case_mix_calculation && !caseMixAnalysis) {
+      performCaseMixAnalysis();
+    }
+  }, [pdgmData, navigationData, caseMixAnalysis, performCaseMixAnalysis]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
@@ -189,7 +187,7 @@ Return detailed JSON with exact dollar amounts:`,
       medium: 'bg-yellow-100 text-yellow-800',
       high: 'bg-orange-100 text-orange-800'
     };
-    return colors[difficulty] || 'bg-gray-100 text-gray-800';
+    return colors[difficulty] || 'bg-slate-100 text-slate-800';
   };
 
   if (!caseMixAnalysis) {
@@ -202,13 +200,13 @@ Return detailed JSON with exact dollar amounts:`,
           </CardTitle>
         </CardHeader>
         <CardContent className="py-4">
-          {isAnalyzing ? (
+          {ai.loading ? (
             <div className="text-center">
               <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mx-auto mb-2" />
-              <p className="text-xs text-gray-600">Analyzing case-mix components...</p>
+              <p className="text-xs text-slate-600">Analyzing case-mix components...</p>
             </div>
           ) : (
-            <p className="text-sm text-gray-600 text-center">Loading case-mix analysis...</p>
+            <p className="text-sm text-slate-600 text-center">Loading case-mix analysis...</p>
           )}
         </CardContent>
       </Card>
@@ -221,11 +219,11 @@ Return detailed JSON with exact dollar amounts:`,
     percentage: comp.percentage_of_total
   })) || [];
 
-  const COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981'];
+  const COLORS = ['#264491', '#8B5CF6', '#0d9488', '#F59E0B', '#10B981'];
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
             <PieChart className="w-5 h-5 text-indigo-600" />
@@ -239,7 +237,7 @@ Return detailed JSON with exact dollar amounts:`,
       <CardContent className="space-y-4 pt-4">
         {/* Component Contributions Chart */}
         <div className="bg-white p-3 rounded-lg border">
-          <p className="text-sm font-semibold text-gray-700 mb-3">Dollar Contribution by Component</p>
+          <p className="text-sm font-semibold text-slate-700 mb-3">Dollar Contribution by Component</p>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -258,37 +256,37 @@ Return detailed JSON with exact dollar amounts:`,
         {/* Component Details */}
         <div className="space-y-2">
           {caseMixAnalysis.component_contributions?.map((component, idx) => (
-            <div key={idx} className="bg-gradient-to-r from-gray-50 to-slate-50 p-3 rounded border">
+            <div key={idx} className="bg-gradient-to-r from-slate-50 to-slate-50 p-3 rounded border">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
-                  <span className="text-sm font-medium text-gray-900">{component.component}</span>
+                  <span className="text-sm font-medium text-slate-900">{component.component}</span>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-gray-900">{formatCurrency(component.dollar_contribution)}</p>
-                  <p className="text-xs text-gray-500">{component.percentage_of_total}% of total</p>
+                  <p className="text-lg font-bold text-slate-900">{formatCurrency(component.dollar_contribution)}</p>
+                  <p className="text-xs text-slate-500">{component.percentage_of_total}% of total</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs text-gray-600">Multiplier:</span>
+                <span className="text-xs text-slate-600">Multiplier:</span>
                 <Badge variant="outline" className="text-xs">{component.value}</Badge>
               </div>
-              <p className="text-xs text-gray-600">{component.details}</p>
+              <p className="text-xs text-slate-600">{component.details}</p>
             </div>
           ))}
         </div>
 
         {/* Functional M-Item Breakdown */}
         {caseMixAnalysis.functional_m_item_breakdown?.length > 0 && (
-          <div className="bg-purple-50 p-3 rounded border border-purple-200">
-            <p className="text-sm font-semibold text-purple-900 mb-2">Functional M-Item Point Breakdown</p>
+          <div className="bg-navy-50 p-3 rounded border border-navy-200">
+            <p className="text-sm font-semibold text-navy-900 mb-2">Functional M-Item Point Breakdown</p>
             <div className="space-y-1">
               {caseMixAnalysis.functional_m_item_breakdown.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between text-xs bg-white p-2 rounded">
-                  <span className="text-gray-700">{item.m_item}</span>
+                  <span className="text-slate-700">{item.m_item}</span>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">Score: {item.score}</Badge>
-                    <Badge className="bg-purple-600 text-white">{item.points} pts</Badge>
+                    <Badge className="bg-navy-600 text-white">{item.points} pts</Badge>
                   </div>
                 </div>
               ))}
@@ -304,8 +302,8 @@ Return detailed JSON with exact dollar amounts:`,
               {caseMixAnalysis.comorbidity_breakdown.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between text-xs bg-white p-2 rounded">
                   <div>
-                    <p className="text-gray-800 font-medium">{item.comorbidity}</p>
-                    <p className="text-gray-500 text-[10px]">{item.icd10_code}</p>
+                    <p className="text-slate-800 font-medium">{item.comorbidity}</p>
+                    <p className="text-slate-500 text-[10px]">{item.icd10_code}</p>
                   </div>
                   <Badge className="bg-orange-600 text-white">{item.points} pts</Badge>
                 </div>
@@ -325,8 +323,8 @@ Return detailed JSON with exact dollar amounts:`,
                     {idx + 1}
                   </Badge>
                   <div className="flex-1 bg-white p-2 rounded border">
-                    <p className="text-gray-800 font-medium mb-1">{step.step}</p>
-                    <p className="text-gray-600 font-mono text-[10px]">{step.calculation}</p>
+                    <p className="text-slate-800 font-medium mb-1">{step.step}</p>
+                    <p className="text-slate-600 font-mono text-[10px]">{step.calculation}</p>
                     <p className="text-blue-700 font-bold">{formatCurrency(step.result)}</p>
                   </div>
                 </div>
@@ -348,7 +346,7 @@ Return detailed JSON with exact dollar amounts:`,
                 .map((opp, idx) => (
                   <div key={idx} className="bg-white p-3 rounded border-2 border-green-200">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-900">{opp.component}</span>
+                      <span className="text-sm font-semibold text-slate-900">{opp.component}</span>
                       <Badge className="bg-green-600 text-white">
                         +{formatCurrency(opp.dollar_increase)}
                       </Badge>
@@ -356,12 +354,12 @@ Return detailed JSON with exact dollar amounts:`,
                     
                     <div className="flex items-center gap-3 mb-2 text-xs">
                       <div className="flex items-center gap-1">
-                        <span className="text-gray-600">Current:</span>
+                        <span className="text-slate-600">Current:</span>
                         <Badge variant="outline">{opp.current_value}</Badge>
                       </div>
                       <ArrowRight className="w-3 h-3 text-green-600" />
                       <div className="flex items-center gap-1">
-                        <span className="text-gray-600">Potential:</span>
+                        <span className="text-slate-600">Potential:</span>
                         <Badge className="bg-green-100 text-green-800">{opp.potential_value}</Badge>
                       </div>
                     </div>
@@ -387,7 +385,7 @@ Return detailed JSON with exact dollar amounts:`,
                       <Badge className={getDifficultyColor(opp.implementation_difficulty)}>
                         {opp.implementation_difficulty} difficulty
                       </Badge>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-slate-500">
                         ROI: {formatCurrency(opp.dollar_increase)} / {opp.implementation_difficulty} effort
                       </span>
                     </div>
@@ -398,7 +396,7 @@ Return detailed JSON with exact dollar amounts:`,
         )}
 
         {/* Total Payment Summary */}
-        <Alert className="bg-gradient-to-r from-indigo-100 to-purple-100 border-indigo-300">
+        <Alert className="bg-gradient-to-r from-indigo-100 to-navy-100 border-indigo-300">
           <Info className="w-4 h-4 text-indigo-700" />
           <AlertDescription className="text-indigo-900">
             <p className="font-semibold mb-1">Total PDGM Payment: {formatCurrency(caseMixAnalysis.total_payment)}</p>

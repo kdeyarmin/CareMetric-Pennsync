@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,13 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Users,
   CheckCircle2,
-  Calendar,
   Mail,
-  Phone,
-  FileText,
-  AlertTriangle,
   Clock
 } from "lucide-react";
 import { format } from "date-fns";
@@ -33,7 +28,7 @@ export default function CareCoordinationDashboard() {
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
     initialData: [],
   });
 
@@ -63,21 +58,21 @@ export default function CareCoordinationDashboard() {
       medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       low: 'bg-blue-100 text-blue-800 border-blue-300'
     };
-    return colors[severity] || 'bg-gray-100 text-gray-800';
+    return colors[severity] || 'bg-slate-100 text-slate-800';
   };
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Care Coordination Dashboard</h1>
-        <p className="text-gray-600">AI-identified care gaps and provider coordination needs</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Care Coordination Dashboard</h1>
+        <p className="text-slate-600">AI-identified care gaps and provider coordination needs</p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid md:grid-cols-4 gap-4 mb-6">
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+        <Card className="bg-gradient-to-br from-navy-500 to-navy-600 text-white">
           <CardContent className="p-4">
-            <p className="text-purple-100 text-sm mb-1">Active Alerts</p>
+            <p className="text-navy-100 text-sm mb-1">Active Alerts</p>
             <p className="text-3xl font-bold">{activeAlerts.length}</p>
           </CardContent>
         </Card>
@@ -109,8 +104,8 @@ export default function CareCoordinationDashboard() {
           <Card>
             <CardContent className="p-12 text-center">
               <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-              <p className="text-lg font-medium text-gray-900">No Active Coordination Alerts</p>
-              <p className="text-sm text-gray-600">All care coordination needs have been addressed</p>
+              <p className="text-lg font-medium text-slate-900">No Active Coordination Alerts</p>
+              <p className="text-sm text-slate-600">All care coordination needs have been addressed</p>
             </CardContent>
           </Card>
         ) : (
@@ -148,9 +143,9 @@ export default function CareCoordinationDashboard() {
                         <Badge className={getSeverityColor(alert.severity)}>
                           {alert.severity}
                         </Badge>
-                        <Badge variant="outline">{alert.alert_type.replace(/_/g, ' ')}</Badge>
+                        <Badge variant="outline">{(alert.alert_type || '').replace(/_/g, ' ')}</Badge>
                         {alert.team_meeting_suggested && (
-                          <Badge className="bg-purple-100 text-purple-800">
+                          <Badge className="bg-navy-100 text-navy-800">
                             Team Meeting
                           </Badge>
                         )}
@@ -159,7 +154,7 @@ export default function CareCoordinationDashboard() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="text-sm text-gray-700">{alert.description}</p>
+                  <p className="text-sm text-slate-700">{alert.description}</p>
 
                   <div className="grid md:grid-cols-2 gap-3">
                     <div className="bg-blue-50 p-3 rounded">
@@ -177,9 +172,9 @@ export default function CareCoordinationDashboard() {
                   </div>
 
                   {alert.communication_summary && (
-                    <div className="bg-gray-50 p-3 rounded border">
-                      <p className="text-xs font-semibold text-gray-900 mb-1">Communication Summary:</p>
-                      <p className="text-sm text-gray-700">{alert.communication_summary}</p>
+                    <div className="bg-slate-50 p-3 rounded border">
+                      <p className="text-xs font-semibold text-slate-900 mb-1">Communication Summary:</p>
+                      <p className="text-sm text-slate-700">{alert.communication_summary}</p>
                     </div>
                   )}
 

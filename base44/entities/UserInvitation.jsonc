@@ -1,0 +1,87 @@
+{
+  "name": "UserInvitation",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "description": "Email of invited user"
+    },
+    "full_name": {
+      "type": "string",
+      "description": "Full name of invited user"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "default": "user"
+    },
+    "care_scope": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice",
+        "both"
+      ],
+      "default": "home_health"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "credentials": {
+      "type": "string"
+    },
+    "invited_by": {
+      "type": "string",
+      "description": "Email of admin who sent invitation"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "expired"
+      ],
+      "default": "pending"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invitation expires (7 days from creation)"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invitation was last sent/resent"
+    },
+    "resend_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times invitation was resent"
+    }
+  },
+  "required": [
+    "email",
+    "full_name",
+    "invited_by",
+    "expires_at"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

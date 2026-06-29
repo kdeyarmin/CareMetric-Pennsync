@@ -1,0 +1,103 @@
+{
+  "name": "Message",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient entity"
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Groups messages into conversations"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Message thread subject"
+    },
+    "message_text": {
+      "type": "string",
+      "description": "Message content"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Name of sender"
+    },
+    "sender_email": {
+      "type": "string",
+      "description": "Email of sender"
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of recipient emails"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal",
+      "description": "Message priority"
+    },
+    "related_event_id": {
+      "type": "string",
+      "description": "Reference to related clinical event, visit, or incident"
+    },
+    "related_event_type": {
+      "type": "string",
+      "description": "Type of related event (visit, incident, care_plan, etc.)"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether message has been read"
+    },
+    "read_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of user emails who have read this message"
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URLs to attached files"
+    }
+  },
+  "required": [
+    "message_text",
+    "sender_email",
+    "sender_name"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "sender_email": "{{user.email}}"
+        },
+        {
+          "recipients": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        { "sender_email": "{{user.email}}" },
+        { "recipients": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
+}

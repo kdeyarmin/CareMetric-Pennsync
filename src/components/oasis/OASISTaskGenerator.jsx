@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,7 @@ import {
 
 export default function OASISTaskGenerator({ 
   analysisResults, 
-  pdgmData, 
+  _pdgmData, 
   patientId,
   patientName,
   onTasksCreated 
@@ -43,9 +44,18 @@ export default function OASISTaskGenerator({
     if (!analysisResults) return;
 
     const tasks = [];
-    const now = new Date();
-    const tomorrow = new Date(now.setDate(now.getDate() + 1)).toISOString().split('T')[0];
-    const nextWeek = new Date(now.setDate(now.getDate() + 6)).toISOString().split('T')[0];
+    // setDate() mutates the receiver, so chaining off the same `now` made
+    // nextWeek = today+7 (the +6 was applied on top of the already-advanced
+    // tomorrow). Compute each offset from a fresh date.
+    // Local calendar date — toISOString() converts to UTC and would roll the due
+    // date a day late when generated in the evening in any US timezone.
+    const addDaysLocal = (n) => {
+      const d = new Date();
+      d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const tomorrow = addDaysLocal(1);
+    const nextWeek = addDaysLocal(6);
 
     // Critical accuracy issues
     if (analysisResults.accuracy_score < 70) {
@@ -152,14 +162,23 @@ export default function OASISTaskGenerator({
   }, [analysisResults, patientName]);
 
   const handleCreateTasks = async () => {
+    // assigned_to is required on Task; resolve the user up front and abort if we
+    // can't, so we never attempt a create with assigned_to undefined (which the
+    // backend rejects). Done before setIsCreating(true) so the button isn't stuck.
+    const currentUser = await base44.auth.me().catch(() => null);
+    if (!currentUser?.email) {
+      toast.error('Could not determine the current user. Please refresh and try again.');
+      return;
+    }
     setIsCreating(true);
-    
+
     try {
       const tasksToCreate = suggestedTasks.filter(t => selectedTasks.includes(t.id));
-      
+
       for (const task of tasksToCreate) {
         await createTaskMutation.mutateAsync({
           patient_id: patientId || null,
+          assigned_to: currentUser?.email,
           title: task.title,
           description: task.description,
           type: task.type,
@@ -173,8 +192,10 @@ export default function OASISTaskGenerator({
 
       setTasksCreated(true);
       onTasksCreated?.(tasksToCreate.length);
+      toast.success(`Created ${tasksToCreate.length} task${tasksToCreate.length === 1 ? '' : 's'}.`);
     } catch (err) {
       console.error("Error creating tasks:", err);
+      toast.error("Some tasks couldn't be created. Please try again.");
     }
     
     setIsCreating(false);
@@ -196,10 +217,10 @@ export default function OASISTaskGenerator({
       compliance: 'bg-red-100 text-red-800 border-red-300',
       revenue: 'bg-green-100 text-green-800 border-green-300',
       audit: 'bg-orange-100 text-orange-800 border-orange-300',
-      validation: 'bg-purple-100 text-purple-800 border-purple-300',
+      validation: 'bg-navy-100 text-navy-800 border-navy-300',
       quality: 'bg-blue-100 text-blue-800 border-blue-300'
     };
-    return colors[category] || 'bg-gray-100 text-gray-800';
+    return colors[category] || 'bg-slate-100 text-slate-800';
   };
 
   return (
@@ -223,7 +244,7 @@ export default function OASISTaskGenerator({
           </Alert>
         ) : (
           <>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-slate-600">
               Based on the OASIS analysis, the following tasks are recommended:
             </p>
 
@@ -236,7 +257,7 @@ export default function OASISTaskGenerator({
                     className={`p-3 rounded-lg border-2 transition-colors ${
                       selectedTasks.includes(task.id) 
                         ? 'bg-amber-50 border-amber-300' 
-                        : 'bg-gray-50 border-gray-200'
+                        : 'bg-slate-50 border-slate-200'
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -247,7 +268,7 @@ export default function OASISTaskGenerator({
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <Icon className="w-4 h-4 text-gray-600" />
+                          <Icon className="w-4 h-4 text-slate-600" />
                           <span className="font-medium text-sm">{task.title}</span>
                           <Badge className={`text-xs ${getCategoryColor(task.category)}`}>
                             {task.category}
@@ -256,7 +277,7 @@ export default function OASISTaskGenerator({
                             {task.priority}
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">{task.description}</p>
+                        <p className="text-xs text-slate-600 mb-1">{task.description}</p>
                         <p className="text-xs text-blue-600">Due: {task.due_date}</p>
                       </div>
                     </div>

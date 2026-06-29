@@ -1,34 +1,37 @@
 import * as React from "react"
-import { cva } from "class-variance-authority";
 
-import { cn } from "@/lib/utils"
-
-const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-  {
-    variants: {
-      variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive:
-          "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
-        outline: "text-foreground",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
-)
-
-function Badge({
-  className,
-  variant,
-  ...props
-}) {
-  return (<div className={cn(badgeVariants({ variant }), className)} {...props} />);
+function cn(...inputs) {
+  return inputs.filter(Boolean).join(' ')
 }
 
-export { Badge, badgeVariants }
+const Badge = React.forwardRef((props, ref) => {
+  const { className, variant = "default", ...otherProps } = props
+  
+  const variants = {
+    default: "bg-navy-600 text-white hover:bg-navy-700 shadow-sm",
+    secondary: "bg-slate-200 text-slate-900 hover:bg-slate-300 shadow-sm",
+    destructive: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
+    outline: "text-slate-900 border border-slate-300 hover:bg-slate-50",
+    gold: "bg-gold-100 text-gold-700 border border-gold-300 hover:bg-gold-200",
+    // Soft, professional status chips (semantic, consistent across the app).
+    success: "bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200",
+    warning: "bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200",
+    info: "bg-navy-100 text-navy-800 border border-navy-200 hover:bg-navy-200",
+  }
+  
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-all duration-200",
+        variants[variant],
+        className
+      )}
+      {...otherProps}
+    />
+  )
+})
+
+Badge.displayName = "Badge"
+
+export { Badge }

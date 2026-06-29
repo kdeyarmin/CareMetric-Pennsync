@@ -1,0 +1,156 @@
+{
+  "name": "CarePlanProposal",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "care_plan_id": {
+      "type": "string",
+      "description": "Reference to existing CarePlan if updating"
+    },
+    "proposal_type": {
+      "type": "string",
+      "enum": [
+        "new_intervention",
+        "update_existing",
+        "modify_goals",
+        "add_diagnosis",
+        "medication_adjustment"
+      ],
+      "description": "Type of care plan change proposed"
+    },
+    "trigger_source": {
+      "type": "string",
+      "enum": [
+        "vital_signs",
+        "clinical_notes",
+        "medication_change",
+        "incident",
+        "lab_results"
+      ],
+      "description": "What triggered the AI proposal"
+    },
+    "trigger_data": {
+      "type": "object",
+      "description": "Data that triggered the proposal (vitals, note excerpts, etc.)"
+    },
+    "ai_analysis": {
+      "type": "object",
+      "properties": {
+        "clinical_finding": {
+          "type": "string",
+          "description": "What the AI detected"
+        },
+        "severity_level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "critical"
+          ]
+        },
+        "confidence_score": {
+          "type": "number",
+          "description": "AI confidence 0-100"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why this change is needed"
+        },
+        "evidence_based_guidelines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Clinical guidelines supporting the recommendation"
+        }
+      }
+    },
+    "proposed_interventions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "intervention_type": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "expected_outcome": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "proposed_goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "routine",
+        "elevated",
+        "urgent",
+        "critical"
+      ],
+      "default": "routine"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "approved",
+        "rejected",
+        "implemented",
+        "expired"
+      ],
+      "default": "pending_review"
+    },
+    "assigned_nurse": {
+      "type": "string",
+      "description": "Nurse assigned to review this proposal"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Nurse who reviewed the proposal"
+    },
+    "reviewed_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nurse_notes": {
+      "type": "string",
+      "description": "Nurse's comments on approval/rejection"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason for rejection if applicable"
+    },
+    "implemented_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Auto-expire if not reviewed within timeframe"
+    }
+  },
+  "required": [
+    "patient_id",
+    "proposal_type",
+    "trigger_source",
+    "ai_analysis",
+    "status"
+  ]
+}

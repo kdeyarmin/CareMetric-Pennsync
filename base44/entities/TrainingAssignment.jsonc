@@ -1,0 +1,240 @@
+{
+  "name": "TrainingAssignment",
+  "type": "object",
+  "properties": {
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "course_title": {
+      "type": "string",
+      "description": "Course title at time of assignment"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Reference to LearningPlan if part of a plan"
+    },
+    "assigned_to_user_id": {
+      "type": "string",
+      "description": "Specific user assignment (if individual)"
+    },
+    "assigned_to_role": {
+      "type": "string",
+      "description": "Role assignment (if role-based)"
+    },
+    "assigned_to_department": {
+      "type": "string",
+      "description": "Department assignment scope"
+    },
+    "assigned_to_location": {
+      "type": "string",
+      "description": "Location assignment scope"
+    },
+    "assigned_to_business_line": {
+      "type": "string",
+      "description": "Business line assignment scope"
+    },
+    "assigned_by": {
+      "type": "string",
+      "description": "Email of assigner"
+    },
+    "assigned_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When assignment was created"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Due date"
+    },
+    "annual_cycle_year": {
+      "type": "number",
+      "description": "Annual education cycle year when applicable"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "default": "medium",
+      "description": "Assignment priority"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "assigned",
+        "in_progress",
+        "completed",
+        "overdue",
+        "failed",
+        "locked"
+      ],
+      "default": "assigned",
+      "description": "Assignment status"
+    },
+    "required": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the assignment is required"
+    },
+    "passing_score_required": {
+      "type": "number",
+      "default": 80,
+      "description": "Passing score required for this assignment"
+    },
+    "max_attempts": {
+      "type": "number",
+      "description": "Max allowed attempts (null = unlimited)"
+    },
+    "waiting_period_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "Hours before retake is allowed"
+    },
+    "regenerate_test_on_retake": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to randomize/regenerate test version on retake"
+    },
+    "retake_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether retake is required"
+    },
+    "latest_attempt_number": {
+      "type": "number",
+      "default": 0,
+      "description": "Most recent attempt number"
+    },
+    "score_percentage": {
+      "type": "number",
+      "description": "Latest score percentage"
+    },
+    "pass_fail_result": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "passed",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Latest pass/fail result"
+    },
+    "recurrence_rule": {
+      "type": "string",
+      "description": "Recurrence rule if recurring"
+    },
+    "renewal_frequency": {
+      "type": "string",
+      "description": "Renewal frequency label"
+    },
+    "renewal_due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Renewal due date"
+    },
+    "certificate_id": {
+      "type": "string",
+      "description": "Issued certificate ID if available"
+    },
+    "attestation_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether attestation is required"
+    },
+    "acknowledgement_completed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether acknowledgement was completed"
+    },
+    "reminder_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether reminder was sent"
+    },
+    "last_reminder_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last reminder sent date"
+    },
+    "reminder_offsets_sent": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "List of expiration reminder offsets already sent"
+    },
+    "completion_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When assignment was completed"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Assignment notes"
+    },
+    "remediation_message": {
+      "type": "string",
+      "description": "Message shown when remediation is needed"
+    },
+    "progress_percentage": {
+      "type": "number",
+      "default": 0,
+      "description": "Course progress percentage"
+    },
+    "started_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the learner started the assignment"
+    },
+    "last_accessed": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time user accessed this course"
+    },
+    "archived_status": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether assignment is archived"
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the attempt was submitted"
+    }
+  },
+  "required": [
+    "course_id",
+    "assigned_by"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "assigned_to_user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "$or": [
+        {
+          "assigned_to_user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

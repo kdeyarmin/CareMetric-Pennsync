@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +17,19 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
+import { toast } from 'sonner';
+
+// Single source of truth for the overall teach-back level. The saved record and
+// the generated documentation note previously used DIFFERENT thresholds, so the
+// same encounter could be recorded "fair"/"poor" while the note read "adequate
+// understanding" — contradictory clinical documentation.
+export function computeOverallLevel(levels) {
+  const good = levels.filter(l => l === 'good').length;
+  const fair = levels.filter(l => l === 'fair').length;
+  if (good > levels.length / 2) return 'good';
+  if (good + fair > levels.length / 2) return 'fair';
+  return 'poor';
+}
 
 export default function TeachBackConfirmation({ material, patient, onRecorded }) {
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
@@ -24,14 +37,15 @@ export default function TeachBackConfirmation({ material, patient, onRecorded })
   const [currentResponse, setCurrentResponse] = useState("");
   const [understandingLevel, setUnderstandingLevel] = useState("");
   const [isComplete, setIsComplete] = useState(false);
+  const [overallLevel, setOverallLevel] = useState('');
   const [showQuestions, setShowQuestions] = useState(true);
   const [copied, setCopied] = useState(false);
 
   if (!material || !material.teach_back_questions?.length) {
     return (
-      <Card className="border-gray-200">
-        <CardContent className="p-6 text-center text-gray-500">
-          <HelpCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+      <Card className="border-slate-200">
+        <CardContent className="p-6 text-center text-slate-500">
+          <HelpCircle className="w-12 h-12 mx-auto mb-3 text-slate-300" />
           <p>Generate educational material to see teach-back questions.</p>
         </CardContent>
       </Card>
@@ -43,7 +57,7 @@ export default function TeachBackConfirmation({ material, patient, onRecorded })
 
   const handleRecordResponse = () => {
     if (!currentResponse.trim() || !understandingLevel) {
-      alert("Please enter a response and select understanding level.");
+      toast.error("Please enter a response and select understanding level.");
       return;
     }
 
@@ -65,12 +79,10 @@ export default function TeachBackConfirmation({ material, patient, onRecorded })
     } else {
       setIsComplete(true);
       
-      // Calculate overall understanding
+      // Calculate overall understanding (shared with the documentation note).
       const levels = updatedResponses.map(r => r.understandingLevel);
-      const goodCount = levels.filter(l => l === 'good').length;
-      const fairCount = levels.filter(l => l === 'fair').length;
-      const overallLevel = goodCount > levels.length / 2 ? 'good' : 
-                          fairCount + goodCount > levels.length / 2 ? 'fair' : 'poor';
+      const overallLevel = computeOverallLevel(levels);
+      setOverallLevel(overallLevel);
 
       if (onRecorded) {
         onRecorded({
@@ -100,9 +112,12 @@ ${idx + 1}. Question: "${r.question}"
 `).join('')}
 
 OVERALL ASSESSMENT:
-Patient ${responses.filter(r => r.understandingLevel === 'good').length >= responses.length / 2 ? 
-  'demonstrated adequate understanding of material via teach-back method.' : 
-  'requires additional education. Follow-up teaching planned.'}
+Patient ${
+  overallLevel === 'good'
+    ? 'demonstrated adequate understanding of material via teach-back method.'
+    : overallLevel === 'fair'
+      ? 'demonstrated partial understanding; key points were reinforced and follow-up teaching planned.'
+      : 'requires additional education. Follow-up teaching planned.'}
 
 Nurse Signature: _______________________`;
 
@@ -121,7 +136,7 @@ Nurse Signature: _______________________`;
       fair: "bg-yellow-100 text-yellow-800 border-yellow-300",
       poor: "bg-red-100 text-red-800 border-red-300"
     };
-    return colors[level] || "bg-gray-100 text-gray-800";
+    return colors[level] || "bg-slate-100 text-slate-800";
   };
 
   return (
@@ -147,7 +162,7 @@ Nurse Signature: _______________________`;
           {!isComplete ? (
             <div className="space-y-4">
               {/* Progress */}
-              <div className="flex items-center justify-between text-sm text-gray-600">
+              <div className="flex items-center justify-between text-sm text-slate-600">
                 <span>Question {currentQuestionIdx + 1} of {questions.length}</span>
                 <div className="flex gap-1">
                   {questions.map((_, idx) => (
@@ -155,7 +170,7 @@ Nurse Signature: _______________________`;
                       key={idx}
                       className={`w-2 h-2 rounded-full ${
                         idx < currentQuestionIdx ? 'bg-green-500' :
-                        idx === currentQuestionIdx ? 'bg-blue-500' : 'bg-gray-300'
+                        idx === currentQuestionIdx ? 'bg-blue-500' : 'bg-slate-300'
                       }`}
                     />
                   ))}
@@ -174,9 +189,9 @@ Nurse Signature: _______________________`;
               </div>
 
               {/* Expected Answer Hint */}
-              <Alert className="bg-gray-50 border-gray-200">
-                <HelpCircle className="w-4 h-4 text-gray-600" />
-                <AlertDescription className="text-xs text-gray-600">
+              <Alert className="bg-slate-50 border-slate-200">
+                <HelpCircle className="w-4 h-4 text-slate-600" />
+                <AlertDescription className="text-xs text-slate-600">
                   <strong>Expected answer should include:</strong> {currentQuestion.expected_answer}
                 </AlertDescription>
               </Alert>
@@ -244,9 +259,9 @@ Nurse Signature: _______________________`;
               {/* Summary */}
               <div className="space-y-2">
                 {responses.map((r, idx) => (
-                  <div key={idx} className="p-3 bg-gray-50 rounded border">
+                  <div key={idx} className="p-3 bg-slate-50 rounded border">
                     <p className="text-sm font-medium">{r.question}</p>
-                    <p className="text-sm text-gray-600 mt-1">Response: "{r.patientResponse}"</p>
+                    <p className="text-sm text-slate-600 mt-1">Response: "{r.patientResponse}"</p>
                     <Badge className={`mt-2 ${getUnderstandingColor(r.understandingLevel)}`}>
                       {r.understandingLevel}
                     </Badge>

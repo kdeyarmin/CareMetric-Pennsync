@@ -1,0 +1,71 @@
+{
+  "name": "ClinicalScenario",
+  "type": "object",
+  "properties": {
+    "course_id": {
+      "type": "string",
+      "description": "Reference to TrainingCourse"
+    },
+    "title": {
+      "type": "string",
+      "description": "Scenario title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Scenario description and clinical context"
+    },
+    "patient_context": {
+      "type": "object",
+      "description": "Patient background (age, condition, vitals, etc.)"
+    },
+    "scenario_flow_json": {
+      "type": "object",
+      "description": "Root node of decision tree (structure: {id, text, feedback, type, choices: [{text, feedback, isCorrect, nextNodeId}]})"
+    },
+    "passing_score": {
+      "type": "number",
+      "default": 80,
+      "description": "Minimum correct decisions % to pass"
+    },
+    "max_attempts": {
+      "type": "number",
+      "default": 3,
+      "description": "Maximum attempts allowed"
+    },
+    "learning_objectives": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Learning objectives for scenario"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "beginner",
+        "intermediate",
+        "advanced"
+      ],
+      "default": "intermediate",
+      "description": "Difficulty level"
+    },
+    "estimated_minutes": {
+      "type": "number",
+      "description": "Estimated completion time"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether scenario is active"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Creator email"
+    }
+  },
+  "required": [
+    "course_id",
+    "title",
+    "scenario_flow_json"
+  ]
+}

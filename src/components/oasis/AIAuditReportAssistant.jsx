@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Sparkles,
@@ -12,21 +12,20 @@ import {
   Check,
   Loader2,
   RefreshCw,
-  Scale,
-  Lightbulb
+  Scale
 } from "lucide-react";
 
 export default function AIAuditReportAssistant({ audit, onUpdateFindings, onAddRecommendations }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [aiFindings, setAiFindings] = useState(null);
   const [copied, setCopied] = useState(false);
 
   const generateAuditFindings = async () => {
     if (!audit) return;
-    setIsGenerating(true);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert home health OASIS auditor. Generate comprehensive audit findings and recommendations for this flagged OASIS document.
 
 AUDIT DATA:
@@ -97,8 +96,8 @@ Return JSON:
       setAiFindings(result);
     } catch (error) {
       console.error("Error generating audit findings:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
   };
 
   const handleCopy = (text) => {
@@ -119,7 +118,7 @@ Return JSON:
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="pb-2 bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="pb-2 bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="text-sm flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-indigo-600" />
           AI Audit Report Assistant
@@ -128,11 +127,11 @@ Return JSON:
       <CardContent className="pt-3 space-y-3">
         {!aiFindings ? (
           <div className="text-center py-4">
-            <p className="text-sm text-gray-600 mb-3">
+            <p className="text-sm text-slate-600 mb-3">
               Generate AI-powered audit findings and recommendations
             </p>
-            <Button onClick={generateAuditFindings} disabled={isGenerating}>
-              {isGenerating ? (
+            <Button onClick={generateAuditFindings} disabled={ai.loading}>
+              {ai.loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
               ) : (
                 <><Sparkles className="w-4 h-4 mr-2" /> Generate Findings</>
@@ -159,7 +158,7 @@ Return JSON:
                   {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                 </Button>
               </div>
-              <div className="bg-gray-50 p-2 rounded border text-sm max-h-32 overflow-y-auto">
+              <div className="bg-slate-50 p-2 rounded border text-sm max-h-32 overflow-y-auto">
                 {aiFindings.findings_narrative}
               </div>
             </div>
@@ -192,7 +191,7 @@ Return JSON:
             )}
 
             {/* Follow-up */}
-            <p className="text-xs text-gray-600 italic">
+            <p className="text-xs text-slate-600 italic">
               <Scale className="w-3 h-3 inline mr-1" />
               {aiFindings.follow_up_audit_recommendation}
             </p>

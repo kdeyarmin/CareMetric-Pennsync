@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -28,7 +27,9 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
 
   const validationChecks = performValidationChecks(pdgmData, analysisResults);
   const { totalChecks, passedChecks, criticalIssues, warningIssues, infoIssues } = validationChecks.summary;
-  const validationScore = Math.round((passedChecks / totalChecks) * 100);
+  const validationScore = totalChecks > 0
+    ? Math.min(100, Math.max(0, Math.round((passedChecks / totalChecks) * 100)))
+    : 100;
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -36,7 +37,7 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
       case 'high': return 'text-orange-700 bg-orange-100 border-orange-300';
       case 'medium': return 'text-yellow-700 bg-yellow-100 border-yellow-300';
       case 'low': return 'text-blue-700 bg-blue-100 border-blue-300';
-      default: return 'text-gray-700 bg-gray-100 border-gray-300';
+      default: return 'text-slate-700 bg-slate-100 border-slate-300';
     }
   };
 
@@ -51,11 +52,11 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
   };
 
   return (
-    <Card className="border-2 border-purple-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-indigo-50">
+    <Card className="border-2 border-navy-200">
+      <CardHeader className="pb-3 bg-gradient-to-r from-navy-50 to-indigo-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-purple-600" />
+            <ShieldCheck className="w-5 h-5 text-navy-600" />
             OASIS Validation Report
           </div>
           <div className="flex items-center gap-2">
@@ -97,8 +98,8 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
         {/* Validation Score Progress */}
         <div className="bg-white p-4 rounded-lg border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Validation Score</span>
-            <span className="text-sm text-gray-600">{passedChecks} of {totalChecks} checks passed</span>
+            <span className="text-sm font-medium text-slate-700">Validation Score</span>
+            <span className="text-sm text-slate-600">{passedChecks} of {totalChecks} checks passed</span>
           </div>
           <Progress value={validationScore} className="h-3" />
         </div>
@@ -229,8 +230,8 @@ export default function OASISValidationPanel({ pdgmData, analysisResults }) {
   );
 }
 
-function performValidationChecks(pdgmData, analysisResults) {
-  const checks = [];
+function performValidationChecks(pdgmData, _analysisResults) {
+  const _checks = [];
   
   // Category 1: Admission Source & Timing Validation
   const admissionChecks = validateAdmissionSourceTiming(pdgmData);
@@ -250,7 +251,7 @@ function performValidationChecks(pdgmData, analysisResults) {
   const categories = [
     {
       name: "Admission Source & Episode Timing",
-      icon: <Building2 className="w-4 h-4 text-purple-600" />,
+      icon: <Building2 className="w-4 h-4 text-navy-600" />,
       issues: admissionChecks
     },
     {
@@ -276,8 +277,12 @@ function performValidationChecks(pdgmData, analysisResults) {
   ];
 
   const allIssues = [...admissionChecks, ...diagnosisChecks, ...functionalChecks, ...clinicalChecks, ...dateChecks];
-  const totalChecks = 15; // Total number of validation checks
-  const passedChecks = totalChecks - allIssues.length;
+  // Baseline of 15 expected checks, but a single assessment can surface more than
+  // 15 issues; never let the denominator be exceeded (which produced negative
+  // "passed" counts and a negative validation score).
+  const BASELINE_CHECKS = 15;
+  const totalChecks = Math.max(BASELINE_CHECKS, allIssues.length);
+  const passedChecks = Math.max(0, totalChecks - allIssues.length);
   
   const criticalIssues = allIssues.filter(i => i.severity === 'critical').length;
   const warningIssues = allIssues.filter(i => i.severity === 'high' || i.severity === 'medium').length;
@@ -557,7 +562,7 @@ function validateDates(data) {
           impact: 'Late assessments may not capture initial patient status accurately'
         });
       }
-    } catch (e) {
+    } catch {
       issues.push({
         severity: 'low',
         title: 'Invalid Date Format',

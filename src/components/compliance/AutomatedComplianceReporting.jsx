@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,24 +17,19 @@ import {
 import {
   FileText,
   Download,
-  Calendar,
   RefreshCw,
   CheckCircle2,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   BarChart3,
   Shield,
-  Clock,
-  Users,
   ChevronDown,
   ChevronUp,
   Printer
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 
-export default function AutomatedComplianceReporting({ nurseEmail, isAdmin = false }) {
-  const [isGenerating, setIsGenerating] = useState(false);
+export default function AutomatedComplianceReporting({ _nurseEmail, isAdmin = false }) {
+  const ai = useAICall();
   const [report, setReport] = useState(null);
   const [expanded, setExpanded] = useState(true);
   const [reportPeriod, setReportPeriod] = useState("last_7_days");
@@ -49,17 +46,16 @@ export default function AutomatedComplianceReporting({ nurseEmail, isAdmin = fal
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients'],
-    queryFn: () => base44.entities.Patient.list(),
+    queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 
-  const { data: securityLogs = [] } = useQuery({
+  const { data: _securityLogs = [] } = useQuery({
     queryKey: ['securityLogs'],
     queryFn: () => base44.entities.SecurityLog.filter({}, '-timestamp', 200),
     enabled: isAdmin
   });
 
   const generateReport = async () => {
-    setIsGenerating(true);
 
     try {
       // Calculate date range
@@ -111,7 +107,8 @@ export default function AutomatedComplianceReporting({ nurseEmail, isAdmin = fal
         dataSummary.incident_types[i.incident_type] = (dataSummary.incident_types[i.incident_type] || 0) + 1;
       });
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are a healthcare compliance reporting AI. Generate a comprehensive compliance report based on this data.
 
 DATA SUMMARY:
@@ -191,9 +188,9 @@ Return JSON:
 
     } catch (error) {
       console.error("Error generating report:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsGenerating(false);
   };
 
   const downloadReport = () => {
@@ -225,11 +222,11 @@ ${report.strengths?.map(s => `• ${s}`).join('\n')}
 
 AREAS OF CONCERN
 ----------------
-${report.areas_of_concern?.map(c => `• [${c.severity.toUpperCase()}] ${c.concern}\n  Recommendation: ${c.recommendation}`).join('\n\n')}
+${report.areas_of_concern?.map(c => `• [${(c.severity || 'unknown').toUpperCase()}] ${c.concern}\n  Recommendation: ${c.recommendation}`).join('\n\n')}
 
 RECOMMENDATIONS
 ---------------
-${report.recommendations?.map(r => `• [${r.priority.toUpperCase()}] ${r.recommendation}\n  Expected Impact: ${r.expected_impact}`).join('\n\n')}
+${report.recommendations?.map(r => `• [${(r.priority || 'unknown').toUpperCase()}] ${r.recommendation}\n  Expected Impact: ${r.expected_impact}`).join('\n\n')}
 
 NEXT STEPS
 ----------
@@ -256,7 +253,7 @@ ${report.next_steps?.map((s, i) => `${i + 1}. ${s}`).join('\n')}
   return (
     <Card className="border-emerald-200">
       <CardHeader 
-        className="py-3 bg-gradient-to-r from-emerald-50 to-teal-50 cursor-pointer"
+        className="py-3 bg-gradient-to-r from-emerald-50 to-navy-50 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center justify-between">
@@ -291,10 +288,10 @@ ${report.next_steps?.map((s, i) => `${i + 1}. ${s}`).join('\n')}
             </Select>
             <Button
               onClick={generateReport}
-              disabled={isGenerating}
+              disabled={ai.loading}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
-              {isGenerating ? (
+              {ai.loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                   Generating...
@@ -327,21 +324,21 @@ ${report.next_steps?.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
               {/* Key Metrics */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="text-center p-2 bg-gray-50 rounded">
-                  <p className="text-lg font-bold text-gray-900">{report.metrics?.documentation_rate}%</p>
-                  <p className="text-xs text-gray-600">Doc Rate</p>
+                <div className="text-center p-2 bg-slate-50 rounded">
+                  <p className="text-lg font-bold text-slate-900">{report.metrics?.documentation_rate}%</p>
+                  <p className="text-xs text-slate-600">Doc Rate</p>
                 </div>
-                <div className="text-center p-2 bg-gray-50 rounded">
-                  <p className="text-lg font-bold text-gray-900">{report.metrics?.on_time_documentation}%</p>
-                  <p className="text-xs text-gray-600">On-Time</p>
+                <div className="text-center p-2 bg-slate-50 rounded">
+                  <p className="text-lg font-bold text-slate-900">{report.metrics?.on_time_documentation}%</p>
+                  <p className="text-xs text-slate-600">On-Time</p>
                 </div>
-                <div className="text-center p-2 bg-gray-50 rounded">
-                  <p className="text-lg font-bold text-gray-900">{report.metrics?.incident_rate}</p>
-                  <p className="text-xs text-gray-600">Incident Rate</p>
+                <div className="text-center p-2 bg-slate-50 rounded">
+                  <p className="text-lg font-bold text-slate-900">{report.metrics?.incident_rate}</p>
+                  <p className="text-xs text-slate-600">Incident Rate</p>
                 </div>
-                <div className="text-center p-2 bg-gray-50 rounded">
-                  <p className="text-lg font-bold text-gray-900">{report.metrics?.high_severity_incidents}</p>
-                  <p className="text-xs text-gray-600">High Severity</p>
+                <div className="text-center p-2 bg-slate-50 rounded">
+                  <p className="text-lg font-bold text-slate-900">{report.metrics?.high_severity_incidents}</p>
+                  <p className="text-xs text-slate-600">High Severity</p>
                 </div>
               </div>
 
@@ -369,10 +366,10 @@ ${report.next_steps?.map((s, i) => `${i + 1}. ${s}`).join('\n')}
                     <div key={idx} className={`p-2 rounded text-xs ${
                       concern.severity === 'high' ? 'bg-red-50 border-l-2 border-red-500' :
                       concern.severity === 'medium' ? 'bg-yellow-50 border-l-2 border-yellow-500' :
-                      'bg-gray-50 border-l-2 border-gray-300'
+                      'bg-slate-50 border-l-2 border-slate-300'
                     }`}>
                       <p className="font-medium">{concern.concern}</p>
-                      <p className="text-gray-600 mt-0.5">→ {concern.recommendation}</p>
+                      <p className="text-slate-600 mt-0.5">→ {concern.recommendation}</p>
                     </div>
                   ))}
                 </div>

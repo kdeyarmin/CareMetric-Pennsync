@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,23 +13,27 @@ import {
   AlertTriangle,
   CheckCircle2,
   Calendar,
-  FileText,
   Phone,
   Mail,
-  Copy,
-  MessageSquare
+  Copy
 } from "lucide-react";
 import { format, addDays } from "date-fns";
+import { toast } from 'sonner';
 
 export default function CareCoordinationAnalyzer({ 
   patientId, 
   autoAnalyze = false,
-  compact = false 
+  _compact = false 
 }) {
   const queryClient = useQueryClient();
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [alerts, setAlerts] = useState([]);
-  const [expandedAlert, setExpandedAlert] = useState(null);
+  // Records the patient this component last auto-analyzed, so an empty-result run
+  // (alerts stays []) can't re-fire each time ai.loading toggles, and a single ref
+  // (re-armed only when patientId actually changes) avoids the ordering hazard of a
+  // separate reset effect clearing the latch in the same flush.
+  const autoAnalyzedForRef = useRef(null);
+  const [_expandedAlert, _setExpandedAlert] = useState(null);
   const [customNotes, setCustomNotes] = useState({});
 
   const { data: patient } = useQuery({
@@ -66,21 +71,15 @@ export default function CareCoordinationAnalyzer({
     initialData: [],
   });
 
-  useEffect(() => {
-    if (autoAnalyze && patientId && patient && !isAnalyzing && alerts.length === 0) {
-      analyzeCoordination();
-    }
-  }, [autoAnalyze, patientId, patient]);
-
-  const analyzeCoordination = async () => {
+  const analyzeCoordination = useCallback(async () => {
     if (!patient) return;
 
-    setIsAnalyzing(true);
     try {
       const hospitalizations = incidents.filter(i => i.incident_type === 'hospitalized');
       const recentHospitalization = hospitalizations.length > 0 ? hospitalizations[0] : null;
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an AI care coordination specialist for home health. Analyze this patient's data to identify care gaps and provider coordination needs.
 
 PATIENT: ${patient.first_name} ${patient.last_name}
@@ -157,8 +156,10 @@ Return comprehensive analysis with actionable coordination alerts.`,
               items: {
                 type: "object",
                 properties: {
-                  alert_type: { type: "string" },
-                  severity: { type: "string" },
+                  // Constrain to the CareCoordinationAlert schema enums so the model
+                  // can't emit a value the backend drops (both are required fields).
+                  alert_type: { type: "string", enum: ["care_gap", "provider_communication_needed", "medication_discrepancy", "duplicate_services", "missing_specialist_input", "hospitalization_followup", "transition_of_care"] },
+                  severity: { type: "string", enum: ["urgent", "high", "medium", "low"] },
                   title: { type: "string" },
                   description: { type: "string" },
                   identified_gap: { type: "string" },
@@ -189,41 +190,53 @@ Return comprehensive analysis with actionable coordination alerts.`,
       setAlerts(result.alerts || []);
     } catch (error) {
       console.error('Error analyzing care coordination:', error);
-      alert('Failed to analyze care coordination. Please try again.');
+      toast.error('Failed to analyze care coordination. Please try again.');
     }
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [patient, incidents, visits, carePlans]);
 
-  const saveAlert = async (alert) => {
+  useEffect(() => {
+    if (autoAnalyze && patientId && patient && !ai.loading && autoAnalyzedForRef.current !== patientId) {
+      autoAnalyzedForRef.current = patientId;
+      analyzeCoordination();
+    }
+  }, [autoAnalyze, patientId, patient, ai.loading, analyzeCoordination]);
+
+  const saveAlert = async (alertData) => {
     try {
-      const dueDate = alert.urgency_timeline?.includes('immediate') || alert.urgency_timeline?.includes('urgent') 
+      const dueDate = alertData.urgency_timeline?.includes('immediate') || alertData.urgency_timeline?.includes('urgent')
         ? format(addDays(new Date(), 1), 'yyyy-MM-dd')
-        : alert.urgency_timeline?.includes('week')
+        : alertData.urgency_timeline?.includes('week')
         ? format(addDays(new Date(), 7), 'yyyy-MM-dd')
         : format(addDays(new Date(), 14), 'yyyy-MM-dd');
 
+      // Coerce the AI values to the schema enums (defense-in-depth): alert_type and
+      // severity are required, so an out-of-enum value would make the create throw.
+      const ALLOWED_ALERT_TYPES = new Set(['care_gap', 'provider_communication_needed', 'medication_discrepancy', 'duplicate_services', 'missing_specialist_input', 'hospitalization_followup', 'transition_of_care']);
+      const ALLOWED_SEVERITIES = new Set(['urgent', 'high', 'medium', 'low']);
+
       await base44.entities.CareCoordinationAlert.create({
         patient_id: patientId,
-        alert_type: alert.alert_type,
-        severity: alert.severity,
-        title: alert.title,
-        description: alert.description,
-        identified_gap: alert.identified_gap,
-        affected_providers: alert.affected_providers,
-        recommended_actions: alert.recommended_actions,
-        team_meeting_suggested: alert.team_meeting_suggested,
-        meeting_attendees: alert.meeting_attendees,
-        communication_summary: customNotes[alert.title] || alert.communication_summary,
-        supporting_evidence: alert.supporting_evidence,
+        alert_type: ALLOWED_ALERT_TYPES.has(alertData.alert_type) ? alertData.alert_type : 'care_gap',
+        severity: ALLOWED_SEVERITIES.has(alertData.severity) ? alertData.severity : 'medium',
+        title: alertData.title,
+        description: alertData.description,
+        identified_gap: alertData.identified_gap,
+        affected_providers: alertData.affected_providers,
+        recommended_actions: alertData.recommended_actions,
+        team_meeting_suggested: alertData.team_meeting_suggested,
+        meeting_attendees: alertData.meeting_attendees,
+        communication_summary: customNotes[alertData.title] || alertData.communication_summary,
+        supporting_evidence: alertData.supporting_evidence,
         status: 'active',
         due_date: dueDate
       });
 
       queryClient.invalidateQueries({ queryKey: ['coordinationAlerts', patientId] });
-      alert('Care coordination alert created successfully!');
+      toast.success('Care coordination alert created successfully!');
     } catch (error) {
       console.error('Error saving alert:', error);
-      alert('Failed to save alert. Please try again.');
+      toast.error('Failed to save alert. Please try again.');
     }
   };
 
@@ -238,7 +251,7 @@ Return comprehensive analysis with actionable coordination alerts.`,
       medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       low: 'bg-blue-100 text-blue-800 border-blue-300'
     };
-    return colors[severity] || 'bg-gray-100 text-gray-800';
+    return colors[severity] || 'bg-slate-100 text-slate-800';
   };
 
   if (!patientId) {
@@ -252,13 +265,13 @@ Return comprehensive analysis with actionable coordination alerts.`,
     );
   }
 
-  if (isAnalyzing) {
+  if (ai.loading) {
     return (
-      <Card className="border-2 border-purple-300">
+      <Card className="border-2 border-navy-300">
         <CardContent className="p-8 text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-4" />
-          <p className="text-lg font-medium text-gray-900 mb-2">Analyzing Care Coordination...</p>
-          <p className="text-sm text-gray-600">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-navy-600 mx-auto mb-4" />
+          <p className="text-lg font-medium text-slate-900 mb-2">Analyzing Care Coordination...</p>
+          <p className="text-sm text-slate-600">
             Reviewing {visits.length} visits, {carePlans.length} care plans, {incidents.length} incidents...
           </p>
         </CardContent>
@@ -266,7 +279,7 @@ Return comprehensive analysis with actionable coordination alerts.`,
     );
   }
 
-  if (alerts.length === 0 && !isAnalyzing) {
+  if (alerts.length === 0 && !ai.loading) {
     return (
       <Card className="border-2 border-blue-300">
         <CardHeader>
@@ -276,7 +289,7 @@ Return comprehensive analysis with actionable coordination alerts.`,
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-600">
             Analyze patient data to identify care gaps, provider coordination needs, and suggest team meetings.
           </p>
           {existingAlerts.length > 0 && (
@@ -298,14 +311,14 @@ Return comprehensive analysis with actionable coordination alerts.`,
 
   return (
     <div className="space-y-4">
-      <Card className="border-2 border-purple-300 bg-purple-50">
+      <Card className="border-2 border-navy-300 bg-navy-50">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <Brain className="w-5 h-5 text-purple-600" />
+              <Brain className="w-5 h-5 text-navy-600" />
               Care Coordination Analysis
             </span>
-            <Badge className="bg-purple-600 text-white">
+            <Badge className="bg-navy-600 text-white">
               {alerts.length} gap(s) identified
             </Badge>
           </CardTitle>
@@ -326,9 +339,9 @@ Return comprehensive analysis with actionable coordination alerts.`,
                   <Badge className={getSeverityColor(alert.severity)}>
                     {alert.severity}
                   </Badge>
-                  <Badge variant="outline">{alert.alert_type.replace(/_/g, ' ')}</Badge>
+                  <Badge variant="outline">{(alert.alert_type || '').replace(/_/g, ' ')}</Badge>
                   {alert.team_meeting_suggested && (
-                    <Badge className="bg-purple-100 text-purple-800">
+                    <Badge className="bg-navy-100 text-navy-800">
                       <Users className="w-3 h-3 mr-1" />
                       Team Meeting Needed
                     </Badge>
@@ -339,7 +352,7 @@ Return comprehensive analysis with actionable coordination alerts.`,
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-gray-900 mb-2">{alert.description}</p>
+              <p className="text-sm text-slate-900 mb-2">{alert.description}</p>
               <div className="bg-orange-50 p-3 rounded border border-orange-200">
                 <p className="text-xs font-semibold text-orange-900 mb-1">Identified Gap:</p>
                 <p className="text-sm text-orange-800">{alert.identified_gap}</p>
@@ -373,15 +386,15 @@ Return comprehensive analysis with actionable coordination alerts.`,
 
             {/* Supporting Evidence */}
             {alert.supporting_evidence?.length > 0 && (
-              <div className="bg-gray-50 p-3 rounded border">
-                <p className="text-xs font-semibold text-gray-900 mb-2">Supporting Evidence:</p>
+              <div className="bg-slate-50 p-3 rounded border">
+                <p className="text-xs font-semibold text-slate-900 mb-2">Supporting Evidence:</p>
                 <div className="space-y-2">
                   {alert.supporting_evidence.map((evidence, i) => (
                     <div key={i} className="bg-white p-2 rounded border text-xs">
-                      <p className="font-medium text-gray-700">
+                      <p className="font-medium text-slate-700">
                         {evidence.source} - {evidence.date}
                       </p>
-                      <p className="text-gray-600 italic">"{evidence.excerpt}"</p>
+                      <p className="text-slate-600 italic">"{evidence.excerpt}"</p>
                     </div>
                   ))}
                 </div>
@@ -390,25 +403,25 @@ Return comprehensive analysis with actionable coordination alerts.`,
 
             {/* Team Meeting Details */}
             {alert.team_meeting_suggested && (
-              <div className="bg-purple-50 p-4 rounded border-2 border-purple-300">
+              <div className="bg-navy-50 p-4 rounded border-2 border-navy-300">
                 <div className="flex items-center gap-2 mb-3">
-                  <Calendar className="w-5 h-5 text-purple-600" />
-                  <p className="font-semibold text-purple-900">Interdisciplinary Team Meeting Recommended</p>
+                  <Calendar className="w-5 h-5 text-navy-600" />
+                  <p className="font-semibold text-navy-900">Interdisciplinary Team Meeting Recommended</p>
                 </div>
                 <div className="space-y-2">
                   <div>
-                    <p className="text-xs font-semibold text-purple-900 mb-1">Suggested Attendees:</p>
+                    <p className="text-xs font-semibold text-navy-900 mb-1">Suggested Attendees:</p>
                     <div className="flex flex-wrap gap-2">
                       {alert.meeting_attendees?.map((attendee, i) => (
-                        <Badge key={i} className="bg-purple-100 text-purple-800">
+                        <Badge key={i} className="bg-navy-100 text-navy-800">
                           {attendee}
                         </Badge>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-purple-900 mb-1">Timeline:</p>
-                    <p className="text-sm text-purple-800">{alert.urgency_timeline}</p>
+                    <p className="text-xs font-semibold text-navy-900 mb-1">Timeline:</p>
+                    <p className="text-sm text-navy-800">{alert.urgency_timeline}</p>
                   </div>
                 </div>
               </div>
@@ -461,7 +474,11 @@ Return comprehensive analysis with actionable coordination alerts.`,
                 </Button>
               )}
               {patient.physician_phone && (
-                <Button size="sm" variant="outline">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { window.location.href = `tel:${patient.physician_phone}`; }}
+                >
                   <Phone className="w-4 h-4 mr-1" />
                   {patient.physician_phone}
                 </Button>

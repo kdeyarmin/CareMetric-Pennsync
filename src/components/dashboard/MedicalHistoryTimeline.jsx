@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -113,10 +112,10 @@ export default function MedicalHistoryTimeline({ patient, visits, incidents, car
     const colors = {
       blue: 'bg-blue-500 border-blue-200',
       red: 'bg-red-500 border-red-200',
-      purple: 'bg-purple-500 border-purple-200',
+      purple: 'bg-navy-500 border-navy-200',
       green: 'bg-green-500 border-green-200',
       indigo: 'bg-indigo-500 border-indigo-200',
-      gray: 'bg-gray-500 border-gray-200',
+      gray: 'bg-slate-500 border-slate-200',
       orange: 'bg-orange-500 border-orange-200'
     };
     return colors[color] || colors.blue;
@@ -126,20 +125,20 @@ export default function MedicalHistoryTimeline({ patient, visits, incidents, car
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Clock className="w-5 h-5 text-gray-600" />
+          <Clock className="w-5 h-5 text-slate-600" />
           Medical History Timeline
         </CardTitle>
       </CardHeader>
       <CardContent>
         {timelineEvents.length === 0 ? (
           <div className="text-center py-12">
-            <Clock className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No history available</p>
+            <Clock className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-500">No history available</p>
           </div>
         ) : (
           <div className="relative">
             {/* Timeline line */}
-            <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gray-200" />
+            <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-slate-200" />
             
             <div className="space-y-6">
               {timelineEvents.map((event, idx) => (
@@ -153,8 +152,8 @@ export default function MedicalHistoryTimeline({ patient, visits, incidents, car
                   <div className="bg-white rounded-lg border p-4 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-semibold text-gray-900">{event.title}</p>
-                        <p className="text-sm text-gray-600">{formatEastern(event.date, 'MMM d, yyyy')}</p>
+                        <p className="font-semibold text-slate-900">{event.title}</p>
+                        <p className="text-sm text-slate-600">{formatEastern(event.date, 'MMM d, yyyy')}</p>
                       </div>
                       <Badge variant="outline" className="text-xs">
                         {event.type}
@@ -180,21 +179,21 @@ export default function MedicalHistoryTimeline({ patient, visits, incidents, car
                     )}
 
                     {event.details?.notes && (
-                      <p className="text-xs text-gray-600 mt-2 line-clamp-2">
+                      <p className="text-xs text-slate-600 mt-2 line-clamp-2">
                         {event.details.notes}...
                       </p>
                     )}
 
                     {event.details?.report && (
-                      <p className="text-xs text-gray-600 mt-2 line-clamp-2">
+                      <p className="text-xs text-slate-600 mt-2 line-clamp-2">
                         {event.details.report}...
                       </p>
                     )}
 
                     {event.details?.problem && (
                       <div className="mt-2 text-xs">
-                        <span className="text-gray-600">Problem: </span>
-                        <span className="font-medium text-gray-900">{event.details.problem}</span>
+                        <span className="text-slate-600">Problem: </span>
+                        <span className="font-medium text-slate-900">{event.details.problem}</span>
                       </div>
                     )}
                   </div>

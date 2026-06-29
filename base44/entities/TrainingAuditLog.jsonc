@@ -1,0 +1,77 @@
+{
+  "name": "TrainingAuditLog",
+  "type": "object",
+  "properties": {
+    "actor_id": {
+      "type": "string",
+      "description": "User who performed action"
+    },
+    "actor_name": {
+      "type": "string",
+      "description": "Actor full name"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "course_created",
+        "course_published",
+        "course_unpublished",
+        "course_archived",
+        "assignment_created",
+        "assignment_modified",
+        "score_edited",
+        "certificate_issued",
+        "certificate_revoked",
+        "competency_signed_off",
+        "user_role_changed",
+        "content_approved",
+        "content_rejected",
+        "videos_generated"
+      ],
+      "description": "Action type"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Entity affected"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "Entity ID"
+    },
+    "before_json": {
+      "type": "object",
+      "description": "State before change"
+    },
+    "after_json": {
+      "type": "object",
+      "description": "State after change"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Reason for action"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "Actor IP address"
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "Actor user agent"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "default": "info",
+      "description": "Event severity"
+    }
+  },
+  "required": [
+    "actor_id",
+    "action",
+    "entity_type"
+  ]
+}

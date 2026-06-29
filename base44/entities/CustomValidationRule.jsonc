@@ -1,0 +1,64 @@
+{
+  "name": "CustomValidationRule",
+  "type": "object",
+  "properties": {
+    "rule_name": {
+      "type": "string",
+      "description": "Name of the validation rule"
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "patient",
+        "visit",
+        "care_plan"
+      ],
+      "description": "Which entity this rule applies to"
+    },
+    "field_name": {
+      "type": "string",
+      "description": "Field to validate"
+    },
+    "validation_type": {
+      "type": "string",
+      "enum": [
+        "required",
+        "min_length",
+        "max_length",
+        "regex",
+        "range",
+        "custom_function"
+      ],
+      "description": "Type of validation"
+    },
+    "validation_value": {
+      "type": "string",
+      "description": "Value for validation (e.g., regex pattern, min value)"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Custom error message to display"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "error",
+        "warning",
+        "info"
+      ],
+      "default": "error",
+      "description": "Severity level of validation failure"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this rule is currently active"
+    }
+  },
+  "required": [
+    "rule_name",
+    "entity_type",
+    "field_name",
+    "validation_type"
+  ]
+}

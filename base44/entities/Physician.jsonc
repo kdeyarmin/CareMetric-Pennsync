@@ -1,0 +1,137 @@
+{
+  "name": "Physician",
+  "type": "object",
+  "properties": {
+    "full_name": {
+      "type": "string",
+      "description": "Provider full name"
+    },
+    "credentials": {
+      "type": "string",
+      "description": "Credentials such as MD, DO, NP, PA, CRNP"
+    },
+    "provider_type": {
+      "type": "string",
+      "description": "Provider title or type from source data"
+    },
+    "specialty": {
+      "type": "string",
+      "description": "Provider specialty"
+    },
+    "subspecialty": {
+      "type": "string",
+      "description": "Additional subspecialty if applicable"
+    },
+    "practice_name": {
+      "type": "string",
+      "description": "Primary organization, practice, or hospital name"
+    },
+    "company": {
+      "type": "string",
+      "description": "Company from import source"
+    },
+    "top_unit": {
+      "type": "string",
+      "description": "Top unit from import source"
+    },
+    "parent_unit": {
+      "type": "string",
+      "description": "Parent unit from import source"
+    },
+    "sub_unit": {
+      "type": "string",
+      "description": "Sub unit from import source"
+    },
+    "office_address": {
+      "type": "string",
+      "description": "Office street address"
+    },
+    "office_city": {
+      "type": "string",
+      "description": "City"
+    },
+    "office_state": {
+      "type": "string",
+      "description": "State"
+    },
+    "office_zip": {
+      "type": "string",
+      "description": "ZIP code"
+    },
+    "phone_number": {
+      "type": "string",
+      "description": "Primary office phone"
+    },
+    "fax_number": {
+      "type": "string",
+      "description": "Office fax number"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email address"
+    },
+    "npi_number": {
+      "type": "string",
+      "description": "National Provider Identifier"
+    },
+    "state_license": {
+      "type": "string",
+      "description": "State license number"
+    },
+    "accepts_home_health": {
+      "type": "boolean",
+      "default": true,
+      "description": "Accepts home health referrals"
+    },
+    "accepts_hospice": {
+      "type": "boolean",
+      "default": false,
+      "description": "Accepts hospice referrals"
+    },
+    "preferred_contact_method": {
+      "type": "string",
+      "enum": [
+        "fax",
+        "phone",
+        "email",
+        "portal"
+      ],
+      "default": "fax",
+      "description": "Preferred method of contact"
+    },
+    "office_hours": {
+      "type": "string",
+      "description": "Office hours"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about this provider"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Custom tags for organization"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether provider is currently active in directory"
+    },
+    "last_referral_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of last referral or contact"
+    },
+    "referral_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of times referred to this provider"
+    }
+  },
+  "required": [
+    "full_name",
+    "fax_number"
+  ]
+}

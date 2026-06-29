@@ -1,0 +1,239 @@
+{
+  "name": "MedicationReconciliation",
+  "type": "object",
+  "properties": {
+    "patient_id": {
+      "type": "string",
+      "description": "Reference to Patient"
+    },
+    "patient_name": {
+      "type": "string"
+    },
+    "reconciliation_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trigger_source": {
+      "type": "string",
+      "enum": [
+        "hospital_discharge",
+        "physician_order",
+        "manual_review",
+        "admission"
+      ],
+      "description": "What triggered this reconciliation"
+    },
+    "discharge_document_url": {
+      "type": "string",
+      "description": "URL to uploaded discharge orders/document"
+    },
+    "extracted_discharge_medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "medication_name": {
+            "type": "string"
+          },
+          "dosage": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "route": {
+            "type": "string"
+          },
+          "indication": {
+            "type": "string"
+          },
+          "prescriber": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Medications extracted from discharge orders via AI"
+    },
+    "current_medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "medication_id": {
+            "type": "string"
+          },
+          "medication_name": {
+            "type": "string"
+          },
+          "dosage": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "route": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Current medications in patient record"
+    },
+    "discrepancies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "discrepancy_type": {
+            "type": "string",
+            "enum": [
+              "new_medication",
+              "discontinued_medication",
+              "dosage_change",
+              "frequency_change",
+              "missing_from_discharge",
+              "duplicate",
+              "potential_interaction",
+              "age_condition_risk"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "moderate",
+              "low"
+            ]
+          },
+          "medication_name": {
+            "type": "string"
+          },
+          "current_value": {
+            "type": "string"
+          },
+          "discharge_value": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "ai_recommendation": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "reviewed",
+              "resolved",
+              "dismissed"
+            ],
+            "default": "pending"
+          },
+          "resolution_notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "reconciled_medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "medication_name": {
+            "type": "string"
+          },
+          "dosage": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "route": {
+            "type": "string"
+          },
+          "indication": {
+            "type": "string"
+          },
+          "start_date": {
+            "type": "string"
+          },
+          "prescriber": {
+            "type": "string"
+          },
+          "action_taken": {
+            "type": "string",
+            "enum": [
+              "continued",
+              "added",
+              "modified",
+              "discontinued"
+            ]
+          }
+        }
+      },
+      "description": "Final reconciled medication list"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "in_progress",
+        "completed",
+        "physician_notified"
+      ],
+      "default": "pending_review"
+    },
+    "reconciled_by": {
+      "type": "string",
+      "description": "Email of nurse who performed reconciliation"
+    },
+    "reconciled_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "physician_notified": {
+      "type": "boolean",
+      "default": false
+    },
+    "physician_notification_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "patient_education_provided": {
+      "type": "boolean",
+      "default": false
+    },
+    "notes": {
+      "type": "string"
+    },
+    "total_discrepancies": {
+      "type": "number",
+      "default": 0
+    },
+    "critical_discrepancies": {
+      "type": "number",
+      "default": 0
+    },
+    "ai_confidence_score": {
+      "type": "number",
+      "description": "AI extraction confidence 0-100"
+    },
+    "confidence_score": {
+      "type": "number",
+      "description": "Confidence score for the reconciliation analysis"
+    },
+    "certainty": {
+      "type": "string",
+      "description": "Qualitative certainty level of the reconciliation analysis"
+    }
+  },
+  "required": [
+    "patient_id",
+    "trigger_source"
+  ]
+}

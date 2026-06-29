@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
  * Scheduled job to automatically sync Medicare guidelines from a predefined list.
@@ -43,7 +43,21 @@ Deno.serve(async (req) => {
   
   try {
     const base44 = createClientFromRequest(req);
-    
+
+    // Authorization: privileged scheduled job (service-role SystemLog/
+    // MedicareGuideline writes + LLM/website fetches, no end user). Opt-in
+    // lockdown like checkExpiredInvitations (see §4); mirrors syncCMSRegulations.
+    const me = await base44.auth.me().catch(() => null);
+    const isAdmin = me?.role === 'admin';
+    const internalSecret = Deno.env.get('INTERNAL_FN_SECRET');
+    if (internalSecret) {
+      if (!isAdmin && req.headers.get('x-internal-secret') !== internalSecret) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else if (me && !isAdmin) {
+      return Response.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    }
+
     // Create initial log entry
     const logEntry = await base44.asServiceRole.entities.SystemLog.create({
       job_name: 'Medicare Guidelines Weekly Sync',
@@ -67,21 +81,27 @@ Deno.serve(async (req) => {
     // Process each guideline
     for (const guidelineConfig of GUIDELINES_TO_SYNC) {
       try {
-        // Use base44 integration to fetch webpage content directly
-        const fetchResult = await base44.integrations.Core.InvokeLLM({
-          prompt: `Extract and summarize the content from this URL: ${guidelineConfig.url}\n\nReturn the full extracted content as markdown.`,
-          add_context_from_internet: true,
-          response_json_schema: {
-            type: "object",
-            properties: {
-              content: { type: "string" }
-            }
-          }
+        // Fetch the webpage content
+        const fetchResult = await fetch('https://api.base44.com/v1/fetch-website', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': req.headers.get('Authorization')
+          },
+          body: JSON.stringify({
+            url: guidelineConfig.url,
+            formats: ['markdown']
+          })
         });
 
-        const markdownContent = fetchResult.content || '';
+        if (!fetchResult.ok) {
+          throw new Error(`Failed to fetch ${guidelineConfig.url}`);
+        }
 
-        if (!markdownContent || markdownContent.trim().length < 100) {
+        const websiteData = await fetchResult.json();
+        const markdownContent = websiteData.markdown || '';
+
+        if (!markdownContent) {
           throw new Error(`No content extracted from ${guidelineConfig.url}`);
         }
 
@@ -89,7 +109,7 @@ Deno.serve(async (req) => {
         const analysisPrompt = `Analyze this Medicare guideline content and extract structured information.
 
 CONTENT:
-${markdownContent.substring(0, 4000)}
+${markdownContent.substring(0, 5000)}
 
 Extract and return JSON with:
 {
@@ -103,6 +123,7 @@ Extract and return JSON with:
 }`;
 
         const analysis = await base44.integrations.Core.InvokeLLM({
+          model: "claude_opus_4_8",
           prompt: analysisPrompt,
           response_json_schema: {
             type: "object",

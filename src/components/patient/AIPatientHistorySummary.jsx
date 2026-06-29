@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import {
   Brain,
   Loader2,
@@ -19,17 +19,13 @@ import {
   TrendingDown,
   Minus,
   Calendar,
-  Pill,
   FileText,
-  Heart,
-  Stethoscope,
   ChevronDown,
   ChevronUp,
   Plus,
-  History,
-  Shield
+  History
 } from "lucide-react";
-import { format, differenceInDays, isValid, parseISO } from "date-fns";
+import { format, differenceInDays, isValid } from "date-fns";
 import PatientRiskStratification from "./PatientRiskStratification";
 
 export default function AIPatientHistorySummary({
@@ -42,21 +38,22 @@ export default function AIPatientHistorySummary({
   prominent = true
 }) {
   const [summary, setSummary] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const ai = useAICall();
   const [isExpanded, setIsExpanded] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  // Auto-generate on patient selection
-  useEffect(() => {
-    if (autoGenerate && patient && !summary) {
-      generateSummary();
-    }
-  }, [patient?.id]);
+  const calculateAge = useCallback((dob) => {
+    const today = new Date();
+    const birthDate = new Date(dob);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+    return age;
+  }, []);
 
-  const generateSummary = async () => {
+  const generateSummary = useCallback(async () => {
     if (!patient) return;
 
-    setIsGenerating(true);
     try {
       const completedVisits = visits.filter(v => v.status === 'completed');
       const recentVisits = completedVisits.slice(0, 10);
@@ -80,7 +77,8 @@ export default function AIPatientHistorySummary({
           notes: v.nurse_notes?.substring(0, 500)
         }));
 
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert clinical summarization AI. Generate a comprehensive yet concise patient history summary that gives nurses immediate context before a visit.
 
 PATIENT DEMOGRAPHICS:
@@ -196,18 +194,17 @@ Return JSON:
       setSummary(result);
     } catch (error) {
       console.error("Error generating patient history summary:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
-    setIsGenerating(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [patient, visits, carePlans, incidents, calculateAge]);
 
-  const calculateAge = (dob) => {
-    const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-    return age;
-  };
+  // Auto-generate on patient selection
+  useEffect(() => {
+    if (autoGenerate && patient && !summary) {
+      generateSummary();
+    }
+  }, [patient, summary, autoGenerate, generateSummary]);
 
   const handleCopy = () => {
     if (summary?.clinical_narrative) {
@@ -229,7 +226,7 @@ Return JSON:
       case 'improving': return 'bg-blue-100 text-blue-800 border-blue-300';
       case 'declining': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'critical': return 'bg-red-100 text-red-800 border-red-300';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -247,7 +244,7 @@ Return JSON:
     switch (trend) {
       case 'improving': return <TrendingUp className="w-3 h-3 text-green-600" />;
       case 'worsening': return <TrendingDown className="w-3 h-3 text-red-600" />;
-      default: return <Minus className="w-3 h-3 text-gray-500" />;
+      default: return <Minus className="w-3 h-3 text-slate-500" />;
     }
   };
 
@@ -256,16 +253,16 @@ Return JSON:
       case 'high': return 'bg-red-100 text-red-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'low': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
   if (!patient) return null;
 
   return (
-    <Card className={`border-2 ${prominent ? 'border-indigo-300 shadow-lg' : 'border-gray-200'} ${summary ? 'bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50' : ''}`}>
+    <Card className={`border-2 ${prominent ? 'border-indigo-300 shadow-lg' : 'border-slate-200'} ${summary ? 'bg-gradient-to-br from-indigo-50 via-navy-50 to-gold-50' : ''}`}>
       <CardHeader 
-        className={`py-3 cursor-pointer ${prominent ? 'bg-gradient-to-r from-indigo-100 to-purple-100' : 'bg-gray-50'}`}
+        className={`py-3 cursor-pointer ${prominent ? 'bg-gradient-to-r from-indigo-100 to-navy-100' : 'bg-slate-50'}`}
         onClick={() => summary && setIsExpanded(!isExpanded)}
       >
         <CardTitle className="flex items-center justify-between">
@@ -286,24 +283,24 @@ Return JSON:
                   size="sm"
                   variant="ghost"
                   onClick={(e) => { e.stopPropagation(); generateSummary(); }}
-                  disabled={isGenerating}
+                  disabled={ai.loading}
                   className="h-7 px-2"
                 >
-                  <RefreshCw className={`w-3 h-3 ${isGenerating ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-3 h-3 ${ai.loading ? 'animate-spin' : ''}`} />
                 </Button>
                 {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </>
             )}
-            {isGenerating && <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />}
+            {ai.loading && <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />}
           </div>
         </CardTitle>
       </CardHeader>
 
       <CardContent className="p-4">
-        {!summary && !isGenerating && (
+        {!summary && !ai.loading && (
           <div className="text-center py-6">
             <History className="w-12 h-12 text-indigo-300 mx-auto mb-3" />
-            <p className="text-gray-600 mb-4">Generate a comprehensive patient history summary</p>
+            <p className="text-slate-600 mb-4">Generate a comprehensive patient history summary</p>
             <Button
               onClick={generateSummary}
               className="bg-indigo-600 hover:bg-indigo-700"
@@ -314,11 +311,11 @@ Return JSON:
           </div>
         )}
 
-        {isGenerating && !summary && (
+        {ai.loading && !summary && (
           <div className="flex flex-col items-center justify-center py-8">
             <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-3" />
-            <p className="text-gray-600">Analyzing patient history...</p>
-            <p className="text-xs text-gray-500 mt-1">Reviewing visits, vitals, care plans, and incidents</p>
+            <p className="text-slate-600">Analyzing patient history...</p>
+            <p className="text-xs text-slate-500 mt-1">Reviewing visits, vitals, care plans, and incidents</p>
           </div>
         )}
 
@@ -326,35 +323,35 @@ Return JSON:
           <div className="space-y-4">
             {/* Patient Overview - Prominent */}
             <div className="bg-white p-3 rounded-lg border-2 border-indigo-200 shadow-sm">
-              <p className="text-base font-medium text-gray-900">{summary.patient_overview}</p>
+              <p className="text-base font-medium text-slate-900">{summary.patient_overview}</p>
             </div>
 
             {/* Quick Stats Row */}
             <div className="grid grid-cols-5 gap-2">
               <div className="bg-white p-2 rounded-lg border text-center">
                 <Calendar className="w-4 h-4 mx-auto mb-1 text-indigo-500" />
-                <p className="text-lg font-bold text-gray-900">{summary.stats?.total_visits || visits.length}</p>
-                <p className="text-xs text-gray-500">Visits</p>
+                <p className="text-lg font-bold text-slate-900">{summary.stats?.total_visits || visits.length}</p>
+                <p className="text-xs text-slate-500">Visits</p>
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
                 <Clock className="w-4 h-4 mx-auto mb-1 text-blue-500" />
-                <p className="text-lg font-bold text-gray-900">{summary.stats?.days_on_service || '—'}</p>
-                <p className="text-xs text-gray-500">Days</p>
+                <p className="text-lg font-bold text-slate-900">{summary.stats?.days_on_service || '—'}</p>
+                <p className="text-xs text-slate-500">Days</p>
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
-                <Target className="w-4 h-4 mx-auto mb-1 text-purple-500" />
-                <p className="text-lg font-bold text-gray-900">{summary.stats?.active_care_plans || carePlans.filter(cp => cp.status === 'active').length}</p>
-                <p className="text-xs text-gray-500">Goals</p>
+                <Target className="w-4 h-4 mx-auto mb-1 text-navy-500" />
+                <p className="text-lg font-bold text-slate-900">{summary.stats?.active_care_plans || carePlans.filter(cp => cp.status === 'active').length}</p>
+                <p className="text-xs text-slate-500">Goals</p>
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
                 <AlertTriangle className="w-4 h-4 mx-auto mb-1 text-orange-500" />
-                <p className="text-lg font-bold text-gray-900">{summary.stats?.recent_incidents || incidents.length}</p>
-                <p className="text-xs text-gray-500">Incidents</p>
+                <p className="text-lg font-bold text-slate-900">{summary.stats?.recent_incidents || incidents.length}</p>
+                <p className="text-xs text-slate-500">Incidents</p>
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
                 <FileText className="w-4 h-4 mx-auto mb-1 text-green-500" />
-                <p className="text-sm font-bold text-gray-900">{summary.stats?.last_visit_date && isValid(new Date(summary.stats.last_visit_date)) ? format(new Date(summary.stats.last_visit_date), 'MM/dd') : '—'}</p>
-                <p className="text-xs text-gray-500">Last Visit</p>
+                <p className="text-sm font-bold text-slate-900">{summary.stats?.last_visit_date && isValid(new Date(summary.stats.last_visit_date)) ? format(new Date(summary.stats.last_visit_date), 'MM/dd') : '—'}</p>
+                <p className="text-xs text-slate-500">Last Visit</p>
               </div>
             </div>
 
@@ -390,7 +387,7 @@ Return JSON:
                         <div>
                           <span className="font-medium">{issue.issue}</span>
                           {issue.action_needed && (
-                            <p className="text-xs text-gray-600">→ {issue.action_needed}</p>
+                            <p className="text-xs text-slate-600">→ {issue.action_needed}</p>
                           )}
                         </div>
                       </div>
@@ -402,14 +399,14 @@ Return JSON:
 
             {/* Today's Focus Areas */}
             {summary.focus_areas?.length > 0 && (
-              <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
-                <p className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
+              <div className="bg-navy-50 p-3 rounded-lg border border-navy-200">
+                <p className="font-semibold text-navy-800 mb-2 flex items-center gap-2">
                   <Target className="w-4 h-4" />
                   Today's Focus Areas
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {summary.focus_areas.map((focus, idx) => (
-                    <Badge key={idx} className="bg-purple-100 text-purple-800 border-purple-300">
+                    <Badge key={idx} className="bg-navy-100 text-navy-800 border-navy-300">
                       {idx + 1}. {focus}
                     </Badge>
                   ))}
@@ -420,20 +417,20 @@ Return JSON:
             {/* Vital Signs Trends */}
             {summary.vital_trends && (
               <div className="bg-white p-3 rounded-lg border">
-                <p className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                <p className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
                   <Activity className="w-4 h-4 text-blue-600" />
                   Vital Signs Trends
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                   {Object.entries(summary.vital_trends).map(([vital, data]) => (
                     data && data.last_reading && (
-                      <div key={vital} className="bg-gray-50 p-2 rounded border">
+                      <div key={vital} className="bg-slate-50 p-2 rounded border">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-medium capitalize">{vital.replace('_', ' ')}</span>
                           {getTrendIcon(data.trend)}
                         </div>
                         <p className="text-sm font-bold">{data.last_reading}</p>
-                        <p className="text-xs text-gray-500 truncate">{data.detail}</p>
+                        <p className="text-xs text-slate-500 truncate">{data.detail}</p>
                       </div>
                     )
                   ))}
@@ -454,7 +451,7 @@ Return JSON:
             {/* Risk Factors */}
             {summary.risk_factors?.length > 0 && (
               <div className="bg-white p-3 rounded-lg border">
-                <p className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                <p className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-red-500" />
                   Risk Factors
                 </p>
@@ -465,7 +462,7 @@ Return JSON:
                         <span className="text-sm font-medium">{risk.risk}</span>
                         <Badge className={getPriorityColor(risk.level)}>{risk.level}</Badge>
                       </div>
-                      <p className="text-xs text-gray-600 mt-1">{risk.mitigation}</p>
+                      <p className="text-xs text-slate-600 mt-1">{risk.mitigation}</p>
                     </div>
                   ))}
                 </div>
@@ -475,13 +472,13 @@ Return JSON:
             {/* Care Plan Progress */}
             {summary.care_plan_progress?.length > 0 && (
               <div className="bg-white p-3 rounded-lg border">
-                <p className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                <p className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
                   <Target className="w-4 h-4 text-green-600" />
                   Care Plan Progress
                 </p>
                 <div className="space-y-2">
                   {summary.care_plan_progress.map((cp, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                       <span className="text-sm flex-1">{cp.goal}</span>
                       <Badge className={cp.progress === 'On track' ? 'bg-green-100 text-green-800' : cp.progress === 'Behind' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}>
                         {cp.progress}
@@ -524,7 +521,7 @@ Return JSON:
         )}
 
         {summary && !isExpanded && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-slate-600">
             <p className="line-clamp-2">{summary.patient_overview}</p>
             <p className="text-indigo-600 mt-2 text-xs">Click header to expand full summary</p>
           </div>

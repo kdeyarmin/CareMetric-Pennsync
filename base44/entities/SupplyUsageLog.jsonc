@@ -1,0 +1,56 @@
+{
+  "name": "SupplyUsageLog",
+  "type": "object",
+  "properties": {
+    "supply_id": {
+      "type": "string",
+      "description": "Reference to SupplyItem"
+    },
+    "supply_name": {
+      "type": "string",
+      "description": "Supply name for quick reference"
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Patient associated with usage"
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Visit where supply was used"
+    },
+    "quantity_used": {
+      "type": "number",
+      "description": "Amount used during visit"
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unit of measurement"
+    },
+    "usage_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "documented_by": {
+      "type": "string",
+      "description": "Clinician who documented usage"
+    },
+    "extracted_from_note": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether extracted from visit note via AI"
+    },
+    "extraction_confidence": {
+      "type": "number",
+      "description": "AI confidence score 0-100 for extracted usage"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional context about usage"
+    }
+  },
+  "required": [
+    "supply_id",
+    "patient_id",
+    "quantity_used"
+  ]
+}

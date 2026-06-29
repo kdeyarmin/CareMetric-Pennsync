@@ -1,8 +1,7 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { FileText, Calendar, Activity, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, Activity, ChevronDown, ChevronUp } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
 
 export default function OASISDataDisplay({ oasisData, compact = false }) {
@@ -24,13 +23,13 @@ export default function OASISDataDisplay({ oasisData, compact = false }) {
   const primaryDx = extractedData.primary_diagnosis || pdgmData.primary_diagnosis || 'Not specified';
 
   return (
-    <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50">
+    <Card className="border-navy-200 bg-gradient-to-r from-navy-50 to-gold-50">
       <CardHeader className="py-3 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
         <CardTitle className="text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-purple-600" />
+            <FileText className="w-4 h-4 text-navy-600" />
             <span>OASIS Assessment Data</span>
-            <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-300">
+            <Badge variant="outline" className="bg-navy-100 text-navy-800 border-navy-300">
               {formatEastern(latestOasis.created_date, 'MMM d, yyyy')}
             </Badge>
           </div>
@@ -42,7 +41,7 @@ export default function OASISDataDisplay({ oasisData, compact = false }) {
         <CardContent className="p-3 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
             <div>
-              <p className="text-gray-500 font-medium mb-1">Admission Source</p>
+              <p className="text-slate-500 font-medium mb-1">Admission Source</p>
               <Badge variant="outline" className="text-xs">
                 {admissionSource === '1' || admissionSource.toLowerCase().includes('community') 
                   ? 'Community' 
@@ -53,12 +52,12 @@ export default function OASISDataDisplay({ oasisData, compact = false }) {
             </div>
             
             <div>
-              <p className="text-gray-500 font-medium mb-1">Clinical Grouping</p>
+              <p className="text-slate-500 font-medium mb-1">Clinical Grouping</p>
               <Badge variant="outline" className="text-xs">{clinicalGroup}</Badge>
             </div>
 
             <div>
-              <p className="text-gray-500 font-medium mb-1">Functional Impairment</p>
+              <p className="text-slate-500 font-medium mb-1">Functional Impairment</p>
               <Badge variant="outline" className="text-xs">
                 {functionalImpairment === 'low' ? 'Low' : 
                  functionalImpairment === 'medium' ? 'Medium' : 
@@ -67,7 +66,7 @@ export default function OASISDataDisplay({ oasisData, compact = false }) {
             </div>
 
             <div>
-              <p className="text-gray-500 font-medium mb-1">Comorbidity Adjustment</p>
+              <p className="text-slate-500 font-medium mb-1">Comorbidity Adjustment</p>
               <Badge variant="outline" className="text-xs">
                 {Array.isArray(comorbidities) && comorbidities.length > 0 
                   ? `${comorbidities.length} comorbidities` 
@@ -79,15 +78,15 @@ export default function OASISDataDisplay({ oasisData, compact = false }) {
           </div>
 
           {primaryDx && primaryDx !== 'Not specified' && (
-            <div className="pt-2 border-t border-purple-200">
-              <p className="text-gray-500 font-medium mb-1 text-xs">OASIS Primary Diagnosis</p>
-              <p className="text-xs text-gray-700">{primaryDx}</p>
+            <div className="pt-2 border-t border-navy-200">
+              <p className="text-slate-500 font-medium mb-1 text-xs">OASIS Primary Diagnosis</p>
+              <p className="text-xs text-slate-700">{primaryDx}</p>
             </div>
           )}
 
           {Array.isArray(comorbidities) && comorbidities.length > 0 && (
-            <div className="pt-2 border-t border-purple-200">
-              <p className="text-gray-500 font-medium mb-1 text-xs">Documented Comorbidities</p>
+            <div className="pt-2 border-t border-navy-200">
+              <p className="text-slate-500 font-medium mb-1 text-xs">Documented Comorbidities</p>
               <div className="flex flex-wrap gap-1">
                 {comorbidities.slice(0, 5).map((condition, idx) => (
                   <Badge key={idx} variant="outline" className="text-xs bg-white">
@@ -103,7 +102,7 @@ export default function OASISDataDisplay({ oasisData, compact = false }) {
             </div>
           )}
 
-          <div className="flex items-center gap-2 pt-2 border-t border-purple-200 text-xs text-purple-700">
+          <div className="flex items-center gap-2 pt-2 border-t border-navy-200 text-xs text-navy-700">
             <Activity className="w-3 h-3" />
             <span>This OASIS data is automatically synced to enhance documentation accuracy</span>
           </div>

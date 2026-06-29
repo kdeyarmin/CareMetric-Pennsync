@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,12 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  FileText,
   Download,
   CheckCircle2,
   Activity,
   Heart,
-  Thermometer,
   ChevronDown,
   ChevronUp,
   Zap,
@@ -27,7 +25,7 @@ import {
 
 export default function SmartNoteDataImport({ 
   patientId,
-  patientName,
+  _patientName,
   onImportData
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -110,14 +108,14 @@ export default function SmartNoteDataImport({
   }
 
   return (
-    <Card className="border-2 border-teal-200">
+    <Card className="border-2 border-navy-200">
       <CardHeader 
-        className="pb-2 bg-gradient-to-r from-teal-50 to-cyan-50 cursor-pointer"
+        className="pb-2 bg-gradient-to-r from-navy-50 to-navy-50 cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <CardTitle className="text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Download className="w-4 h-4 text-teal-600" />
+            <Download className="w-4 h-4 text-navy-600" />
             Import from Smart Notes
             <Badge variant="outline" className="text-xs">{recentVisits.length} visits</Badge>
           </div>
@@ -127,7 +125,7 @@ export default function SmartNoteDataImport({
       
       {isExpanded && (
         <CardContent className="space-y-3 pt-3">
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-slate-600">
             Import vital signs and functional observations from recent visit notes to pre-populate OASIS fields.
           </p>
 
@@ -157,11 +155,11 @@ export default function SmartNoteDataImport({
           {selectedVisit && (
             <>
               {/* Preview Data */}
-              <div className="bg-gray-50 p-3 rounded-lg border space-y-2">
+              <div className="bg-slate-50 p-3 rounded-lg border space-y-2">
                 {/* Vital Signs */}
                 {selectedVisit.vital_signs && Object.keys(selectedVisit.vital_signs).length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+                    <p className="text-xs font-medium text-slate-700 mb-1 flex items-center gap-1">
                       <Heart className="w-3 h-3 text-red-500" /> Vital Signs:
                     </p>
                     <div className="grid grid-cols-2 gap-1 text-xs">
@@ -192,8 +190,8 @@ export default function SmartNoteDataImport({
                 {/* Extracted Functional Observations */}
                 {selectedVisit.nurse_notes && (
                   <div>
-                    <p className="text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
-                      <Activity className="w-3 h-3 text-purple-500" /> Extracted Observations:
+                    <p className="text-xs font-medium text-slate-700 mb-1 flex items-center gap-1">
+                      <Activity className="w-3 h-3 text-navy-500" /> Extracted Observations:
                     </p>
                     {(() => {
                       const obs = extractFunctionalData(selectedVisit.nurse_notes);
@@ -221,7 +219,7 @@ export default function SmartNoteDataImport({
                           )}
                         </div>
                       ) : (
-                        <p className="text-xs text-gray-500 italic">No specific functional observations extracted</p>
+                        <p className="text-xs text-slate-500 italic">No specific functional observations extracted</p>
                       );
                     })()}
                   </div>
@@ -230,8 +228,8 @@ export default function SmartNoteDataImport({
                 {/* Note Preview */}
                 {selectedVisit.nurse_notes && (
                   <div>
-                    <p className="text-xs font-medium text-gray-700 mb-1">Note Preview:</p>
-                    <p className="text-xs text-gray-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
+                    <p className="text-xs font-medium text-slate-700 mb-1">Note Preview:</p>
+                    <p className="text-xs text-slate-600 bg-white p-2 rounded max-h-20 overflow-y-auto">
                       {selectedVisit.nurse_notes.substring(0, 300)}
                       {selectedVisit.nurse_notes.length > 300 && '...'}
                     </p>
@@ -242,7 +240,7 @@ export default function SmartNoteDataImport({
               {/* Import Button */}
               <Button
                 onClick={handleImportFromVisit}
-                className="w-full bg-teal-600 hover:bg-teal-700"
+                className="w-full bg-navy-600 hover:bg-navy-700"
                 size="sm"
               >
                 <Zap className="w-4 h-4 mr-2" />

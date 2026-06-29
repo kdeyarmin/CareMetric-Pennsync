@@ -1,0 +1,97 @@
+{
+  "name": "CorrectiveActionPlan",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Employee email"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Employee full name"
+    },
+    "training_assignment_id": {
+      "type": "string",
+      "description": "Original failed training assignment"
+    },
+    "training_attempt_id": {
+      "type": "string",
+      "description": "Original failed attempt"
+    },
+    "source_course_id": {
+      "type": "string",
+      "description": "Original course ID"
+    },
+    "source_course_title": {
+      "type": "string",
+      "description": "Original course title"
+    },
+    "source_score": {
+      "type": "number",
+      "description": "Failed score percentage"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "in_progress",
+        "resolved"
+      ],
+      "default": "open",
+      "description": "Corrective action plan status"
+    },
+    "missed_topics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Topics or question themes missed"
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Corrective actions and supplemental work assigned"
+    },
+    "supplemental_assignment_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Supplemental micro-learning assignments"
+    },
+    "manager_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Agency admin managers notified"
+    }
+  },
+  "required": [
+    "user_id",
+    "training_attempt_id",
+    "source_course_id",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_id": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

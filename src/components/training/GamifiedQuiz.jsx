@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +11,7 @@ import {
   Target,
   Star,
   Flame,
-  Award,
-  TrendingUp
+  Award
 } from "lucide-react";
 import confetti from 'canvas-confetti';
 
@@ -27,23 +26,27 @@ export default function GamifiedQuiz({ questions = [], onComplete, title }) {
   const [timeLeft, setTimeLeft] = useState(30);
   const [isComplete, setIsComplete] = useState(false);
 
+  useEffect(() => {
+    if (!questions || questions.length === 0) return;
+    let timer;
+    if (!showFeedback && !isComplete && timeLeft > 0) {
+      timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [timeLeft, showFeedback, isComplete, questions]);
+
   // Safety check for questions
   if (!questions || questions.length === 0) {
     return (
       <Card>
-        <CardContent className="p-8 text-center text-gray-500">
+        <CardContent className="p-8 text-center text-slate-500">
           No quiz questions available for this module.
         </CardContent>
       </Card>
     );
   }
-
-  useEffect(() => {
-    if (!showFeedback && !isComplete && timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [timeLeft, showFeedback, isComplete]);
 
   const handleAnswerSelect = (answerIndex) => {
     setSelectedAnswer(answerIndex);
@@ -113,7 +116,7 @@ export default function GamifiedQuiz({ questions = [], onComplete, title }) {
     return (
       <Card className="border-2 border-yellow-400 bg-gradient-to-br from-yellow-50 to-orange-50">
         <CardContent className="p-8 text-center">
-          <Trophy className={`w-24 h-24 mx-auto mb-4 ${isPerfect ? 'text-yellow-500' : 'text-gray-400'}`} />
+          <Trophy className={`w-24 h-24 mx-auto mb-4 ${isPerfect ? 'text-yellow-500' : 'text-slate-400'}`} />
           <h2 className="text-3xl font-bold mb-2">
             {isPerfect ? '🎉 Perfect Score!' : 'Quiz Complete!'}
           </h2>
@@ -122,17 +125,17 @@ export default function GamifiedQuiz({ questions = [], onComplete, title }) {
             <div className="p-4 bg-white rounded-lg border-2 border-green-200">
               <Target className="w-8 h-8 text-green-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-green-600">{score}/{questions.length}</p>
-              <p className="text-sm text-gray-600">Correct</p>
+              <p className="text-sm text-slate-600">Correct</p>
             </div>
-            <div className="p-4 bg-white rounded-lg border-2 border-purple-200">
-              <Star className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-purple-600">{points}</p>
-              <p className="text-sm text-gray-600">Points</p>
+            <div className="p-4 bg-white rounded-lg border-2 border-navy-200">
+              <Star className="w-8 h-8 text-navy-600 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-navy-600">{points}</p>
+              <p className="text-sm text-slate-600">Points</p>
             </div>
             <div className="p-4 bg-white rounded-lg border-2 border-orange-200">
               <Flame className="w-8 h-8 text-orange-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-orange-600">{percentage}%</p>
-              <p className="text-sm text-gray-600">Accuracy</p>
+              <p className="text-sm text-slate-600">Accuracy</p>
             </div>
           </div>
 
@@ -173,9 +176,9 @@ export default function GamifiedQuiz({ questions = [], onComplete, title }) {
               <span className="text-sm font-bold text-orange-600">{streak}</span>
             </div>
             {/* Points */}
-            <div className="flex items-center gap-1 px-3 py-1 bg-purple-100 rounded-full">
-              <Star className="w-4 h-4 text-purple-600" />
-              <span className="text-sm font-bold text-purple-600">{points}</span>
+            <div className="flex items-center gap-1 px-3 py-1 bg-navy-100 rounded-full">
+              <Star className="w-4 h-4 text-navy-600" />
+              <span className="text-sm font-bold text-navy-600">{points}</span>
             </div>
             {/* Timer */}
             <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${
@@ -216,8 +219,8 @@ export default function GamifiedQuiz({ questions = [], onComplete, title }) {
                     className={`flex items-center space-x-2 p-4 border-2 rounded-lg transition-all ${
                       showCorrect ? 'border-green-500 bg-green-50' :
                       showWrong ? 'border-red-500 bg-red-50' :
-                      isSelected ? 'border-purple-500 bg-purple-50' :
-                      'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      isSelected ? 'border-navy-500 bg-navy-50' :
+                      'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                     }`}
                   >
                     <RadioGroupItem value={idx.toString()} id={`option-${idx}`} />
@@ -239,7 +242,7 @@ export default function GamifiedQuiz({ questions = [], onComplete, title }) {
               <p className="font-semibold mb-2">
                 {currentAnswer?.correct ? '🎉 Correct!' : '💡 Learn More'}
               </p>
-              <p className="text-sm text-gray-700">{question.explanation}</p>
+              <p className="text-sm text-slate-700">{question.explanation}</p>
               {currentAnswer?.points > 0 && (
                 <p className="text-sm font-bold text-green-600 mt-2">
                   +{currentAnswer.points} points earned!

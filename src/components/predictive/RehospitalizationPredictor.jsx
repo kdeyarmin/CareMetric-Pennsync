@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useMemo } from "react";
+import { useAICall } from "@/hooks/useAICall";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,23 +10,16 @@ import {
   AlertTriangle,
   Activity,
   Loader2,
-  RefreshCw,
-  CheckCircle2,
-  ArrowRight,
-  Heart,
-  Stethoscope,
-  ClipboardList
+  RefreshCw
 } from "lucide-react";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar
+  ResponsiveContainer
 } from "recharts";
 
 export default function RehospitalizationPredictor({ 
@@ -36,7 +30,7 @@ export default function RehospitalizationPredictor({
   riskFilter = 'all'
 }) {
   const [predictions, setPredictions] = useState({});
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [analyzingPatientId, setAnalyzingPatientId] = useState(null);
 
   // Calculate base risk for all patients
@@ -118,7 +112,6 @@ export default function RehospitalizationPredictor({
 
   // Get AI prediction for specific patient
   const analyzePatient = async (patientId) => {
-    setIsAnalyzing(true);
     setAnalyzingPatientId(patientId);
 
     const patient = patients.find(p => p.id === patientId);
@@ -126,7 +119,8 @@ export default function RehospitalizationPredictor({
     const patientVisits = visits.filter(v => v.patient_id === patientId);
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `Analyze this home health patient's rehospitalization risk and provide predictions with preventive recommendations.
 
 PATIENT: ${patient?.first_name} ${patient?.last_name}
@@ -190,25 +184,29 @@ Provide a comprehensive rehospitalization risk assessment with:
       setPredictions(prev => ({ ...prev, [patientId]: result }));
     } catch (error) {
       console.error("Analysis error:", error);
+      toast.error("The AI request didn't complete. Please try again.");
     }
 
-    setIsAnalyzing(false);
     setAnalyzingPatientId(null);
   };
 
-  // Risk trend data (simulated weekly)
-  const riskTrendData = useMemo(() => {
-    const highRiskByWeek = [];
-    for (let i = 7; i >= 0; i--) {
-      const weekDate = new Date();
-      weekDate.setDate(weekDate.getDate() - i * 7);
-      highRiskByWeek.push({
-        week: weekDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        highRisk: Math.floor(patientRisks.filter(p => p.riskLevel === 'high').length * (0.9 + Math.random() * 0.2)),
-        mediumRisk: Math.floor(patientRisks.filter(p => p.riskLevel === 'medium').length * (0.9 + Math.random() * 0.2))
-      });
+  // Current risk distribution (REAL counts). This replaces a prior chart that
+  // fabricated an 8-week "trend" by multiplying the current counts by
+  // Math.random() — there is no historical risk time-series available, so a
+  // trend line would be invented data. We show the honest current snapshot
+  // instead (see docs/AI_TRUSTWORTHINESS_AUDIT.md — no fabricated metrics).
+  const riskDistribution = useMemo(() => {
+    const counts = { High: 0, Medium: 0, Low: 0 };
+    for (const p of patientRisks) {
+      if (p.riskLevel === 'high') counts.High += 1;
+      else if (p.riskLevel === 'medium') counts.Medium += 1;
+      else counts.Low += 1;
     }
-    return highRiskByWeek;
+    return [
+      { level: 'High', count: counts.High },
+      { level: 'Medium', count: counts.Medium },
+      { level: 'Low', count: counts.Low },
+    ];
   }, [patientRisks]);
 
   const selectedPrediction = selectedPatientId ? predictions[selectedPatientId] : null;
@@ -218,24 +216,23 @@ Provide a comprehensive rehospitalization risk assessment with:
 
   return (
     <div className="space-y-6">
-      {/* Risk Trend Chart */}
+      {/* Current risk distribution (real counts, not a fabricated trend) */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-red-600" />
-            Rehospitalization Risk Trends
+            Current Rehospitalization Risk Distribution
           </CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={riskTrendData}>
+            <BarChart data={riskDistribution}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <XAxis dataKey="level" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
               <Tooltip />
-              <Line type="monotone" dataKey="highRisk" stroke="#ef4444" strokeWidth={2} name="High Risk" />
-              <Line type="monotone" dataKey="mediumRisk" stroke="#f59e0b" strokeWidth={2} name="Medium Risk" />
-            </LineChart>
+              <Bar dataKey="count" name="Patients" fill="#264491" />
+            </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
@@ -259,7 +256,7 @@ Provide a comprehensive rehospitalization risk assessment with:
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="font-medium text-sm">{patient.first_name} {patient.last_name}</p>
-                    <p className="text-xs text-gray-600">{patient.primary_diagnosis || 'No diagnosis'}</p>
+                    <p className="text-xs text-slate-600">{patient.primary_diagnosis || 'No diagnosis'}</p>
                   </div>
                   <Badge className={`${
                     patient.riskLevel === 'high' ? 'bg-red-600' :
@@ -286,9 +283,9 @@ Provide a comprehensive rehospitalization risk assessment with:
                   variant="outline"
                   className="w-full text-xs"
                   onClick={() => analyzePatient(patient.id)}
-                  disabled={isAnalyzing && analyzingPatientId === patient.id}
+                  disabled={ai.loading && analyzingPatientId === patient.id}
                 >
-                  {isAnalyzing && analyzingPatientId === patient.id ? (
+                  {ai.loading && analyzingPatientId === patient.id ? (
                     <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Analyzing...</>
                   ) : patient.prediction ? (
                     <><RefreshCw className="w-3 h-3 mr-1" /> Refresh AI Analysis</>
@@ -305,7 +302,7 @@ Provide a comprehensive rehospitalization risk assessment with:
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Activity className="w-4 h-4 text-purple-600" />
+              <Activity className="w-4 h-4 text-navy-600" />
               AI Prediction Details
             </CardTitle>
           </CardHeader>
@@ -324,12 +321,12 @@ Provide a comprehensive rehospitalization risk assessment with:
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                <div className="flex items-center justify-between p-2 bg-slate-50 rounded">
                   <span className="text-sm">AI Confidence</span>
                   <Badge variant="outline">{selectedPrediction.confidence}%</Badge>
                 </div>
 
-                <p className="text-sm text-gray-700">{selectedPrediction.summary}</p>
+                <p className="text-sm text-slate-700">{selectedPrediction.summary}</p>
 
                 {/* Preventive Actions */}
                 <div>
@@ -346,7 +343,7 @@ Provide a comprehensive rehospitalization risk assessment with:
                             {action.priority}
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-600">{action.timeframe}</p>
+                        <p className="text-xs text-slate-600">{action.timeframe}</p>
                       </div>
                     ))}
                   </div>
@@ -367,7 +364,7 @@ Provide a comprehensive rehospitalization risk assessment with:
                 )}
               </div>
             ) : (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-slate-500">
                 <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">Select a patient and click "Get AI Prediction" for detailed analysis</p>
               </div>

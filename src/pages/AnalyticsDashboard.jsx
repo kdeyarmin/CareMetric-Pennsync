@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,43 +24,25 @@ import {
   Line,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  Area,
-  AreaChart
+  ResponsiveContainer
 } from "recharts";
 import {
-  TrendingUp,
-  TrendingDown,
   Clock,
-  CheckCircle2,
-  Zap,
-  Users,
-  FileText,
   Download,
-  Calendar,
-  Activity,
-  BarChart3,
   Target,
-  AlertCircle,
+  PieChart,
 } from "lucide-react";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import PageContainer from "@/components/ui/PageContainer";
+import PageHeader from "@/components/ui/PageHeader";
+import { format, subDays } from "date-fns";
 
 import PerformanceMetricsCard from "../components/analytics/PerformanceMetricsCard";
-import ComplianceTrendsChart from "../components/analytics/ComplianceTrendsChart";
-import AIUtilizationChart from "../components/analytics/AIUtilizationChart";
 import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
-import PremiumFeatureGate from "../components/subscription/PremiumFeatureGate";
-import PredictiveInsightsPanel from "../components/analytics/PredictiveInsightsPanel";
-import AgencyRiskDistributionChart from "../components/analytics/AgencyRiskDistributionChart";
-import CarePlanProgressChart from "../components/analytics/CarePlanProgressChart";
 
 export default function AnalyticsDashboard() {
   const [dateRange, setDateRange] = useState("30");
@@ -82,32 +64,15 @@ export default function AnalyticsDashboard() {
     enabled: isAdmin,
   });
 
-  // Fetch patients, care plans, visits for predictive analytics
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['allPatientsAnalytics'],
-    queryFn: () => base44.entities.Patient.list('-updated_date', 500),
-    enabled: isAdmin,
-  });
-
-  const { data: allCarePlans = [] } = useQuery({
-    queryKey: ['allCarePlansAnalytics'],
-    queryFn: () => base44.entities.CarePlan.list('-created_date', 500),
-    enabled: isAdmin,
-  });
-
-  const { data: allVisits = [] } = useQuery({
-    queryKey: ['allVisitsAnalytics'],
-    queryFn: () => base44.entities.Visit.list('-visit_date', 500),
-    enabled: isAdmin,
-  });
-
   // Fetch note conversions
   const { data: noteConversions = [] } = useQuery({
     queryKey: ['noteConversions', selectedUser, startDate, endDate],
-    queryFn: () => base44.entities.NoteConversion.list('-created_date'),
+    // Without a limit Base44 returns only the 50 newest rows, so any selected date
+    // range older than those 50 showed zero/partial data and skewed the averages.
+    queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
     select: (data) => data.filter(nc => {
       const ncDate = new Date(nc.created_date);
-      const inDateRange = ncDate >= new Date(startDate) && ncDate <= new Date(endDate);
+      const inDateRange = ncDate >= new Date(startDate) && ncDate <= new Date(endDate + 'T23:59:59.999');
       const userMatch = selectedUser === 'all' || nc.nurse_email === selectedUser;
       return inDateRange && userMatch;
     }),
@@ -116,10 +81,10 @@ export default function AnalyticsDashboard() {
   // Fetch compliance audits
   const { data: complianceAudits = [] } = useQuery({
     queryKey: ['complianceAudits', selectedUser, startDate, endDate],
-    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date'),
+    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 10000),
     select: (data) => data.filter(ca => {
-      const caDate = new Date(ca.created_date);
-      const inDateRange = caDate >= new Date(startDate) && caDate <= new Date(endDate);
+      const caDate = new Date(ca.audit_date || ca.created_date);
+      const inDateRange = caDate >= new Date(startDate) && caDate <= new Date(endDate + 'T23:59:59.999');
       const userMatch = selectedUser === 'all' || ca.nurse_email === selectedUser;
       return inDateRange && userMatch;
     }),
@@ -128,10 +93,10 @@ export default function AnalyticsDashboard() {
   // Fetch user activities
   const { data: userActivities = [] } = useQuery({
     queryKey: ['userActivities', selectedUser, startDate, endDate],
-    queryFn: () => base44.entities.UserActivity.list('-created_date'),
+    queryFn: () => base44.entities.UserActivity.list('-created_date', 10000),
     select: (data) => data.filter(ua => {
       const uaDate = new Date(ua.created_date);
-      const inDateRange = uaDate >= new Date(startDate) && uaDate <= new Date(endDate);
+      const inDateRange = uaDate >= new Date(startDate) && uaDate <= new Date(endDate + 'T23:59:59.999');
       const userMatch = selectedUser === 'all' || ua.user_email === selectedUser;
       return inDateRange && userMatch;
     }),
@@ -182,9 +147,9 @@ export default function AnalyticsDashboard() {
       ? conversionsWithCompliance.reduce((sum, nc) => sum + (nc.enhanced_note_compliance || 0), 0) / conversionsWithCompliance.length
       : 0;
 
-    // Previous period comparison
-    const midDate = new Date(startDate);
-    midDate.setDate(midDate.getDate() + (new Date(endDate) - new Date(startDate)) / (2 * 24 * 60 * 60 * 1000));
+    // Previous period comparison — split at the exact midpoint instant. Adding a
+    // fractional day count via setDate lands the boundary imprecisely at day edges.
+    const midDate = new Date((new Date(startDate).getTime() + new Date(endDate).getTime()) / 2);
     
     const recentConversions = noteConversions.filter(nc => new Date(nc.created_date) >= midDate);
     const olderConversions = noteConversions.filter(nc => new Date(nc.created_date) < midDate);
@@ -233,7 +198,7 @@ export default function AnalyticsDashboard() {
     }
 
     complianceAudits.forEach(ca => {
-      const dateKey = format(new Date(ca.created_date), 'yyyy-MM-dd');
+      const dateKey = format(new Date(ca.audit_date || ca.created_date), 'yyyy-MM-dd');
       if (days[dateKey]) {
         days[dateKey].compliance.push(ca.compliance_score || 0);
       }
@@ -286,6 +251,7 @@ export default function AnalyticsDashboard() {
         notesCount: 0,
         avgDocTime: 0,
         avgCompliance: 0,
+        auditCount: 0,
         avgQuality: 0,
         aiUsageCount: 0,
         totalActions: 0
@@ -303,6 +269,7 @@ export default function AnalyticsDashboard() {
     complianceAudits.forEach(ca => {
       if (userStats[ca.nurse_email]) {
         userStats[ca.nurse_email].avgCompliance += ca.compliance_score || 0;
+        userStats[ca.nurse_email].auditCount++;
       }
     });
 
@@ -320,7 +287,7 @@ export default function AnalyticsDashboard() {
     return Object.values(userStats).map(user => ({
       ...user,
       avgDocTime: user.notesCount > 0 ? (user.avgDocTime / user.notesCount).toFixed(1) : 0,
-      avgCompliance: user.notesCount > 0 ? (user.avgCompliance / user.notesCount).toFixed(1) : 0,
+      avgCompliance: user.auditCount > 0 ? (user.avgCompliance / user.auditCount).toFixed(1) : 0,
       avgQuality: user.notesCount > 0 ? (user.avgQuality / user.notesCount).toFixed(1) : 0,
       aiUtilization: user.totalActions > 0 ? ((user.aiUsageCount / user.totalActions) * 100).toFixed(1) : 0
     })).filter(user => user.notesCount > 0);
@@ -395,7 +362,7 @@ export default function AnalyticsDashboard() {
       });
     } catch (error) {
       console.error('PDF export error:', error);
-      alert('Failed to export PDF: ' + error.message);
+      toast.error('Failed to export PDF: ' + error.message);
     }
   };
 
@@ -403,7 +370,7 @@ export default function AnalyticsDashboard() {
   const handleExportReport = () => {
     try {
       if (!metrics || !trendData || trendData.length === 0) {
-        alert('No data available to export. Please adjust your filters and try again.');
+        toast.error('No data available to export. Please adjust your filters and try again.');
         return;
       }
 
@@ -451,36 +418,38 @@ export default function AnalyticsDashboard() {
       a.remove();
     } catch (error) {
       console.error('Report generation error:', error);
-      alert('Failed to generate report: ' + error.message);
+      toast.error('Failed to generate report: ' + error.message);
     }
   };
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
   return (
-    <PremiumFeatureGate featureName="Performance Analytics" featureDescription="Track documentation metrics, compliance trends, and AI utilization across your team." allowTrial={true}>
-    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto pb-20 sm:pb-6 bg-gradient-to-br from-slate-200 via-blue-100 to-slate-300">
-       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-         <div className="flex-1 min-w-0">
-           <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 truncate">Performance Analytics</h1>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">Track metrics, trends, and outcomes</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Button onClick={handleExportPDF} className="bg-blue-600 hover:bg-blue-700 touch-target w-full sm:w-auto" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Export </span>PDF
-          </Button>
-          <Button onClick={handleExportReport} variant="outline" className="touch-target w-full sm:w-auto" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Export </span>JSON
-          </Button>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={PieChart}
+        eyebrow="Analytics"
+        title="Performance Analytics"
+        description="Track metrics, trends, and outcomes"
+        favoritePage="AnalyticsDashboard"
+        actions={
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Button onClick={handleExportPDF} className="bg-blue-600 hover:bg-blue-700 min-h-[44px] w-full sm:w-auto">
+              <Download className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Export PDF</span>
+              <span className="sm:hidden">PDF</span>
+            </Button>
+            <Button onClick={handleExportReport} variant="outline" className="min-h-[44px] w-full sm:w-auto">
+              <Download className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Export JSON</span>
+              <span className="sm:hidden">JSON</span>
+            </Button>
+          </div>
+        }
+      />
 
       {/* Filters */}
       <Card className="mb-4 sm:mb-6">
         <CardContent className="p-3 sm:p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <div>
               <Label className="text-xs mb-1">Date Range</Label>
               <Select value={dateRange} onValueChange={handleDateRangeChange}>
@@ -528,7 +497,7 @@ export default function AnalyticsDashboard() {
       </Card>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <PerformanceMetricsCard
           title="Avg Doc Time"
           value={`${metrics.avgDocTime} min`}
@@ -546,78 +515,60 @@ export default function AnalyticsDashboard() {
 
 
 
-      {/* Predictive Analytics Section (Admin Only) */}
-      {isAdmin && allPatients.length > 0 && (
-        <div className="space-y-4 mb-4 sm:mb-6">
-          <AgencyRiskDistributionChart patients={allPatients} carePlans={allCarePlans} />
-          <CarePlanProgressChart carePlans={allCarePlans} patients={allPatients} />
-          <PredictiveInsightsPanel
-            patients={allPatients}
-            carePlans={allCarePlans}
-            visits={allVisits}
-            users={allUsers}
-          />
-        </div>
-      )}
-
       {/* Charts */}
-      <Tabs defaultValue="time" className="mb-4 sm:mb-6 w-full">
-        <TabsList className="grid w-full grid-cols-2 gap-1 p-1">
-          <TabsTrigger value="time" className="text-[10px] sm:text-xs md:text-sm">Doc Time</TabsTrigger>
-          <TabsTrigger value="ai" className="text-[10px] sm:text-xs md:text-sm">AI Usage</TabsTrigger>
+      <Tabs defaultValue="time" className="mb-4 sm:mb-6">
+        <TabsList className="grid w-full grid-cols-2 h-auto">
+          <TabsTrigger value="time" className="py-2 sm:py-3 text-xs sm:text-sm">Documentation Time</TabsTrigger>
+          <TabsTrigger value="ai" className="py-2 sm:py-3 text-xs sm:text-sm">AI Utilization</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="time" className="w-full">
-          <Card className="w-full overflow-hidden">
-            <CardHeader className="p-3 sm:p-4">
-              <CardTitle className="text-sm sm:text-base md:text-lg">Average Documentation Time</CardTitle>
+        <TabsContent value="time">
+          <Card>
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="text-base sm:text-lg">Average Documentation Time</CardTitle>
             </CardHeader>
-            <CardContent className="p-2 sm:p-4">
-              <div className="w-full overflow-x-auto">
-                <ResponsiveContainer width="100%" height={250} minWidth={300}>
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" style={{ fontSize: '10px' }} angle={-45} textAnchor="end" height={60} />
-                    <YAxis style={{ fontSize: '10px' }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="avgDocTime" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2}
-                      name="Doc Time (min)"
-                      dot={{ r: 3 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+            <CardContent className="p-3 sm:p-4 md:p-6">
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" style={{ fontSize: '12px' }} />
+                  <YAxis style={{ fontSize: '12px' }} />
+                  <Tooltip />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="avgDocTime" 
+                    stroke="#3557b0" 
+                    strokeWidth={2}
+                    name="Doc Time (min)"
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="ai" className="w-full">
-          <Card className="w-full overflow-hidden">
-            <CardHeader className="p-3 sm:p-4">
-              <CardTitle className="text-sm sm:text-base md:text-lg">AI Feature Usage Rate</CardTitle>
+        <TabsContent value="ai">
+          <Card>
+            <CardHeader className="p-3 sm:p-4 md:p-6">
+              <CardTitle className="text-base sm:text-lg">AI Feature Usage Rate</CardTitle>
             </CardHeader>
-            <CardContent className="p-2 sm:p-4">
-              <div className="w-full overflow-x-auto">
-                <ResponsiveContainer width="100%" height={250} minWidth={300}>
-                  <BarChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" style={{ fontSize: '10px' }} angle={-45} textAnchor="end" height={60} />
-                    <YAxis domain={[0, 100]} style={{ fontSize: '10px' }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar 
-                      dataKey="aiUtilization" 
-                      fill="#8b5cf6" 
-                      name="AI Utilization (%)"
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+            <CardContent className="p-3 sm:p-4 md:p-6">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" style={{ fontSize: '12px' }} />
+                  <YAxis domain={[0, 100]} style={{ fontSize: '12px' }} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar 
+                    dataKey="aiUtilization" 
+                    fill="#8b5cf6" 
+                    name="AI Utilization (%)"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
             </CardContent>
           </Card>
         </TabsContent>
@@ -625,18 +576,17 @@ export default function AnalyticsDashboard() {
 
       {/* User Performance Table (Admin Only) */}
       {isAdmin && userPerformance.length > 0 && (
-        <Card className="w-full overflow-hidden">
-          <CardHeader className="p-3 sm:p-4">
-            <CardTitle className="text-sm sm:text-base md:text-lg">User Performance Summary</CardTitle>
+        <Card>
+          <CardHeader className="p-3 sm:p-4 md:p-6">
+            <CardTitle className="text-base sm:text-lg">User Performance Summary</CardTitle>
           </CardHeader>
-          <CardContent className="p-2 sm:p-4 overflow-x-auto">
+          <CardContent className="p-3 sm:p-4 md:p-6">
             <UserPerformanceTable users={userPerformance} />
           </CardContent>
         </Card>
       )}
 
 
-    </div>
-    </PremiumFeatureGate>
+    </PageContainer>
   );
 }

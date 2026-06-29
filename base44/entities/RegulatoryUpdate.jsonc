@@ -1,0 +1,143 @@
+{
+  "name": "RegulatoryUpdate",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the regulatory update"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "CMS",
+        "Medicare",
+        "Medicaid",
+        "State",
+        "OSHA",
+        "CDC",
+        "Joint_Commission",
+        "Other"
+      ],
+      "description": "Source of the regulation"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "documentation",
+        "oasis",
+        "safety",
+        "billing",
+        "quality",
+        "infection_control",
+        "patient_rights",
+        "hipaa",
+        "staffing"
+      ],
+      "description": "Category of the update"
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When the regulation takes effect"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief summary of the change"
+    },
+    "full_details": {
+      "type": "string",
+      "description": "Full details and requirements"
+    },
+    "impact_level": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "description": "Impact on agency operations"
+    },
+    "affected_areas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Areas of practice affected"
+    },
+    "required_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Actions the agency must take"
+    },
+    "compliance_check_updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "check_name": {
+            "type": "string"
+          },
+          "old_requirement": {
+            "type": "string"
+          },
+          "new_requirement": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Changes to compliance checks needed"
+    },
+    "suggested_training": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Training topics nurses should complete"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_review",
+        "under_review",
+        "approved",
+        "implemented",
+        "dismissed"
+      ],
+      "default": "pending_review"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Admin who reviewed"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "implementation_notes": {
+      "type": "string",
+      "description": "Notes on how update was implemented"
+    },
+    "reference_url": {
+      "type": "string",
+      "description": "Link to official regulation"
+    }
+  },
+  "required": [
+    "title",
+    "source",
+    "category",
+    "summary",
+    "impact_level"
+  ],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

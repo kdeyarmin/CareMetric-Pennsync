@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect, useCallback } from "react";
+import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import {
   Accordion,
   AccordionContent,
@@ -18,7 +17,6 @@ import {
   AlertTriangle,
   Lightbulb,
   BookOpen,
-  Star,
   Target,
   PenTool,
   Loader2,
@@ -74,23 +72,15 @@ const EXAMPLE_NARRATIVES = {
 };
 
 export default function AIDocumentationQualityAnalyzer({ analysisResults, pdgmData }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const ai = useAICall();
   const [qualityAnalysis, setQualityAnalysis] = useState(null);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("analysis");
   const [copiedExample, setCopiedExample] = useState(null);
 
-  // Auto-analyze when results are available
-  useEffect(() => {
-    if (analysisResults && !qualityAnalysis && !isAnalyzing) {
-      runQualityAnalysis();
-    }
-  }, [analysisResults]);
-
-  const runQualityAnalysis = async () => {
+  const runQualityAnalysis = useCallback(async () => {
     if (!analysisResults) return;
 
-    setIsAnalyzing(true);
     setError(null);
 
     try {
@@ -108,7 +98,8 @@ export default function AIDocumentationQualityAnalyzer({ analysisResults, pdgmDa
         compliance_score: analysisResults.compliance_score
       };
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await ai.run({
+        model: "claude_opus_4_8",
         prompt: `You are an expert OASIS documentation reviewer and home health compliance specialist. Analyze the following OASIS assessment data for documentation quality, focusing on narrative clarity, completeness, and consistency with coded data.
 
 OASIS DATA CONTEXT:
@@ -213,8 +204,15 @@ Return JSON:
       setError("Failed to analyze documentation quality. Please try again.");
     }
 
-    setIsAnalyzing(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
+  }, [analysisResults, pdgmData]);
+
+  // Auto-analyze when results are available
+  useEffect(() => {
+    if (analysisResults && !qualityAnalysis && !ai.loading) {
+      runQualityAnalysis();
+    }
+  }, [analysisResults, qualityAnalysis, ai.loading, runQualityAnalysis]);
 
   const copyToClipboard = (text, exampleKey) => {
     navigator.clipboard.writeText(text);
@@ -241,7 +239,7 @@ Return JSON:
       medium: 'bg-yellow-100 text-yellow-800',
       low: 'bg-blue-100 text-blue-800'
     };
-    return styles[severity] || 'bg-gray-100 text-gray-800';
+    return styles[severity] || 'bg-slate-100 text-slate-800';
   };
 
   const getQualityBadge = (quality) => {
@@ -251,14 +249,14 @@ Return JSON:
       weak: 'bg-yellow-100 text-yellow-800',
       missing: 'bg-red-100 text-red-800'
     };
-    return styles[quality] || 'bg-gray-100 text-gray-800';
+    return styles[quality] || 'bg-slate-100 text-slate-800';
   };
 
   if (!analysisResults) return null;
 
   return (
     <Card className="border-2 border-indigo-200">
-      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-purple-50">
+      <CardHeader className="pb-3 bg-gradient-to-r from-indigo-50 to-navy-50">
         <CardTitle className="text-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Brain className="w-5 h-5 text-indigo-600" />
@@ -272,11 +270,11 @@ Return JSON:
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
-        {isAnalyzing ? (
+        {ai.loading ? (
           <div className="text-center py-8">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-3" />
-            <p className="text-sm text-gray-600">Analyzing documentation quality...</p>
-            <p className="text-xs text-gray-400 mt-1">Checking narratives, consistency, and compliance</p>
+            <p className="text-sm text-slate-600">Analyzing documentation quality...</p>
+            <p className="text-xs text-slate-400 mt-1">Checking narratives, consistency, and compliance</p>
           </div>
         ) : !qualityAnalysis ? (
           <div className="text-center py-6">
@@ -306,25 +304,25 @@ Return JSON:
               {/* Score Overview */}
               <div className="grid grid-cols-4 gap-3">
                 <div className={`p-3 rounded-lg border-2 text-center ${getScoreBg(qualityAnalysis.overall_quality_score)}`}>
-                  <p className="text-xs text-gray-600 mb-1">Overall</p>
+                  <p className="text-xs text-slate-600 mb-1">Overall</p>
                   <p className={`text-2xl font-bold ${getScoreColor(qualityAnalysis.overall_quality_score)}`}>
                     {qualityAnalysis.overall_quality_score}%
                   </p>
                 </div>
                 <div className={`p-3 rounded-lg border-2 text-center ${getScoreBg(qualityAnalysis.clarity_score)}`}>
-                  <p className="text-xs text-gray-600 mb-1">Clarity</p>
+                  <p className="text-xs text-slate-600 mb-1">Clarity</p>
                   <p className={`text-2xl font-bold ${getScoreColor(qualityAnalysis.clarity_score)}`}>
                     {qualityAnalysis.clarity_score}%
                   </p>
                 </div>
                 <div className={`p-3 rounded-lg border-2 text-center ${getScoreBg(qualityAnalysis.completeness_score)}`}>
-                  <p className="text-xs text-gray-600 mb-1">Complete</p>
+                  <p className="text-xs text-slate-600 mb-1">Complete</p>
                   <p className={`text-2xl font-bold ${getScoreColor(qualityAnalysis.completeness_score)}`}>
                     {qualityAnalysis.completeness_score}%
                   </p>
                 </div>
                 <div className={`p-3 rounded-lg border-2 text-center ${getScoreBg(qualityAnalysis.consistency_score)}`}>
-                  <p className="text-xs text-gray-600 mb-1">Consistency</p>
+                  <p className="text-xs text-slate-600 mb-1">Consistency</p>
                   <p className={`text-2xl font-bold ${getScoreColor(qualityAnalysis.consistency_score)}`}>
                     {qualityAnalysis.consistency_score}%
                   </p>
@@ -372,11 +370,11 @@ Return JSON:
                     <AccordionContent className="px-4 pb-4">
                       <div className="space-y-3">
                         {qualityAnalysis.narrative_analysis.map((item, idx) => (
-                          <div key={idx} className="p-3 bg-gray-50 rounded-lg border">
+                          <div key={idx} className="p-3 bg-slate-50 rounded-lg border">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline" className="font-mono">{item.oasis_item}</Badge>
-                                <span className="text-xs text-gray-500">Score: {item.current_score}</span>
+                                <span className="text-xs text-slate-500">Score: {item.current_score}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Badge className={getQualityBadge(item.narrative_quality)}>
@@ -392,8 +390,8 @@ Return JSON:
                             
                             {item.issues?.length > 0 && (
                               <div className="mb-2">
-                                <p className="text-xs text-gray-500 mb-1">Issues:</p>
-                                <ul className="text-xs text-gray-700 list-disc list-inside">
+                                <p className="text-xs text-slate-500 mb-1">Issues:</p>
+                                <ul className="text-xs text-slate-700 list-disc list-inside">
                                   {item.issues.map((issue, i) => (
                                     <li key={i}>{issue}</li>
                                   ))}
@@ -432,14 +430,14 @@ Return JSON:
                   <AccordionItem value="diagnosis" className="border rounded-lg">
                     <AccordionTrigger className="px-4 hover:no-underline">
                       <div className="flex items-center gap-2">
-                        <Stethoscope className="w-4 h-4 text-purple-600" />
+                        <Stethoscope className="w-4 h-4 text-navy-600" />
                         <span>Diagnosis-Narrative Alignment ({qualityAnalysis.diagnosis_alignment.length})</span>
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-4">
                       <div className="space-y-3">
                         {qualityAnalysis.diagnosis_alignment.map((item, idx) => (
-                          <div key={idx} className="p-3 bg-gray-50 rounded-lg border">
+                          <div key={idx} className="p-3 bg-slate-50 rounded-lg border">
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-sm font-medium">{item.diagnosis}</span>
                               <div className="flex items-center gap-2">
@@ -498,7 +496,7 @@ Return JSON:
                         </Badge>
                       </div>
                     </div>
-                    <p className="text-sm text-gray-700 mb-3">{gap.description}</p>
+                    <p className="text-sm text-slate-700 mb-3">{gap.description}</p>
                     <div className="p-2 bg-green-50 rounded border border-green-200">
                       <p className="text-xs font-medium text-green-800 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> How to Fix:
@@ -522,7 +520,7 @@ Return JSON:
               {/* Payment Risk Factors */}
               {qualityAnalysis.payment_risk_factors?.length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                     <DollarSign className="w-4 h-4 text-green-600" />
                     Payment Risk Factors
                   </p>
@@ -543,7 +541,7 @@ Return JSON:
               {/* Audit Vulnerabilities */}
               {qualityAnalysis.audit_vulnerabilities?.length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                     <Shield className="w-4 h-4 text-red-600" />
                     Audit Vulnerabilities
                   </p>
@@ -656,10 +654,10 @@ Return JSON:
             variant="outline" 
             size="sm" 
             onClick={runQualityAnalysis}
-            disabled={isAnalyzing}
+            disabled={ai.loading}
             className="w-full"
           >
-            {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Brain className="w-4 h-4 mr-1" />}
+            {ai.loading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Brain className="w-4 h-4 mr-1" />}
             Re-analyze Documentation Quality
           </Button>
         )}
