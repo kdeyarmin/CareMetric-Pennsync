@@ -26,7 +26,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  *   visits   — Visit.filter({patient_id}, '-visit_date')
  *   incidents— Incident.filter({patient_id}, '-incident_date')
  *   alerts   — PatientAlert.filter({patient_id, status:'active'})
- *   carePlans/tasks — unsorted filter by patient_id
+ *   tasks    — unsorted filter by patient_id
+ *
+ * carePlans is always returned empty (the Care Plans feature was removed); the
+ * key is kept so existing client cache-seeding stays a drop-in.
  */
 Deno.serve(async (req) => {
   try {
@@ -49,15 +52,14 @@ Deno.serve(async (req) => {
       return Response.json({ patient: null, visits: [], carePlans: [], incidents: [], tasks: [], activeAlerts: [] });
     }
 
-    const [visits, carePlans, incidents, tasks, activeAlerts] = await Promise.all([
+    const [visits, incidents, tasks, activeAlerts] = await Promise.all([
       e.Visit.filter({ patient_id: patientId }, '-visit_date'),
-      e.CarePlan.filter({ patient_id: patientId }),
       e.Incident.filter({ patient_id: patientId }, '-incident_date'),
       e.Task.filter({ patient_id: patientId }),
       e.PatientAlert.filter({ patient_id: patientId, status: 'active' }),
     ]);
 
-    return Response.json({ patient, visits, carePlans, incidents, tasks, activeAlerts });
+    return Response.json({ patient, visits, carePlans: [], incidents, tasks, activeAlerts });
   } catch (error) {
     console.error('getPatientContext error:', error?.message);
     return Response.json({ error: 'Failed to load patient context' }, { status: 500 });

@@ -2,7 +2,7 @@ import { useMemo, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Clock, User, CheckCircle2, FileText, Mic, Send, Home, Heart, AlertTriangle, Loader2, Calendar, Target } from "lucide-react";
+import { Clock, User, FileText, Mic, Send, Home, Heart, AlertTriangle, Loader2, Calendar } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
@@ -28,7 +28,6 @@ const PendingReferralsWidget    = lazy(() => import("@/components/referral/Pendi
 const RealTimePatientAlerts     = lazy(() => import("@/components/dashboard/RealTimePatientAlerts"));
 const TopTemplatesWidget        = lazy(() => import("@/components/clinical/TopTemplatesWidget"));
 const HospitalizationRiskWidget = lazy(() => import("@/components/dashboard/HospitalizationRiskWidget"));
-const CarePlanProposalReviewer = lazy(() => import("@/components/carePlan/CarePlanProposalReviewer"));
 
 
 export default function Dashboard() {
@@ -94,7 +93,6 @@ export default function Dashboard() {
   });
   const visits = useMemo(() => dashboardData.visits || [], [dashboardData.visits]);
   const patients = dashboardData.patients || [];
-  const carePlans = dashboardData.carePlans || [];
   const incidents = dashboardData.incidents || [];
   const visitsError = dashboardError;
   const patientsError = dashboardError;
@@ -238,15 +236,6 @@ export default function Dashboard() {
             tone="emerald"
           />
         </Link>
-        <Link to="/CarePlanManagement" className="block">
-          <StatCard
-            label="Active Care Plans"
-            value={carePlans.length}
-            sub={`${patients.length} patients`}
-            icon={Target}
-            tone="navy"
-          />
-        </Link>
         <Link to="/SmartNoteAssistant" className="block">
           <StatCard
             label="Note Enhancements"
@@ -270,7 +259,6 @@ export default function Dashboard() {
         {[
           { page: "SmartNoteAssistant", label: "Smart Notes",   Icon: FileText },
           { page: "SendFax",            label: "Send Fax",      Icon: Send },
-          { page: "CarePlanManagement", label: "Care Plans",    Icon: CheckCircle2 },
           { page: "PatientEducationHub",label: "Pt. Education",  Icon: User },
           { page: "VisitScribe",        label: "Visit Scribe",  Icon: Mic },
           { page: "Incidents",          label: "Incidents",     Icon: AlertTriangle },
@@ -318,11 +306,6 @@ export default function Dashboard() {
 
 
       <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="w-6 h-6 animate-spin mr-2" />Loading...</div>}>
-        {/* AI Care Plan Proposals - Nurse Review */}
-        <div className="mb-8">
-          <CarePlanProposalReviewer compact={true} />
-        </div>
-
         {/* Hospitalization Risk Monitor */}
         <div className="mb-8">
           <HospitalizationRiskWidget autoAnalyze={false} />
@@ -343,7 +326,6 @@ export default function Dashboard() {
           <RealTimePatientAlerts
             patients={patients}
             visits={visits}
-            carePlans={carePlans}
             incidents={incidents}
             currentUser={currentUser}
           />

@@ -17,7 +17,7 @@ import OASISComplianceWarnings, { getComplianceIssues } from "@/components/oasis
 import OASISClinicalReasoningEngine, { getClinicalReasoningIssues } from "@/components/oasis/OASISClinicalReasoningEngine";
 import OASISQuestionGuidance from "@/components/oasis/OASISQuestionGuidance";
 import { OASIS_SECTIONS } from "@/components/oasis/oasisQuestions";
-import { INTERVENTIONS_LIBRARY } from "@/components/carePlan/InterventionLibrary";
+import { INTERVENTIONS_LIBRARY } from "@/components/oasis/interventionsLibrary";
 import { AssessmentSkeleton } from "@/components/ui/PageSkeleton";
 
 // ─── Question field ───────────────────────────────────────────────────────────

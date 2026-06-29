@@ -6,7 +6,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   FileText,
   Users,
-  ClipboardList,
   Download,
   ChevronDown,
   ChevronUp,
@@ -30,13 +29,6 @@ export default function MobileQuickActions() {
       page: "Patients",
       color: "from-green-500 to-green-600",
       description: "View patient list"
-    },
-    {
-      name: "Care Plans",
-      icon: ClipboardList,
-      page: "CarePlanManagement",
-      color: "from-navy-500 to-navy-600",
-      description: "Manage care plans"
     },
     {
       name: "Offline Mode",

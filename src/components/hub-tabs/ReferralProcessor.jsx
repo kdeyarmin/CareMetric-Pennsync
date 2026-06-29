@@ -10,7 +10,7 @@ import AIGeneratedOASISAssessment from "@/components/oasis/AIGeneratedOASISAsses
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, UserPlus, ArrowRight, TrendingUp, Sparkles, Target, CheckCircle2 } from "lucide-react";
+import { FileText, UserPlus, ArrowRight, TrendingUp, Sparkles, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from 'sonner';
 
@@ -24,9 +24,7 @@ export default function ReferralProcessor() {
   const [isRankingDiagnoses, setIsRankingDiagnoses] = useState(false);
   const [selectedPrimaryDx, setSelectedPrimaryDx] = useState(null);
   const [selectedSecondaryDx, _setSelectedSecondaryDx] = useState([]);
-  const [isCreatingCarePlans, setIsCreatingCarePlans] = useState(false);
   const [createdPatientId, setCreatedPatientId] = useState(null);
-  const [createdCarePlans, setCreatedCarePlans] = useState(null);
 
   const rankDiagnoses = async () => {
     if (!extractedData?.diagnoses) return;
@@ -94,9 +92,8 @@ export default function ReferralProcessor() {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
 
       toast.success('Patient created successfully!');
-      // Return the new id so callers (generateCarePlans) can use it immediately
-      // — setCreatedPatientId is async and the captured createdPatientId is still
-      // stale within the same tick.
+      // Return the new id so callers can use it immediately — setCreatedPatientId
+      // is async and the captured createdPatientId is still stale within the same tick.
       return newPatient.id;
     } catch (error) {
       console.error('Error creating patient:', error);
@@ -104,39 +101,6 @@ export default function ReferralProcessor() {
     } finally {
       setIsCreatingPatient(false);
     }
-  };
-
-  const generateCarePlans = async () => {
-    if (!createdPatientId && !extractedData) return;
-
-    setIsCreatingCarePlans(true);
-    try {
-      // If no patient created yet, create one first
-      let patientId = createdPatientId;
-      if (!patientId) {
-        patientId = await createPatientFromReferral();
-      }
-
-      if (!patientId) {
-        throw new Error('Failed to create patient');
-      }
-
-      const { data } = await base44.functions.invoke('generateCarePlansFromReferral', {
-        patient_id: patientId,
-        referral_data: extractedData,
-        primary_diagnosis: selectedPrimaryDx || extractedData.diagnoses?.primary_diagnosis,
-        secondary_diagnoses: selectedSecondaryDx.length > 0 ? selectedSecondaryDx : extractedData.diagnoses?.secondary_diagnoses
-      });
-
-      setCreatedCarePlans(data);
-      queryClient.invalidateQueries({ queryKey: ['carePlans'] });
-
-      toast.success(`Successfully created ${data.care_plans_created} care plans!`);
-    } catch (error) {
-      console.error('Error generating care plans:', error);
-      toast.error('Failed to generate care plans. Please try again.');
-    }
-    setIsCreatingCarePlans(false);
   };
 
   return (
@@ -301,84 +265,6 @@ export default function ReferralProcessor() {
               onSaveSection={() => {
               }}
             />
-
-            {/* Care Plan Generation */}
-            {diagnosisRanking && selectedPrimaryDx && (
-              <Card className="border-2 border-teal-300 bg-teal-50">
-                <CardContent className="p-3 sm:p-4 md:p-6">
-                  <h3 className="text-base sm:text-lg font-semibold text-teal-900 mb-3 flex items-center gap-2">
-                    <Target className="w-5 h-5" />
-                    Auto-Generate Care Plans
-                  </h3>
-                  
-                  {!createdCarePlans ? (
-                    <div className="space-y-3">
-                      <Alert className="bg-white border-teal-300">
-                        <AlertDescription className="text-sm text-slate-700">
-                          Generate comprehensive, Medicare-compliant care plans based on the selected diagnosis and referral data.
-                        </AlertDescription>
-                      </Alert>
-                      <Button
-                        onClick={generateCarePlans}
-                        disabled={isCreatingCarePlans || isCreatingPatient}
-                        className="bg-teal-600 hover:bg-teal-700 w-full min-h-[44px]"
-                      >
-                        {isCreatingCarePlans ? (
-                          <>
-                            <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                            Generating Care Plans...
-                          </>
-                        ) : (
-                          <>
-                            <Target className="w-4 h-4 mr-2" />
-                            Generate Care Plans
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <Alert className="bg-green-50 border-green-300">
-                        <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        <AlertDescription>
-                          <p className="font-semibold text-green-900">
-                            Successfully created {createdCarePlans.care_plans_created} care plans!
-                          </p>
-                        </AlertDescription>
-                      </Alert>
-
-                      <div className="space-y-2">
-                        {createdCarePlans.care_plans?.map((cp, idx) => (
-                          <div key={idx} className="bg-white border border-teal-200 rounded p-3">
-                            <p className="font-semibold text-slate-900 mb-1">{cp.problem}</p>
-                            <p className="text-sm text-slate-700 mb-2">Goal: {cp.goal}</p>
-                            <div className="flex gap-2">
-                              <Badge className="bg-teal-600 text-white text-xs">{cp.status}</Badge>
-                              <Badge variant="outline" className="text-xs">
-                                Target: {new Date(cp.target_date).toLocaleDateString()}
-                              </Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {createdCarePlans.education_priorities?.length > 0 && (
-                        <Alert className="bg-blue-50 border-blue-300">
-                          <AlertDescription>
-                            <p className="font-semibold text-blue-900 mb-1">Education Priorities:</p>
-                            <ul className="space-y-1">
-                              {createdCarePlans.education_priorities.map((edu, idx) => (
-                                <li key={idx} className="text-sm text-blue-800">• {edu}</li>
-                              ))}
-                            </ul>
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
 
             <Card className="border-2 border-green-300 bg-green-50">
               <CardContent className="p-3 sm:p-4 md:p-6">

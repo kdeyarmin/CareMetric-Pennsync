@@ -76,12 +76,6 @@ export default function Help() {
       description: "Voice-to-text documentation",
       icon: Phone,
       topics: ["Audio recording", "Auto transcription", "Clinical extraction"]
-    },
-    {
-      title: "Care Plans",
-      description: "AI care plan suggestions",
-      icon: Award,
-      topics: ["AI suggestions", "Visual builder", "Gap analysis", "Progress tracking"]
     }
   ];
 

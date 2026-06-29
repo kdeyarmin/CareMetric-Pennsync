@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { INTERVENTIONS_LIBRARY } from "@/components/carePlan/InterventionLibrary";
+import { INTERVENTIONS_LIBRARY } from "@/components/oasis/interventionsLibrary";
 import { AlertTriangle, Info, Sparkles, ChevronDown, ChevronUp, Plus, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

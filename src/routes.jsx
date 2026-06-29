@@ -199,6 +199,15 @@ export const REDIRECTS = [
   { from: '/OfflineDocumentation', to: '/OfflineMode?tab=pending' },
   { from: '/UserActivityLog', to: '/UserActivityReport?tab=log' },
   { from: '/PDFTemplateLibrary', to: '/TemplateManagement?tab=pdf' },
+
+  // ─── Care Plans removal ──────────────────────────────────────────────────────
+  // The Care Plans feature (the standalone Care Plans page, its builder and the
+  // Automatic Care Plans page, plus all care-plan components, backend functions
+  // and data entities) was removed. Point old links/bookmarks at the patient list
+  // so they resolve instead of hitting PageNotFound.
+  { from: '/CarePlanManagement', to: '/Patients' },
+  { from: '/CarePlanBuilder', to: '/Patients' },
+  { from: '/AutomaticCarePlans', to: '/Patients' },
 ];
 
 export const MAIN_PAGE = 'Dashboard';
