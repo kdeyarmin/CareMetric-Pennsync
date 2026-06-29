@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users } from "lucide-react";
+import { ArrowLeft, Calendar, Plus, User, FileText, AlertTriangle, Phone, MapPin, Heart, Stethoscope, Activity, ClipboardList, ExternalLink, Users, Sparkles } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,7 +39,6 @@ import InterdisciplinaryTeamCoordinator from "../components/coordination/Interdi
 import OptimalCommunicationAdvisor from "../components/coordination/OptimalCommunicationAdvisor";
 import ProgressReportGenerator from "../components/documents/ProgressReportGenerator";
 import PersonalizedEducationGenerator from "../components/patient/PersonalizedEducationGenerator";
-import { Sparkles } from "lucide-react";
 import AIPatientAnalyzer from "../components/patient/AIPatientAnalyzer";
 import PatientSummaryGenerator from "../components/patient/PatientSummaryGenerator";
 import AIProactiveOASISAssistant from "../components/oasis/AIProactiveOASISAssistant";
@@ -55,6 +54,7 @@ import PatientTelehealthPanel from "../components/telehealth/PatientTelehealthPa
 import CareTeamMessaging from "../components/messaging/CareTeamMessaging";
 import PatientContactActions from "../components/voice/PatientContactActions";
 
+// [Force recompile: 2026-06-29 12:10:00 UTC]
 export default function PatientDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
