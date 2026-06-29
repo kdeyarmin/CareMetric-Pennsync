@@ -27,7 +27,7 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
 
-  // PennSync ships a single, fully-designed light theme: every page and
+  // CareMetric AI ships a single, fully-designed light theme: every page and
   // component uses explicit light styles and none provide `dark:` variants.
   // Previously this effect mirrored the OS `prefers-color-scheme`, toggling the
   // `dark` class on <html>. That flipped only the CSS-variable tokens (popovers,

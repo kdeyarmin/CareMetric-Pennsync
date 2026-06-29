@@ -360,13 +360,15 @@ export default function NotificationCenter({ currentUser, onClose }) {
                     Mark as read
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  onClick={() => deleteNotificationMutation.mutate(selectedNotification.id)}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
+                {!selectedNotification._synthetic && (
+                  <Button
+                    variant="outline"
+                    onClick={() => deleteNotificationMutation.mutate(selectedNotification.id)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </Button>
+                )}
               </div>
             </div>
           </DialogContent>

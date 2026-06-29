@@ -158,13 +158,11 @@ export default function Dashboard() {
       <div className="max-w-lg mx-auto pt-8 px-4">
         <div className="text-center mb-6">
           <div className="mb-4 inline-flex items-center gap-2">
-            <img
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png"
-              alt="PennSync"
-              className="h-10 w-10 rounded-lg"
-            />
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-navy-600 to-navy-800 flex items-center justify-center">
+              <span className="text-white text-sm font-bold">CM</span>
+            </div>
             <span className="text-2xl font-bold tracking-tight text-navy-900">
-              Penn<span className="text-gold-600">Sync</span>
+              CareMetric<span className="text-gold-600"> AI</span>
             </span>
           </div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold-600">Welcome aboard</p>

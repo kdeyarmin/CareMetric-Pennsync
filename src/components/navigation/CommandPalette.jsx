@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/command";
 import { buildPaletteEntries, paletteGroupFor, NAV_MANIFEST } from "@/lib/nav.manifest";
 
-const RECENTS_KEY = "pennsync_recent_pages";
+const RECENTS_KEY = "caremetric_recent_pages";
 const MAX_RECENTS = 5;
 
 function readRecents() {
