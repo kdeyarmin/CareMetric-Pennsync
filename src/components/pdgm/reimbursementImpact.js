@@ -70,3 +70,72 @@ export function computeImpact(before, after, rates = DEFAULT_PDGM_RATES, wageInd
   const paymentPct = b.payment ? round((paymentDelta / b.payment) * 100, 1) : null;
   return { before: b, after: a, paymentDelta, weightDelta, paymentPct, complete: true };
 }
+
+const GROUP_KEYS = Object.keys(DEFAULT_PDGM_RATES.clinicalGroupWeights);
+const gnorm = (s) => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
+const GROUP_BY_NORM = new Map(GROUP_KEYS.map((k) => [gnorm(k), k]));
+// Display-name / abbreviation aliases for a record's clinical group → pdgmRates key.
+const GROUP_ALIASES = {
+  mmtacardiacandcirculatory: "MMTA_Cardiac_Circulatory",
+  cardiacandcirculatory: "MMTA_Cardiac_Circulatory",
+  cardiac: "MMTA_Cardiac_Circulatory",
+  mmtarespiratory: "MMTA_Respiratory",
+  respiratory: "MMTA_Respiratory",
+  mmtaendocrine: "MMTA_Endocrine",
+  endocrine: "MMTA_Endocrine",
+  mmtagastrointestinaltractandgenitourinarysystem: "MMTA_GI_GU",
+  mmtagigu: "MMTA_GI_GU",
+  gigu: "MMTA_GI_GU",
+  mmtainfectiousdiseaseneoplasmsandbloodformingdiseases: "MMTA_Infectious_Disease",
+  infectiousdisease: "MMTA_Infectious_Disease",
+  mmtasurgicalaftercare: "MMTA_Surgical_Aftercare",
+  surgicalaftercare: "MMTA_Surgical_Aftercare",
+  mmtaother: "MMTA_Other",
+  neurorehabilitation: "MMTA_Neuro_Rehab",
+  neurorehab: "MMTA_Neuro_Rehab",
+  wound: "MMTA_Wounds",
+  wounds: "MMTA_Wounds",
+  complexnursinginterventions: "MMTA_Complex_Nursing",
+  complexnursing: "MMTA_Complex_Nursing",
+  behavioralhealth: "MMTA_Behavioral_Health",
+  medicationmanagement: "MMTA_Medication_Management",
+  musculoskeletalrehabilitation: "MMTA_Musculoskeletal",
+  musculoskeletal: "MMTA_Musculoskeletal",
+};
+
+/**
+ * Best-effort map a stored OASIS `pdgm_data` object to the scenario variables this
+ * module computes on. Only fields that map cleanly are returned (so the caller can
+ * pre-fill a "before" scenario and leave the rest for the user to confirm). Never
+ * guesses a value it can't recognize. Pure.
+ */
+export function normalizePdgmDataToScenario(pdgmData) {
+  if (!pdgmData || typeof pdgmData !== "object") return {};
+  const out = {};
+
+  const rawGroup = pdgmData.clinical_group ?? pdgmData.clinical_grouping;
+  if (rawGroup != null) {
+    const key = GROUP_BY_NORM.get(gnorm(rawGroup)) || GROUP_ALIASES[gnorm(rawGroup)];
+    if (key) out.clinicalGroup = key;
+  }
+
+  const src = String(pdgmData.admission_source || "").toLowerCase();
+  if (src.startsWith("inst")) out.admissionSource = "institutional";
+  else if (src.startsWith("comm")) out.admissionSource = "community";
+
+  const tim = String(pdgmData.episode_timing || pdgmData.timing || "").toLowerCase();
+  if (tim.startsWith("early")) out.timing = "early";
+  else if (tim.startsWith("late")) out.timing = "late";
+
+  const fn = String(pdgmData.functional_level ?? pdgmData.functional_impairment_level ?? "").toLowerCase();
+  if (fn.startsWith("low")) out.functionalLevel = "low";
+  else if (fn.startsWith("med")) out.functionalLevel = "medium";
+  else if (fn.startsWith("high")) out.functionalLevel = "high";
+
+  const co = String(pdgmData.comorbidity_adjustment ?? pdgmData.comorbidity_level ?? "").toLowerCase();
+  if (co.startsWith("high")) out.comorbidityLevel = "high";
+  else if (co.startsWith("low")) out.comorbidityLevel = "low";
+  else if (co.startsWith("no")) out.comorbidityLevel = "none";
+
+  return out;
+}

@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import FinancialGate from "@/components/ui/FinancialGate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText } from "lucide-react";
 import { DEFAULT_PDGM_RATES } from "@/components/pdgm/pdgmRates";
-import { computeImpact } from "@/components/pdgm/reimbursementImpact";
+import { computeImpact, normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
 
 // Friendly labels for the pdgmRates clinical-group keys (the FE mirror of the
 // backend calculatePDGM groups).
@@ -59,6 +61,41 @@ export default function DocumentationImpact() {
   const [beforeCo, setBeforeCo] = useState("none");
   const [afterFn, setAfterFn] = useState("high");
   const [afterCo, setAfterCo] = useState("low");
+  const [seededFrom, setSeededFrom] = useState("");
+
+  // Real analyzed OASIS assessments, via listOASISUploads — which strips financial
+  // fields server-side for non-financial users, so estimated_payment is only present
+  // for admins. (FinancialGate also hides the rendered figures, defense-in-depth.)
+  const { data: uploadsResp = {} } = useQuery({
+    queryKey: ["oasis-uploads-impact"],
+    queryFn: async () => (await base44.functions.invoke("listOASISUploads", { sort: "-created_date", limit: 200 }))?.data || {},
+    initialData: {},
+  });
+  const uploads = useMemo(() => (Array.isArray(uploadsResp.uploads) ? uploadsResp.uploads : []), [uploadsResp]);
+
+  const analyzed = useMemo(
+    () => uploads.filter((u) => Number.isFinite(u?.estimated_payment) && u.estimated_payment > 0),
+    [uploads],
+  );
+  const totalEstimated = useMemo(() => analyzed.reduce((s, u) => s + u.estimated_payment, 0), [analyzed]);
+  const avgEstimated = analyzed.length ? totalEstimated / analyzed.length : 0;
+
+  // Assessments whose pdgm_data can seed a "before" scenario.
+  const seedable = useMemo(
+    () => uploads.filter((u) => u?.pdgm_data && Object.keys(normalizePdgmDataToScenario(u.pdgm_data)).length > 0),
+    [uploads],
+  );
+
+  const loadFromAssessment = (id) => {
+    setSeededFrom(id);
+    const u = uploads.find((x) => x.id === id);
+    const s = normalizePdgmDataToScenario(u?.pdgm_data);
+    if (s.clinicalGroup) setClinicalGroup(s.clinicalGroup);
+    if (s.admissionSource) setAdmissionSource(s.admissionSource);
+    if (s.timing) setTiming(s.timing);
+    if (s.functionalLevel) setBeforeFn(s.functionalLevel);
+    if (s.comorbidityLevel) setBeforeCo(s.comorbidityLevel);
+  };
 
   const impact = useMemo(() => computeImpact(
     { clinicalGroup, admissionSource, timing, functionalLevel: beforeFn, comorbidityLevel: beforeCo },
@@ -78,6 +115,38 @@ export default function DocumentationImpact() {
         description="See how stronger documentation moves the PDGM case-mix weight and estimated 30-day reimbursement. For demonstrating the value of better documentation — not billing."
       />
 
+      {/* Real analyzed assessments — admin-only aggregate. */}
+      <FinancialGate>
+        <Card className="modern-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Database className="w-4 h-4 text-indigo-600" /> Across your analyzed OASIS assessments
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {analyzed.length === 0 ? (
+              <p className="text-sm text-slate-500">No analyzed OASIS assessments with an estimated payment yet. As OASIS assessments are analyzed, their estimated PDGM reimbursement appears here.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assessments</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{analyzed.length}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Total estimated reimbursement</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{money(totalEstimated)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Average per assessment</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{money(avgEstimated)}</p>
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-slate-400 mt-3">Estimated PDGM payment captured at analysis time. Visible to administrators only.</p>
+          </CardContent>
+        </Card>
+      </FinancialGate>
+
       <Card className="modern-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Period</CardTitle>
@@ -94,9 +163,29 @@ export default function DocumentationImpact() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="border-slate-200">
           <CardHeader className="pb-2"><CardTitle className="text-base text-slate-700">Before — as originally documented</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <LabeledSelect label="Functional Level" value={beforeFn} onChange={setBeforeFn} options={FUNCTIONAL} />
-            <LabeledSelect label="Comorbidity Adjustment" value={beforeCo} onChange={setBeforeCo} options={COMORBIDITY} />
+          <CardContent className="space-y-4">
+            {seedable.length > 0 && (
+              <div>
+                <span className="text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-400" /> Pre-fill from a real assessment (optional)
+                </span>
+                <Select value={seededFrom} onValueChange={loadFromAssessment}>
+                  <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Choose an analyzed assessment…" /></SelectTrigger>
+                  <SelectContent>
+                    {seedable.slice(0, 50).map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {(u.patient_name || "Assessment")}{u.assessment_date ? ` · ${u.assessment_date}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {seededFrom && <p className="text-xs text-amber-600 mt-1">Pre-filled from the selected assessment — review and adjust before reading the impact.</p>}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <LabeledSelect label="Functional Level" value={beforeFn} onChange={setBeforeFn} options={FUNCTIONAL} />
+              <LabeledSelect label="Comorbidity Adjustment" value={beforeCo} onChange={setBeforeCo} options={COMORBIDITY} />
+            </div>
           </CardContent>
         </Card>
         <Card className="border-emerald-200 bg-emerald-50/30">
