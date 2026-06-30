@@ -226,19 +226,19 @@ export default function Dashboard() {
 
       {/* Nurse Stats Cards — shared StatCard treatment (clean white + accent + icon chip).
           The first three deep-link into their domain so the metrics are actionable. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+      <div className="grid grid-cols-3 gap-4 sm:gap-6 mb-8">
         <Link to="/ClinicalDocumentation" className="block">
           <StatCard
             label="Today's Visits"
             value={visits.filter(v => v.status === 'scheduled').length}
-            sub={`${visits.filter(v => v.status === 'completed').length} completed`}
+            sub={`${visits.filter(v => v.status === 'completed').length} done`}
             icon={Calendar}
             tone="emerald"
           />
         </Link>
         <Link to="/SmartNoteAssistant" className="block">
           <StatCard
-            label="Note Enhancements"
+            label="Notes"
             value={noteConversions.length}
             sub="AI-assisted"
             icon={FileText}
@@ -248,7 +248,7 @@ export default function Dashboard() {
         <StatCard
           label="Time Saved"
           value={stats.timeSavedDisplay}
-          sub="last 30 days"
+          sub="30 days"
           icon={Clock}
           tone="gold"
         />

@@ -112,7 +112,7 @@ export default function StatCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {heading && (
-              <p className="truncate text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 leading-tight">
                 {heading}
               </p>
             )}
@@ -120,7 +120,7 @@ export default function StatCard({
               {value}
             </p>
             {secondary && (
-              <p className="mt-1 truncate text-sm text-slate-500">{secondary}</p>
+              <p className="mt-1 text-sm text-slate-500 leading-tight">{secondary}</p>
             )}
             {deltaText && (
               <span className={cn("mt-2 inline-flex items-center gap-1 text-sm font-semibold", deltaColor)}>

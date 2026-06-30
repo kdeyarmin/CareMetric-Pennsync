@@ -53,7 +53,9 @@ export default function PageHeader({
   );
 
   return (
-    <Card className={cn("relative overflow-hidden border border-slate-200/80 bg-gradient-to-br from-white via-white to-navy-50/60 shadow-sm before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-1 before:bg-gradient-to-r before:from-navy-600 before:via-navy-500 before:to-gold-400", className)}>
+    <Card className={cn("relative border border-slate-200/80 bg-gradient-to-br from-white via-white to-navy-50/60 shadow-sm", className)}>
+      {/* Top accent bar */}
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-gradient-to-r from-navy-600 via-navy-500 to-gold-400" />
       {/* Decorative brand glow — purely cosmetic, sits behind the content. */}
       <span
         aria-hidden="true"
@@ -73,7 +75,7 @@ export default function PageHeader({
                       {eyebrow}
                     </p>
                   )}
-                  <h1 className="truncate text-2xl font-bold text-slate-900 sm:text-3xl tracking-tight">{title}</h1>
+                  <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl tracking-tight leading-tight">{title}</h1>
                 </div>
               </div>
             ) : (

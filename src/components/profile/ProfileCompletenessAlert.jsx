@@ -40,27 +40,22 @@ export default function ProfileCompletenessAlert({ user }) {
   }
 
   return (
-    <div className="rounded-xl border border-amber-600 bg-amber-50 p-5 mb-6 shadow-sm">
-      <div className="flex gap-4">
-        <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-amber-900 mb-2">Complete Your Profile</h3>
-          <p className="text-sm text-amber-800 mb-3">
-            {validation.missing.length > 0 && validation.needsCredentials
-              ? `Missing profile info: ${validation.missing.join(', ')} • Upload your license, certifications, and insurance`
-              : validation.missing.length > 0
-              ? `Missing profile info: ${validation.missing.join(', ')}`
-              : "Upload your license, certifications, and insurance"}
-          </p>
-          <Link to="/UserSettings" className="inline-block">
-            <Button size="sm" className="gap-2 min-h-[40px] bg-amber-600 hover:bg-amber-700">
-              <FileText className="h-4 w-4" />
-              Update Profile & Upload Credentials
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </div>
+    <div className="rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 mb-4 flex items-center gap-3">
+      <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+      <p className="text-sm text-amber-800 flex-1 min-w-0">
+        <span className="font-semibold">Complete your profile: </span>
+        {validation.missing.length > 0 && validation.needsCredentials
+          ? `${validation.missing.join(', ')} • Upload credentials`
+          : validation.missing.length > 0
+          ? validation.missing.join(', ')
+          : "Upload your license, certifications, and insurance"}
+      </p>
+      <Link to="/UserSettings" className="flex-shrink-0">
+        <Button size="sm" variant="outline" className="gap-1.5 text-xs border-amber-500 text-amber-700 hover:bg-amber-100 h-8 px-3">
+          Update
+          <ArrowRight className="h-3 w-3" />
+        </Button>
+      </Link>
     </div>
   );
 }

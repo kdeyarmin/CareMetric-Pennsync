@@ -42,48 +42,22 @@ export default function NotificationCenter({ currentUser, onClose }) {
     refetchInterval: 30000,
   });
 
-  const { data: chartedVisits = [] } = useQuery({
-    queryKey: ['charted-visits', currentUser?.email],
-    queryFn: () => base44.entities.Visit.filter(
-      { created_by: currentUser?.email },
-      '-visit_date',
-      500
-    ),
-    initialData: [],
-    enabled: !!currentUser?.email,
-  });
-
   const { data: activeAlerts = [] } = useQuery({
-    queryKey: ['active-alerts-nc', currentUser?.email, chartedVisits],
-    queryFn: async () => {
-      const chartedPatientIds = new Set(chartedVisits.map(v => v.patient_id));
-      if (chartedPatientIds.size === 0) return [];
-
-      const allAlerts = await base44.entities.PatientAlert.filter(
-        { status: 'active' },
-        '-created_date',
-        50
-      );
-      return allAlerts.filter(a => chartedPatientIds.has(a.patient_id));
-    },
-    initialData: [],
-    refetchInterval: 60000,
-    enabled: !!currentUser?.email && chartedVisits.length > 0,
-  });
-
-  const { data: pendingTasks = [] } = useQuery({
-    queryKey: ['pending-tasks-nc', currentUser?.email],
-    queryFn: () => base44.entities.Task.filter(
-      { status: 'pending', assigned_to: currentUser?.email },
+    queryKey: ['active-alerts-nc', currentUser?.email],
+    queryFn: () => base44.entities.PatientAlert.filter(
+      { status: 'active', assigned_to: currentUser?.email },
       '-created_date',
-      50
+      20
     ),
     initialData: [],
     refetchInterval: 60000,
     enabled: !!currentUser?.email,
   });
 
-  // Combine all notifications
+  // Combine all notifications — tasks are intentionally excluded here because
+  // they are a persistent work-item list (with their own Task UI) and injecting
+  // all pending tasks as synthetic unread notifications floods the panel and can
+  // never be cleared (synthetic items can't be marked read or deleted).
   const combinedNotifications = [
     ...notificationEntities.map(n => ({
       id: n.id,
@@ -94,7 +68,8 @@ export default function NotificationCenter({ currentUser, onClose }) {
       is_read: n.is_read,
       priority: n.priority || 'medium'
     })),
-    ...activeAlerts.map(a => ({
+    // Only include critical/high patient alerts to avoid flooding
+    ...activeAlerts.filter(a => ['critical', 'high'].includes(a.severity)).map(a => ({
       id: a.id,
       type: 'patient_alert',
       title: 'Patient Alert',
@@ -102,20 +77,10 @@ export default function NotificationCenter({ currentUser, onClose }) {
       created_date: a.created_date,
       is_read: false,
       priority: a.severity || 'high',
-      // Surfaced from a PatientAlert/Task, not a Notification row — its id is NOT
+      // Surfaced from a PatientAlert, not a Notification row — its id is NOT
       // a Notification id, so it must be excluded from Notification.update calls.
       _synthetic: true
     })),
-    ...pendingTasks.map(t => ({
-      id: t.id,
-      type: 'task_assigned',
-      title: t.title || 'Task Assigned',
-      message: t.description,
-      created_date: t.created_date,
-      is_read: false,
-      priority: 'medium',
-      _synthetic: true
-    }))
   ].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
 
   const notifications = combinedNotifications;
