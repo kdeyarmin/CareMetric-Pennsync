@@ -10,10 +10,24 @@ import {
   CommandItem,
   CommandSeparator,
 } from "@/components/ui/command";
+import { Brain, Send, CalendarDays, Mail, FileText } from "lucide-react";
 import { buildPaletteEntries, paletteGroupFor, NAV_MANIFEST } from "@/lib/nav.manifest";
 
 const RECENTS_KEY = "caremetric_recent_pages";
 const MAX_RECENTS = 5;
+
+// Verbs, not just destinations — the palette doubles as a "do things" bar so a
+// user can start the common flows from one keystroke. Each action navigates to
+// the page that begins the flow; `adminOnly` actions are filtered out for
+// nurses (mirrors the route guard). `to` is a real route path so selecting an
+// action can never dead-end.
+const QUICK_ACTIONS = [
+  { id: "start-smart-note", label: "Start a Smart Note", icon: Brain, to: "/SmartNoteAssistant", keywords: "new note chart document visit dictation scribe ai" },
+  { id: "send-fax", label: "Send a fax", icon: Send, to: "/SendFax", keywords: "new outbound physician" },
+  { id: "new-message", label: "New message", icon: Mail, to: "/Messages", keywords: "send inbox chat compose" },
+  { id: "request-time-off", label: "Request time off", icon: CalendarDays, to: "/TimeOff", keywords: "pto leave vacation new request" },
+  { id: "new-referral", label: "New referral / intake", icon: FileText, to: "/ReferralIntake", keywords: "admission patient new office", adminOnly: true },
+];
 
 function readRecents() {
   try {
@@ -82,6 +96,16 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false }) {
     navigate(`/${pageName}`);
   }, [navigate]);
 
+  const handleAction = useCallback((to) => {
+    setOpen(false);
+    navigate(to);
+  }, [navigate]);
+
+  const quickActions = useMemo(
+    () => QUICK_ACTIONS.filter((a) => (!a.adminOnly || isAdmin) && (!a.superAdminOnly || isSuperAdmin)),
+    [isAdmin, isSuperAdmin],
+  );
+
   const recentPages = recents.map((name) => pageByName.get(name)).filter(Boolean);
   const showRecents = !search.trim() && recentPages.length > 0;
 
@@ -111,7 +135,29 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false }) {
             placeholder="Search pages, tools, reports…"
           />
           <CommandList className="max-h-[400px]">
-            <CommandEmpty>No pages found.</CommandEmpty>
+            <CommandEmpty>No results found.</CommandEmpty>
+
+            {quickActions.length > 0 && (
+              <>
+                <CommandGroup heading="Actions">
+                  {quickActions.map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <CommandItem
+                        key={action.id}
+                        value={`action ${action.label} ${action.keywords ?? ""}`}
+                        onSelect={() => handleAction(action.to)}
+                        className="group flex cursor-pointer items-center gap-3 px-3 py-2.5"
+                      >
+                        <Icon className="h-4 w-4 flex-shrink-0 text-navy-500 transition-colors group-aria-selected:text-navy-600" />
+                        <span className="group-aria-selected:font-medium">{action.label}</span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+                <CommandSeparator />
+              </>
+            )}
 
             {showRecents && (
               <>

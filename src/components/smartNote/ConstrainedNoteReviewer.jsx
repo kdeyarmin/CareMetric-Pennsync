@@ -14,6 +14,7 @@ import { compareVisits, buildTrendSummary, detectSustainedTrends } from "./compl
 import { crossCheckChart } from "./compliance/chartCrossCheck";
 import VisitComparisonPanel from "./VisitComparisonPanel";
 import ChartCrossCheckPanel from "./ChartCrossCheckPanel";
+import ClinicalIndicatorsPanel from "../visit/ClinicalIndicatorsPanel";
 import NoteDiffView from "./NoteDiffView";
 import DictationButton from "./DictationButton";
 import { annotateProvenance } from "./compliance/provenance";
@@ -398,6 +399,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
           )}
 
           <ChartCrossCheckPanel findings={chartFindings} />
+
+          <ClinicalIndicatorsPanel narrativeText={roughNote} />
 
           {gaps.length > 0 && (
             <div className="bg-white border border-amber-200 rounded-xl p-4 shadow-sm">

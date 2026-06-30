@@ -1,8 +1,13 @@
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Home, Users, Brain, Send, Mail } from "lucide-react";
+import { Home, Users, Brain, Send, Mail, FileText, Pen } from "lucide-react";
 
-const BOTTOM_NAV_ITEMS = [
+// Role-aware bottom bar: every employee keeps Home / Patients / Messages, but
+// the two middle slots match the role's real top tasks. Nurses chart and fax;
+// facility/super admins work referrals and documents. Driven by the same role
+// split as the sidebar (Layout passes isAdmin) so the mobile shortcuts never
+// surface a back-office task to a nurse or hide one from an admin.
+const NURSE_NAV_ITEMS = [
   { page: "Dashboard",          Icon: Home,     label: "Home" },
   { page: "Patients",           Icon: Users,    label: "Patients" },
   { page: "SmartNoteAssistant", Icon: Brain,    label: "Notes" },
@@ -10,11 +15,20 @@ const BOTTOM_NAV_ITEMS = [
   { page: "Messages",           Icon: Mail,     label: "Messages", hasBadge: true },
 ];
 
-export default function MobileBottomNav({ isActive, unreadMessageCount }) {
+const ADMIN_NAV_ITEMS = [
+  { page: "Dashboard",      Icon: Home,     label: "Home" },
+  { page: "Patients",       Icon: Users,    label: "Patients" },
+  { page: "ReferralIntake", Icon: FileText, label: "Referrals" },
+  { page: "DocumentHub",    Icon: Pen,      label: "Documents" },
+  { page: "Messages",       Icon: Mail,     label: "Messages", hasBadge: true },
+];
+
+export default function MobileBottomNav({ isActive, unreadMessageCount, isAdmin = false }) {
+  const items = isAdmin ? ADMIN_NAV_ITEMS : NURSE_NAV_ITEMS;
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-[0_-4px_16px_rgba(15,23,42,0.06)] print:hidden safe-bottom">
       <div className="grid grid-cols-5 h-16">
-        {BOTTOM_NAV_ITEMS.map(({ page, Icon, label, hasBadge }) => {
+        {items.map(({ page, Icon, label, hasBadge }) => {
           const badge = hasBadge ? unreadMessageCount : 0;
           const active = isActive(page);
           return (

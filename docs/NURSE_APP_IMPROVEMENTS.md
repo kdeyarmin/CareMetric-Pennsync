@@ -24,7 +24,24 @@ recommendation carries a `file:line` reference so it can be picked up directly.
 
 ---
 
-## P0 — Patient safety & clinical correctness (do first)
+## P0 — Patient safety & clinical correctness
+
+> **STATUS 2026-06-30 — mostly closed; two items still open.** A re-verification
+> against the current code found most items resolved, made moot by later
+> refactors, or a defensible current design — but **#2 and #9 are NOT fully
+> closed.** See `docs/CLINICAL_P0_VERIFICATION_2026-06-30.md` for per-item
+> evidence (repo-root `file:line`) and the open follow-ups. In brief: #1 fixed
+> (`_comorbidityCount` consistent) and the component is dead code; #2 offline
+> notes set `offlinePending` so they are **not** marked verified and re-ground on
+> reconnect — but the offline-saved `completed` visit carries **no
+> grounding-deferred marker** (audit-trail gap, still open); #3
+> `functional_baseline` is already absent from `CARRY_FORWARD`; #4 the
+> "not documented" line is non-critical-only, labelled, honest disclosure; #5
+> critical-vital escalation is live in the note flow; #6/#8 the target code
+> (`VisitCompletionButton`, `MedicationInteractionChecker`) was removed; **#9 is
+> still applicable** — the standalone Care Plans page was removed, but the
+> `CarePlan` entity and an OASIS→care-plan write path remain live in
+> `SmartOASISAssessment.jsx`, so a consistency guard still has a real target.
 
 1. **Fix the readmission-risk `ReferenceError`** **[verified]**.
    `src/components/patient/HospitalReadmissionRisk.jsx:134` declares `let _comorbidityCount = 0;`

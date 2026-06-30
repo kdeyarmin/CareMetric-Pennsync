@@ -915,6 +915,45 @@ export function isPageAllowedForRole(pageName, roleView) {
 }
 
 /**
+ * The sidebar item that should appear "active" while viewing `pageName`.
+ *
+ * Sub/detail pages carry `category: null` (so they stay out of the sidebar) but
+ * declare a `breadcrumbParent`. Walking up that chain to the nearest entry that
+ * IS a sidebar item (category != null) lets a detail page keep its parent
+ * section highlighted — e.g. viewing PatientDetails highlights "Patients",
+ * AgencyAnalytics highlights "Reports & Analytics", UserGuides highlights "Help".
+ * Without this, navigating into any sub-page leaves the nav with no active
+ * indicator and the user loses their place. Cycle-safe.
+ *
+ * Returns the page key to highlight, or null if the page resolves to no sidebar
+ * section.
+ */
+export function navActivePage(pageName, navMap = NAV_MAP) {
+  let cursor = navMap[pageName];
+  const visited = new Set();
+  while (cursor && !visited.has(cursor.page)) {
+    if (cursor.category) return cursor.page;
+    visited.add(cursor.page);
+    cursor = cursor.breadcrumbParent ? navMap[cursor.breadcrumbParent] : null;
+  }
+  return null;
+}
+
+/**
+ * Whether the sidebar / mobile / bottom-nav item for `candidatePage` should
+ * render in its active state while the user is on `currentPageName`. True for an
+ * exact match (so non-sidebar shortcuts like the bottom-nav "Notes" still light
+ * on their own page) OR when `candidatePage` is the nearest sidebar ancestor of
+ * the current sub-page (see navActivePage). Because each page has a single
+ * ancestor chain, at most one sidebar item per section ever matches.
+ */
+export function isNavItemActive(currentPageName, candidatePage, navMap = NAV_MAP) {
+  if (!candidatePage) return false;
+  if (candidatePage === currentPageName) return true;
+  return navActivePage(currentPageName, navMap) === candidatePage;
+}
+
+/**
  * Group heading for a page in the command palette. Sub-pages have
  * `category: null` (so they stay out of the sidebar); rather than dump them all
  * under a generic "More", inherit the category of their nearest ancestor in the

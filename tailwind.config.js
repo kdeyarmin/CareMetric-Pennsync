@@ -10,7 +10,7 @@ module.exports = {
   		},
   		fontFamily: {
   			sans: [
-  				'"InterVariable"',
+  				'"Inter Variable"',
   				'Inter',
   				'ui-sans-serif',
   				'system-ui',
