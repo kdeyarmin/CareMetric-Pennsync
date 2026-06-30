@@ -159,7 +159,11 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // questions / nudges. Best-effort: any failure leaves the deterministic result
   // untouched, so the flow always works offline.
   useEffect(() => {
-    if (!analysis || typeof navigator !== "undefined" && !navigator.onLine) { setCritic(null); return; }
+    // Clear the running flag here too: if a prior run was cancelled (deps changed)
+    // and the effect re-enters this early-return branch (analysis gone / offline),
+    // the cancelled run's `finally` won't clear it — so without this the
+    // "Double-checking…" spinner could stay stuck on.
+    if (!analysis || typeof navigator !== "undefined" && !navigator.onLine) { setCritic(null); setCriticRunning(false); return; }
     let cancelled = false;
     setCriticRunning(true);
     (async () => {
