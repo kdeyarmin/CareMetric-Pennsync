@@ -210,6 +210,29 @@ intended screens (PDGM grouping, OASIS scrubber, drug-interaction checks), which
 is a feature/product decision, not a cleanup. Logged here so the team can pick it
 up rather than have it rot silently.
 
+### Unused-dependency removal
+
+The 224-file deletion left several runtime packages with no remaining importer.
+Each candidate was verified with a **complete** usage scan (static + side-effect
+`import "x"` + dynamic `import("x")` + CSS `@import`, across `src/`, `base44/`,
+and `index.html`) — an earlier, naïve scan would have wrongly flagged
+`@telnyx/video` (telehealth, loaded via dynamic import), `dompurify` (XSS
+sanitization), `react-signature-canvas` (e-signing), and `date-fns-tz`, so those
+were **kept**. Removed 12 genuinely-unused packages (runtime deps 61 → 49):
+
+`@radix-ui/react-aspect-ratio`, `@radix-ui/react-context-menu`,
+`@radix-ui/react-hover-card`, `@radix-ui/react-menubar`,
+`@radix-ui/react-navigation-menu`, `@radix-ui/react-toggle-group` (backed deleted
+`ui/` primitives), `embla-carousel-react`, `vaul`, `input-otp`,
+`react-resizable-panels`, `canvas-confetti` (same), and
+`@fontsource-variable/inter` (imported nowhere — Inter is served via the Google
+Fonts `<link>` in `index.html`, so typography is unchanged). Smaller install =
+less supply-chain surface. `npm ci` stays consistent (lockfile synced).
+
+> Optional follow-up (not done): self-host Inter via `@fontsource` instead of the
+> Google Fonts CDN, to drop an external request — better for offline mode and
+> HIPAA posture. That's a deliberate CDN-vs-self-host choice for the team.
+
 ## Changes made
 
 | File | Change |
