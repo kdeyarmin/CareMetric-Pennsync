@@ -6,7 +6,8 @@ import PageHeader from "@/components/ui/PageHeader";
 import FinancialGate from "@/components/ui/FinancialGate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText } from "lucide-react";
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
+import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText, ChevronUp, ChevronDown } from "lucide-react";
 import { DEFAULT_PDGM_RATES } from "@/components/pdgm/pdgmRates";
 import { computeImpact, normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
 
@@ -91,6 +92,31 @@ export default function DocumentationImpact() {
   const docUplift = Math.round((docAfter - docBefore) * 100) / 100;
   const docPct = docBefore ? Math.round((docUplift / docBefore) * 1000) / 10 : null;
 
+  // Per-assessment drill-down rows (sortable).
+  const [sortKey, setSortKey] = useState("uplift");
+  const [sortDir, setSortDir] = useState("desc");
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir(key === "patient" || key === "date" ? "asc" : "desc"); }
+  };
+  const rows = useMemo(() => documented.map((u) => {
+    const before = u.estimated_payment;
+    const after = u.optimized_payment;
+    const uplift = Math.round((after - before) * 100) / 100;
+    return { id: u.id, patient: u.patient_name || "Assessment", date: u.assessment_date || "", before, after, uplift, pct: before ? Math.round((uplift / before) * 1000) / 10 : 0 };
+  }), [documented]);
+  const sortedRows = useMemo(() => {
+    const arr = [...rows];
+    arr.sort((a, b) => {
+      const av = a[sortKey]; const bv = b[sortKey];
+      if (sortKey === "patient" || sortKey === "date") {
+        return sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+      }
+      return sortDir === "asc" ? av - bv : bv - av;
+    });
+    return arr;
+  }, [rows, sortKey, sortDir]);
+
   // Assessments whose pdgm_data can seed a "before" scenario.
   const seedable = useMemo(
     () => uploads.filter((u) => u?.pdgm_data && Object.keys(normalizePdgmDataToScenario(u.pdgm_data)).length > 0),
@@ -112,6 +138,15 @@ export default function DocumentationImpact() {
     { clinicalGroup, admissionSource, timing, functionalLevel: beforeFn, comorbidityLevel: beforeCo },
     { clinicalGroup, admissionSource, timing, functionalLevel: afterFn, comorbidityLevel: afterCo },
   ), [clinicalGroup, admissionSource, timing, beforeFn, beforeCo, afterFn, afterCo]);
+
+  const SortHead = ({ k, children, className = "" }) => (
+    <TableHead className={`cursor-pointer select-none ${className}`} onClick={() => toggleSort(k)} aria-sort={sortKey === k ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {sortKey === k && (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+      </span>
+    </TableHead>
+  );
 
   const delta = impact.complete ? impact.paymentDelta : 0;
   const DeltaIcon = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus;
@@ -171,6 +206,48 @@ export default function DocumentationImpact() {
           </CardContent>
         </Card>
       </FinancialGate>
+
+      {/* Per-assessment drill-down — admin-only, sortable. */}
+      {documented.length > 0 && (
+        <FinancialGate>
+          <Card className="modern-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Per-assessment impact</CardTitle>
+              <p className="text-xs text-slate-500">Each analyzed assessment with an after-corrections figure. Click a column to sort.</p>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortHead k="patient">Assessment</SortHead>
+                    <SortHead k="date">Date</SortHead>
+                    <SortHead k="before" className="text-right">Before</SortHead>
+                    <SortHead k="after" className="text-right">After</SortHead>
+                    <SortHead k="uplift" className="text-right">Uplift</SortHead>
+                    <SortHead k="pct" className="text-right">%</SortHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedRows.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium text-slate-800">{r.patient}</TableCell>
+                      <TableCell className="text-slate-500">{r.date || "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums text-slate-700">{money(r.before)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-emerald-800">{money(r.after)}</TableCell>
+                      <TableCell className={`text-right tabular-nums font-semibold ${r.uplift > 0 ? "text-emerald-600" : r.uplift < 0 ? "text-red-600" : "text-slate-500"}`}>
+                        {r.uplift > 0 ? "+" : ""}{money(r.uplift).replace("$-", "-$")}
+                      </TableCell>
+                      <TableCell className={`text-right tabular-nums ${r.uplift > 0 ? "text-emerald-600" : r.uplift < 0 ? "text-red-600" : "text-slate-500"}`}>
+                        {r.uplift > 0 ? "+" : ""}{r.pct}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </FinancialGate>
+      )}
 
       <Card className="modern-card">
         <CardHeader className="pb-2">
