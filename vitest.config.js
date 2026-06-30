@@ -33,11 +33,19 @@ export default defineConfig({
     // (a 2–4 core runner saturated by 35 jsdom files), aborting a test mid-async.
     // Raise the ceiling generously so contention can't; this must comfortably
     // exceed the asyncUtilTimeout in src/test/setup.js times the number of
-    // sequential waitFor calls in a single test (currently 2 × 10s). Parallelism /
-    // isolation are left at Vitest's defaults (per-file isolation is already
-    // correct) so the suite stays fast. A longer ceiling only delays — it can't
-    // mask a never-true assertion.
+    // sequential waitFor calls in a single test (currently 2 × 10s). A longer
+    // ceiling only delays — it can't mask a never-true assertion.
     testTimeout: 30000,
     hookTimeout: 30000,
+    // CI reliability for the documented parallel-load flake. The suite is
+    // deterministically green locally — verified on Node 20.20.2 (CI's version) +
+    // clean `npm ci`, repeatedly and under full CPU saturation — but the real
+    // GitHub runner still intermittently fails a render/async test. Two mitigations
+    // that do NOT hide real bugs (a deterministic failure still fails every retry):
+    //   - maxForks: cap concurrent test processes so heavy jsdom files can't
+    //     oversubscribe a 2–4 core runner (the CPU contention that triggers it).
+    //   - retry: re-run a failed test up to 2×, clearing a one-off timing flake.
+    poolOptions: { forks: { maxForks: 2 } },
+    retry: 2,
   },
 });
