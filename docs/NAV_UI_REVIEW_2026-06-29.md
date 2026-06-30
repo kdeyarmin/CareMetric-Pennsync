@@ -130,8 +130,31 @@ chunk. Verified by exhaustive whole-repo reference check before deletion:
   `action_url`) from the retired `/MyLearning` to the canonical
   `/LearningCenter?tab=courses` so it links directly instead of via a redirect hop.
 
-Deeper orphan-component pruning (e.g. `SMARTNOTE_REVIEW.md` / `NURSE_APP_IMPROVEMENTS.md`
-#23) remains a separate, larger effort and is intentionally out of scope here.
+### SmartNote orphan-component sweep
+
+Followed `NURSE_APP_IMPROVEMENTS.md` #23 / `SMARTNOTE_REVIEW.md`. The directory had
+already shrunk from 143 files (review-time) to 45 product files, so most orphans
+were gone. Rather than trust the old count, ran a **reachability analysis** (BFS
+over the static + dynamic + `import.meta.glob` import graph, rooted at every
+routed page) to find files unreachable from any route, then grep-verified each.
+
+**Removed (7):** five unreferenced components — `AIPatientSummaryReport`,
+`RichTextNoteEditor`, `VoiceClinicalNoteRecorder`, `smartNote/PatientSummaryGenerator`
+(the live summary generator is `components/patient/PatientSummaryGenerator`, a
+distinct file), `SmartVitalsInput` (only a test naming-convention string named it)
+— plus `compliance/scoreNoteFromText.js` and its test (used only by that test, and
+the test isn't even in the `test:utils` run, so doubly dead).
+
+**Kept intentionally:** `smartNote/GuidelineContextRetriever` — it has three real
+importers in `components/guidelines/`, one chaining from the (possibly live)
+`UnifiedComplianceEngine`. It's only "dead" if that whole guidelines/compliance
+cluster is dead, which is a separate subsystem analysis. Two guidelines components
+(`InlineGuidelineSuggester`, `GuidelineReferencePanel`) also appear unimported and
+are noted as a **follow-up** — deliberately not touched here to keep this sweep
+scoped to the SmartNote directory.
+
+Verified: clean build, `vitest run` (55 files / 303 tests) and `test:utils`
+(624 tests) all pass after removal.
 
 ## Changes made
 
