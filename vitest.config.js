@@ -29,11 +29,15 @@ export default defineConfig({
     // Keep the node:test util suites (and backend) out of Vitest's scope.
     exclude: ['node_modules', 'dist', 'base44'],
     // Defaults are 5000ms. Under the full parallel run (many jsdom files at once)
-    // a single heavy mount/hook can momentarily exceed 5s on a busy CI box; raise
-    // the ceiling so contention doesn't abort a test mid-async. Parallelism /
+    // a single heavy mount/hook can momentarily exceed the budget on a busy CI box
+    // (a 2–4 core runner saturated by 35 jsdom files), aborting a test mid-async.
+    // Raise the ceiling generously so contention can't; this must comfortably
+    // exceed the asyncUtilTimeout in src/test/setup.js times the number of
+    // sequential waitFor calls in a single test (currently 2 × 10s). Parallelism /
     // isolation are left at Vitest's defaults (per-file isolation is already
-    // correct) so the suite stays fast.
-    testTimeout: 15000,
-    hookTimeout: 15000,
+    // correct) so the suite stays fast. A longer ceiling only delays — it can't
+    // mask a never-true assertion.
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
 });
