@@ -78,7 +78,7 @@ const GROUPS = [
     icon: BarChart3,
     color: "text-navy-600 bg-navy-50",
     pages: [
-      "ReportsAnalytics", "AgencyAnalytics", "PredictiveAnalytics",
+      "ReportsAnalytics", "AgencyAnalytics", "PredictiveAnalytics", "DocumentationImpact",
     ],
   },
   {

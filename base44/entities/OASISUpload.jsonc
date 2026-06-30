@@ -68,7 +68,15 @@
     },
     "estimated_payment": {
       "type": "number",
-      "description": "Estimated PDGM payment amount"
+      "description": "Estimated PDGM payment amount (ORIGINAL, as originally documented)"
+    },
+    "optimized_payment": {
+      "type": "number",
+      "description": "Estimated PDGM payment after the analyzer's documentation corrections (the 'after' figure). Absent when no corrected scenario was computed. Financial field — stripped for non-financial users by listOASISUploads."
+    },
+    "revenue_uplift": {
+      "type": "number",
+      "description": "optimized_payment − estimated_payment: the reimbursement impact of the documentation corrections for this assessment. Financial field — stripped for non-financial users."
     },
     "status": {
       "type": "string",

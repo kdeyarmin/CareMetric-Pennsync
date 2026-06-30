@@ -251,6 +251,7 @@ export default function OASISAnalyzer() {
 
   // Handle viewing batch result in single analysis view
   const handleViewBatchResult = (result) => {
+    setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
     setAnalysisResults(result);
     if (result?.pdgm_data) {
       setPdgmData(result.pdgm_data);
@@ -273,6 +274,10 @@ export default function OASISAnalyzer() {
       setAnalysisId(null);
       setSavedToPatient(false);
       setUploadedFileUrl(null);
+      // Clear the prior upload's revenue figures so a stale optimized_payment /
+      // revenue_uplift can't be saved against this new assessment before its own
+      // PDGM revenue comparison recomputes.
+      setRevenueData(null);
     } else {
       setError("Please select a valid PDF file.");
       setFile(null);
@@ -400,6 +405,19 @@ export default function OASISAnalyzer() {
           revenue_optimization: analysisResults.revenue_optimization_score || 0
         },
         estimated_payment: originalPayment || 0,
+        // Persist the "after corrections" figure + uplift when a corrected scenario
+        // exists (revenueData from PDGMRevenueComparison's calculatePDGM call), so
+        // the admin Documentation Impact view can show a real, record-driven
+        // before→after. Absent when no corrections were modeled. Financial fields —
+        // listOASISUploads strips any payment/revenue key for non-financial users.
+        ...(Number.isFinite(revenueData?.corrected?.totalPayment)
+          ? {
+              optimized_payment: revenueData.corrected.totalPayment,
+              revenue_uplift: Number.isFinite(revenueData?.revenueDifference)
+                ? revenueData.revenueDifference
+                : Math.round((revenueData.corrected.totalPayment - (originalPayment || 0)) * 100) / 100,
+            }
+          : {}),
         status: 'analyzed'
       });
 
@@ -435,6 +453,7 @@ export default function OASISAnalyzer() {
   // Load saved OASIS for viewing
   // Load saved OASIS for viewing
   const handleLoadSavedOASIS = (oasisUpload) => {
+    setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
     setAnalysisResults(oasisUpload.analysis_results);
     setPdgmData(oasisUpload.pdgm_data);
     setAnalysisId(oasisUpload.analysis_id);
