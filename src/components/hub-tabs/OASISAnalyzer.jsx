@@ -400,6 +400,19 @@ export default function OASISAnalyzer() {
           revenue_optimization: analysisResults.revenue_optimization_score || 0
         },
         estimated_payment: originalPayment || 0,
+        // Persist the "after corrections" figure + uplift when a corrected scenario
+        // exists (revenueData from PDGMRevenueComparison's calculatePDGM call), so
+        // the admin Documentation Impact view can show a real, record-driven
+        // before→after. Absent when no corrections were modeled. Financial fields —
+        // listOASISUploads strips any payment/revenue key for non-financial users.
+        ...(Number.isFinite(revenueData?.corrected?.totalPayment)
+          ? {
+              optimized_payment: revenueData.corrected.totalPayment,
+              revenue_uplift: Number.isFinite(revenueData?.revenueDifference)
+                ? revenueData.revenueDifference
+                : Math.round((revenueData.corrected.totalPayment - (originalPayment || 0)) * 100) / 100,
+            }
+          : {}),
         status: 'analyzed'
       });
 

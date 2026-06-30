@@ -80,6 +80,17 @@ export default function DocumentationImpact() {
   const totalEstimated = useMemo(() => analyzed.reduce((s, u) => s + u.estimated_payment, 0), [analyzed]);
   const avgEstimated = analyzed.length ? totalEstimated / analyzed.length : 0;
 
+  // Records that carry a real "after corrections" figure → a record-driven
+  // before→after→uplift across the agency (no modeling required).
+  const documented = useMemo(
+    () => analyzed.filter((u) => Number.isFinite(u?.optimized_payment) && u.optimized_payment > 0),
+    [analyzed],
+  );
+  const docBefore = useMemo(() => documented.reduce((s, u) => s + u.estimated_payment, 0), [documented]);
+  const docAfter = useMemo(() => documented.reduce((s, u) => s + u.optimized_payment, 0), [documented]);
+  const docUplift = Math.round((docAfter - docBefore) * 100) / 100;
+  const docPct = docBefore ? Math.round((docUplift / docBefore) * 1000) / 10 : null;
+
   // Assessments whose pdgm_data can seed a "before" scenario.
   const seedable = useMemo(
     () => uploads.filter((u) => u?.pdgm_data && Object.keys(normalizePdgmDataToScenario(u.pdgm_data)).length > 0),
@@ -139,6 +150,20 @@ export default function DocumentationImpact() {
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Average per assessment</p>
                   <p className="text-2xl font-bold text-slate-800 mt-1">{money(avgEstimated)}</p>
+                </div>
+              </div>
+            )}
+            {documented.length > 0 && (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                <p className="text-sm font-semibold text-emerald-800">Documented impact of stronger documentation</p>
+                <p className="text-xs text-slate-500 mb-3">{documented.length} assessment{documented.length === 1 ? "" : "s"} where the analyzer captured an after-corrections figure.</p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-sm text-slate-600">Before <strong className="text-slate-800">{money(docBefore)}</strong></span>
+                  <ArrowRight className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm text-slate-600">After <strong className="text-emerald-800">{money(docAfter)}</strong></span>
+                  <span className="inline-flex items-center gap-1 text-base font-bold text-emerald-600">
+                    <TrendingUp className="w-4 h-4" /> +{money(docUplift)}{docPct !== null ? ` (+${docPct}%)` : ""}
+                  </span>
                 </div>
               </div>
             )}
