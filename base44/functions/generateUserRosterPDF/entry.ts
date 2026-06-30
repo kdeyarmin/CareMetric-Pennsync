@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
       doc.rect(0, 200, 297, 10, 'F');
       doc.setTextColor(107, 114, 128);
       doc.setFontSize(8);
-      doc.text(`CareMetric AI - User Roster - Page ${i} of ${pageCount}`, 148.5, 205, { align: 'center' });
+      doc.text(`PennSync - User Roster - Page ${i} of ${pageCount}`, 148.5, 205, { align: 'center' });
     }
 
     const pdfBytes = doc.output('arraybuffer');

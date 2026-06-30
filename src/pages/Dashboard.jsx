@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { formatEastern } from "@/components/utils/timezone";
 import CareScopeSelector from "@/components/profile/CareScopeSelector";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
+import { BRAND_LOGO_URL } from "@/lib/brand";
 
 
 // Critical above-the-fold — eager loaded
@@ -156,11 +157,12 @@ export default function Dashboard() {
       <div className="max-w-lg mx-auto pt-8 px-4">
         <div className="text-center mb-6">
           <div className="mb-4 inline-flex items-center gap-2">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-navy-600 to-navy-800 flex items-center justify-center">
-              <span className="text-white text-sm font-bold">CM</span>
-            </div>
-            <span className="text-2xl font-bold tracking-tight text-navy-900">
-              CareMetric<span className="text-gold-600"> AI</span>
+            <img src={BRAND_LOGO_URL} alt="PennSync" className="h-10 w-10 rounded-lg" />
+            <span className="flex flex-col items-start leading-none">
+              <span className="text-2xl font-bold tracking-tight text-navy-900">
+                Penn<span className="text-gold-600">Sync</span>
+              </span>
+              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">by CareMetric</span>
             </span>
           </div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold-600">Welcome aboard</p>

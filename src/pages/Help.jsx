@@ -33,7 +33,7 @@ export default function Help() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'CareMetricAI_User_Manual.pdf';
+      link.download = 'PennSync_User_Manual.pdf';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -126,7 +126,7 @@ export default function Help() {
         icon={HelpCircle}
         eyebrow="Tools"
         title="Help & Resources"
-        description="Everything you need to master CareMetric AI"
+        description="Everything you need to master PennSync"
         favoritePage="Help"
         actions={
           <Button
@@ -170,12 +170,12 @@ export default function Help() {
               <CardHeader className="border-b border-slate-100">
                 <CardTitle className="flex items-center gap-2">
                   <Award className="w-6 h-6 text-navy-900" />
-                  Welcome to CareMetric AI
+                  Welcome to PennSync
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 <p className="text-slate-700 leading-relaxed">
-                  CareMetric AI is an intelligent, AI-powered documentation and analytics platform designed specifically 
+                  PennSync is an intelligent, AI-powered documentation and analytics platform designed specifically 
                   for clinicians. It combines cutting-edge AI technology with Medicare-compliant workflows to help you 
                   provide the highest quality patient care while reducing administrative burden.
                 </p>
@@ -358,13 +358,13 @@ export default function Help() {
                 </CardHeader>
                 <CardContent className="p-6">
                   <p className="text-slate-700 mb-4">
-                    For technical issues, feature requests, or questions about CareMetric AI:
+                    For technical issues, feature requests, or questions about PennSync:
                   </p>
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
                       <Users className="w-5 h-5 text-navy-900" />
                       <div>
-                        <p className="font-semibold text-navy-900">CareMetric AI Support</p>
+                        <p className="font-semibold text-navy-900">PennSync Support</p>
                         <p className="text-sm text-slate-600">Platform Administrator</p>
                       </div>
                     </div>

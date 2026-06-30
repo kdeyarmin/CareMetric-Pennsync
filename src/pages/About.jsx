@@ -53,7 +53,7 @@ export default function About() {
     <PageContainer>
       <PageHeader
         icon={Globe}
-        eyebrow="CareMetric AI"
+        eyebrow="PennSync by CareMetric"
         title="About"
         description="The intelligent home health and hospice management platform that combines AI-powered documentation with comprehensive clinical operations."
         favoritePage="About"
@@ -61,16 +61,16 @@ export default function About() {
 
       {/* Overview Section */}
       <div className="mb-12">
-        <h2 className="text-3xl font-bold text-slate-900 mb-6">What is CareMetric AI?</h2>
+        <h2 className="text-3xl font-bold text-slate-900 mb-6">What is PennSync?</h2>
           <Card className="border-blue-200">
             <CardContent className="p-6 md:p-8">
               <p className="text-slate-700 text-lg mb-4 leading-relaxed">
-                CareMetric AI is a comprehensive, cloud-based platform designed specifically for home health and hospice agencies. 
+                PennSync is a comprehensive, cloud-based platform designed specifically for home health and hospice agencies. 
                 It transforms clinical documentation, improves operational efficiency, and enhances patient outcomes through intelligent 
                 automation, real-time analytics, and seamless team collaboration.
               </p>
               <p className="text-slate-700 text-lg leading-relaxed">
-                Built on cutting-edge AI technology and designed with clinician workflows in mind, CareMetric AI helps agencies meet 
+                Built on cutting-edge AI technology and designed with clinician workflows in mind, PennSync helps agencies meet 
                 regulatory requirements, reduce administrative burden, and focus more on patient care.
               </p>
             </CardContent>
@@ -104,7 +104,7 @@ export default function About() {
 
       {/* Key Benefits */}
       <div className="mb-12">
-        <h2 className="text-3xl font-bold text-slate-900 mb-6">Why Choose CareMetric AI?</h2>
+        <h2 className="text-3xl font-bold text-slate-900 mb-6">Why Choose PennSync?</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {benefits.map((benefit, index) => (
             <div key={index} className="flex items-start gap-3 bg-emerald-50 p-4 rounded-lg border border-emerald-200">
@@ -120,7 +120,7 @@ export default function About() {
         <div className="rounded-xl border border-navy-100 bg-navy-50 p-8 text-center">
             <h2 className="text-2xl font-bold text-slate-900 mb-4">Ready to Transform Your Agency?</h2>
             <p className="text-slate-600 mb-6 max-w-2xl mx-auto">
-              Join home health and hospice organizations using CareMetric AI to streamline operations, improve compliance, and deliver better patient care.
+              Join home health and hospice organizations using PennSync to streamline operations, improve compliance, and deliver better patient care.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link to={createPageUrl("Dashboard")}>

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Shield, ChevronLeft, ChevronRight, Sparkles, Users, LogOut, Search } from "lucide-react";
 import FeedbackButton from "@/components/feedback/FeedbackButton";
+import { BRAND_LOGO_URL } from "@/lib/brand";
 
 // Active nav item: light navy tint with a gold left indicator bar.
 function navItemClasses(active) {
@@ -29,12 +30,15 @@ export default function DesktopSidebar({
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-3 border-b border-navy-900 flex-shrink-0">
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-navy-500 to-navy-700 flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xs font-bold">CM</span>
-          </div>
+          <img src={BRAND_LOGO_URL} alt="PennSync" className="w-8 h-8 rounded-lg flex-shrink-0" />
           {!collapsed && (
-            <span className="font-bold text-base text-white truncate tracking-tight">
-              CareMetric<span className="text-gold-400"> AI</span>
+            <span className="flex flex-col min-w-0 leading-none">
+              <span className="font-bold text-base text-white truncate tracking-tight">
+                Penn<span className="text-gold-400">Sync</span>
+              </span>
+              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400 truncate">
+                by CareMetric
+              </span>
             </span>
           )}
         </Link>
