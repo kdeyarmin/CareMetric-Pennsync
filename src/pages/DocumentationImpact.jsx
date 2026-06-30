@@ -78,14 +78,36 @@ export default function DocumentationImpact() {
     () => uploads.filter((u) => Number.isFinite(u?.estimated_payment) && u.estimated_payment > 0),
     [uploads],
   );
-  const totalEstimated = useMemo(() => analyzed.reduce((s, u) => s + u.estimated_payment, 0), [analyzed]);
-  const avgEstimated = analyzed.length ? totalEstimated / analyzed.length : 0;
+  // Segment the impact by who documented it (created_by) and/or clinical group.
+  const [nurseFilter, setNurseFilter] = useState("all");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const recNurse = (u) => u?.created_by || u?.completed_by || "Unknown";
+  const recGroup = (u) => normalizePdgmDataToScenario(u?.pdgm_data).clinicalGroup || "";
+
+  const nurseOptions = useMemo(
+    () => Array.from(new Set(analyzed.map(recNurse))).filter(Boolean).sort(),
+    [analyzed],
+  );
+  const groupOptions = useMemo(
+    () => Array.from(new Set(analyzed.map(recGroup))).filter(Boolean).sort(),
+    [analyzed],
+  );
+
+  const filteredAnalyzed = useMemo(
+    () => analyzed.filter((u) =>
+      (nurseFilter === "all" || recNurse(u) === nurseFilter) &&
+      (groupFilter === "all" || recGroup(u) === groupFilter)),
+    [analyzed, nurseFilter, groupFilter],
+  );
+
+  const totalEstimated = useMemo(() => filteredAnalyzed.reduce((s, u) => s + u.estimated_payment, 0), [filteredAnalyzed]);
+  const avgEstimated = filteredAnalyzed.length ? totalEstimated / filteredAnalyzed.length : 0;
 
   // Records that carry a real "after corrections" figure → a record-driven
-  // before→after→uplift across the agency (no modeling required).
+  // before→after→uplift (respecting the active nurse/group filter).
   const documented = useMemo(
-    () => analyzed.filter((u) => Number.isFinite(u?.optimized_payment) && u.optimized_payment > 0),
-    [analyzed],
+    () => filteredAnalyzed.filter((u) => Number.isFinite(u?.optimized_payment) && u.optimized_payment > 0),
+    [filteredAnalyzed],
   );
   const docBefore = useMemo(() => documented.reduce((s, u) => s + u.estimated_payment, 0), [documented]);
   const docAfter = useMemo(() => documented.reduce((s, u) => s + u.optimized_payment, 0), [documented]);
@@ -103,7 +125,7 @@ export default function DocumentationImpact() {
     const before = u.estimated_payment;
     const after = u.optimized_payment;
     const uplift = Math.round((after - before) * 100) / 100;
-    return { id: u.id, patient: u.patient_name || "Assessment", date: u.assessment_date || "", before, after, uplift, pct: before ? Math.round((uplift / before) * 1000) / 10 : 0 };
+    return { id: u.id, patient: u.patient_name || "Assessment", nurse: recNurse(u), date: u.assessment_date || "", before, after, uplift, pct: before ? Math.round((uplift / before) * 1000) / 10 : 0 };
   }), [documented]);
   const sortedRows = useMemo(() => {
     const arr = [...rows];
@@ -170,13 +192,24 @@ export default function DocumentationImpact() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Drill down by who documented it, or by clinical group. */}
+            {analyzed.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <LabeledSelect label="Nurse / clinician" value={nurseFilter} onChange={setNurseFilter}
+                  options={[["all", `All clinicians (${nurseOptions.length})`], ...nurseOptions.map((n) => [n, n])]} />
+                <LabeledSelect label="Clinical group" value={groupFilter} onChange={setGroupFilter}
+                  options={[["all", "All clinical groups"], ...groupOptions.map((g) => [g, CLINICAL_GROUP_LABELS[g] || g])]} />
+              </div>
+            )}
             {analyzed.length === 0 ? (
               <p className="text-sm text-slate-500">No analyzed OASIS assessments with an estimated payment yet. As OASIS assessments are analyzed, their estimated PDGM reimbursement appears here.</p>
+            ) : filteredAnalyzed.length === 0 ? (
+              <p className="text-sm text-slate-500">No analyzed assessments match this filter.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assessments</p>
-                  <p className="text-2xl font-bold text-slate-800 mt-1">{analyzed.length}</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{filteredAnalyzed.length}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Total estimated reimbursement</p>
@@ -220,6 +253,7 @@ export default function DocumentationImpact() {
                 <TableHeader>
                   <TableRow>
                     <SortHead k="patient">Assessment</SortHead>
+                    <SortHead k="nurse">Nurse</SortHead>
                     <SortHead k="date">Date</SortHead>
                     <SortHead k="before" className="text-right">Before</SortHead>
                     <SortHead k="after" className="text-right">After</SortHead>
@@ -231,6 +265,7 @@ export default function DocumentationImpact() {
                   {sortedRows.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="font-medium text-slate-800">{r.patient}</TableCell>
+                      <TableCell className="text-slate-500 max-w-[180px] truncate" title={r.nurse}>{r.nurse}</TableCell>
                       <TableCell className="text-slate-500">{r.date || "—"}</TableCell>
                       <TableCell className="text-right tabular-nums text-slate-700">{money(r.before)}</TableCell>
                       <TableCell className="text-right tabular-nums text-emerald-800">{money(r.after)}</TableCell>
