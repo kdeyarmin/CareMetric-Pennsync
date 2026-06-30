@@ -223,7 +223,9 @@ const FIELD_USAGE = {
   ComplianceAudit: ['rule_versions'],
   // Visit.documentation_source — persistVisitNote records how the note was
   // captured (smart_note / audio / manual) for the compliance audit trail.
-  Visit: ['documentation_source'],
+  // Visit.grounding_pending — set true when an offline save deferred the AI
+  // grounding pass until reconnect (audit-trail completeness marker).
+  Visit: ['documentation_source', 'grounding_pending'],
   Referral: ['page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by'],
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],
   // OASISFeedback is written by two paths: the patient-match writers

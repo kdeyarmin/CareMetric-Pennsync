@@ -173,6 +173,11 @@
       ],
       "default": "smart_note",
       "description": "How this visit note was captured: 'smart_note' (typed/dictated in the Smart Note Assistant), 'audio' (transcribed from a recording, then grounded against the transcript), or 'manual'. Provenance for the compliance audit trail."
+    },
+    "grounding_pending": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when the note was saved offline and the AI grounding (fact-check) pass was deferred until reconnect. The deterministic value-guard still ran, but live grounding had not — so the record carries this audit-trail signal until a later online re-save clears it. Surfaced as a pending-verification state in compliance reporting."
     }
   },
   "required": [

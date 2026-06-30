@@ -61,3 +61,24 @@ export function checkAnswerAdequacy(id, text) {
 export function elementsWithAdequacyRules() {
   return Object.keys(ADEQUACY_RULES);
 }
+
+/**
+ * Critical required elements whose answer is present but reads as inadequate —
+ * the set that should prompt a soft confirm before generating (never a hard
+ * block). An empty / missing answer is NOT included here: emptiness is owned by
+ * the existing critical gating, which hard-blocks generation.
+ * @param {Array<{id:string,severity:string,label?:string}>} requiredElements
+ * @param {Record<string,string>} answers map of elementId -> answer text
+ * @returns {Array<{id:string,label?:string,tip?:string}>}
+ */
+export function findInadequateCritical(requiredElements = [], answers = {}) {
+  const out = [];
+  for (const e of requiredElements) {
+    if (e.severity !== "critical") continue;
+    const text = answers[e.id];
+    if (!text || !text.trim()) continue; // emptiness → handled by gating, not here
+    const adq = checkAnswerAdequacy(e.id, text);
+    if (!adq.adequate) out.push({ id: e.id, label: e.label, tip: adq.tip });
+  }
+  return out;
+}

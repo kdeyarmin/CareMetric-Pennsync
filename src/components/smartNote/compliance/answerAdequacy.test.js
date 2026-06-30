@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkAnswerAdequacy, elementsWithAdequacyRules } from "./answerAdequacy.js";
+import { checkAnswerAdequacy, elementsWithAdequacyRules, findInadequateCritical } from "./answerAdequacy.js";
 
 test("flags a conclusory homebound restatement", () => {
   const r = checkAnswerAdequacy("homebound", "Patient is homebound.");
@@ -57,4 +57,35 @@ test("every listed rule id returns a tip when given a too-short answer", () => {
     assert.equal(r.adequate, false, `${id} should flag a trivial answer`);
     assert.ok(r.tip, `${id} should provide a tip`);
   }
+});
+
+const required = [
+  { id: "homebound", severity: "critical", label: "Homebound status" },
+  { id: "skilled_need", severity: "critical", label: "Skilled need" },
+  { id: "pain", severity: "required", label: "Pain" },
+];
+
+test("findInadequateCritical flags a conclusory critical answer", () => {
+  const out = findInadequateCritical(required, { homebound: "patient is homebound", skilled_need: "Performed skilled wound assessment and dressing change." });
+  assert.deepEqual(out.map((e) => e.id), ["homebound"]);
+  assert.ok(out[0].tip);
+});
+
+test("findInadequateCritical ignores empty answers (gating owns emptiness)", () => {
+  // homebound unanswered → not returned here (the hard gate handles it)
+  const out = findInadequateCritical(required, { homebound: "" });
+  assert.equal(out.length, 0);
+});
+
+test("findInadequateCritical never flags non-critical elements", () => {
+  const out = findInadequateCritical(required, { pain: "ok" });
+  assert.equal(out.length, 0);
+});
+
+test("findInadequateCritical returns nothing when critical answers are specific", () => {
+  const out = findInadequateCritical(required, {
+    homebound: "Homebound due to severe dyspnea; requires a walker and one-person assist to ambulate.",
+    skilled_need: "Skilled observation and assessment of unstable CHF with lung auscultation.",
+  });
+  assert.equal(out.length, 0);
 });

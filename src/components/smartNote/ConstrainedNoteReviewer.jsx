@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { normalizeDraft } from "./compliance/normalize";
 import { getRequiredElements } from "./compliance/requiredElements";
 import { buildOverrides } from "./compliance/ruleLibrary";
-import { checkAnswerAdequacy } from "./compliance/answerAdequacy";
+import { checkAnswerAdequacy, findInadequateCritical } from "./compliance/answerAdequacy";
 import { critiqueCoverage } from "./compliance/completenessCritic";
 import { reconcileCritique, mergeGaps } from "./compliance/criticReconcile";
 import { detectPresence, computeGaps, computeCriticalGaps, computeCarryForward } from "./compliance/presenceDetection";
@@ -75,6 +75,11 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const [criticRunning, setCriticRunning] = useState(false);
   // Per-element "see example" expander state in the questions list.
   const [openExamples, setOpenExamples] = useState(() => new Set());
+  // Soft-confirm gate for brief/conclusory CRITICAL answers: a non-empty but
+  // inadequate critical answer (e.g. "patient is homebound") doesn't hard-block —
+  // it asks the nurse to confirm or add detail once before generating.
+  const [showThinConfirm, setShowThinConfirm] = useState(false);
+  const [confirmedThinCritical, setConfirmedThinCritical] = useState(false);
 
   // Deterministic, instant, offline scan — no LLM, no invented score.
   const analysis = useMemo(() => {
@@ -134,7 +139,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const priorNoteRef = useRef("");
   priorNoteRef.current = priorNote;
   useEffect(() => {
-    setFinalNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setAcknowledgedRisks(false); setAckJustification(""); setShowProvenance(false); setEscalatedKeys(new Set()); setCritic(null); setOpenExamples(new Set());
+    setFinalNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setAcknowledgedRisks(false); setAckJustification(""); setShowProvenance(false); setEscalatedKeys(new Set()); setCritic(null); setOpenExamples(new Set()); setShowThinConfirm(false); setConfirmedThinCritical(false);
     if (!analysis) { setAnswers({}); setPrefilledIds(new Set()); setConfirmedNegatives(new Set()); return; }
     const prefill = computeCarryForward(priorNoteRef.current || "", analysis.gaps);
     setAnswers(prefill);
@@ -261,6 +266,14 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
       toast.error(`Required before generating: ${criticalUnanswered.map(e => e.label).join(", ")}`);
       return;
     }
+    // Soft gate: a critical answer that's present but conclusory (e.g. "patient is
+    // homebound") surfaces a one-time confirm rather than a hard block — nudging
+    // specificity without standing between the nurse and a genuine quick note.
+    const thinCritical = findInadequateCritical(required, answers);
+    if (thinCritical.length && !confirmedThinCritical) {
+      setShowThinConfirm(true);
+      return;
+    }
     setBuilding(true); setFixRequired(null);
     try {
       const draftSentences = splitSentences(analysis.normalized);
@@ -347,6 +360,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // Effective gaps = deterministic gaps + any the critic demoted (over-counted as
   // present). Additive only — the critic never removes a deterministic gap.
   const gaps = analysis ? mergeGaps(analysis.gaps, analysis.required, critic?.demotedIds || []) : [];
+  // Critical answers that are present but read as conclusory — drive the soft confirm.
+  const thinCritical = analysis ? findInadequateCritical(analysis.required, answers) : [];
   const answeredOrConfirmed = (id) => !!answers[id]?.trim() || confirmedNegatives.has(id);
   const answeredCount = gaps.filter(g => answeredOrConfirmed(g.id)).length;
   const criticalUnanswered = analysis ? computeCriticalGaps(analysis.presence, analysis.required).filter(e => !answers[e.id]?.trim()) : [];
@@ -548,6 +563,20 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
             onToggleInclude={setIncludeTrend}
             summary={trendSummary}
           />
+
+          {showThinConfirm && thinCritical.length > 0 && !confirmedThinCritical && (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-2">
+              <h3 className="font-semibold text-amber-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> These required answers look brief</h3>
+              <p className="text-sm text-amber-800">A vague answer on a required element is a common reason Medicare denies a visit. Add detail above, or confirm it's complete as written:</p>
+              <ul className="text-sm text-amber-900 list-disc ml-5 space-y-0.5">
+                {thinCritical.map((t) => (<li key={t.id}><span className="font-semibold">{t.label}:</span> {t.tip}</li>))}
+              </ul>
+              <label className="flex items-start gap-2 text-sm text-amber-900 cursor-pointer pt-1">
+                <input type="checkbox" checked={confirmedThinCritical} onChange={(e) => setConfirmedThinCritical(e.target.checked)} className="w-4 h-4 mt-0.5 text-amber-600 rounded shrink-0" />
+                <span>These answers are complete as written — generate the note.</span>
+              </label>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <Button onClick={generate} disabled={criticalUnanswered.length > 0} className="flex-1 bg-indigo-600 hover:bg-indigo-700 h-12 font-semibold gap-2">

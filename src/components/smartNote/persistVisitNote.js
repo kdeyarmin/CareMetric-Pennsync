@@ -67,7 +67,11 @@ export async function persistVisitNote({
     const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, patient_id: patientId, visit_date: visitDate, visit_type: visitType, status: "completed", nurse_notes: finalText, raw_transcription: roughNote, compliance_score: coverageScore, vital_signs: vitals, documentation_source: source, ...structured, ...reportingFields, __audit: { nurse_email: currentUser.email, ...auditFields } });
+    // Offline save → the AI grounding pass was deferred. Mark the queued visit so
+    // the record shows live grounding hadn't run yet, and surface the audit as
+    // "pending_review" (rather than the coverage-derived passed/flagged) so a
+    // deferred-grounding note isn't read as fully verified in compliance reporting.
+    await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, patient_id: patientId, visit_date: visitDate, visit_type: visitType, status: "completed", nurse_notes: finalText, raw_transcription: roughNote, compliance_score: coverageScore, vital_signs: vitals, documentation_source: source, grounding_pending: true, ...structured, ...reportingFields, __audit: { nurse_email: currentUser.email, ...auditFields, status: "pending_review" } });
     toast.success("Saved offline. Will sync when reconnected.");
     logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
     return { mode: 'offline', visitId: null, auditId: null, finalText, coverageScore };
@@ -83,7 +87,7 @@ export async function persistVisitNote({
       history[history.length - 1] = { ...history[history.length - 1], note: finalText, compliance_score: coverageScore };
     }
     await Promise.all([
-      base44.entities.Visit.update(savedVisitId, { nurse_notes: finalText, compliance_score: coverageScore, vital_signs: vitals, ...structured, ...reportingFields }),
+      base44.entities.Visit.update(savedVisitId, { nurse_notes: finalText, compliance_score: coverageScore, vital_signs: vitals, grounding_pending: false, ...structured, ...reportingFields }),
       base44.entities.Patient.update(patientId, { clinical_notes: finalText, enhanced_notes_history: history }),
       // Keep the audit in step with the edit — a re-save that resolves a conflict
       // must clear the stale `critical` status/issues, not leave them behind.
@@ -102,6 +106,8 @@ export async function persistVisitNote({
     patient_id: patientId, visit_date: visitDate, visit_type: visitType,
     status: "completed", nurse_notes: finalText, raw_transcription: roughNote,
     compliance_score: coverageScore, vital_signs: vitals, documentation_source: source,
+    // Online save → grounding ran and passed (save is gated on a passing recheck).
+    grounding_pending: false,
     ...structured, ...reportingFields,
   };
   const visit = existingVisitId
