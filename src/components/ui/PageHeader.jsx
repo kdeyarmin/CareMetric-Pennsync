@@ -73,7 +73,7 @@ export default function PageHeader({
                       {eyebrow}
                     </p>
                   )}
-                  <h1 className="truncate text-2xl font-bold text-slate-900 sm:text-3xl tracking-tight">{title}</h1>
+                  <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl tracking-tight leading-tight">{title}</h1>
                 </div>
               </div>
             ) : (
