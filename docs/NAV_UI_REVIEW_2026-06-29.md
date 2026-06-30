@@ -189,6 +189,27 @@ wrapper) and removed.
 Verified after the fixpoint: clean build, `vitest run` (303 tests) and
 `test:utils` (624 tests) all green.
 
+Also removed `ui/Pagination.jsx` (its only mentions were two comments; nothing
+imports it), which clears the project's last ESLint warning — **lint is now
+0 errors / 0 warnings**.
+
+### Finding (not a deletion): orphaned but well-tested clinical engines
+
+An import-graph pass surfaced a set of files that **no product code imports, yet
+their unit tests do** — notably the pure clinical engines `pdgm/pdgmGrouper.js`,
+`oasis/oasisScales.js`, `medication/drugInteractions.js`,
+`visit/clinicalIndicators.js`, and the `visit/*Results` OASIS-scrubber panels.
+Their former UI consumers were orphaned/removed over time, so the logic is
+currently **unwired** in the app.
+
+These were **deliberately kept**. They are correct, covered, valuable
+clinical/PDGM/OASIS logic (the product's core per the engineering reviews) —
+deleting them to chase a "0 unused files" metric would *remove robustness*, the
+opposite of the goal. The right follow-up is to **re-wire** them into their
+intended screens (PDGM grouping, OASIS scrubber, drug-interaction checks), which
+is a feature/product decision, not a cleanup. Logged here so the team can pick it
+up rather than have it rot silently.
+
 ## Changes made
 
 | File | Change |
