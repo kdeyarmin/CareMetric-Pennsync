@@ -41,6 +41,7 @@ import AIPatientAnalyzer from "../components/patient/AIPatientAnalyzer";
 import PatientSummaryGenerator from "../components/patient/PatientSummaryGenerator";
 import AIProactiveOASISAssistant from "../components/oasis/AIProactiveOASISAssistant";
 import AIGeneratedOASISAssessment from "../components/oasis/AIGeneratedOASISAssessment";
+import OASISQuickUpdate from "../components/clinical/OASISQuickUpdate";
 import ReferralDocumentViewer from "../components/documents/ReferralDocumentViewer";
 import HealthHistorySection from "../components/patient/HealthHistorySection";
 import ClinicalEventsTimeline from "../components/patient/ClinicalEventsTimeline";
@@ -236,6 +237,7 @@ export default function PatientDetails() {
               { value: "vitals-trends", label: "Vitals"    },
               { value: "health-history",label: "History"   },
               { value: "clinical",      label: "Clinical"  },
+              { value: "oasis",         label: "OASIS"     },
               { value: "events",        label: "Events"    },
               { value: "ai-tools",      label: "AI Tools"  },
               { value: "telehealth",    label: "Telehealth"},
@@ -295,6 +297,13 @@ export default function PatientDetails() {
         {/* Clinical Events Tab */}
         <TabsContent value="events" className="space-y-4 mt-4">
           <ClinicalEventsTimeline patientId={patient.id} limit={30} />
+        </TabsContent>
+
+        {/* OASIS Tab — quick functional-status entry. Uses per-item OASIS-E
+            response scales (oasisScales) so each M-item offers only its valid
+            codes, and saves a draft OASISAssessment for review. */}
+        <TabsContent value="oasis" className="space-y-4 mt-4">
+          <OASISQuickUpdate patient={patient} />
         </TabsContent>
 
         {/* Clinical Info Tab */}
