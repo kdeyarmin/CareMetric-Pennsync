@@ -156,6 +156,39 @@ scoped to the SmartNote directory.
 Verified: clean build, `vitest run` (55 files / 303 tests) and `test:utils`
 (624 tests) all pass after removal.
 
+### App-wide dead-component elimination (reachability fixpoint)
+
+Extended the SmartNote analysis to the **whole `src/` tree**. The reachability
+script classifies each non-routed, non-test file by how many *other* files
+mention its basename; **zero mentions repo-wide (`src/` + `base44/`) ⇒ nothing
+imports it ⇒ dead.** Each candidate was additionally cross-checked against
+`package.json` test/lint targets and the build configs, and the production build
+is the final backstop (a missed import fails compilation).
+
+Removed **223 unreferenced files** across the component tree, iterating to a
+fixpoint (deleting a file exposes files only it imported — 4 rounds until none
+remained). These were never wired into any route: abandoned AI-feature variants,
+duplicate dashboards/widgets, superseded document/signature and training
+modules, and unused `ui/` primitives. Largest areas: training (32), documents
+(24), compliance (21), analytics (18), `ui/` (16), patient (13), import (11),
+fax (10), dashboard (10).
+
+Notably this also removed `patient/HospitalReadmissionRisk.jsx` — the component
+carrying the `comorbidityCount` `ReferenceError` flagged P0 in
+`NURSE_APP_IMPROVEMENTS.md` #1. It was dead code (rendered nowhere), so the bug
+was unreachable; deleting it resolves the finding.
+
+**Kept (not dead):** files whose basename is referenced elsewhere — including
+heavily-used infra the BFS under-roots (`api/entities.js`, `ui/sonner.jsx`,
+`ui/form.jsx`, `lib/notify.js`) — were never in the zero-reference set and were
+left untouched. Three `src/functions/*` wrappers whose names merely *collide*
+with same-named `base44/` backend functions/comments were verified (the
+references are comments + the backend function itself, not imports of the
+wrapper) and removed.
+
+Verified after the fixpoint: clean build, `vitest run` (303 tests) and
+`test:utils` (624 tests) all green.
+
 ## Changes made
 
 | File | Change |
