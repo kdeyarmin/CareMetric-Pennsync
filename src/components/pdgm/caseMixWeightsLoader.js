@@ -40,8 +40,15 @@ const CLINICAL_GROUP_BY_NORM = (() => {
     msrehab: "Musculoskeletal Rehabilitation",
     neurorehabilitation: "Neuro Rehabilitation",
     neurorehab: "Neuro Rehabilitation",
+    // Official CMS label is "Neuro/Stroke Rehabilitation" (docs/pdgm-cy2026.md).
+    neurostrokerehabilitation: "Neuro Rehabilitation",
+    strokerehabilitation: "Neuro Rehabilitation",
     wound: "Wound",
     wounds: "Wound",
+    // Official CMS label is "Wounds (Post-Op & Skin/Non-Surgical)".
+    woundspostopskinnonsurgical: "Wound",
+    woundspostopandskinnonsurgical: "Wound",
+    woundspostop: "Wound",
     mmtasurgicalaftercare: "MMTA - Surgical Aftercare",
     mmtacardiacandcirculatory: "MMTA - Cardiac and Circulatory",
     mmtacardiac: "MMTA - Cardiac and Circulatory",
@@ -108,8 +115,20 @@ function mapHeaders(headerCells) {
   return out;
 }
 
+// Thrown by parseCsvRows when a quoted field is never closed, so the caller can
+// report a clean "malformed CSV" error instead of silently swallowing the rest of
+// the file into one runaway field.
+export class CsvParseError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "CsvParseError";
+  }
+}
+
 // Minimal RFC-4180-ish CSV parser: handles quoted fields, escaped quotes ("")
 // and commas/newlines inside quotes. Returns an array of string-cell rows.
+// Throws CsvParseError on an unterminated quoted field (a missing closing quote
+// would otherwise absorb every following row into a single field).
 export function parseCsvRows(text) {
   const rows = [];
   let row = [];
@@ -131,6 +150,9 @@ export function parseCsvRows(text) {
       row.push(field); field = "";
       rows.push(row); row = [];
     } else field += c;
+  }
+  if (inQuotes) {
+    throw new CsvParseError("Unterminated quoted field — a quoted value is missing its closing double-quote.");
   }
   // flush trailing field/row (unless the file ended on a clean newline)
   if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
@@ -158,7 +180,14 @@ export function parseCaseMixWeightsCsv(csvText, { year = null, source = null, st
   const caseMixTable = {};
   const lupaThresholds = {};
 
-  const rows = parseCsvRows(csvText);
+  let rows;
+  try {
+    rows = parseCsvRows(csvText);
+  } catch (err) {
+    const msg = err instanceof CsvParseError ? err.message : `Could not parse CSV: ${err?.message || err}`;
+    errors.push(msg);
+    return { ok: false, caseMixTable, lupaThresholds, meta: { year, source, rowsParsed: 0, groups: 0 }, errors, warnings };
+  }
   if (rows.length < 2) {
     errors.push("CSV has no data rows (need a header row plus at least one data row).");
     return { ok: false, caseMixTable, lupaThresholds, meta: { year, source, rowsParsed: 0, groups: 0 }, errors, warnings };

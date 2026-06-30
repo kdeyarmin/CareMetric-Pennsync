@@ -3,6 +3,7 @@ import { CLINICAL_GROUPS, caseMixKey } from "./pdgmGrouper.js";
 import {
   parseCaseMixWeightsCsv,
   parseCsvRows,
+  CsvParseError,
   EXPECTED_GROUP_COUNT,
 } from "./caseMixWeightsLoader.js";
 
@@ -15,6 +16,9 @@ describe("parseCsvRows", () => {
   });
   it("drops fully blank lines", () => {
     expect(parseCsvRows("a,b\n\n1,2\n")).toEqual([["a", "b"], ["1", "2"]]);
+  });
+  it("throws CsvParseError on an unterminated quoted field", () => {
+    expect(() => parseCsvRows('a,"unclosed\n1,2\n')).toThrow(CsvParseError);
   });
 });
 
@@ -38,6 +42,28 @@ describe("parseCaseMixWeightsCsv — happy path", () => {
     const res = parseCaseMixWeightsCsv(csv, { strict: false });
     const key = caseMixKey({ timing: "late", admissionSource: "institutional", clinicalGroup: "Wound", functionalLevel: "high", comorbidityLevel: "none" });
     expect(res.caseMixTable[key]?.weight).toBe(1.5);
+  });
+
+  it("resolves the official CMS clinical-group labels (Neuro/Stroke, Wounds (Post-Op & Skin/Non-Surgical))", () => {
+    const csv =
+      `${HEADER}\n` +
+      `"Neuro/Stroke Rehabilitation",Community,Early,Low,None,1.2,x,\n` +
+      `"Wounds (Post-Op & Skin/Non-Surgical)",Community,Early,Low,None,1.3,x,`;
+    const res = parseCaseMixWeightsCsv(csv, { strict: false });
+    const neuroKey = caseMixKey({ timing: "early", admissionSource: "community", clinicalGroup: "Neuro Rehabilitation", functionalLevel: "low", comorbidityLevel: "none" });
+    const woundKey = caseMixKey({ timing: "early", admissionSource: "community", clinicalGroup: "Wound", functionalLevel: "low", comorbidityLevel: "none" });
+    expect(res.caseMixTable[neuroKey]?.weight).toBe(1.2);
+    expect(res.caseMixTable[woundKey]?.weight).toBe(1.3);
+  });
+});
+
+describe("parseCaseMixWeightsCsv — malformed CSV", () => {
+  it("returns ok:false with a dedicated error for an unterminated quoted field", () => {
+    const csv = `${HEADER}\n"Wound,Community,Early,Low,None,1.1,x,`; // missing closing quote
+    const res = parseCaseMixWeightsCsv(csv, { strict: false });
+    expect(res.ok).toBe(false);
+    expect(res.errors.join(" ")).toMatch(/unterminated quoted field/i);
+    expect(Object.keys(res.caseMixTable)).toHaveLength(0);
   });
 });
 
