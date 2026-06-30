@@ -150,12 +150,6 @@ export default function Layout({ children, currentPageName }) {
 
   const activeAlerts = useMemo(() => isAdmin ? [] : allActiveAlerts, [allActiveAlerts, isAdmin]);
 
-  const { data: pendingTasks = [] } = useQuery({
-    queryKey: ['pending-tasks', currentUser?.email],
-    queryFn: () => base44.entities.Task.filter({ status: 'pending', assigned_to: currentUser?.email }, '-created_date', 50),
-    initialData: [], refetchInterval: 60000, enabled: !!currentUser?.email,
-  });
-
   const { data: inAppNotifications = [] } = useQuery({
     queryKey: ['notifications', currentUser?.email],
     queryFn: () => base44.entities.Notification.filter({ user_email: currentUser?.email }, '-created_date', 50),
@@ -171,7 +165,7 @@ export default function Layout({ children, currentPageName }) {
   const unreadMessageCount = messages.filter(m => !m.read_by?.includes(currentUser?.email)).length;
   const unreadSmsCount = unreadSmsMessages.length;
   const unreadNotificationCount = inAppNotifications.filter(n => !n.is_read).length;
-  const totalNotificationCount = unreadMessageCount + activeAlerts.length + pendingTasks.length + unreadNotificationCount;
+  const totalNotificationCount = unreadMessageCount + activeAlerts.length + unreadNotificationCount;
 
 // Badge value map — keys match the `badge` field in nav.manifest entries
   const badgeValues = useMemo(() => ({
