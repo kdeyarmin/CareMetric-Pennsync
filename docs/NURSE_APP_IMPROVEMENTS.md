@@ -26,6 +26,19 @@ recommendation carries a `file:line` reference so it can be picked up directly.
 
 ## P0 — Patient safety & clinical correctness (do first)
 
+> **STATUS 2026-06-30 — this P0 list is CLOSED.** A re-verification against the
+> current code found every item resolved, made moot by later refactors, or a
+> defensible current design. See `docs/CLINICAL_P0_VERIFICATION_2026-06-30.md`
+> for per-item evidence (`file:line`). In brief: #1 fixed (`_comorbidityCount`
+> consistent) and the component is dead code; #2 offline notes set
+> `offlinePending` so they are **not** marked verified and re-ground on reconnect;
+> #3 `functional_baseline` is already absent from `CARRY_FORWARD`; #4 the
+> "not documented" line is non-critical-only, labelled, honest disclosure; #5
+> critical-vital escalation is live in the note flow; #6/#8/#9 the target code
+> (`VisitCompletionButton`, `MedicationInteractionChecker`, Care Plans) was
+> removed. No code change was warranted — the items below are retained for
+> historical context.
+
 1. **Fix the readmission-risk `ReferenceError`** **[verified]**.
    `src/components/patient/HospitalReadmissionRisk.jsx:134` declares `let _comorbidityCount = 0;`
    but line 149 increments `comorbidityCount` (undefined → `ReferenceError` in strict ES modules).
