@@ -48,7 +48,18 @@ export const DEFAULT_PDGM_RATES = {
     // prefix to it if they choose.
     MMTA_Skin_Non_Surgical:   { community_early: 1.0123, community_late: 0.9313, institutional_early: 1.1623, institutional_late: 1.0693 },
   },
-  // Functional-impairment point thresholds (Low ≤ low; Medium < high; else High).
+  // Functional-impairment point thresholds, keyed by admission-source × timing
+  // bucket (community/institutional × early/late) — the SAME shape the backend
+  // calculatePDGM uses (FUNCTIONAL_THRESHOLDS), parity-locked by
+  // pdgmRatesParity.test.js. Each entry is { low, high }: points >= high → High,
+  // points >= low → Medium, else Low (see calculateFunctionalLevel in
+  // base44/functions/calculatePDGM/entry.ts).
+  //
+  // NOTE: this is intentionally a DIFFERENT shape from the one
+  // pdgmGrouper.groupPeriod() consumes (clinical-group-keyed { low, medium }).
+  // The two PDGM models are independent — do NOT pass DEFAULT_PDGM_RATES into
+  // groupPeriod(), and do not rename `high`→`medium` here (it would break backend
+  // parity and the revenue estimator).
   functionalThresholds: {
     community_early:     { low: 9,  high: 18 },
     community_late:      { low: 8,  high: 16 },

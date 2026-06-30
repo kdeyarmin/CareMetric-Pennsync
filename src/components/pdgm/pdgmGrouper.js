@@ -118,7 +118,13 @@ export function computeFunctionalLevel(points, thresholds) {
  *  thresholds vary by clinical group, so `functionalThresholds` may be either a
  *  flat { low, medium } (one set for all groups) or a table keyed by clinical
  *  group { [group]: { low, medium } }. Returns null when no set applies, so the
- *  period is reported incomplete rather than scored against absent thresholds. */
+ *  period is reported incomplete rather than scored against absent thresholds.
+ *
+ *  NOTE: this is NOT the same shape as DEFAULT_PDGM_RATES.functionalThresholds in
+ *  pdgmRates.js, which is timing-bucket-keyed with { low, high } for the separate
+ *  backend-mirrored revenue estimator. Don't pass DEFAULT_PDGM_RATES here — its
+ *  { low, high } entries lack `medium`, so computeFunctionalLevel would (correctly)
+ *  return null and every period would report incomplete. */
 function resolveThresholds(functionalThresholds, clinicalGroup) {
   if (!functionalThresholds) return null;
   if (typeof functionalThresholds.low === "number" || typeof functionalThresholds.medium === "number") {
