@@ -39,7 +39,10 @@ export function computePeriodReimbursement(
 
   const caseMixWeight = clinicalWeight * functionalMultiplier * comorbidityMultiplier;
   const base = Number.isFinite(rates?.basePaymentRate) ? rates.basePaymentRate : DEFAULT_PDGM_RATES.basePaymentRate;
-  const laborShare = Math.min(1, Math.max(0, Number.isFinite(rates?.laborShare) ? rates.laborShare : 1));
+  // Fall back to the canonical CY2026 labor share (≈0.7676), not 1.0 — a 1.0
+  // fallback would silently apply the full wage index and overstate the payment
+  // when a caller passes rates without a laborShare.
+  const laborShare = Math.min(1, Math.max(0, Number.isFinite(rates?.laborShare) ? rates.laborShare : DEFAULT_PDGM_RATES.laborShare));
   const wi = Number.isFinite(wageIndex) ? wageIndex : 1.0;
   const adjustedBase = round(base * (laborShare * wi + (1 - laborShare)));
   const payment = round(adjustedBase * caseMixWeight);

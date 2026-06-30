@@ -21,6 +21,23 @@ describe("computePeriodReimbursement", () => {
     expect(out.payment).toBe(expectedPay);
   });
 
+  it("falls back to the canonical labor share (not 1.0) when rates omit it", () => {
+    // A non-default wage index makes the labor-share fallback observable: a 1.0
+    // fallback would apply the full wage index, overstating the adjusted base.
+    const ratesNoLabor = { ...DEFAULT_PDGM_RATES, laborShare: undefined };
+    const scenario = {
+      clinicalGroup: "MMTA_Wounds", admissionSource: "community", timing: "early",
+      functionalLevel: "low", comorbidityLevel: "none",
+    };
+    const wageIndex = 1.2;
+    const out = computePeriodReimbursement(scenario, ratesNoLabor, wageIndex);
+    const ls = DEFAULT_PDGM_RATES.laborShare;
+    const expectedBase = Math.round(DEFAULT_PDGM_RATES.basePaymentRate * (ls * wageIndex + (1 - ls)) * 100) / 100;
+    expect(out.adjustedBase).toBe(expectedBase);
+    // Sanity: a 1.0 fallback would have produced base × wageIndex, which is larger.
+    expect(out.adjustedBase).toBeLessThan(Math.round(DEFAULT_PDGM_RATES.basePaymentRate * wageIndex * 100) / 100);
+  });
+
   it("returns null (never guesses) for an unknown clinical group or level", () => {
     expect(computePeriodReimbursement({ clinicalGroup: "NOPE", functionalLevel: "low", comorbidityLevel: "none" })).toBeNull();
     expect(computePeriodReimbursement({ clinicalGroup: "MMTA_Wounds", functionalLevel: "bogus", comorbidityLevel: "none" })).toBeNull();

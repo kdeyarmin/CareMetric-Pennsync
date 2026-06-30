@@ -251,6 +251,7 @@ export default function OASISAnalyzer() {
 
   // Handle viewing batch result in single analysis view
   const handleViewBatchResult = (result) => {
+    setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
     setAnalysisResults(result);
     if (result?.pdgm_data) {
       setPdgmData(result.pdgm_data);
@@ -273,6 +274,10 @@ export default function OASISAnalyzer() {
       setAnalysisId(null);
       setSavedToPatient(false);
       setUploadedFileUrl(null);
+      // Clear the prior upload's revenue figures so a stale optimized_payment /
+      // revenue_uplift can't be saved against this new assessment before its own
+      // PDGM revenue comparison recomputes.
+      setRevenueData(null);
     } else {
       setError("Please select a valid PDF file.");
       setFile(null);
@@ -448,6 +453,7 @@ export default function OASISAnalyzer() {
   // Load saved OASIS for viewing
   // Load saved OASIS for viewing
   const handleLoadSavedOASIS = (oasisUpload) => {
+    setRevenueData(null); // drop the prior result's revenue figures (see handleFileChange)
     setAnalysisResults(oasisUpload.analysis_results);
     setPdgmData(oasisUpload.pdgm_data);
     setAnalysisId(oasisUpload.analysis_id);

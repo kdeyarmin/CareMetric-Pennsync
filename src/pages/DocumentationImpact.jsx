@@ -56,6 +56,13 @@ const FUNCTIONAL = [["low", "Low impairment"], ["medium", "Medium impairment"], 
 const COMORBIDITY = [["none", "None"], ["low", "Low adjustment"], ["high", "High adjustment"]];
 
 const money = (n) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Text columns default to ascending (A→Z); money/percent columns to descending
+// (biggest first), matching what an admin scanning impact expects.
+const TEXT_SORT_KEYS = new Set(["patient", "nurse", "date"]);
+// A signed-money chip (handles negative uplift: "-$500.00" with the right
+// tone/icon instead of a green "+$-500.00").
+const signedMoney = (n) => (n < 0 ? `-${money(Math.abs(n))}` : `+${money(n)}`);
+const upliftTone = (n) => (n > 0 ? "text-emerald-600" : n < 0 ? "text-red-600" : "text-slate-500");
 
 function LabeledSelect({ label, value, onChange, options }) {
   return (
@@ -144,7 +151,7 @@ export default function DocumentationImpact() {
   const [sortDir, setSortDir] = useState("desc");
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir(key === "patient" || key === "date" ? "asc" : "desc"); }
+    else { setSortKey(key); setSortDir(TEXT_SORT_KEYS.has(key) ? "asc" : "desc"); }
   };
   const rows = useMemo(() => documented.map((u) => {
     const before = u.estimated_payment;
@@ -156,7 +163,7 @@ export default function DocumentationImpact() {
     const arr = [...rows];
     arr.sort((a, b) => {
       const av = a[sortKey]; const bv = b[sortKey];
-      if (sortKey === "patient" || sortKey === "date") {
+      if (TEXT_SORT_KEYS.has(sortKey)) {
         return sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
       }
       return sortDir === "asc" ? av - bv : bv - av;
@@ -292,9 +299,14 @@ export default function DocumentationImpact() {
                   <span className="text-sm text-slate-600">Before <strong className="text-slate-800">{money(docBefore)}</strong></span>
                   <ArrowRight className="w-4 h-4 text-slate-400" />
                   <span className="text-sm text-slate-600">After <strong className="text-emerald-800">{money(docAfter)}</strong></span>
-                  <span className="inline-flex items-center gap-1 text-base font-bold text-emerald-600">
-                    <TrendingUp className="w-4 h-4" /> +{money(docUplift)}{docPct !== null ? ` (+${docPct}%)` : ""}
-                  </span>
+                  {(() => {
+                    const DocIcon = docUplift > 0 ? TrendingUp : docUplift < 0 ? TrendingDown : Minus;
+                    return (
+                      <span className={`inline-flex items-center gap-1 text-base font-bold ${upliftTone(docUplift)}`}>
+                        <DocIcon className="w-4 h-4" /> {signedMoney(docUplift)}{docPct !== null ? ` (${docPct >= 0 ? "+" : ""}${docPct}%)` : ""}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -422,7 +434,7 @@ export default function DocumentationImpact() {
                 <span className="text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-slate-400" /> Pre-fill from a real assessment (optional)
                 </span>
-                <Select value={seededFrom} onValueChange={loadFromAssessment}>
+                <Select value={seededFrom || undefined} onValueChange={loadFromAssessment}>
                   <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Choose an analyzed assessment…" /></SelectTrigger>
                   <SelectContent>
                     {seedable.slice(0, 50).map((u) => (
