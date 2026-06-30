@@ -22,6 +22,7 @@ import { format, subDays, startOfDay, parseISO, differenceInDays } from "date-fn
 import { toast } from "sonner";
 import ComplianceReportGenerator from "@/components/compliance/ComplianceReportGenerator";
 import AIComplianceAssistant from "@/components/compliance/AIComplianceAssistant";
+import MedicareRuleSeeder from "@/components/compliance/MedicareRuleSeeder";
 
 const RegulatoryCompliance = lazy(() => import("@/components/hub-tabs/RegulatoryCompliance"));
 const ComplianceMonitoringDashboard = lazy(() => import("@/components/hub-tabs/ComplianceMonitoringDashboard"));
@@ -685,7 +686,8 @@ Provide: overall_assessment, critical_priorities (array), systemic_issues, actio
         </TabsContent>
 
         {/* Regulatory Tab */}
-        <TabsContent value="regulatory">
+        <TabsContent value="regulatory" className="space-y-6">
+          {isAdmin && <MedicareRuleSeeder />}
           <Suspense fallback={tabLoader}>
             <RegulatoryCompliance />
           </Suspense>
