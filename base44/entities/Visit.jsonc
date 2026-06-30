@@ -163,6 +163,16 @@
     "homebound_justification": {
       "type": "string",
       "description": "Evidence text justifying the patient's homebound status"
+    },
+    "documentation_source": {
+      "type": "string",
+      "enum": [
+        "smart_note",
+        "audio",
+        "manual"
+      ],
+      "default": "smart_note",
+      "description": "How this visit note was captured: 'smart_note' (typed/dictated in the Smart Note Assistant), 'audio' (transcribed from a recording, then grounded against the transcript), or 'manual'. Provenance for the compliance audit trail."
     }
   },
   "required": [

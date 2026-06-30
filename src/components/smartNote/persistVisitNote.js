@@ -38,6 +38,7 @@ export async function persistVisitNote({
   savedVisitId = null,
   savedAuditId = null,
   existingVisitId = null,
+  source = "smart_note",
 }) {
   if (!result || !patientId || !currentUser?.email) return null;
   const {
@@ -66,7 +67,7 @@ export async function persistVisitNote({
     const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, patient_id: patientId, visit_date: visitDate, visit_type: visitType, status: "completed", nurse_notes: finalText, raw_transcription: roughNote, compliance_score: coverageScore, vital_signs: vitals, ...structured, ...reportingFields, __audit: { nurse_email: currentUser.email, ...auditFields } });
+    await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, patient_id: patientId, visit_date: visitDate, visit_type: visitType, status: "completed", nurse_notes: finalText, raw_transcription: roughNote, compliance_score: coverageScore, vital_signs: vitals, documentation_source: source, ...structured, ...reportingFields, __audit: { nurse_email: currentUser.email, ...auditFields } });
     toast.success("Saved offline. Will sync when reconnected.");
     logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
     return { mode: 'offline', visitId: null, auditId: null, finalText, coverageScore };
@@ -100,7 +101,8 @@ export async function persistVisitNote({
   const visitFields = {
     patient_id: patientId, visit_date: visitDate, visit_type: visitType,
     status: "completed", nurse_notes: finalText, raw_transcription: roughNote,
-    compliance_score: coverageScore, vital_signs: vitals, ...structured, ...reportingFields,
+    compliance_score: coverageScore, vital_signs: vitals, documentation_source: source,
+    ...structured, ...reportingFields,
   };
   const visit = existingVisitId
     ? (await base44.entities.Visit.update(existingVisitId, visitFields), { id: existingVisitId })

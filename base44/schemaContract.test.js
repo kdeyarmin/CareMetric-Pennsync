@@ -221,6 +221,9 @@ const FIELD_USAGE = {
   // ComplianceAudit.rule_versions — the smart-note save path stamps which
   // agency-configured MedicareComplianceRule versions judged the note.
   ComplianceAudit: ['rule_versions'],
+  // Visit.documentation_source — persistVisitNote records how the note was
+  // captured (smart_note / audio / manual) for the compliance audit trail.
+  Visit: ['documentation_source'],
   Referral: ['page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by'],
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],
   // OASISFeedback is written by two paths: the patient-match writers

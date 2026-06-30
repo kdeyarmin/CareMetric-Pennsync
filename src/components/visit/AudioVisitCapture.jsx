@@ -199,6 +199,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         result, patientId, visitDate, visitType, roughNote, vitals,
         currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
         savedVisitId, savedAuditId, existingVisitId,
+        source: "audio",
       });
       if (out) {
         if (out.mode === 'create') {
