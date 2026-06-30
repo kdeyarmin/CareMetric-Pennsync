@@ -52,7 +52,13 @@ import { withTimeout } from "./compliance/withTimeout";
  *                     the reviewer renders the fact-check banner but defers the
  *                     note display + actions (e.g. Save-to-chart, PDF) to the host.
  */
-export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home_health", visitType = "routine_visit", vitals = null, priorNote = "", patient = null, currentUser, onFinalNote, onBack, renderFinalNote, onEscalate, complianceRules = [] }) {
+// Stable default for an optional array prop. A literal `= []` default creates a
+// NEW array every render, which would invalidate the `analysis` useMemo (it lists
+// complianceRules in its deps) on every render → its reset effect re-runs →
+// setState → infinite render loop for any caller that doesn't pass the prop.
+const EMPTY_RULES = [];
+
+export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home_health", visitType = "routine_visit", vitals = null, priorNote = "", patient = null, currentUser, onFinalNote, onBack, renderFinalNote, onEscalate, complianceRules = EMPTY_RULES }) {
   const [answers, setAnswers] = useState({});
   const [prefilledIds, setPrefilledIds] = useState(new Set());
   const [confirmedNegatives, setConfirmedNegatives] = useState(new Set());
