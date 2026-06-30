@@ -193,6 +193,14 @@ Also removed `ui/Pagination.jsx` (its only mentions were two comments; nothing
 imports it), which clears the project's last ESLint warning — **lint is now
 0 errors / 0 warnings**.
 
+### Retained for re-wiring: `clinical/OASISQuickUpdate.jsx`
+
+`clinical/OASISQuickUpdate.jsx` was orphaned and initially in the removal set, but
+it is a complete, tested quick OASIS functional-entry tool (built on the
+`oasisScales` engine). Rather than delete it, it is **kept** and **wired into the
+patient record** (an "OASIS" tab in `PatientDetails`) in a separate feature PR.
+So it became live, not dead — the dead-code count excludes this one file.
+
 ### Finding (not a deletion): orphaned but well-tested clinical engines
 
 An import-graph pass surfaced a set of files that **no product code imports, yet
