@@ -37,7 +37,7 @@ export default function MobileMenu({ open, onClose, navCategories, adminItems, i
         {/* Header */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <img src={BRAND_LOGO_URL} alt="PennSync" className="w-7 h-7 rounded-md" />
+            <img src={BRAND_LOGO_URL} alt="" className="w-7 h-7 rounded-md" />
             <span className="flex flex-col leading-none">
               <span className="font-bold text-base text-navy-900 tracking-tight">Penn<span className="text-gold-600">Sync</span></span>
               <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">by CareMetric</span>

@@ -17,7 +17,7 @@ export default function MobileHeader({ currentPageName, totalNotificationCount, 
           </Button>
         )}
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
-          <img src={BRAND_LOGO_URL} alt="PennSync" className="w-8 h-8 rounded-lg" />
+          <img src={BRAND_LOGO_URL} alt="" className="w-8 h-8 rounded-lg" />
           <span className="flex flex-col leading-none">
             <span className="font-bold text-base text-navy-900 tracking-tight">Penn<span className="text-gold-600">Sync</span></span>
             <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">by CareMetric</span>

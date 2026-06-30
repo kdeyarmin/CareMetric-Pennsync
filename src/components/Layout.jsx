@@ -253,7 +253,7 @@ export default function Layout({ children, currentPageName }) {
       <div className="min-h-screen bg-gradient-to-br from-navy-50 via-white to-navy-100 flex items-center justify-center p-4">
         <div className="max-w-md w-full">
           <div className="mb-6 flex items-center justify-center gap-2">
-            <img src={BRAND_LOGO_URL} alt="PennSync" className="h-9 w-9 rounded-lg" />
+            <img src={BRAND_LOGO_URL} alt="" className="h-9 w-9 rounded-lg" />
             <span className="flex flex-col leading-none">
               <span className="text-xl font-bold tracking-tight text-navy-900">
                 Penn<span className="text-gold-600">Sync</span>

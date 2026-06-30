@@ -157,7 +157,7 @@ export default function Dashboard() {
       <div className="max-w-lg mx-auto pt-8 px-4">
         <div className="text-center mb-6">
           <div className="mb-4 inline-flex items-center gap-2">
-            <img src={BRAND_LOGO_URL} alt="PennSync" className="h-10 w-10 rounded-lg" />
+            <img src={BRAND_LOGO_URL} alt="" className="h-10 w-10 rounded-lg" />
             <span className="flex flex-col items-start leading-none">
               <span className="text-2xl font-bold tracking-tight text-navy-900">
                 Penn<span className="text-gold-600">Sync</span>

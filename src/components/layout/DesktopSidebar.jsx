@@ -30,7 +30,7 @@ export default function DesktopSidebar({
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-3 border-b border-navy-900 flex-shrink-0">
         <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2 min-w-0">
-          <img src={BRAND_LOGO_URL} alt="PennSync" className="w-8 h-8 rounded-lg flex-shrink-0" />
+          <img src={BRAND_LOGO_URL} alt={collapsed ? "PennSync" : ""} className="w-8 h-8 rounded-lg flex-shrink-0" />
           {!collapsed && (
             <span className="flex flex-col min-w-0 leading-none">
               <span className="font-bold text-base text-white truncate tracking-tight">
