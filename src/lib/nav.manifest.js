@@ -621,6 +621,19 @@ export const NAV_MANIFEST = [
     breadcrumbParent: "ReportsAnalytics",
     keywords: ["predictive", "analytics", "ai", "forecast"],
   },
+  {
+    // Admin-only documentation-impact / ROI comparison: how stronger documentation
+    // moves the PDGM case-mix weight + estimated reimbursement (before vs after).
+    // Financial figures are gated to admins via FinancialGate — nurses never see
+    // dollars. Reached via Admin Console / palette (category: null).
+    page: "DocumentationImpact",
+    label: "Documentation Impact",
+    icon: TrendingUp,
+    category: null,
+    adminOnly: true,
+    breadcrumbParent: "ReportsAnalytics",
+    keywords: ["documentation impact", "roi", "value", "reimbursement", "pdgm", "case mix", "revenue uplift", "before after"],
+  },
 
   // ─── Compliance Center (Admin Analytics) ─────────────────────────────────────
   {
