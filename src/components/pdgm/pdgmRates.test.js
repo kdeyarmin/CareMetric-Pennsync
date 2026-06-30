@@ -68,6 +68,22 @@ test("an unknown group can be added without disturbing known ones", () => {
   assert.ok(merged.clinicalGroupWeights.MMTA_Wounds); // defaults intact
 });
 
+test("functionalThresholds use the backend-mirrored { low, high } timing-keyed shape (NOT the grouper's { low, medium })", () => {
+  // Guard against conflating this revenue-estimator table with
+  // pdgmGrouper.groupPeriod()'s clinical-group-keyed { low, medium } shape.
+  // calculatePDGM (entry.ts) reads `.high` as the High cutoff; renaming it to
+  // `medium` would break backend parity and silently corrupt level assignment.
+  const buckets = ["community_early", "community_late", "institutional_early", "institutional_late"];
+  for (const bucket of buckets) {
+    const t = DEFAULT_PDGM_RATES.functionalThresholds[bucket];
+    assert.ok(t, `missing threshold bucket ${bucket}`);
+    assert.equal(typeof t.low, "number", `${bucket}.low must be numeric`);
+    assert.equal(typeof t.high, "number", `${bucket}.high must be numeric`);
+    assert.equal(t.medium, undefined, `${bucket} must NOT carry a 'medium' key (that is the grouper's shape)`);
+    assert.ok(t.high > t.low, `${bucket}: high must exceed low`);
+  }
+});
+
 test("ICD map has no 'S' default (S is the injury chapter, not skin)", () => {
   assert.equal(DEFAULT_ICD10_CLINICAL_GROUPS.S, undefined);
   assert.equal(DEFAULT_ICD10_CLINICAL_GROUPS.L, "MMTA_Wounds"); // skin chapter

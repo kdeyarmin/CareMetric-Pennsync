@@ -140,8 +140,14 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       // field is `generatedNote` (not `rough_note`).
       const body = data?.data || data;
       const payload = body?.data || body;
-      setTranscription(payload.transcription || "");
-      setRoughNote(payload.generatedNote || payload.transcription || "");
+      const transcription = payload.transcription || "";
+      setTranscription(transcription);
+      // Use the TRANSCRIPT (what was actually said) as the rough note / grounding
+      // source — NOT the LLM-generated SOAP. The constrained reviewer re-voices and
+      // grounds it in the next step, so a backend AI fabrication in `generatedNote`
+      // can never reach the chart unverified. Fall back to the generated note only
+      // if no transcript came back, so a recording is never lost.
+      setRoughNote(transcription || payload.generatedNote || "");
       // A new transcription is a new note — clear any prior save so the reviewer
       // creates a fresh visit rather than updating the last one, and bump the
       // re-mount key so its review state resets even for an equal-length note.
@@ -193,6 +199,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         result, patientId, visitDate, visitType, roughNote, vitals,
         currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
         savedVisitId, savedAuditId, existingVisitId,
+        source: "audio",
       });
       if (out) {
         if (out.mode === 'create') {

@@ -167,6 +167,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
     }
   });
   const patient = patients.find(p => p.id === patientId);
+  // Agency-configured Medicare compliance rules (incl. Pennsylvania-specific).
+  // Optional: an empty list keeps the static offline defaults. Folded into the
+  // required-element set inside ConstrainedNoteReviewer via ruleLibrary.
+  const { data: complianceRules = [] } = useQuery({
+    queryKey: ["medicareComplianceRules"],
+    queryFn: () => base44.entities.MedicareComplianceRule.list(),
+    initialData: [],
+    staleTime: 5 * 60 * 1000,
+  });
   // Full record for the selected patient (the list query may not include the
   // note history). Used to pre-fill carry-forward answers from the last visit.
   const { data: patientDetail } = useQuery({
@@ -669,6 +678,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
               priorNote={getPriorNote(patientDetail || patient)}
               patient={patientDetail || patient}
               currentUser={currentUser}
+              complianceRules={complianceRules}
               onEscalate={escalateToTasks}
               onBack={() => setStep(1)}
               renderFinalNote={(api) => (

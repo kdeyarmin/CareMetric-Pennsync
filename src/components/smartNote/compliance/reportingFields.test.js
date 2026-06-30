@@ -85,6 +85,15 @@ test("buildAuditFields uses the score-based status when no critical conflict", (
   assert.equal(buildAuditFields({ coverageScore: 70, chartFindings: [] }).status, "critical");
 });
 
+test("buildAuditFields always emits rule_versions so a re-save clears a stale stamp", () => {
+  // Empty/absent appliedRules → [] (not omitted), so a partial ComplianceAudit
+  // update overwrites a prior stamp instead of leaving it in place.
+  assert.deepEqual(buildAuditFields({ coverageScore: 90 }).rule_versions, []);
+  assert.deepEqual(buildAuditFields({ coverageScore: 90, appliedRules: [] }).rule_versions, []);
+  const applied = [{ rule_name: "Homebound", cop_reference: "42 CFR 484.55(c)", category: "homebound_status", severity: "critical", effective_date: "2024-01-01" }];
+  assert.deepEqual(buildAuditFields({ coverageScore: 90, appliedRules: applied }).rule_versions, applied);
+});
+
 test("buildAuditFields includes the acknowledgment trail only when provided", () => {
   const ack = { acknowledged_by: "n@x.io", acknowledged_at: "2026-06-20T00:00:00Z", justification: "new order", finding_ids: ["allergy_aspirin"] };
   assert.deepEqual(buildAuditFields({ coverageScore: 90, chartFindings: findings, acknowledgment: ack }).acknowledgment, ack);

@@ -61,6 +61,8 @@ describe("persistVisitNote", () => {
     expect(visitCreate.mock.calls[0][0]).toMatchObject({
       patient_id: "p1", visit_type: "routine_visit", nurse_notes: "Final note text",
       vital_signs: { heart_rate: 80 },
+      // Online save → grounding ran; the record is not flagged pending.
+      grounding_pending: false,
     });
     expect(noteConvCreate).toHaveBeenCalledTimes(1);
     expect(auditCreate).toHaveBeenCalledTimes(1);
@@ -94,6 +96,10 @@ describe("persistVisitNote", () => {
     expect(action).toBe("CREATE_VISIT");
     expect(payload.vital_signs).toEqual({ pain_level: 3 });
     expect(payload.__audit).toBeTruthy();
+    // Offline → grounding was deferred: the queued visit is flagged pending and
+    // the audit is forced to pending_review (not the coverage-derived status).
+    expect(payload.grounding_pending).toBe(true);
+    expect(payload.__audit.status).toBe("pending_review");
     expect(visitCreate).not.toHaveBeenCalled();
   });
 });

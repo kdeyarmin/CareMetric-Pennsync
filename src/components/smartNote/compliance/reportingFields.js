@@ -86,15 +86,20 @@ export function buildVisitReportingFields({ chartFindings = [], sustainedTrends 
 /**
  * The ComplianceAudit fields derived from coverage + chart findings, shared by
  * the create, re-save-update, and offline-drain paths so they never drift.
- * @param {{ coverageScore?: number, chartFindings?: ChartFinding[], acknowledgment?: object|null }} args
+ * @param {{ coverageScore?: number, chartFindings?: ChartFinding[], acknowledgment?: object|null, appliedRules?: Array }} args
  */
-export function buildAuditFields({ coverageScore = 0, chartFindings = [], acknowledgment = null } = {}) {
+export function buildAuditFields({ coverageScore = 0, chartFindings = [], acknowledgment = null, appliedRules = [] } = {}) {
   const base = coverageScore >= 90 ? "passed" : coverageScore >= 80 ? "flagged" : "critical";
   return {
     compliance_score: coverageScore,
     status: escalateAuditStatus(base, chartFindings),
     issues: toAuditIssues(chartFindings),
     ...(acknowledgment ? { acknowledgment } : {}),
+    // Version stamp: which agency-configured rules judged this note ([] when only
+    // the static defaults applied). ALWAYS included — partial ComplianceAudit
+    // updates only write the fields present, so omitting it on a re-save would
+    // leave a stale prior stamp claiming rules judged a note they no longer do.
+    rule_versions: Array.isArray(appliedRules) ? appliedRules : [],
   };
 }
 

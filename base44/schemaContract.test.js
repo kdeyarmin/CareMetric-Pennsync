@@ -218,6 +218,14 @@ const FIELD_USAGE = {
     'signature_hash_at', 'archived', 'admin_notified',
   ],
   Patient: ['merged_into_id', 'merged_at', 'merged_by', 'validation_overrides'],
+  // ComplianceAudit.rule_versions — the smart-note save path stamps which
+  // agency-configured MedicareComplianceRule versions judged the note.
+  ComplianceAudit: ['rule_versions'],
+  // Visit.documentation_source — persistVisitNote records how the note was
+  // captured (smart_note / audio / manual) for the compliance audit trail.
+  // Visit.grounding_pending — set true when an offline save deferred the AI
+  // grounding pass until reconnect (audit-trail completeness marker).
+  Visit: ['documentation_source', 'grounding_pending'],
   Referral: ['page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by'],
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],
   // OASISFeedback is written by two paths: the patient-match writers
