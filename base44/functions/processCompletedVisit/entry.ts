@@ -57,14 +57,7 @@ Deno.serve(async (req) => {
       ? visit.raw_transcription
       : (visit.nurse_notes || '');
 
-    // Patient and active care plans are independent reads — fetch concurrently.
-    const [patient, carePlans] = await Promise.all([
-      base44.entities.Patient.get(visit.patient_id),
-      base44.entities.CarePlan.filter({
-        patient_id: visit.patient_id,
-        status: 'active'
-      })
-    ]);
+    const patient = await base44.entities.Patient.get(visit.patient_id);
 
     if (!patient) {
       return Response.json({ error: 'Patient not found' }, { status: 404 });
@@ -92,9 +85,6 @@ ${visit.vital_signs ? `
 NURSE NOTES (RAW):
 ${rawNotes || 'No notes provided'}
 
-ACTIVE CARE PLANS:
-${carePlans.map(cp => `- ${cp.problem}: ${cp.goal}`).join('\n') || 'None'}
-
 Generate a comprehensive, Medicare-compliant narrative that includes:
 1. Assessment findings
 2. Interventions provided
@@ -120,7 +110,6 @@ PATIENT: ${patient.first_name} ${patient.last_name}
 VISIT TYPE: ${visit.visit_type}
 VITAL SIGNS: ${JSON.stringify(visit.vital_signs || {})}
 CLINICAL NOTES: ${visit.nurse_notes || 'None'}
-ACTIVE CARE PLANS: ${carePlans.map(cp => cp.problem).join(', ') || 'None'}
 
 Analyze the visit data and generate follow-up tasks. Return a JSON array of tasks with this structure:
 {

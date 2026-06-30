@@ -17,15 +17,10 @@ Deno.serve(async (req) => {
 
     // Fetch patient data if patient_id provided
     let patientData = null;
-    let carePlans = [];
-    
+
     if (patient_id) {
-      const [patients, plans] = await Promise.all([
-        base44.entities.Patient.filter({ id: patient_id }),
-        base44.entities.CarePlan.filter({ patient_id, status: 'active' })
-      ]);
+      const patients = await base44.entities.Patient.filter({ id: patient_id });
       patientData = patients[0];
-      carePlans = plans;
     }
 
     const contextData = referral_data || patientData;
@@ -39,9 +34,6 @@ VISIT TYPE: ${visit_type || 'Start of Care'}
 
 PATIENT DATA:
 ${JSON.stringify(contextData, null, 2)}
-
-ACTIVE CARE PLANS:
-${JSON.stringify(carePlans, null, 2)}
 
 CRITICAL INSTRUCTIONS:
 - Provide clear, complete responses without abbreviations or truncated text

@@ -52,18 +52,6 @@ export default function PatientMergeDialog({
     enabled: !!patient2?.id,
   });
 
-  const { data: patient1CarePlans = [] } = useQuery({
-    queryKey: ['patientCarePlans', patient1?.id],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: patient1.id }),
-    enabled: !!patient1?.id,
-  });
-
-  const { data: patient2CarePlans = [] } = useQuery({
-    queryKey: ['patientCarePlans', patient2?.id],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: patient2.id }),
-    enabled: !!patient2?.id,
-  });
-
   const mergeMutation = useMutation({
     mutationFn: async () => {
       const primaryPatient = selectedPrimary === 'patient1' ? patient1 : patient2;
@@ -73,8 +61,8 @@ export default function PatientMergeDialog({
       // to the primary and SOFT-archives the secondary (status 'merged',
       // is_archived, merged_into_id) — mirroring the deduplicatePatients backend.
       // The previous inline path hard-deleted the secondary after moving only
-      // visits and care plans, orphaning every other clinical record (OASIS,
-      // incidents, documents, alerts, …) and destroying the patient irrecoverably.
+      // visits, orphaning every other clinical record (OASIS, incidents,
+      // documents, alerts, …) and destroying the patient irrecoverably.
       const me = await base44.auth.me().catch(() => null);
       await mergePatientInto(primaryPatient.id, secondaryPatient.id, { mergedBy: me?.email || null });
 
@@ -109,7 +97,7 @@ export default function PatientMergeDialog({
 
   if (!patient1 || !patient2) return null;
 
-  const PatientCard = ({ patient, isSelected, value, visits, carePlans }) => (
+  const PatientCard = ({ patient, isSelected, value, visits }) => (
     <div className="space-y-2">
       <RadioGroupItem 
         value={value} 
@@ -165,10 +153,6 @@ export default function PatientMergeDialog({
             <p className="text-lg font-semibold text-blue-600">{visits.length}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-slate-500">Care Plans</p>
-            <p className="text-lg font-semibold text-green-600">{carePlans.length}</p>
-          </div>
-          <div className="text-center">
             <p className="text-xs text-slate-500">Created</p>
             <p className="text-xs font-medium text-slate-700">
               {Number.isNaN(new Date(patient.created_date).getTime()) ? '—' : format(new Date(patient.created_date), 'MM/dd/yyyy')}
@@ -201,19 +185,17 @@ export default function PatientMergeDialog({
 
             <RadioGroup value={selectedPrimary} onValueChange={setSelectedPrimary}>
               <div className="grid md:grid-cols-2 gap-4">
-                <PatientCard 
-                  patient={patient1} 
+                <PatientCard
+                  patient={patient1}
                   isSelected={selectedPrimary === 'patient1'}
                   value="patient1"
                   visits={patient1Visits}
-                  carePlans={patient1CarePlans}
                 />
-                <PatientCard 
-                  patient={patient2} 
+                <PatientCard
+                  patient={patient2}
                   isSelected={selectedPrimary === 'patient2'}
                   value="patient2"
                   visits={patient2Visits}
-                  carePlans={patient2CarePlans}
                 />
               </div>
             </RadioGroup>
@@ -277,10 +259,6 @@ export default function PatientMergeDialog({
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5" />
-                  <span>Transfer {(selectedPrimary === 'patient1' ? patient2CarePlans : patient1CarePlans).length} care plans to primary patient</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5" />
                   <span>Transfer the secondary patient's other clinical records (OASIS, alerts, pending updates) to primary</span>
                 </div>
                 <div className="flex items-start gap-2">
@@ -308,7 +286,7 @@ export default function PatientMergeDialog({
               <p className="text-sm font-medium mb-2">You are about to:</p>
               <ul className="space-y-1 text-sm text-slate-700">
                 <li>• Merge {(selectedPrimary === 'patient1' ? patient2 : patient1).first_name} {(selectedPrimary === 'patient1' ? patient2 : patient1).last_name} into {(selectedPrimary === 'patient1' ? patient1 : patient2).first_name} {(selectedPrimary === 'patient1' ? patient1 : patient2).last_name}</li>
-                <li>• Transfer {(selectedPrimary === 'patient1' ? patient2Visits.length : patient1Visits.length)} visits and {(selectedPrimary === 'patient1' ? patient2CarePlans.length : patient1CarePlans.length)} care plans (plus alerts and other clinical history)</li>
+                <li>• Transfer {(selectedPrimary === 'patient1' ? patient2Visits.length : patient1Visits.length)} visits (plus alerts and other clinical history)</li>
                 <li>• Archive the secondary patient record (recoverable, not deleted)</li>
               </ul>
             </div>

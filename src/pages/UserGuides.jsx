@@ -51,7 +51,7 @@ export default function UserGuides() {
         'Visual PDF editor & field mapping',
         'E-signature workflows',
         'Documentation tools',
-        'OASIS & care plans',
+        'OASIS assessments',
         'Patient alerts & monitoring',
         'Quality & compliance',
         'Communication & messaging',
@@ -143,22 +143,6 @@ export default function UserGuides() {
         'PDGM case mix',
         'Quality validation',
         'Submission process'
-      ]
-    },
-    {
-      type: 'care_plans',
-      title: 'Care Plan Management Guide',
-      description: 'Create and manage comprehensive care plans with AI-generated suggestions',
-      icon: FileText,
-      color: 'purple',
-      audience: 'Clinical Nurses',
-      topics: [
-        'Creating care plans',
-        'AI suggestions',
-        'SMART goals',
-        'Progress tracking',
-        'Gap analysis',
-        'Interdisciplinary coordination'
       ]
     },
     {

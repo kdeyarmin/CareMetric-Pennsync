@@ -31,7 +31,6 @@ import PatientRiskStratification from "./PatientRiskStratification";
 export default function AIPatientHistorySummary({
   patient,
   visits = [],
-  carePlans = [],
   incidents = [],
   onInsertSummary,
   autoGenerate = true,
@@ -57,7 +56,6 @@ export default function AIPatientHistorySummary({
     try {
       const completedVisits = visits.filter(v => v.status === 'completed');
       const recentVisits = completedVisits.slice(0, 10);
-      const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
       const recentIncidents = incidents.slice(0, 5);
 
       // Extract vital trends from visits
@@ -99,15 +97,6 @@ VISIT STATISTICS:
 
 VITAL SIGNS HISTORY (Last ${vitalHistory.length} readings):
 ${JSON.stringify(vitalHistory, null, 2)}
-
-ACTIVE CARE PLANS (${activeCarePlans.length}):
-${activeCarePlans.map(cp => `
-- Problem: ${cp.problem}
-  Goal: ${cp.goal}
-  Target Date: ${cp.target_date || 'Ongoing'}
-  Baseline: ${cp.baseline_measurement || 'Not documented'}
-  Frequency: ${cp.frequency || 'Each visit'}
-`).join('\n') || 'No active care plans'}
 
 RECENT CLINICAL NOTES (Last ${visitNotes.length} visits):
 ${visitNotes.map(v => `
@@ -197,7 +186,7 @@ Return JSON:
       toast.error("The AI request didn't complete. Please try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [patient, visits, carePlans, incidents, calculateAge]);
+  }, [patient, visits, incidents, calculateAge]);
 
   // Auto-generate on patient selection
   useEffect(() => {
@@ -340,7 +329,7 @@ Return JSON:
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
                 <Target className="w-4 h-4 mx-auto mb-1 text-navy-500" />
-                <p className="text-lg font-bold text-slate-900">{summary.stats?.active_care_plans || carePlans.filter(cp => cp.status === 'active').length}</p>
+                <p className="text-lg font-bold text-slate-900">{summary.stats?.active_care_plans || 0}</p>
                 <p className="text-xs text-slate-500">Goals</p>
               </div>
               <div className="bg-white p-2 rounded-lg border text-center">
@@ -442,7 +431,6 @@ Return JSON:
             <PatientRiskStratification
               patient={patient}
               visits={visits}
-              carePlans={carePlans}
               incidents={incidents}
               compact={true}
               autoCalculate={true}

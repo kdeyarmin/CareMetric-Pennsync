@@ -50,12 +50,6 @@ export default function AIComplianceAuditor({
     enabled: !!patientId,
   });
 
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ['patientCarePlans', patientId],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: patientId }),
-    enabled: !!patientId,
-  });
-
   const { data: oasisData = [] } = useQuery({
     queryKey: ['patientOASIS', patientId],
     queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 1),
@@ -191,14 +185,6 @@ Notes Length: ${v.nurse_notes?.length || 0} characters
 ${v.nurse_notes ? 'Has documentation' : 'Missing documentation'}
 `).join('\n')}
 
-ACTIVE CARE PLANS (${carePlans.filter(cp => cp.status === 'active').length}):
-${carePlans.filter(cp => cp.status === 'active').map(cp => `
-- Problem: ${cp.problem}
-- Goal: ${cp.goal}
-- Interventions: ${cp.interventions?.join(', ')}
-- Status: ${cp.status}
-`).join('\n')}
-
 OASIS DATA:
 ${latestOASIS ? `
 Assessment Date: ${latestOASIS.created_date}
@@ -235,45 +221,38 @@ Analyze this comprehensive patient record against the following compliance areas
    - Are high-risk medications identified?
    - Are medication side effects monitored?
 
-4. CARE PLANNING (CMS CoP 484.60) ${carePlans?.length > 0 ? '- Care plans exist, assess alignment:' : '- No care plans on file (may be appropriate for some patients):'}
-   ${carePlans?.length > 0 ? `- Are care plans based on comprehensive assessment?
-   - Do care plans address all identified problems?
-   - Are patient/family goals documented?
-   - Are interventions specific and measurable?` : '- Assess if care plan development is warranted based on patient needs'}
-
-5. VISIT DOCUMENTATION (Medicare Guidelines)
+4. VISIT DOCUMENTATION (Medicare Guidelines)
    - Are skilled nursing interventions documented?
    - Is homebound status justified?
    - Is patient response documented?
    - Are teaching efforts and comprehension noted?
    - Are vital signs trended and compared to baseline?
 
-6. OASIS COMPLIANCE (OASIS-E Requirements) ${latestOASIS ? '- OASIS exists, verify alignment:' : '- No OASIS data (skip if not required for this patient/visit):'}
+5. OASIS COMPLIANCE (OASIS-E Requirements) ${latestOASIS ? '- OASIS exists, verify alignment:' : '- No OASIS data (skip if not required for this patient/visit):'}
    ${latestOASIS ? `- Is OASIS assessment current (within 5 days of SOC)?
    - Does clinical documentation support OASIS answers?
    - Are discrepancies between OASIS and clinical notes identified?` : '- OASIS not applicable - skip this compliance area'}
 
-7. SAFETY AND RISK MANAGEMENT
+6. SAFETY AND RISK MANAGEMENT
    - Is fall risk assessed and addressed?
    - Are infection prevention measures documented?
    - Are emergency procedures established?
    - Are caregiver training needs identified?
 
-8. REGULATORY COMPLIANCE
+7. REGULATORY COMPLIANCE
    - Are CoP (Conditions of Participation) requirements met?
    - Are state-specific regulations followed?
    - Are privacy (HIPAA) standards maintained?
    - Are coordination of care requirements met?
 
-9. CONTINUITY OF CARE (Critical Focus):
+8. CONTINUITY OF CARE (Critical Focus):
    - Are trends from patient history addressed?
    - Are changes from baseline vitals documented?
    - Are previous visit concerns followed up?
    - Is patient response to interventions tracked?
-   - Are care plan goals progressing appropriately?
    - Are recurring issues identified and managed?
 
-10. CONTEXTUAL COMPLIANCE:
+9. CONTEXTUAL COMPLIANCE:
    - Does documentation reflect understanding of patient trajectory?
    - Are concerning trends escalated appropriately?
    - Is historical context referenced where relevant?
@@ -517,7 +496,7 @@ For each area, provide:
       toast.error("The AI request didn't complete. Please try again.");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [patient, visits, carePlans, oasisData, incidents, currentUser, patientId, visitId, onIssuesFound, queryClient]);
+  }, [patient, visits, oasisData, incidents, currentUser, patientId, visitId, onIssuesFound, queryClient]);
 
   useEffect(() => {
     if (autoRun && patient && !auditResults && !ai.loading) {

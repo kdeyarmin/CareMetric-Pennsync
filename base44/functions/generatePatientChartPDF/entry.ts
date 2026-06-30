@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { patientId, includeVisits = true, includeCarePlans = true, includeIncidents = true } = body;
+    const { patientId, includeVisits = true, includeIncidents = true } = body;
 
     if (!patientId) {
       return Response.json({ error: 'Missing patientId' }, { status: 400 });
@@ -23,9 +23,8 @@ Deno.serve(async (req) => {
     }
 
     // Fetch related data in parallel
-    const [visits, carePlans, incidents] = await Promise.all([
+    const [visits, incidents] = await Promise.all([
       includeVisits ? base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 100) : [],
-      includeCarePlans ? base44.entities.CarePlan.filter({ patient_id: patientId }, '-created_date', 100) : [],
       includeIncidents ? base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 100) : []
     ]);
 
@@ -89,9 +88,6 @@ DNR Status: ${patient.advance_directives?.dnr_status ? 'Yes' : 'No'}
 RECENT VISITS (${visits?.length || 0}):
 ${visits?.slice(0, 10).map((v, i) => `${i + 1}. ${v.visit_date}: ${v.visit_type}`).join('\n')}
 
-ACTIVE CARE PLANS (${carePlans?.length || 0}):
-${carePlans?.slice(0, 10).map((cp, i) => `${i + 1}. ${cp.problem} - Status: ${cp.status}`).join('\n')}
-
 CLINICAL INCIDENTS (${incidents?.length || 0}):
 ${incidents?.slice(0, 10).map((inc, i) => `${i + 1}. ${inc.incident_date}: ${inc.incident_type} (${inc.severity})`).join('\n')}
 
@@ -129,7 +125,6 @@ Create professional medical chart content with:
         patient_id: patientId,
         patient_name: `${patient.first_name} ${patient.last_name}`,
         includes_visits: includeVisits,
-        includes_care_plans: includeCarePlans,
         includes_incidents: includeIncidents,
         exported_at: new Date().toISOString()
       },

@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { FileDown, Loader2 } from "lucide-react";
 import jsPDF from "jspdf";
 import { todayEastern } from "../utils/timezone";
-import { base44 } from "@/api/base44Client";
 
 const VISIT_TYPE_LABELS = {
   routine_visit: "Routine Skilled Nursing Visit",
@@ -44,18 +43,6 @@ export default function SmartNotePDFExporterEnhanced({
     setExporting(true);
 
     try {
-      // Fetch active care plans for this patient
-      let carePlans = [];
-      if (patient?.id) {
-        try {
-          carePlans = await base44.entities.CarePlan.filter(
-            { patient_id: patient.id, status: "active" },
-            "-created_date",
-            10
-          );
-        } catch {}
-      }
-
       const doc = new jsPDF("p", "mm", "letter");
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -157,60 +144,6 @@ export default function SmartNotePDFExporterEnhanced({
       doc.setFontSize(9.5);
       y = addWrappedText(doc, finalNote, margin, y, contentWidth, 5, pageHeight, margin);
       y += 8;
-
-      // ─── CARE PLAN SUMMARY SECTION ────────────────────────────────────────
-      if (carePlans.length > 0) {
-        if (y > pageHeight - margin - 60) {
-          doc.addPage();
-          y = margin + 10;
-        }
-
-        doc.setFillColor(240, 253, 244);
-        doc.setDrawColor(134, 239, 172);
-        doc.setLineWidth(0.3);
-        doc.roundedRect(margin, y, contentWidth, 8, 1.5, 1.5, "FD");
-
-        doc.setTextColor(22, 101, 52);
-        doc.setFontSize(9);
-        doc.setFont(undefined, "bold");
-        doc.text("ACTIVE CARE PLAN SUMMARY", margin + 3, y + 5.5);
-        y += 13;
-
-        doc.setFontSize(8.5);
-        for (const cp of carePlans) {
-          if (y > pageHeight - margin - 25) {
-            doc.addPage();
-            y = margin + 10;
-          }
-          doc.setFont(undefined, "bold");
-          doc.setTextColor(22, 101, 52);
-          doc.text(`• Problem: `, margin + 2, y);
-          doc.setFont(undefined, "normal");
-          doc.setTextColor(0, 0, 0);
-          const problemText = doc.splitTextToSize(cp.problem || "—", contentWidth - 30)[0];
-          doc.text(problemText, margin + 20, y);
-          y += 4.5;
-
-          if (cp.goal) {
-            doc.setFont(undefined, "italic");
-            doc.setTextColor(60, 60, 60);
-            const goalLine = doc.splitTextToSize(`  Goal: ${cp.goal}`, contentWidth - 6)[0];
-            doc.text(goalLine, margin + 4, y);
-            y += 4.5;
-          }
-
-          if (cp.interventions?.length) {
-            doc.setFont(undefined, "normal");
-            doc.setTextColor(80, 80, 80);
-            const intv = cp.interventions.slice(0, 3).join(" · ");
-            const intvLine = doc.splitTextToSize(`  Interventions: ${intv}`, contentWidth - 6)[0];
-            doc.text(intvLine, margin + 4, y);
-            y += 4.5;
-          }
-          y += 2;
-        }
-        y += 4;
-      }
 
       // ─── COMPLIANCE REPORT SECTION ────────────────────────────────────────
       if (analysis && analysis.findings && analysis.findings.length > 0) {

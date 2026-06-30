@@ -20,7 +20,6 @@ vi.mock("@/api/base44Client", () => {
     return e;
   };
   db.Visit = makeEntity();
-  db.CarePlan = makeEntity();
   db.PatientAlert = makeEntity();
   db.PendingPatientUpdate = makeEntity();
   // Representatives of the broader patient_id-linked set now reassigned on merge.
@@ -38,7 +37,6 @@ beforeEach(() => {
     { id: "v2", patient_id: "dup" },
     { id: "v3", patient_id: "other" },
   ];
-  db.CarePlan.rows = [{ id: "cp1", patient_id: "dup" }];
   db.PatientAlert.rows = [];
   db.PendingPatientUpdate.rows = [{ id: "pu1", patient_id: "dup" }];
   db.OASISAssessment.rows = [{ id: "oa1", patient_id: "dup" }];
@@ -60,9 +58,8 @@ describe("mergePatientInto", () => {
   it("reassigns related records to the survivor and archives the duplicate", async () => {
     const result = await mergePatientInto("keep", "dup", { mergedBy: "admin@x.com" });
 
-    // Visits/care plans/pending updates for the duplicate now point at the survivor.
+    // Visits/pending updates for the duplicate now point at the survivor.
     expect(db.Visit.rows.filter((r) => r.patient_id === "keep").map((r) => r.id)).toEqual(["v1", "v2"]);
-    expect(db.CarePlan.rows.find((r) => r.id === "cp1").patient_id).toBe("keep");
     expect(db.PendingPatientUpdate.rows.find((r) => r.id === "pu1").patient_id).toBe("keep");
     // Other patient_id-linked clinical records (OASIS, document signatures, …) also
     // follow the patient to the survivor.
@@ -81,7 +78,7 @@ describe("mergePatientInto", () => {
     expect(dup.merged_at).toBeTruthy();
 
     expect(result.reassigned).toEqual({
-      Visit: 2, CarePlan: 1, PatientAlert: 0, PendingPatientUpdate: 1,
+      Visit: 2, PatientAlert: 0, PendingPatientUpdate: 1,
       OASISAssessment: 1, DocumentSignature: 1,
     });
   });

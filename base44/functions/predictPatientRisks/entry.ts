@@ -36,10 +36,9 @@ Deno.serve(async (req) => {
     // asServiceRole) so the platform enforces that this user may access this
     // patient — prevents cross-patient IDOR via a guessed patient_id. Mirrors
     // the safe pattern in processCompletedVisit / expandClinicalPhrase.
-    const [patients, visits, carePlans, incidents, alerts] = await Promise.all([
+    const [patients, visits, incidents, alerts] = await Promise.all([
       base44.entities.Patient.filter({ id: patient_id }),
       base44.entities.Visit.filter({ patient_id }, '-visit_date', 20),
-      base44.entities.CarePlan.filter({ patient_id }),
       base44.entities.Incident.filter({ patient_id }),
       base44.entities.PatientAlert.filter({ patient_id, status: 'active' })
     ]);
@@ -71,11 +70,6 @@ Deno.serve(async (req) => {
         notes_excerpt: v.nurse_notes?.substring(0, 200)
       })),
       vital_trends: calculateVitalTrends(recentVisits),
-      care_plan_status: carePlans.map(cp => ({
-        problem: cp.problem,
-        status: cp.status,
-        goal: cp.goal
-      })),
       incident_history: incidents.map(i => ({
         type: i.incident_type,
         date: i.incident_date,

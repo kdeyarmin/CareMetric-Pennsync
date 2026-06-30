@@ -7,7 +7,6 @@ const PATIENT = { id: 'p1', first_name: 'Jane', last_name: 'Doe', status: 'activ
 const CTX = {
   patient: PATIENT,
   visits: [{ id: 'v1', patient_id: 'p1', status: 'completed', visit_date: '2026-06-01' }],
-  carePlans: [{ id: 'cp1', patient_id: 'p1', status: 'active' }],
   incidents: [],
   tasks: [],
   activeAlerts: [],
@@ -65,7 +64,6 @@ describe('PatientDetails — getPatientContext seeding', () => {
     // the payload already in cache — no second request.
     await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 5000 });
     expect(qc.getQueryData(['patient', 'p1'])).toEqual([PATIENT]);
-    expect(qc.getQueryData(['patientCarePlans', 'p1'])).toEqual(CTX.carePlans);
     expect(qc.getQueryData(['patientActiveAlerts', 'p1'])).toEqual(CTX.activeAlerts);
 
     // getPatientContext was the only patient-data round-trip the page issued.

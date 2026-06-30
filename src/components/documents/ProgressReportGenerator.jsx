@@ -29,13 +29,6 @@ export default function ProgressReportGenerator({ patientId, patient }) {
     initialData: [],
   });
 
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ['patientCarePlans', patientId],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: patientId }),
-    enabled: !!patientId,
-    initialData: [],
-  });
-
   const { data: incidents = [] } = useQuery({
     queryKey: ['patientIncidents', patientId],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }),
@@ -92,15 +85,6 @@ Weight: ${latestVisit.vital_signs?.weight || 'Not recorded'} lbs
 Pain Level: ${latestVisit.vital_signs?.pain_level || 'Not recorded'}/10
 ` : 'No current data available'}
 
-CARE PLAN PROGRESS:
-${carePlans.map(cp => `
-Problem: ${cp.problem}
-Goal: ${cp.goal}
-Status: ${cp.status}
-Target Date: ${cp.target_date || 'Not set'}
-${cp.baseline_measurement ? `Baseline: ${cp.baseline_measurement}` : ''}
-`).join('\n') || 'No active care plans'}
-
 CLINICAL NOTES SUMMARY:
 ${periodVisits.slice(0, 3).map((v, i) => `
 Visit ${i + 1} (${v.visit_date}):
@@ -133,7 +117,7 @@ Generate a professional progress report with:
    - Skilled interventions provided
 
 3. PROGRESS TOWARD GOALS
-   - Detailed analysis of each care plan goal
+   - Detailed analysis of each treatment goal
    - Measurable improvements or concerns
    - Functional status changes
 
@@ -143,7 +127,7 @@ Generate a professional progress report with:
    - Response to treatment
 
 5. PATIENT/CAREGIVER RESPONSE
-   - Compliance with care plan
+   - Compliance with the treatment plan
    - Understanding of instructions
    - Barriers to progress
 
@@ -264,7 +248,6 @@ Use professional medical terminology. Be objective and data-driven. Include spec
             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
               <p className="text-sm text-green-900">
                 <strong>Data Source:</strong> {visits.length} total visits
-                {carePlans.length > 0 && `, ${carePlans.length} care plans`}
               </p>
             </div>
 

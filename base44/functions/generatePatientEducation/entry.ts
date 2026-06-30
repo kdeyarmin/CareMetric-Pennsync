@@ -32,12 +32,6 @@ Deno.serve(async (req) => {
       visitData = visits[0];
     }
 
-    // Get care plans (RLS-scoped)
-    const carePlans = await base44.entities.CarePlan.filter({
-      patient_id: patientId,
-      status: 'active'
-    });
-
     // Use LLM to generate personalized education topics
     const educationPrompt = `You are a healthcare education specialist. Based on the patient's medical information, generate 3-4 personalized educational topics that would benefit this patient.
 
@@ -49,9 +43,6 @@ Patient Information:
 - Functional Status: ${patient.functional_status?.adl_independence || 'Not documented'}
 - Fall Risk: ${patient.functional_status?.fall_risk || 'Not documented'}
 ${visitData?.nurse_notes ? `\nLatest Visit Notes: ${visitData.nurse_notes.substring(0, 500)}` : ''}
-
-Care Plan Goals:
-${carePlans.map(cp => `- ${cp.problem}: ${cp.goal}`).join('\n')}
 
 Return JSON: { "topics": [{ "title": "string", "reason": "brief explanation why this education is needed", "key_points": ["point1", "point2", "point3"] }] }`;
 

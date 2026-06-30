@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -17,8 +17,6 @@ import OASISComplianceWarnings, { getComplianceIssues } from "@/components/oasis
 import OASISClinicalReasoningEngine, { getClinicalReasoningIssues } from "@/components/oasis/OASISClinicalReasoningEngine";
 import OASISQuestionGuidance from "@/components/oasis/OASISQuestionGuidance";
 import { OASIS_SECTIONS } from "@/components/oasis/oasisQuestions";
-import { INTERVENTIONS_LIBRARY } from "@/components/oasis/interventionsLibrary";
-import { checkCarePlanConsistency } from "@/components/oasis/carePlanConsistency";
 import { AssessmentSkeleton } from "@/components/ui/PageSkeleton";
 
 // ─── Question field ───────────────────────────────────────────────────────────
@@ -155,7 +153,7 @@ function PatientPicker({ patients, selectedPatientId, onSelect }) {
 }
 
 // ─── Right Panel (tabbed: Recommendations | Compliance) ──────────────────────
-function RightPanel({ suggestions, complianceIssues, reasoningIssues, onAddToCarePlan, addedIds }) {
+function RightPanel({ suggestions, complianceIssues, reasoningIssues }) {
   const criticalCount = complianceIssues.filter(r => r.severity === "critical").length;
   const reasoningCount = reasoningIssues.length;
 
@@ -185,7 +183,7 @@ function RightPanel({ suggestions, complianceIssues, reasoningIssues, onAddToCar
             <p className="text-xs text-slate-400">Updates live as you complete the assessment</p>
           </div>
           <div className="flex-1 overflow-hidden flex flex-col">
-            <OASISSuggestionPanel suggestions={suggestions} onAddToCarePlan={onAddToCarePlan} addedIds={addedIds} />
+            <OASISSuggestionPanel suggestions={suggestions} />
           </div>
         </TabsContent>
 
@@ -207,30 +205,16 @@ export default function SmartOASISAssessment() {
   // standalone PageContainer and shrink the fixed full-screen height to fit under
   // the hub's header + tab strip (otherwise the split-pane overflows the viewport).
   const embedded = useIsEmbedded();
-  const queryClient = useQueryClient();
   const [answers, setAnswers] = useState({});
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [addedToCarePlan, setAddedToCarePlan] = useState([]);
-  // Care-plan consistency guard: interventions whose goal contradicts the OASIS
-  // findings (e.g. an ambulation goal for a bedfast patient), plus the ids waiting
-  // on the nurse's explicit "add anyway" override.
-  const [carePlanConflicts, setCarePlanConflicts] = useState([]);
-  const [pendingCarePlanIds, setPendingCarePlanIds] = useState([]);
   const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [currentGuidance, setCurrentGuidance] = useState({ questionId: null, questionLabel: "" });
 
   const { data: patients = [], isLoading: patientsLoading } = useQuery({
     queryKey: ["patients-list"],
     queryFn: () => base44.entities.Patient.list("-updated_date", 100),
-    initialData: [],
-  });
-
-  const { data: _existingCarePlans = [] } = useQuery({
-    queryKey: ["care-plans", selectedPatientId],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: selectedPatientId }),
-    enabled: !!selectedPatientId,
     initialData: [],
   });
 
@@ -251,61 +235,6 @@ export default function SmartOASISAssessment() {
   const answeredTotal = Object.values(answers).filter(v => v !== "" && v !== undefined).length;
   const totalQuestions = OASIS_SECTIONS.reduce((sum, s) => sum + s.questions.length, 0);
   const completionPct = Math.round((answeredTotal / totalQuestions) * 100);
-
-  // Resolve ids → library items (shared by the add + override paths).
-  const resolveInterventions = (ids) => {
-    const allItems = INTERVENTIONS_LIBRARY.flatMap(cat => cat.items);
-    return ids.map(id => allItems.find(i => i.id === id)).filter(Boolean);
-  };
-
-  // Write the selected interventions to the care plan. Used both on a clean add
-  // and after the nurse overrides a consistency conflict.
-  const persistCarePlanItems = async (newInterventions) => {
-    setSaving(true);
-    try {
-      const toAdd = resolveInterventions(newInterventions);
-      await Promise.all(toAdd.map(item =>
-        base44.entities.CarePlan.create({
-          patient_id: selectedPatientId,
-          problem: item.name,
-          goal: `Achieve and maintain ${item.name.toLowerCase()} goals as documented in the care plan.`,
-          interventions: [item.description],
-          status: "active",
-        })
-      ));
-      setAddedToCarePlan(prev => [...new Set([...prev, ...newInterventions])]);
-      setCarePlanConflicts([]); setPendingCarePlanIds([]);
-      queryClient.invalidateQueries({ queryKey: ["care-plans", selectedPatientId] });
-      toast.success(`${newInterventions.length} intervention${newInterventions.length > 1 ? "s" : ""} added to care plan!`);
-    } catch (err) {
-      console.error("Failed to add interventions to care plan:", err);
-      toast.error("Failed to add interventions to care plan. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAddToCarePlan = async (interventionIds) => {
-    if (!selectedPatientId) { toast.error("Please select a patient first."); return; }
-    const newInterventions = interventionIds.filter(id => !addedToCarePlan.includes(id));
-    if (newInterventions.length === 0) return;
-    // Consistency guard: block silent creation of a goal that contradicts the
-    // documented OASIS findings (e.g. an ambulation goal for a bedfast patient).
-    // The nurse can still add after reviewing, via "Add anyway".
-    const conflicts = checkCarePlanConsistency(answers, resolveInterventions(newInterventions));
-    if (conflicts.length > 0) {
-      setCarePlanConflicts(conflicts);
-      setPendingCarePlanIds(newInterventions);
-      toast.error(`${conflicts.length} intervention${conflicts.length > 1 ? "s" : ""} may conflict with the OASIS findings — review before adding.`);
-      return;
-    }
-    await persistCarePlanItems(newInterventions);
-  };
-
-  const confirmAddDespiteConflicts = async () => {
-    if (pendingCarePlanIds.length) await persistCarePlanItems(pendingCarePlanIds);
-  };
-  const cancelCarePlanConflicts = () => { setCarePlanConflicts([]); setPendingCarePlanIds([]); };
 
   const handleSaveAssessment = async () => {
     if (!selectedPatientId) { toast.error("Please select a patient first."); return; }
@@ -449,14 +378,7 @@ export default function SmartOASISAssessment() {
         <PatientPicker
           patients={patients}
           selectedPatientId={selectedPatientId}
-          onSelect={(id) => {
-            setSelectedPatientId(id);
-            setAddedToCarePlan([]);
-            // Drop any open conflict/override state so a pending "Add anyway" can't
-            // write the previous patient's interventions to the newly selected one.
-            setCarePlanConflicts([]);
-            setPendingCarePlanIds([]);
-          }}
+          onSelect={(id) => setSelectedPatientId(id)}
         />
 
         {answeredTotal > 0 && (
@@ -510,23 +432,6 @@ export default function SmartOASISAssessment() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left — OASIS Questions */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {carePlanConflicts.length > 0 && (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-2">
-              <h3 className="font-semibold text-amber-800 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Care-plan consistency check</h3>
-              <p className="text-sm text-amber-800">These interventions may conflict with the patient's documented OASIS findings. Review before adding — a goal that contradicts the assessment is a common audit finding.</p>
-              <ul className="text-sm text-amber-900 list-disc ml-5 space-y-1">
-                {carePlanConflicts.map((c) => (
-                  <li key={c.interventionId}><span className="font-semibold">{c.interventionName}</span> ({c.oasisItem}): {c.message}</li>
-                ))}
-              </ul>
-              <div className="flex gap-2 pt-1">
-                <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100" onClick={confirmAddDespiteConflicts} disabled={saving}>
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null} Add anyway
-                </Button>
-                <Button size="sm" variant="ghost" onClick={cancelCarePlanConflicts} disabled={saving}>Cancel</Button>
-              </div>
-            </div>
-          )}
           {OASIS_SECTIONS.map(section => (
             <SectionCard 
               key={section.id} 
@@ -543,8 +448,6 @@ export default function SmartOASISAssessment() {
           suggestions={suggestions}
           complianceIssues={complianceIssues}
           reasoningIssues={reasoningIssues}
-          onAddToCarePlan={handleAddToCarePlan}
-          addedIds={addedToCarePlan}
         />
       </div>
 

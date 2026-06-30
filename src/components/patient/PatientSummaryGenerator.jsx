@@ -7,7 +7,7 @@ import { FileText, Download, Loader2, Copy, Check } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 
-export default function PatientSummaryGenerator({ patient, visits, carePlans, incidents }) {
+export default function PatientSummaryGenerator({ patient, visits, incidents }) {
   const [summaryFormat, setSummaryFormat] = useState("concise");
   const ai = useAICall();
   const [summaries, setSummaries] = useState({});
@@ -18,7 +18,6 @@ export default function PatientSummaryGenerator({ patient, visits, carePlans, in
 
     try {
       const recentVisits = visits.slice(0, 5);
-      const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
       const recentIncidents = incidents.slice(0, 3);
 
       let prompt = '';
@@ -32,7 +31,6 @@ Primary Diagnosis: ${patient.primary_diagnosis || 'Not specified'}
 Secondary Diagnoses: ${patient.secondary_diagnoses?.join(', ') || 'None'}
 Current Medications: ${patient.current_medications?.length || 0} medications
 Recent Visits: ${recentVisits.length} (last 30 days)
-Active Care Plans: ${activeCarePlans.length}
 Recent Incidents: ${recentIncidents.length}
 
 Provide a brief snapshot focusing on current status, key concerns, and immediate priorities.`;
@@ -70,8 +68,6 @@ ${patient.past_medical_history?.join(', ') || 'No past medical history documente
 
 RECENT CLINICAL ACTIVITY:
 - Visits (last 30 days): ${recentVisits.length}
-- Active Care Plans: ${activeCarePlans.length}
-${activeCarePlans.map(cp => `  • ${cp.problem}: ${cp.goal}`).join('\n')}
 - Recent Incidents: ${recentIncidents.length}
 ${recentIncidents.map(i => `  • ${i.incident_type} on ${i.incident_date}`).join('\n')}
 
@@ -116,7 +112,6 @@ Payor: ${patient.payor || 'Not specified'}
 Last Visit: ${recentVisits[0]?.visit_date || 'No recent visits'}
 ${recentVisits[0]?.nurse_notes ? `Notes: ${recentVisits[0].nurse_notes.substring(0, 200)}...` : ''}
 
-Active Problems: ${activeCarePlans.map(cp => cp.problem).join(', ') || 'None'}
 Recent Concerns: ${recentIncidents.map(i => i.incident_type).join(', ') || 'None'}
 Allergies: ${patient.allergies || 'NKDA'}
 

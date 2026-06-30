@@ -12,11 +12,10 @@ import {
 import { createPageUrl } from "@/utils";
 import { Link } from "react-router-dom";
 
-export default function PatientOverviewCard({ patient, visits, carePlans, alerts, isSelected, onSelect, view }) {
+export default function PatientOverviewCard({ patient, visits, alerts, isSelected, onSelect, view }) {
   // Copy before sorting — sort() mutates in place, and `visits` is a prop owned
   // by the parent; reordering it as a render side effect corrupts the caller.
   const recentVisit = [...visits].sort((a, b) => new Date(b.visit_date) - new Date(a.visit_date))[0];
-  const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
   const criticalAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'high');
 
   const getStatusColor = (status) => {
@@ -128,14 +127,10 @@ export default function PatientOverviewCard({ patient, visits, carePlans, alerts
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 mb-4 p-3 bg-slate-50 rounded-lg">
+        <div className="grid grid-cols-2 gap-2 mb-4 p-3 bg-slate-50 rounded-lg">
           <div className="text-center">
             <p className="text-xs text-slate-600">Visits</p>
             <p className="text-lg font-bold text-blue-600">{visits.length}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-slate-600">Care Plans</p>
-            <p className="text-lg font-bold text-green-600">{activeCarePlans.length}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-slate-600">Alerts</p>

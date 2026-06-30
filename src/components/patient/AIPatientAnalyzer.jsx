@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Brain, AlertTriangle, Target, TrendingUp, Loader2, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from 'sonner';
 
-export default function AIPatientAnalyzer({ patient, visits, carePlans, incidents }) {
+export default function AIPatientAnalyzer({ patient, visits, incidents }) {
   const ai = useAICall();
   const [analysis, setAnalysis] = useState(null);
   const [expandedSections, setExpandedSections] = useState({
@@ -25,7 +25,6 @@ export default function AIPatientAnalyzer({ patient, visits, carePlans, incident
     try {
       // Prepare comprehensive patient data
       const recentVisits = (visits || []).slice(0, 10);
-      const activeCarePlans = (carePlans || []).filter(cp => cp.status === 'active');
       const recentIncidents = (incidents || []).slice(0, 5);
 
       const prompt = `Analyze this home health patient's comprehensive medical record and provide clinical insights:
@@ -40,7 +39,6 @@ PATIENT PROFILE:
 
 RECENT CLINICAL DATA:
 - Total Visits (Last 30 days): ${recentVisits.length}
-- Active Care Plans: ${activeCarePlans.length}
 - Recent Incidents: ${recentIncidents.length}
 ${recentIncidents.length > 0 ? `- Incident Types: ${recentIncidents.map(i => i.incident_type).join(', ')}` : ''}
 

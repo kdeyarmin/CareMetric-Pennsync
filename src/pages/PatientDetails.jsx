@@ -102,7 +102,6 @@ export default function PatientDetails() {
       const data = (await base44.functions.invoke('getPatientContext', { patientId }))?.data || {};
       queryClient.setQueryData(['patient', patientId], data.patient ? [data.patient] : []);
       queryClient.setQueryData(['patientVisits', patientId], data.visits || []);
-      queryClient.setQueryData(['patientCarePlans', patientId], data.carePlans || []);
       queryClient.setQueryData(['patientIncidents', patientId], data.incidents || []);
       queryClient.setQueryData(['patientTasks', patientId], data.tasks || []);
       queryClient.setQueryData(['patientActiveAlerts', patientId], data.activeAlerts || []);
@@ -113,7 +112,6 @@ export default function PatientDetails() {
 
   const patient = ctx.patient ?? null;
   const visits = ctx.visits ?? [];
-  const carePlans = ctx.carePlans ?? [];
   const incidents = ctx.incidents ?? [];
   const tasks = ctx.tasks ?? [];
   const activeAlerts = ctx.activeAlerts ?? [];
@@ -275,7 +273,6 @@ export default function PatientDetails() {
               <AIPatientDashboardSummary
                 patient={patient}
                 visits={visits}
-                carePlans={carePlans}
                 tasks={tasks}
                 incidents={incidents}
               />
@@ -538,14 +535,12 @@ export default function PatientDetails() {
               <AIPatientHistorySummary
                 patient={patient}
                 visits={visits}
-                carePlans={carePlans}
                 incidents={incidents}
                 autoGenerate={false}
               />
               <AIPatientAnalyzer
                 patient={patient}
                 visits={visits}
-                carePlans={carePlans}
                 incidents={incidents}
               />
             </TabsContent>
@@ -554,7 +549,6 @@ export default function PatientDetails() {
               <PatientRiskStratification
                 patient={patient}
                 visits={visits}
-                carePlans={carePlans}
                 incidents={incidents}
                 autoCalculate={false}
               />
@@ -581,7 +575,6 @@ export default function PatientDetails() {
                 <InterdisciplinaryTeamCoordinator
                   patientId={patientId}
                   patientData={patient}
-                  carePlans={carePlans}
                   recentVisits={visits?.filter(v => v.status === 'completed').slice(0, 5)}
                   incidents={incidents}
                   alerts={activeAlerts}
@@ -618,7 +611,6 @@ export default function PatientDetails() {
               <PatientSummaryGenerator
                 patient={patient}
                 visits={visits}
-                carePlans={carePlans}
                 incidents={incidents}
               />
             </TabsContent>

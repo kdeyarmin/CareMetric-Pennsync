@@ -19,7 +19,6 @@ const FIELD_TYPES = [
 const DATA_SOURCES = [
   { value: "patient", label: "Patient Data" },
   { value: "visit", label: "Visit Data" },
-  { value: "care_plan", label: "Care Plan" },
   { value: "custom", label: "Custom Field" }
 ];
 

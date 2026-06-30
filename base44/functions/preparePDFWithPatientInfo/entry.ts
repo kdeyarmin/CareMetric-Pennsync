@@ -51,13 +51,12 @@ Deno.serve(async (req) => {
     // Fetch additional patient data if mappings require it
     let patientData = null;
     let visitData = null;
-    let carePlans = [];
-    
+
     if (patient_id && field_mappings.length > 0) {
       try {
         patientData = await base44.entities.Patient.filter({ id: patient_id });
         if (patientData.length > 0) patientData = patientData[0];
-        
+
         // Get latest visit if needed
         if (field_mappings.some(m => m.data_source === 'visit')) {
           const visits = await base44.entities.Visit.filter(
@@ -66,14 +65,6 @@ Deno.serve(async (req) => {
             1
           );
           if (visits.length > 0) visitData = visits[0];
-        }
-        
-        // Get active care plans if needed
-        if (field_mappings.some(m => m.data_source === 'care_plan')) {
-          carePlans = await base44.entities.CarePlan.filter({
-            patient_id,
-            status: 'active'
-          });
         }
       } catch (e) {
         console.warn('Error fetching additional data:', e.message);
@@ -133,11 +124,6 @@ Deno.serve(async (req) => {
             break;
           case 'visit':
             value = visitData ? getNestedValue(visitData, mapping.field_path) : null;
-            break;
-          case 'care_plan':
-            if (carePlans.length > 0) {
-              value = getNestedValue(carePlans[0], mapping.field_path);
-            }
             break;
           case 'custom':
             value = patient_info[mapping.field_path] || mapping.default_value;

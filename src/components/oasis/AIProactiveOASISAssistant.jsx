@@ -47,13 +47,6 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
     initialData: []
   });
 
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ['patientCarePlans', patientId],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: patientId }),
-    enabled: !!patientId,
-    initialData: []
-  });
-
   const { data: existingOASIS = [] } = useQuery({
     queryKey: ['patientOASIS', patientId],
     queryFn: () => base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date'),
@@ -102,11 +95,6 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
           type: i.incident_type,
           date: i.incident_date,
           severity: i.severity
-        })),
-        carePlans: carePlans.map(cp => ({
-          problem: cp.problem,
-          goal: cp.goal,
-          status: cp.status
         })),
         existingOASIS: existingOASIS.length > 0
       };
@@ -253,7 +241,7 @@ Provide detailed, actionable recommendations that a home health nurse can immedi
       toast.error('Failed to perform OASIS analysis. Please try again.');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [patient, visits, incidents, carePlans, existingOASIS, patientId, queryClient, calculateAge]);
+  }, [patient, visits, incidents, existingOASIS, patientId, queryClient, calculateAge]);
 
   React.useEffect(() => {
     if (autoAnalyze && patient && !analysis && !ai.loading) {

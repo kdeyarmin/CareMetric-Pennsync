@@ -37,7 +37,7 @@ export default function PatientRecordDashboard() {
 
   // Refresh the dashboard's data after a quick action without a full page reload.
   const refreshDashboard = () => {
-    ['all-patients', 'all-visits', 'all-care-plans', 'active-alerts'].forEach(
+    ['all-patients', 'all-visits', 'active-alerts'].forEach(
       (key) => queryClient.invalidateQueries({ queryKey: [key] })
     );
   };
@@ -51,11 +51,6 @@ export default function PatientRecordDashboard() {
   const { data: visits = [] } = useQuery({
     queryKey: ['all-visits'],
     queryFn: () => base44.entities.Visit.list('-created_date', 500)
-  });
-
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ['all-care-plans'],
-    queryFn: () => base44.entities.CarePlan.list('-created_date', 500)
   });
 
   const { data: alerts = [] } = useQuery({
@@ -224,7 +219,6 @@ export default function PatientRecordDashboard() {
                           key={patient.id}
                           patient={patient}
                           visits={visits.filter(v => v.patient_id === patient.id)}
-                          carePlans={carePlans.filter(cp => cp.patient_id === patient.id)}
                           alerts={alerts.filter(a => a.patient_id === patient.id)}
                           isSelected={selectedPatient?.id === patient.id}
                           onSelect={() => setSelectedPatient(patient)}

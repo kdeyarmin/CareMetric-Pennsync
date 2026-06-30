@@ -50,18 +50,6 @@ export default function PatientEducationPortal() {
     enabled: !!selectedPatientId,
   });
 
-  const { data: _carePlans = [] } = useQuery({
-    queryKey: ["patient-care-plans", selectedPatientId],
-    queryFn: () =>
-      selectedPatientId
-        ? base44.entities.CarePlan.filter(
-            { patient_id: selectedPatientId, status: "active" },
-            "-created_date"
-          )
-        : Promise.resolve([]),
-    enabled: !!selectedPatientId,
-  });
-
   const generateEducationMutation = useMutation({
     mutationFn: (patientId) =>
       invokeLLM({
