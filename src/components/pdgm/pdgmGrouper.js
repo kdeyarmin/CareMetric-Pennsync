@@ -19,6 +19,18 @@
 // This replaces the previous approach of asking an LLM to guess
 // `estimated_pdgm_group` — once the agency loads current CMS tables, grouping
 // becomes deterministic and reproducible.
+//
+// ── WIRING STATUS / canonical path ────────────────────────────────────────────
+// This client-side grouper is currently UNWIRED. The app's live, canonical PDGM
+// calculation runs in the backend function `base44/functions/calculatePDGM`
+// (admin-configurable ICD10_CLINICAL_GROUPS + case-mix multipliers + base rate;
+// see also `pdgmRates.js`). That is the single source of truth shown to staff.
+// Do NOT surface this engine's output as a SECOND reimbursement figure — two
+// independent methodologies would produce inconsistent billing numbers. If it is
+// ever wired it must (a) be supplied with the agency's current CMS case-mix
+// weight + functional item-points tables (which this repo does not ship), and
+// (b) reconcile against `calculatePDGM` rather than compete with it. Until then
+// it stays a tested, table-driven reference for that future, reconciled work.
 
 /** The 12 PDGM clinical groups (stable public reference; the ICD-10→group
  *  mapping that selects among them is CMS data supplied via cmsTables). */
