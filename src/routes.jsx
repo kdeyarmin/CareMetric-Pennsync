@@ -170,15 +170,13 @@ export const REDIRECTS = [
 
   // ─── Feature-audit consolidation ─────────────────────────────────────────────
   // Redundant standalone pages folded into their canonical homes — see
-  // docs/feature-audit.md. Most page files remain on disk (reachable via the
-  // targets below or as embedded components) so the redirect is reversible.
+  // docs/feature-audit.md. The dead page files were removed once the
+  // consolidation proved stable; the redirects below are kept so old
+  // links/bookmarks resolve to the current home.
   //   ClinicalChart       → its vitals / care-plan / OASIS tabs already live in
   //                          PatientDetails; sent to the patient list (no id ctx).
   //   MedicalScribe       → same record→transcribe→review pipeline as the Clinical
-  //                          Notes "Visit Scribe" choice (a strict superset). The
-  //                          dead page file + its scribe-only components were
-  //                          removed once the consolidation proved stable; the
-  //                          redirect below is kept so old links/bookmarks resolve.
+  //                          Notes "Visit Scribe" choice (a strict superset).
   //   ClinicalInsights    → population/risk views duplicated by Predictive Analytics.
   //   DocumentationTraining / NurseEducationVideos → consolidated under the Nurse
   //                          Training Hub. (See doc for the unique-content caveat.)

@@ -112,6 +112,27 @@ branch). Each is recorded with its outcome.
   KPI fonts/scroll areas were already responsive — so no further churn was
   warranted.
 
+## Dead-code cleanup (orphaned redirected pages)
+
+Followed up by removing the page files that were retired into redirects and are
+no longer imported anywhere — each currently compiled into its own unused build
+chunk. Verified by exhaustive whole-repo reference check before deletion:
+
+- **Removed** `ClinicalChart`, `ClinicalInsightsDashboard`, `MyLearning`,
+  `NurseEducationVideos` — only referenced by their `REDIRECTS` entries (kept, so
+  old links/bookmarks still resolve) and stale comments.
+- **Kept** `AnalyticsDashboard.jsx` — although it has no standalone route, it is
+  still lazy-imported and rendered as the "Performance Analytics" tab inside
+  `ReportsAnalytics`, so it is live code, not dead. (Deleting it would have broken
+  that tab — the reason every candidate was import-checked, not just
+  redirect-checked.)
+- Repointed a backend notification deep-link (`remindPlanOverdueStaff`
+  `action_url`) from the retired `/MyLearning` to the canonical
+  `/LearningCenter?tab=courses` so it links directly instead of via a redirect hop.
+
+Deeper orphan-component pruning (e.g. `SMARTNOTE_REVIEW.md` / `NURSE_APP_IMPROVEMENTS.md`
+#23) remains a separate, larger effort and is intentionally out of scope here.
+
 ## Changes made
 
 | File | Change |
@@ -122,5 +143,8 @@ branch). Each is recorded with its outcome.
 | `src/components/navigation/CommandPalette.jsx` | Add role-gated quick-action verbs |
 | `src/components/admin/AdminConsoleDirectory.jsx` | Add Intake & Referrals group (launchpad completeness) |
 | `src/pages/ClinicalPathwayManager.jsx` | Responsive stat grid + trigger-editor form row |
+| `src/pages/{ClinicalChart,ClinicalInsightsDashboard,MyLearning,NurseEducationVideos}.jsx` | **Removed** — orphaned redirected pages (no imports) |
+| `src/routes.jsx` | Refresh feature-audit consolidation comment (page files now removed) |
+| `base44/functions/remindPlanOverdueStaff/entry.ts` | Repoint notification deep-link to canonical `/LearningCenter?tab=courses` |
 | `src/lib/nav.manifest.spec.js` | **New** unit tests for the active-state helpers |
 | `docs/NAV_UI_REVIEW_2026-06-29.md` | This review |
