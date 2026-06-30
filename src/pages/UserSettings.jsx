@@ -273,12 +273,12 @@ export default function UserSettings() {
       )}
 
       <Tabs defaultValue="profile" className="space-y-4 sm:space-y-6">
-        <TabsList>
-          <TabsTrigger value="profile"><Heart /> Profile</TabsTrigger>
-          <TabsTrigger value="credentials"><Shield /> Credentials</TabsTrigger>
-          <TabsTrigger value="ai-behavior"><Brain /> AI</TabsTrigger>
-          <TabsTrigger value="features"><Sparkles /> Features</TabsTrigger>
-          <TabsTrigger value="documentation"><FileText /> Docs</TabsTrigger>
+        <TabsList className="flex w-full">
+          <TabsTrigger value="profile" className="flex-1 gap-1.5"><Heart className="w-3.5 h-3.5" /> Profile</TabsTrigger>
+          <TabsTrigger value="credentials" className="flex-1 gap-1.5"><Shield className="w-3.5 h-3.5" /> Credentials</TabsTrigger>
+          <TabsTrigger value="ai-behavior" className="flex-1 gap-1.5"><Brain className="w-3.5 h-3.5" /> AI</TabsTrigger>
+          <TabsTrigger value="features" className="flex-1 gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Features</TabsTrigger>
+          <TabsTrigger value="documentation" className="flex-1 gap-1.5"><FileText className="w-3.5 h-3.5" /> Docs</TabsTrigger>
         </TabsList>
 
         {/* Profile / Role Tab */}
@@ -813,7 +813,7 @@ export default function UserSettings() {
                     </p>
                   </div>
                   <p className="text-sm text-slate-700">
-                    You are about to request deletion of your PENNSync account. This action:
+                    You are about to request deletion of your CareMetric AI account. This action:
                   </p>
                   <ul className="text-sm text-slate-700 space-y-1 ml-4 list-disc">
                     <li>Notifies your administrators to process the deletion</li>

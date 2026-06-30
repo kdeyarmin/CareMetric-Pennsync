@@ -390,7 +390,7 @@ export default function Patients() {
       </div>
 
       {/* Desktop Grid View */}
-      <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6">
+      <div className="hidden lg:grid grid-cols-1 gap-3 sm:gap-4">
         {isLoading ? (
           <>
             <PatientCardSkeleton />
