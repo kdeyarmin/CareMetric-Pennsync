@@ -28,5 +28,12 @@ export default defineConfig({
     include: ['src/**/*.test.jsx', 'src/**/*.spec.{js,jsx}'],
     // Keep the node:test util suites (and backend) out of Vitest's scope.
     exclude: ['node_modules', 'dist', 'base44'],
+    // Defaults are 5000ms. Under the full parallel run (many jsdom files at once)
+    // a single heavy mount/hook can momentarily exceed 5s on a busy CI box; raise
+    // the ceiling so contention doesn't abort a test mid-async. Parallelism /
+    // isolation are left at Vitest's defaults (per-file isolation is already
+    // correct) so the suite stays fast.
+    testTimeout: 15000,
+    hookTimeout: 15000,
   },
 });
