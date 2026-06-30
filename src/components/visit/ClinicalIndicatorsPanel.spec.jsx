@@ -35,4 +35,20 @@ describe("ClinicalIndicatorsPanel", () => {
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByText(/deterministic scan of your draft/i)).toBeInTheDocument();
   });
+
+  it("does NOT surface 'Assistance Needed' for negated/independent assist mentions", () => {
+    // The engine's broad `detected` flag fires on the bare word "assistance" here;
+    // the panel must suppress the chip because the evidence is negated.
+    render(
+      <ClinicalIndicatorsPanel narrativeText="Patient ambulates independently without assistance and is fully self-care." />,
+    );
+    expect(screen.queryByText("Assistance Needed")).not.toBeInTheDocument();
+  });
+
+  it("surfaces 'Assistance Needed' when there is positive graded-assist evidence", () => {
+    render(
+      <ClinicalIndicatorsPanel narrativeText="Patient requires max assist with transfers and bed mobility today." />,
+    );
+    expect(screen.getByText("Assistance Needed")).toBeInTheDocument();
+  });
 });

@@ -6,6 +6,14 @@ import {
 } from "lucide-react";
 
 // Deterministic clinical-indicator categories, in display order. Each maps to a
+// "Assistance Needed" needs POSITIVE evidence. The engine's broad `detected` flag
+// also fires on negated/independent text ("ambulates independently without
+// assistance") because it matches the bare word "assist" — surfacing that chip
+// would contradict the nurse. So this one category is gated on an actual graded
+// assist level / dependency phrase instead of `detected`. (All other categories
+// use the engine's `detected`.)
+const ASSIST_NEEDED_RE = /\b(?:(?:min(?:imal)?|mod(?:erate)?|max(?:imal)?|total|complete)\s+assist|requires?\s+assist(?:ance)?|assist(?:ance)?\s+(?:required|needed)|needs?\s+(?:help|assist)|dependent|unable to|cannot\b|supervision|standby|contact guard|cga|sba|[12][\s-]?person\s+assist)/i;
+
 // key on the extractClinicalIndicators() result ({ detected, ...phrases, sentences }).
 const CATEGORIES = [
   { key: "assistDevices",        label: "Assistive Devices",  Icon: Footprints },
@@ -16,7 +24,7 @@ const CATEGORIES = [
   { key: "cognitiveIssues",      label: "Cognition",          Icon: Brain },
   { key: "diabetic",             label: "Diabetes",           Icon: Droplet },
   { key: "cardiacIssues",        label: "Cardiac",            Icon: Heart },
-  { key: "assistanceNeeded",     label: "Assistance Needed",  Icon: Hand },
+  { key: "assistanceNeeded",     label: "Assistance Needed",  Icon: Hand, detect: (text) => ASSIST_NEEDED_RE.test(text) },
   { key: "independentMentioned", label: "Independence",       Icon: CheckCircle2 },
 ];
 
@@ -41,8 +49,13 @@ export default function ClinicalIndicatorsPanel({ narrativeText }) {
     [narrativeText],
   );
   const detected = useMemo(
-    () => (indicators ? CATEGORIES.filter((c) => indicators[c.key]?.detected) : []),
-    [indicators],
+    () =>
+      indicators
+        ? CATEGORIES.filter((c) =>
+            c.detect ? c.detect(narrativeText) : indicators[c.key]?.detected,
+          )
+        : [],
+    [indicators, narrativeText],
   );
 
   if (!detected.length) return null;
