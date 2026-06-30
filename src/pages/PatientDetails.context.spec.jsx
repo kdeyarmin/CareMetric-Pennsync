@@ -56,12 +56,14 @@ describe('PatientDetails — getPatientContext seeding', () => {
     const { default: PatientDetails } = await import('@/pages/PatientDetails');
     renderWithProviders(<PatientDetails />, { queryClient: qc });
 
-    // The single consolidated fetch ran with the URL's patient id.
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('getPatientContext', { patientId: 'p1' }));
+    // The single consolidated fetch ran with the URL's patient id. (Explicit 5s
+    // timeout to match the sibling test — this heavy page mount can exceed the 1s
+    // waitFor default under full-suite parallel load.)
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('getPatientContext', { patientId: 'p1' }), { timeout: 5000 });
 
     // Seeding: a child reading ['patientVisits','p1'] (or ['patient','p1']) finds
     // the payload already in cache — no second request.
-    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits));
+    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 5000 });
     expect(qc.getQueryData(['patient', 'p1'])).toEqual([PATIENT]);
     expect(qc.getQueryData(['patientCarePlans', 'p1'])).toEqual(CTX.carePlans);
     expect(qc.getQueryData(['patientActiveAlerts', 'p1'])).toEqual(CTX.activeAlerts);
