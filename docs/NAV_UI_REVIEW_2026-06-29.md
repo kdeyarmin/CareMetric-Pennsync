@@ -229,9 +229,21 @@ were **kept**. Removed 12 genuinely-unused packages (runtime deps 61 → 49):
 Fonts `<link>` in `index.html`, so typography is unchanged). Smaller install =
 less supply-chain surface. `npm ci` stays consistent (lockfile synced).
 
-> Optional follow-up (not done): self-host Inter via `@fontsource` instead of the
-> Google Fonts CDN, to drop an external request — better for offline mode and
-> HIPAA posture. That's a deliberate CDN-vs-self-host choice for the team.
+### Self-host the Inter font (drop the Google Fonts CDN)
+
+Done as a follow-up. The app fetched Inter from `fonts.googleapis.com` via an
+`index.html` `<link>` — an external request on every load, undesirable for an
+offline-capable, HIPAA-conscious clinical app. Switched to self-hosting:
+
+- `src/main.jsx` imports `@fontsource-variable/inter` (weight axis 100–900); Vite
+  bundles the woff2 subsets (verified: 7 `inter-*.woff2` emitted into `dist/`).
+- Removed the Google Fonts `<link>` + `preconnect` tags from `index.html`
+  (verified: zero `fonts.googleapis`/`gstatic` refs in the built HTML).
+- Fixed `tailwind.config.js` `fontFamily.sans`: `"InterVariable"` →
+  `"Inter Variable"`. The old name never matched any `@font-face` (which is why
+  the package previously appeared unused and the CDN's "Inter" was doing the
+  work); the corrected name resolves to the self-hosted variable font, so Inter
+  now loads with **no third-party request**.
 
 ## Changes made
 

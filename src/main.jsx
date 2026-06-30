@@ -1,6 +1,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
+// Self-host the Inter variable font (weight axis 100–900) instead of fetching it
+// from the Google Fonts CDN. Vite bundles the woff2, so the app keeps its
+// typography with no third-party request — better for offline mode and HIPAA
+// posture. The @font-face family it declares is 'Inter Variable' (see
+// tailwind.config.js fontFamily.sans).
+import '@fontsource-variable/inter'
 import '@/index.css'
 import { installAlertToToastShim } from '@/lib/alert-shim'
 
