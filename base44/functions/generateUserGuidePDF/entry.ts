@@ -344,9 +344,9 @@ Guide for managing patient risk alerts:
 9. Predictive analytics
 10. Alert history and trends`,
 
-      all_features: `CAREMETRIC AI - COMPLETE USER GUIDE
+      all_features: `PENNSYNC - COMPLETE USER GUIDE
 
-Comprehensive guide covering all features of the CareMetric AI Healthcare platform:
+Comprehensive guide covering all features of the PennSync Healthcare platform:
 
 **CORE MODULES:**
 
@@ -656,7 +656,7 @@ Keep language simple and non-technical. Include specific button names and field 
       doc.setFontSize(8);
       doc.setTextColor(156, 163, 175);
       doc.text(
-        `CareMetric AI - ${guideContent.title} | Page ${i} of ${totalPages}`,
+        `PennSync - ${guideContent.title} | Page ${i} of ${totalPages}`,
         pageWidth / 2,
         pageHeight - 10,
         { align: 'center' }
@@ -671,7 +671,7 @@ Keep language simple and non-technical. Include specific button names and field 
       // Copyright notice
       doc.setFontSize(7);
       doc.text(
-        `© ${new Date().getFullYear()} CareMetric AI. All rights reserved.`,
+        `© ${new Date().getFullYear()} PennSync. All rights reserved.`,
         pageWidth / 2,
         pageHeight - 5,
         { align: 'center' }

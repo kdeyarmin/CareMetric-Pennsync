@@ -527,7 +527,7 @@ export default function FeaturesPage() {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>CareMetric AI Features Guide</title>
+  <title>PennSync Features Guide</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 40px; color: #333; line-height: 1.6; }
     h1 { color: #264491; text-align: center; border-bottom: 3px solid #264491; padding-bottom: 10px; }
@@ -557,11 +557,11 @@ export default function FeaturesPage() {
 <body>
   <div class="logo-header">
   </div>
-  <h1>CareMetric AI Features Guide</h1>
+  <h1>PennSync Features Guide</h1>
   <p class="header-info">AI-Powered Home Health Documentation & OASIS Analytics<br>Generated: ${new Date().toLocaleDateString()}</p>
   
   <div class="impact-summary">
-    <h2 style="color: white; margin-top: 0;">The CareMetric AI Impact</h2>
+    <h2 style="color: white; margin-top: 0;">The PennSync Impact</h2>
     <p style="opacity: 0.95; font-size: 16px; margin-bottom: 20px;">Revolutionizing home health documentation with AI-powered efficiency</p>
     <div class="impact-stat">
       <div class="impact-stat-value">20+</div>
@@ -604,7 +604,7 @@ export default function FeaturesPage() {
   `).join('')}
 
   <div class="footer">
-    <p><strong>© CareMetric AI - AI-Powered Home Health Documentation</strong></p>
+    <p><strong>© PennSync by CareMetric - AI-Powered Home Health Documentation</strong></p>
     <p>For support, contact your administrator</p>
     <p style="font-size: 12px; margin-top: 10px;">This guide reflects the current system capabilities as of ${new Date().toLocaleDateString()}</p>
   </div>
@@ -638,7 +638,7 @@ export default function FeaturesPage() {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>CareMetric AI User Manual</title>
+  <title>PennSync User Manual</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 40px; color: #333; line-height: 1.6; }
     h1 { color: #264491; text-align: center; border-bottom: 3px solid #264491; padding-bottom: 10px; page-break-after: avoid; }
@@ -671,7 +671,7 @@ export default function FeaturesPage() {
 <body>
   <div class="logo-header">
   </div>
-  <h1>CareMetric AI User Manual</h1>
+  <h1>PennSync User Manual</h1>
   <p class="header-info">Complete Guide for Nurses and Administrators<br>Generated: ${new Date().toLocaleDateString()}</p>
   
   <div class="toc">
@@ -703,7 +703,7 @@ export default function FeaturesPage() {
     
     <h3>1.1 Logging In</h3>
     <div class="step">
-      <span class="step-number">1</span>Navigate to the CareMetric AI login page
+      <span class="step-number">1</span>Navigate to the PennSync login page
     </div>
     <div class="step">
       <span class="step-number">2</span>Enter your email address and password
@@ -1224,7 +1224,7 @@ export default function FeaturesPage() {
     <p><strong>Training Questions:</strong> Reach out to your clinical supervisor</p>
     <p><strong>Feature Requests:</strong> Submit through your administrator</p>
     <br>
-    <p style="font-size: 12px;">© CareMetric AI - AI-Powered Home Health Documentation</p>
+    <p style="font-size: 12px;">© PennSync by CareMetric - AI-Powered Home Health Documentation</p>
     <p style="font-size: 12px;">User Manual Version 1.0 - ${new Date().toLocaleDateString()}</p>
   </div>
 </body>
@@ -1294,8 +1294,8 @@ export default function FeaturesPage() {
     <PageContainer>
       <PageHeader
         icon={Zap}
-        eyebrow="CareMetric AI"
-        title="CareMetric AI Features"
+        eyebrow="PennSync by CareMetric"
+        title="PennSync Features"
         description="AI-powered home health documentation, OASIS analytics, and clinical decision support"
         favoritePage="Features"
         actions={
@@ -1449,7 +1449,7 @@ export default function FeaturesPage() {
       <div className="mt-6 sm:mt-8 md:mt-12 rounded-xl bg-navy-900 text-white p-4 sm:p-6 md:p-8">
           <div className="text-center">
             <Sparkles className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 text-white opacity-90" />
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2 sm:mb-3">The CareMetric AI Impact</h2>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2 sm:mb-3">The PennSync Impact</h2>
             <p className="text-base sm:text-lg md:text-xl text-navy-100 mb-4 sm:mb-6">
               Save over <strong>{Math.round(totalTimeSavedPerYear / 60)} hours per year</strong> per nurse
             </p>

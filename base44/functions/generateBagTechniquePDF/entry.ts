@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(8);
       doc.setFont(undefined, 'normal');
-      doc.text('CareMetric AI - Bag Technique Checklist', 20, 291);
+      doc.text('PennSync - Bag Technique Checklist', 20, 291);
       doc.text(`Generated: ${new Date().toLocaleDateString()}`, 105, 291, { align: 'center' });
       doc.text(`Page ${i} of ${pageCount}`, 190, 291, { align: 'right' });
     }

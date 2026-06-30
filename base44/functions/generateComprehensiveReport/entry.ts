@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     // Title Page
     doc.setFontSize(24);
     doc.setFont(undefined, 'bold');
-    doc.text('CareMetric AI', 105, 40, { align: 'center' });
+    doc.text('PennSync', 105, 40, { align: 'center' });
     doc.setFontSize(18);
     doc.text('Comprehensive Report', 105, 55, { align: 'center' });
     
@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
     });
 
     // AI UTILIZATION & ROI
-    addSection('CAREMETRIC AI IMPACT');
+    addSection('PENNSYNC IMPACT');
     
     const avgQualityScore = filteredNoteConversions.length > 0
       ? Math.round(filteredNoteConversions.reduce((sum, n) => sum + (n.quality_score || 0), 0) / filteredNoteConversions.length)
@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
     yPosition = 280;
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
-    doc.text('CareMetric AI - AI-Powered Home Health Documentation System', 105, yPosition, { align: 'center' });
+    doc.text('PennSync - AI-Powered Home Health Documentation System', 105, yPosition, { align: 'center' });
     doc.text(`Report generated on ${new Date().toLocaleString()}`, 105, yPosition + 5, { align: 'center' });
 
     const pdfBytes = doc.output('arraybuffer');

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Toaster } from "sonner";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
 import { getRoleView } from "@/lib/roles";
+import { BRAND_LOGO_URL } from "@/lib/brand";
 
 import DesktopSidebar from "@/components/layout/DesktopSidebar";
 import MobileHeader from "@/components/layout/MobileHeader";
@@ -39,7 +40,7 @@ export default function Layout({ children, currentPageName }) {
     catch { /* private mode / storage disabled — non-fatal */ }
   }, [sidebarCollapsed]);
 
-  // CareMetric AI ships a single, fully-designed light theme: every page and
+  // PennSync ships a single, fully-designed light theme: every page and
   // component uses explicit light styles and none provide `dark:` variants.
   // Previously this effect mirrored the OS `prefers-color-scheme`, toggling the
   // `dark` class on <html>. That flipped only the CSS-variable tokens (popovers,
@@ -252,11 +253,12 @@ export default function Layout({ children, currentPageName }) {
       <div className="min-h-screen bg-gradient-to-br from-navy-50 via-white to-navy-100 flex items-center justify-center p-4">
         <div className="max-w-md w-full">
           <div className="mb-6 flex items-center justify-center gap-2">
-            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-navy-600 to-navy-800 flex items-center justify-center">
-              <span className="text-white text-sm font-bold">CM</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-navy-900">
-              CareMetric<span className="text-gold-600"> AI</span>
+            <img src={BRAND_LOGO_URL} alt="" className="h-9 w-9 rounded-lg" />
+            <span className="flex flex-col leading-none">
+              <span className="text-xl font-bold tracking-tight text-navy-900">
+                Penn<span className="text-gold-600">Sync</span>
+              </span>
+              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">by CareMetric</span>
             </span>
           </div>
           <Card className="relative overflow-hidden border-slate-200 shadow-xl">

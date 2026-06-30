@@ -341,7 +341,7 @@ Deno.serve(async (req) => {
       { label: 'Review Enhanced Note', desc: 'Read through the AI-enhanced note. Yellow highlights indicate areas that may need your attention or completion.' },
       { label: 'Edit if Needed', desc: 'The enhanced note is fully editable. Make any necessary adjustments to ensure accuracy.' },
       { label: 'Copy to Clipboard', desc: 'Click "Copy to Clipboard" to copy the note for pasting into your EHR system.' },
-      { label: 'Save to System', desc: 'Click "Save Note" to store the visit documentation in CareMetric AI for future reference.' },
+      { label: 'Save to System', desc: 'Click "Save Note" to store the visit documentation in PennSync for future reference.' },
       { label: 'Generate Tasks', desc: 'Optionally generate follow-up tasks based on the visit documentation.' },
       { label: 'Generate Care Plans', desc: 'Create or update care plans based on assessment findings.' }
     ];
@@ -438,7 +438,7 @@ Deno.serve(async (req) => {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(255, 255, 255);
-    doc.text('CareMetric AI - Smart Note Assistant Guide', pageWidth / 2, pageHeight - 15, { align: 'center' });
+    doc.text('PennSync - Smart Note Assistant Guide', pageWidth / 2, pageHeight - 15, { align: 'center' });
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
 
     // Generate PDF

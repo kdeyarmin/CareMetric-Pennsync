@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
 
     doc.setFontSize(9);
     doc.setTextColor(107, 114, 128);
-    doc.text('CareMetric AI Training Platform', 85, 182, { align: 'center' });
+    doc.text('PennSync Training Platform', 85, 182, { align: 'center' });
     doc.text('Certificate ID: ' + Date.now().toString(36).toUpperCase(), 212, 182, { align: 'center' });
 
     // Footer
@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
     doc.rect(0, 195, 297, 15, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(8);
-    doc.text('CareMetric AI - AI-Powered Healthcare Training & Documentation', 148.5, 203, { align: 'center' });
+    doc.text('PennSync - AI-Powered Healthcare Training & Documentation', 148.5, 203, { align: 'center' });
 
     const pdfBytes = doc.output('arraybuffer');
 
