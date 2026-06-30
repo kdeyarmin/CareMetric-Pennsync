@@ -1,20 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { screen } from "@testing-library/react";
-import { renderWithProviders } from "@/test/testUtils";
+import { screen, fireEvent } from "@testing-library/react";
+import { renderWithProviders, makeBase44Stub } from "@/test/testUtils";
 
-// Inline Base44 stub (vi.mock is hoisted, so it can't reference imports).
-// Every entity call resolves empty; the component only reads recent assessments.
-vi.mock("@/api/base44Client", () => {
-  const arr = async () => [];
-  const obj = async () => ({});
-  const entityStub = new Proxy({}, {
-    get: (_t, p) => {
-      if (p === "then") return undefined;
-      if (p === "get" || p === "create" || p === "update") return obj;
-      return arr;
-    },
-  });
-  return { base44: { entities: new Proxy({}, { get: () => entityStub }), auth: { me: async () => ({}) } } };
+// Use the shared Base44 stub (every entity call resolves empty). The factory is
+// hoisted, so it can't close over module imports — pull the helper in via a
+// dynamic import inside the async factory instead.
+vi.mock("@/api/base44Client", async () => {
+  const { makeBase44Stub } = await import("@/test/testUtils");
+  return { base44: makeBase44Stub() };
 });
 
 import OASISQuickUpdate from "./OASISQuickUpdate";
@@ -34,10 +27,22 @@ describe("OASISQuickUpdate", () => {
     expect(screen.getByText("Pain Frequency (M1242)")).toBeInTheDocument();
   });
 
-  it("requires an assessment type before the draft can be saved", async () => {
+  it("keeps Save disabled with no changes and no assessment type", async () => {
     renderWithProviders(<OASISQuickUpdate patient={patient} />);
     const save = await screen.findByRole("button", { name: /Save as Draft/i });
-    // No assessment type selected and no changes → save is disabled.
     expect(save).toBeDisabled();
+  });
+
+  it("keeps Save disabled when there are changes but still no assessment type", async () => {
+    renderWithProviders(<OASISQuickUpdate patient={patient} />);
+    const save = await screen.findByRole("button", { name: /Save as Draft/i });
+
+    // Typing a clinical note flips hasChanges true without picking a type. Save
+    // must stay gated on the required assessment type, and the hint should appear.
+    const note = screen.getByLabelText(/Clinical Note/i);
+    fireEvent.change(note, { target: { value: "Patient stable, no acute changes." } });
+
+    expect(save).toBeDisabled();
+    expect(screen.getByText(/Select an assessment type to save/i)).toBeInTheDocument();
   });
 });
