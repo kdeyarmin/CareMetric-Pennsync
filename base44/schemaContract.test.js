@@ -218,6 +218,9 @@ const FIELD_USAGE = {
     'signature_hash_at', 'archived', 'admin_notified',
   ],
   Patient: ['merged_into_id', 'merged_at', 'merged_by', 'validation_overrides'],
+  // ComplianceAudit.rule_versions — the smart-note save path stamps which
+  // agency-configured MedicareComplianceRule versions judged the note.
+  ComplianceAudit: ['rule_versions'],
   Referral: ['page_range', 'detection_confidence', 'manually_confirmed', 'rejection_date', 'rejected_by'],
   PatientAlert: ['contributing_factors', 'recommended_actions', 'risk_score'],
   // OASISFeedback is written by two paths: the patient-match writers

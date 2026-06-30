@@ -26,6 +26,11 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
   const [error, setError] = useState(null);
   const [transcript, setTranscript] = useState(null);
   const [showMapper, setShowMapper] = useState(false);
+  // Advisory-only structured SOAP shown for reference. It is NEVER the saved /
+  // grounded source — the raw transcript is, so the Step-2 value-guard + grounding
+  // verify the final note against what was actually said (not an AI structuring
+  // that could have invented a value).
+  const [soapPreview, setSoapPreview] = useState(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -111,8 +116,21 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
       });
       if (res.data && res.data.success) {
         const soap = res.data.data;
-        const formatted = `
-[SOAP Note Generated from Audio]
+        const rawTranscript = (soap.raw_transcript || "").trim();
+        if (rawTranscript) {
+          // Feed the TRANSCRIPT (what was actually said) into the draft as the
+          // grounding source of truth; the structured SOAP is kept only as an
+          // advisory reference card. The constrained scribe in Step 2 re-voices
+          // and grounds this transcript, so a backend AI fabrication can't slip
+          // into the chart unverified.
+          onTranscribed?.(enhanceTranscription(rawTranscript));
+          setSoapPreview(soap);
+          toast.success("Transcribed — review and generate a verified note in the next step.");
+        } else {
+          // No transcript came back: fall back to the structured block so the
+          // recording isn't lost. It still passes through Step-2 verification.
+          const formatted = `
+[SOAP draft from audio — verify every detail in the next step]
 Subjective: ${soap.subjective || "N/A"}
 
 Objective: ${soap.objective || "N/A"}
@@ -121,8 +139,9 @@ Assessment: ${soap.assessment || "N/A"}
 
 Plan: ${soap.plan || "N/A"}
 `.trim();
-        onTranscribed?.(formatted);
-        toast.success("SOAP note generated!");
+          onTranscribed?.(formatted);
+          toast.success("SOAP draft generated — verify it in the next step.");
+        }
       } else {
         toast.error("Failed to generate SOAP note.");
       }
@@ -141,6 +160,7 @@ Plan: ${soap.plan || "N/A"}
     setError(null);
     setTranscript(null);
     setShowMapper(false);
+    setSoapPreview(null);
   };
 
   const formatTime = (seconds) => {
@@ -232,6 +252,20 @@ Plan: ${soap.plan || "N/A"}
               <X className="w-4 h-4" />
             </Button>
           </div>
+
+          {soapPreview && (
+            <div className="border-t border-slate-200 pt-3 mt-3">
+              <p className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                <FileAudio className="w-3.5 h-3.5" /> AI SOAP structure — reference only (not saved)
+              </p>
+              <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1 leading-relaxed">
+                {["subjective", "objective", "assessment", "plan"].map((k) => (
+                  <p key={k}><span className="font-semibold capitalize text-slate-700">{k}:</span> {soapPreview[k] || "N/A"}</p>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">Your transcript was added to the note. Generate a verified note in the next step — every value is checked against what was said.</p>
+            </div>
+          )}
 
           {transcript && showMapper && (
             <div className="border-t border-slate-200 pt-3 mt-3">

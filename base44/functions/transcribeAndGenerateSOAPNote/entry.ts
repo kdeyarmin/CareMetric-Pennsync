@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
                 model: 'claude-opus-4-8',
                 max_tokens: 2048,
-                system: "You are an expert clinical documentation assistant. Extract information from the provided transcript and generate a structured SOAP note (Subjective, Objective, Assessment, Plan). Return ONLY a JSON object with keys: subjective, objective, assessment, plan.",
+                system: "You are an expert clinical documentation assistant. Re-organize ONLY the information in the provided transcript into a structured SOAP note (Subjective, Objective, Assessment, Plan). This is a DRAFT for a nurse to verify — it is NOT the final record. Do NOT add, infer, or invent any clinical fact, vital sign, measurement, medication, diagnosis, or finding that is not explicitly stated in the transcript. If something was not said, leave it out. Return ONLY a JSON object with keys: subjective, objective, assessment, plan.",
                 messages: [
                     {
                         role: "user",

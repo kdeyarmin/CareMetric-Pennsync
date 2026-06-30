@@ -103,6 +103,20 @@
         }
       },
       "description": "Override trail recorded when a critical chart conflict was knowingly accepted"
+    },
+    "rule_versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_name": { "type": "string" },
+          "cop_reference": { "type": "string" },
+          "category": { "type": "string" },
+          "severity": { "type": "string" },
+          "effective_date": { "type": "string" }
+        }
+      },
+      "description": "Which MedicareComplianceRule versions (name/CoP ref/effective date) judged this note — the agency-configured rules folded into the required-element set at save time. Empty when only the static defaults applied."
     }
   },
   "required": [

@@ -51,9 +51,13 @@ Deno.serve(async (req) => {
 
     // Step 2: Generate structured clinical note
     debugLog('Generating clinical note...');
-    const notePrompt = `Based on the following patient interaction transcription, generate a professional structured clinical note in SOAP format (Subjective, Objective, Assessment, Plan).
+    const notePrompt = `Re-organize ONLY the information in the following visit transcription into a structured clinical note in SOAP format (Subjective, Objective, Assessment, Plan).
 
-Patient Information:
+This output is a DRAFT that a nurse will verify in a fact-checking step before it reaches the chart — it is NOT the final record.
+
+ABSOLUTE RULE: Use ONLY what is explicitly stated in the transcription. Do NOT add, infer, or invent any clinical fact, vital sign, measurement, medication, diagnosis, or finding that is not in the transcript. If a SOAP section has no supporting content in the transcript, write "Not documented in this recording" rather than fabricating it. The patient header below is for labeling only — do not treat it as clinical findings.
+
+Patient Information (label only):
 - Name: ${patient.first_name} ${patient.last_name}
 - DOB: ${patient.date_of_birth || 'N/A'}
 - Primary Diagnosis: ${diagnosis}
@@ -62,13 +66,13 @@ Patient Information:
 Transcription:
 ${transcription}
 
-Generate a comprehensive, Medicare-compliant clinical note that includes:
-1. Subjective: Patient's reported symptoms, concerns, and relevant history
-2. Objective: Vital signs, physical findings, assessment results
-3. Assessment: Clinical impression and diagnosis
-4. Plan: Treatment recommendations, medications, follow-up care
+Organize the stated content into:
+1. Subjective: Patient's reported symptoms, concerns, and history AS STATED
+2. Objective: Vital signs and physical findings AS STATED (do not invent)
+3. Assessment: Clinical impression AS STATED
+4. Plan: Treatment/follow-up AS STATED
 
-Format the note professionally for medical records.`;
+Format professionally. Add nothing that was not said.`;
 
     const noteResponse = await base44.asServiceRole.integrations.Core.InvokeLLM({
       model: "claude_opus_4_8",

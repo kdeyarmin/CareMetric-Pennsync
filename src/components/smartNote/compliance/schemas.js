@@ -18,6 +18,21 @@ export const GroundingResponse = z.object({
   ),
 });
 
+// Completeness-critic response. The critic ONLY judges whether each required
+// element id is documented/adequate in the draft and may suggest a question — it
+// never authors note prose, so this schema deliberately has no free-text "note".
+export const CritiqueResponse = z.object({
+  elements: z.array(
+    z.object({
+      id: z.string(),
+      documented: z.boolean(),
+      adequate: z.boolean().optional(),
+      reason: z.string().optional(),
+      suggestedQuestion: z.string().optional(),
+    })
+  ),
+});
+
 /**
  * Validate an LLM response (string or object) against a zod schema.
  * @returns {{ ok: true, data: any } | { ok: false, error: string }}

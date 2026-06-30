@@ -5,6 +5,10 @@ import { Sparkles, ArrowRight, HelpCircle, AlertTriangle, ShieldCheck, ShieldAle
 import { toast } from "sonner";
 import { normalizeDraft } from "./compliance/normalize";
 import { getRequiredElements } from "./compliance/requiredElements";
+import { buildOverrides } from "./compliance/ruleLibrary";
+import { checkAnswerAdequacy } from "./compliance/answerAdequacy";
+import { critiqueCoverage } from "./compliance/completenessCritic";
+import { reconcileCritique, mergeGaps } from "./compliance/criticReconcile";
 import { detectPresence, computeGaps, computeCriticalGaps, computeCarryForward } from "./compliance/presenceDetection";
 import { splitSentences, formatVitalsSentence } from "./compliance/factExtraction";
 import { generateConstrainedNote, groundNote } from "./compliance/generation";
@@ -48,7 +52,7 @@ import { withTimeout } from "./compliance/withTimeout";
  *                     the reviewer renders the fact-check banner but defers the
  *                     note display + actions (e.g. Save-to-chart, PDF) to the host.
  */
-export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home_health", visitType = "routine_visit", vitals = null, priorNote = "", patient = null, currentUser, onFinalNote, onBack, renderFinalNote, onEscalate }) {
+export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home_health", visitType = "routine_visit", vitals = null, priorNote = "", patient = null, currentUser, onFinalNote, onBack, renderFinalNote, onEscalate, complianceRules = [] }) {
   const [answers, setAnswers] = useState({});
   const [prefilledIds, setPrefilledIds] = useState(new Set());
   const [confirmedNegatives, setConfirmedNegatives] = useState(new Set());
@@ -64,13 +68,25 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   // into a provider follow-up task (so the button can't double-create).
   const [showProvenance, setShowProvenance] = useState(false);
   const [escalatedKeys, setEscalatedKeys] = useState(() => new Set());
+  // LLM completeness-critic result ({ demotedIds, inadequate }) and run state.
+  // Advisory only: it can add a question or a "be more specific" nudge, never
+  // remove a required element or change critical gating. Stays null offline.
+  const [critic, setCritic] = useState(null);
+  const [criticRunning, setCriticRunning] = useState(false);
+  // Per-element "see example" expander state in the questions list.
+  const [openExamples, setOpenExamples] = useState(() => new Set());
 
   // Deterministic, instant, offline scan — no LLM, no invented score.
   const analysis = useMemo(() => {
     if (!roughNote || roughNote.trim().length < 20) return null;
     const normalized = normalizeDraft(roughNote);
     const vitalsSentence = formatVitalsSentence(vitals);
-    const required = getRequiredElements(serviceLine, visitType);
+    // Fold any agency-configured MedicareComplianceRule records over the static
+    // defaults. `overrides` is null when nothing applies, so getRequiredElements
+    // falls back to the offline static set. `appliedRules` is stamped into the
+    // saved compliance audit so each note records which rule version judged it.
+    const { overrides, applied: appliedRules } = buildOverrides(complianceRules, { serviceLine, visitType });
+    const required = getRequiredElements(serviceLine, visitType, overrides);
     // Presence/coverage must see structured vitals captured on the form, even
     // when the nurse didn't retype them into the draft — otherwise vitals are
     // falsely scored as "not documented this visit". The draft sentences fed to
@@ -80,8 +96,8 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     const presence = detectPresence(presenceText, required);
     const gaps = computeGaps(presence, required);
     const draftScore = computeDraftPresenceScore({ requiredElements: required, presenceResults: presence });
-    return { normalized, vitalsSentence, required, presence, gaps, draftScore };
-  }, [roughNote, serviceLine, visitType, vitals]);
+    return { normalized, vitalsSentence, required, presence, gaps, draftScore, appliedRules };
+  }, [roughNote, serviceLine, visitType, vitals, complianceRules]);
 
   // Deterministic visit-over-visit comparison: what measured values changed since
   // the patient's last documented note. Pure + offline, derived from the same
@@ -118,13 +134,40 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   const priorNoteRef = useRef("");
   priorNoteRef.current = priorNote;
   useEffect(() => {
-    setFinalNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setAcknowledgedRisks(false); setAckJustification(""); setShowProvenance(false); setEscalatedKeys(new Set());
+    setFinalNote(""); setVerifiedNote(""); setFixRequired(null); setIncludeTrend(false); setAcknowledgedRisks(false); setAckJustification(""); setShowProvenance(false); setEscalatedKeys(new Set()); setCritic(null); setOpenExamples(new Set());
     if (!analysis) { setAnswers({}); setPrefilledIds(new Set()); setConfirmedNegatives(new Set()); return; }
     const prefill = computeCarryForward(priorNoteRef.current || "", analysis.gaps);
     setAnswers(prefill);
     setPrefilledIds(new Set(Object.keys(prefill)));
     setConfirmedNegatives(new Set());
   }, [analysis]);
+
+  // Run the LLM completeness critic ONCE per scan (not per keystroke), online only.
+  // It re-reads the draft to catch elements the keyword scan over-counted as
+  // "documented" (e.g. a negated mention) and flags vague ones — surfaced as extra
+  // questions / nudges. Best-effort: any failure leaves the deterministic result
+  // untouched, so the flow always works offline.
+  useEffect(() => {
+    if (!analysis || typeof navigator !== "undefined" && !navigator.onLine) { setCritic(null); return; }
+    let cancelled = false;
+    setCriticRunning(true);
+    (async () => {
+      try {
+        const res = await withTimeout(
+          critiqueCoverage({ draftText: analysis.normalized, elements: analysis.required }, { userKey: currentUser?.email || "anon" }),
+          20000,
+          "Completeness check timed out.",
+        );
+        if (cancelled || !res?.ok) return;
+        setCritic(reconcileCritique(res.elements, { requiredElements: analysis.required, presence: analysis.presence }));
+      } catch {
+        // Advisory only — keep the deterministic scan if the critic can't run.
+      } finally {
+        if (!cancelled) setCriticRunning(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [analysis, currentUser?.email]);
 
   const setAnswer = (id, value) => {
     setAnswers(prev => ({ ...prev, [id]: value }));
@@ -176,7 +219,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     const acknowledgment = critical.length
       ? { acknowledged: acknowledgedRisks, justification: ackJustification.trim(), finding_ids: critical.map((f) => f.id) }
       : null;
-    return { finalNote: text, coverageScore, draftScore: analysis.draftScore, presence: analysis.presence, required: analysis.required, answeredIds, confirmedNegativeIds, answers, chartFindings, sustainedTrends, comparisons, acknowledgment };
+    return { finalNote: text, coverageScore, draftScore: analysis.draftScore, presence: analysis.presence, required: analysis.required, answeredIds, confirmedNegativeIds, answers, chartFindings, sustainedTrends, comparisons, acknowledgment, appliedRules: analysis.appliedRules || [] };
   };
 
   // `groundingText` is the subset of `text` worth grounding (default: all of it).
@@ -301,7 +344,9 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   };
 
   // derived
-  const gaps = analysis?.gaps || [];
+  // Effective gaps = deterministic gaps + any the critic demoted (over-counted as
+  // present). Additive only — the critic never removes a deterministic gap.
+  const gaps = analysis ? mergeGaps(analysis.gaps, analysis.required, critic?.demotedIds || []) : [];
   const answeredOrConfirmed = (id) => !!answers[id]?.trim() || confirmedNegatives.has(id);
   const answeredCount = gaps.filter(g => answeredOrConfirmed(g.id)).length;
   const criticalUnanswered = analysis ? computeCriticalGaps(analysis.presence, analysis.required).filter(e => !answers[e.id]?.trim()) : [];
@@ -409,6 +454,12 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
                 <span className="text-xs text-slate-500 shrink-0">{answeredCount}/{gaps.length} addressed</span>
               </div>
               <p className="text-xs text-slate-500 mb-2">These required elements weren't in your draft. Answer what applies. Non-critical items left blank become an explicit "Not documented this visit." — never invented.</p>
+              {criticRunning && (
+                <p className="text-xs text-indigo-500 mb-2 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Double-checking your draft for completeness…</p>
+              )}
+              {!criticRunning && critic?.demotedIds?.length > 0 && (
+                <p className="text-xs text-indigo-600 mb-2">The completeness check found {critic.demotedIds.length} element{critic.demotedIds.length > 1 ? "s" : ""} that read as mentioned but not actually documented — added below.</p>
+              )}
               {hasUnconfirmedNegatives && (
                 <button type="button" onClick={confirmAllRoutineNegatives}
                   className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-100 active:scale-95 transition">
@@ -421,6 +472,12 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
               <div className="space-y-3">
                 {gaps.map(g => {
                   const negConfirmed = confirmedNegatives.has(g.id);
+                  const demoted = critic?.demotedIds?.includes(g.id);
+                  const criticNote = critic?.inadequate?.[g.id];
+                  const examples = Array.isArray(g.examples) ? g.examples.filter(Boolean) : [];
+                  const examplesOpen = openExamples.has(g.id);
+                  const answerText = answers[g.id] || "";
+                  const adq = answerText.trim() ? checkAnswerAdequacy(g.id, answerText) : { adequate: true };
                   return (
                     <div key={g.id} className="p-3 bg-amber-50/70 border border-amber-200 rounded-lg">
                       <div className="flex items-start gap-2">
@@ -428,9 +485,28 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-sm font-medium text-slate-900">{g.question}</p>
-                            {prefilledIds.has(g.id) && <span className="shrink-0 text-[10px] font-semibold text-navy-700 bg-navy-100 px-1.5 py-0.5 rounded-full">from last visit · confirm</span>}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {demoted && <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full">AI: not fully documented</span>}
+                              {prefilledIds.has(g.id) && <span className="text-[10px] font-semibold text-navy-700 bg-navy-100 px-1.5 py-0.5 rounded-full">from last visit · confirm</span>}
+                            </div>
                           </div>
                           <p className="text-xs text-slate-400 mt-0.5">{g.copReference}</p>
+                          {g.hint && <p className="text-xs text-slate-500 mt-1 leading-relaxed">{g.hint}</p>}
+                          {examples.length > 0 && (
+                            <div className="mt-1">
+                              <button type="button" onClick={() => setOpenExamples(prev => { const n = new Set(prev); n.has(g.id) ? n.delete(g.id) : n.add(g.id); return n; })}
+                                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 underline-offset-2 hover:underline">
+                                {examplesOpen ? "Hide example" : "See a compliant example"}
+                              </button>
+                              {examplesOpen && (
+                                <ul className="mt-1 space-y-1">
+                                  {examples.map((ex, i) => (
+                                    <li key={i} className="text-xs text-slate-600 bg-white border border-slate-200 rounded-md px-2 py-1 leading-relaxed italic">“{ex}”</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                       {g.standardNegative && (
@@ -440,15 +516,23 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
                         </label>
                       )}
                       {!negConfirmed && (
-                        <div className="mt-2 flex items-start gap-2">
-                          <textarea
-                            value={answers[g.id] || ""}
-                            onChange={e => setAnswer(g.id, e.target.value)}
-                            placeholder="Type or dictate your answer — written into the note in compliant language…"
-                            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none resize-none min-h-[56px] leading-relaxed"
-                          />
-                          <DictationButton onText={(t) => appendAnswer(g.id, t)} />
-                        </div>
+                        <>
+                          <div className="mt-2 flex items-start gap-2">
+                            <textarea
+                              value={answerText}
+                              onChange={e => setAnswer(g.id, e.target.value)}
+                              placeholder="Type or dictate your answer — written into the note in compliant language…"
+                              className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none resize-none min-h-[56px] leading-relaxed"
+                            />
+                            <DictationButton onText={(t) => appendAnswer(g.id, t)} />
+                          </div>
+                          {!adq.adequate && (
+                            <p className="mt-1.5 text-xs text-amber-700 bg-amber-100/70 border border-amber-200 rounded-md px-2 py-1 leading-relaxed">💡 {adq.tip}</p>
+                          )}
+                          {adq.adequate && criticNote?.reason && (
+                            <p className="mt-1.5 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-2 py-1 leading-relaxed">AI suggestion: {criticNote.reason}</p>
+                          )}
+                        </>
                       )}
                     </div>
                   );

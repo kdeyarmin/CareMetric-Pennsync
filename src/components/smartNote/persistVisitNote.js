@@ -43,6 +43,7 @@ export async function persistVisitNote({
   const {
     finalNote: finalText, coverageScore, draftScore, presence,
     answeredIds, confirmedNegativeIds, answers, chartFindings = [], sustainedTrends = [],
+    appliedRules = [],
   } = result;
   const structured = deriveStructuredVisitFields(presence, { answeredIds, confirmedNegativeIds, textById: answers });
   // Surface the deterministic chart conflicts + trends in the saved records so
@@ -55,7 +56,7 @@ export async function persistVisitNote({
   const acknowledgment = result.acknowledgment?.acknowledged
     ? { acknowledged_by: currentUser.email, acknowledged_at: new Date().toISOString(), justification: result.acknowledgment.justification, finding_ids: result.acknowledgment.finding_ids }
     : null;
-  const auditFields = buildAuditFields({ coverageScore, chartFindings, acknowledgment });
+  const auditFields = buildAuditFields({ coverageScore, chartFindings, acknowledgment, appliedRules });
 
   if (!navigator.onLine) {
     const { addToSyncQueue } = await import('@/lib/indexedDB');
