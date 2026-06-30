@@ -61,6 +61,37 @@ export default function OfflineManager() {
             }
             await removeFromSyncQueue(item.id);
             syncedCount += 1;
+          } else if (item.action === 'UPDATE_VISIT') {
+            // A visit that already exists server-side was edited/documented offline
+            // (a same-session online save edited offline, or a deep-linked scheduled
+            // visit documented offline). UPDATE it in place instead of creating a
+            // duplicate. `visit_id` is the real server id; `__audit` is reporting
+            // meta peeled off the Visit fields, same as the CREATE_VISIT path.
+            const { __audit, visit_id, ...visitPayload } = item.payload || {};
+            if (!visit_id) {
+              console.warn('Skipping UPDATE_VISIT with no visit_id:', item.id);
+              continue;
+            }
+            await base44.entities.Visit.update(visit_id, visitPayload);
+            // Reconcile the ComplianceAudit for this visit, keyed on visit_id so a
+            // retried drain never double-creates: update the existing audit (clears
+            // any stale `critical` status the edit resolved), or create one if the
+            // visit had none yet (e.g. a scheduled visit first documented offline).
+            if (__audit) {
+              const { audit_id: _ignoredAuditId, ...auditPayload } = __audit;
+              const audits = await base44.entities.ComplianceAudit.filter({ visit_id });
+              if (audits && audits.length > 0) {
+                await base44.entities.ComplianceAudit.update(audits[0].id, auditPayload);
+              } else {
+                await base44.entities.ComplianceAudit.create({
+                  visit_id, patient_id: visitPayload.patient_id,
+                  audit_date: new Date().toISOString(), audit_type: 'automated',
+                  ...auditPayload,
+                });
+              }
+            }
+            await removeFromSyncQueue(item.id);
+            syncedCount += 1;
           } else if (item.action === 'CREATE_TASK') {
             // A provider follow-up escalated while offline (critical chart conflict
             // or vital). Create the Task on reconnect so the follow-up isn't lost.

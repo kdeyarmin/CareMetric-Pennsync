@@ -9,6 +9,7 @@ const noteConvCreate = vi.fn(async () => ({}));
 const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
 const addToSyncQueue = vi.fn(async () => {});
+const dropQueuedCreateVisits = vi.fn(async () => 0);
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
@@ -25,7 +26,7 @@ vi.mock("@/components/utils/activityLogger", () => ({ logActivity: vi.fn(), Acti
 // Isolate from the (separately tested) pure compliance helpers.
 vi.mock("@/components/smartNote/compliance/coverageScore", () => ({ deriveStructuredVisitFields: () => ({}), toNoteConversionFields: (x) => x }));
 vi.mock("@/components/smartNote/compliance/reportingFields", () => ({ buildVisitReportingFields: () => ({}), buildAuditFields: () => ({ status: "ok" }) }));
-vi.mock("@/lib/indexedDB", () => ({ addToSyncQueue: (...a) => addToSyncQueue(...a) }));
+vi.mock("@/lib/indexedDB", () => ({ addToSyncQueue: (...a) => addToSyncQueue(...a), dropQueuedCreateVisits: (...a) => dropQueuedCreateVisits(...a) }));
 
 import { persistVisitNote } from "./persistVisitNote";
 
@@ -100,6 +101,36 @@ describe("persistVisitNote", () => {
     // the audit is forced to pending_review (not the coverage-derived status).
     expect(payload.grounding_pending).toBe(true);
     expect(payload.__audit.status).toBe("pending_review");
+    expect(visitCreate).not.toHaveBeenCalled();
+    // A brand-new offline visit dedupes prior queued creates for the same
+    // patient+date so an offline re-save can't produce two visits on drain.
+    expect(dropQueuedCreateVisits).toHaveBeenCalledWith("p1", "2026-06-21");
+  });
+
+  it("queues UPDATE_VISIT (not a duplicate CREATE) when offline re-saving an existing visit", async () => {
+    setOnline(false);
+    const out = await persistVisitNote({ ...baseArgs, savedVisitId: "visit-9", savedAuditId: "audit-9", vitals: { temperature: 99 } });
+    expect(out).toMatchObject({ mode: "offline", visitId: "visit-9", auditId: "audit-9" });
+    expect(addToSyncQueue).toHaveBeenCalledTimes(1);
+    const [action, payload] = addToSyncQueue.mock.calls[0];
+    expect(action).toBe("UPDATE_VISIT");
+    expect(payload.visit_id).toBe("visit-9");
+    expect(payload.vital_signs).toEqual({ temperature: 99 });
+    expect(payload.__audit).toBeTruthy();
+    // An existing visit is updated in place — no CREATE_VISIT, no dedupe needed.
+    expect(dropQueuedCreateVisits).not.toHaveBeenCalled();
+    expect(visitCreate).not.toHaveBeenCalled();
+  });
+
+  it("queues UPDATE_VISIT (status completed) when offline documenting a deep-linked scheduled visit", async () => {
+    setOnline(false);
+    const out = await persistVisitNote({ ...baseArgs, existingVisitId: "visit-sched" });
+    expect(out).toMatchObject({ mode: "offline", visitId: "visit-sched" });
+    const [action, payload] = addToSyncQueue.mock.calls[0];
+    expect(action).toBe("UPDATE_VISIT");
+    expect(payload.visit_id).toBe("visit-sched");
+    // The queued update closes the scheduled visit so it stops triggering overdue alerts.
+    expect(payload.status).toBe("completed");
     expect(visitCreate).not.toHaveBeenCalled();
   });
 });

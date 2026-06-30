@@ -130,6 +130,31 @@ export const removeFromSyncQueue = async (id) => {
 };
 
 /**
+ * Remove any queued CREATE_VISIT items for a given patient+visit_date.
+ *
+ * Used to collapse repeated offline saves of the SAME visit into one: when a note
+ * is saved offline and then edited and re-saved while still offline, the second
+ * save would otherwise enqueue a second CREATE_VISIT with a fresh
+ * client_request_id, and the drain would create two visits. Dropping the prior
+ * queued create first means the latest edit wins and exactly one visit syncs.
+ * Returns the number of queued items removed.
+ */
+export const dropQueuedCreateVisits = async (patientId, visitDate) => {
+  if (!patientId || !visitDate) return 0;
+  const queue = await getSyncQueue();
+  const stale = queue.filter(
+    (item) =>
+      item.action === 'CREATE_VISIT' &&
+      item.payload?.patient_id === patientId &&
+      item.payload?.visit_date === visitDate,
+  );
+  for (const item of stale) {
+    await removeFromSyncQueue(item.id);
+  }
+  return stale.length;
+};
+
+/**
  * Clear the locally-cached patient roster (PHI) on logout/timeout.
  *
  * Deliberately clears ONLY the re-fetchable PATIENTS cache and leaves
