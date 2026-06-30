@@ -7,9 +7,29 @@ import FinancialGate from "@/components/ui/FinancialGate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
-import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText, ChevronUp, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText, ChevronUp, ChevronDown, Download, Trophy } from "lucide-react";
 import { DEFAULT_PDGM_RATES } from "@/components/pdgm/pdgmRates";
 import { computeImpact, normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
+import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
+
+function downloadCsv(filename, csv) {
+  try {
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch {
+    toast.error("Couldn't generate the export");
+  }
+}
 
 // Friendly labels for the pdgmRates clinical-group keys (the FE mirror of the
 // backend calculatePDGM groups).
@@ -81,6 +101,8 @@ export default function DocumentationImpact() {
   // Segment the impact by who documented it (created_by) and/or clinical group.
   const [nurseFilter, setNurseFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const recNurse = (u) => u?.created_by || u?.completed_by || "Unknown";
   const recGroup = (u) => normalizePdgmDataToScenario(u?.pdgm_data).clinicalGroup || "";
 
@@ -93,11 +115,14 @@ export default function DocumentationImpact() {
     [analyzed],
   );
 
+  const recDate = (u) => u?.assessment_date || "";
   const filteredAnalyzed = useMemo(
     () => analyzed.filter((u) =>
       (nurseFilter === "all" || recNurse(u) === nurseFilter) &&
-      (groupFilter === "all" || recGroup(u) === groupFilter)),
-    [analyzed, nurseFilter, groupFilter],
+      (groupFilter === "all" || recGroup(u) === groupFilter) &&
+      (!dateFrom || (recDate(u) && recDate(u) >= dateFrom)) &&
+      (!dateTo || (recDate(u) && recDate(u) <= dateTo))),
+    [analyzed, nurseFilter, groupFilter, dateFrom, dateTo],
   );
 
   const totalEstimated = useMemo(() => filteredAnalyzed.reduce((s, u) => s + u.estimated_payment, 0), [filteredAnalyzed]);
@@ -138,6 +163,36 @@ export default function DocumentationImpact() {
     });
     return arr;
   }, [rows, sortKey, sortDir]);
+
+  // Per-nurse leaderboard — total documented uplift per clinician, ranked.
+  const byNurse = useMemo(() => {
+    const m = new Map();
+    for (const u of documented) {
+      const n = recNurse(u);
+      const e = m.get(n) || { nurse: n, count: 0, before: 0, after: 0 };
+      e.count += 1; e.before += u.estimated_payment; e.after += u.optimized_payment;
+      m.set(n, e);
+    }
+    return Array.from(m.values()).map((e) => {
+      const before = Math.round(e.before * 100) / 100;
+      const after = Math.round(e.after * 100) / 100;
+      const uplift = Math.round((after - before) * 100) / 100;
+      return { ...e, before, after, uplift, pct: before ? Math.round((uplift / before) * 1000) / 10 : 0 };
+    }).sort((a, b) => b.uplift - a.uplift);
+  }, [documented]);
+
+  const exportCsv = () => {
+    const columns = [
+      { key: "patient", label: "Assessment" },
+      { key: "nurse", label: "Nurse" },
+      { key: "date", label: "Date" },
+      { key: "before", label: "Before" },
+      { key: "after", label: "After" },
+      { key: "uplift", label: "Uplift" },
+      { key: "pct", label: "Uplift %" },
+    ];
+    downloadCsv(`documentation-impact_${exportTimestamp()}.csv`, toCsv(columns, sortedRows));
+  };
 
   // Assessments whose pdgm_data can seed a "before" scenario.
   const seedable = useMemo(
@@ -194,11 +249,19 @@ export default function DocumentationImpact() {
           <CardContent>
             {/* Drill down by who documented it, or by clinical group. */}
             {analyzed.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                 <LabeledSelect label="Nurse / clinician" value={nurseFilter} onChange={setNurseFilter}
                   options={[["all", `All clinicians (${nurseOptions.length})`], ...nurseOptions.map((n) => [n, n])]} />
                 <LabeledSelect label="Clinical group" value={groupFilter} onChange={setGroupFilter}
                   options={[["all", "All clinical groups"], ...groupOptions.map((g) => [g, CLINICAL_GROUP_LABELS[g] || g])]} />
+                <div>
+                  <label htmlFor="impact-from" className="text-xs font-semibold text-slate-700 mb-1.5 block">From date</label>
+                  <Input id="impact-from" type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="h-10 text-sm" />
+                </div>
+                <div>
+                  <label htmlFor="impact-to" className="text-xs font-semibold text-slate-700 mb-1.5 block">To date</label>
+                  <Input id="impact-to" type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="h-10 text-sm" />
+                </div>
               </div>
             )}
             {analyzed.length === 0 ? (
@@ -240,13 +303,66 @@ export default function DocumentationImpact() {
         </Card>
       </FinancialGate>
 
+      {/* Per-nurse leaderboard — admin-only, ranked by uplift. */}
+      {byNurse.length > 1 && (
+        <FinancialGate>
+          <Card className="modern-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Trophy className="w-4 h-4 text-gold-500" /> Impact by nurse
+              </CardTitle>
+              <p className="text-xs text-slate-500">Total documented uplift per clinician, ranked.</p>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8">#</TableHead>
+                    <TableHead>Nurse</TableHead>
+                    <TableHead className="text-right">Assessments</TableHead>
+                    <TableHead className="text-right">Before</TableHead>
+                    <TableHead className="text-right">After</TableHead>
+                    <TableHead className="text-right">Uplift</TableHead>
+                    <TableHead className="text-right">%</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {byNurse.map((n, i) => (
+                    <TableRow key={n.nurse}>
+                      <TableCell className="text-slate-400 tabular-nums">{i + 1}</TableCell>
+                      <TableCell className="font-medium text-slate-800 max-w-[220px] truncate" title={n.nurse}>{n.nurse}</TableCell>
+                      <TableCell className="text-right tabular-nums text-slate-600">{n.count}</TableCell>
+                      <TableCell className="text-right tabular-nums text-slate-700">{money(n.before)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-emerald-800">{money(n.after)}</TableCell>
+                      <TableCell className={`text-right tabular-nums font-semibold ${n.uplift > 0 ? "text-emerald-600" : n.uplift < 0 ? "text-red-600" : "text-slate-500"}`}>
+                        {n.uplift > 0 ? "+" : ""}{money(n.uplift).replace("$-", "-$")}
+                      </TableCell>
+                      <TableCell className={`text-right tabular-nums ${n.uplift > 0 ? "text-emerald-600" : n.uplift < 0 ? "text-red-600" : "text-slate-500"}`}>
+                        {n.uplift > 0 ? "+" : ""}{n.pct}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </FinancialGate>
+      )}
+
       {/* Per-assessment drill-down — admin-only, sortable. */}
       {documented.length > 0 && (
         <FinancialGate>
           <Card className="modern-card">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Per-assessment impact</CardTitle>
-              <p className="text-xs text-slate-500">Each analyzed assessment with an after-corrections figure. Click a column to sort.</p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base">Per-assessment impact</CardTitle>
+                  <p className="text-xs text-slate-500">Each analyzed assessment with an after-corrections figure. Click a column to sort.</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={exportCsv} className="gap-2 shrink-0">
+                  <Download className="w-4 h-4" /> Export CSV
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
