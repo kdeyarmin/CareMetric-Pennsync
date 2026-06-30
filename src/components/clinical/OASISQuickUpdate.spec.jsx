@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
-import { renderWithProviders, makeBase44Stub } from "@/test/testUtils";
+import { renderWithProviders } from "@/test/testUtils";
 
 // Use the shared Base44 stub (every entity call resolves empty). The factory is
 // hoisted, so it can't close over module imports — pull the helper in via a
