@@ -449,7 +449,14 @@ export default function SmartOASISAssessment() {
         <PatientPicker
           patients={patients}
           selectedPatientId={selectedPatientId}
-          onSelect={(id) => { setSelectedPatientId(id); setAddedToCarePlan([]); }}
+          onSelect={(id) => {
+            setSelectedPatientId(id);
+            setAddedToCarePlan([]);
+            // Drop any open conflict/override state so a pending "Add anyway" can't
+            // write the previous patient's interventions to the newly selected one.
+            setCarePlanConflicts([]);
+            setPendingCarePlanIds([]);
+          }}
         />
 
         {answeredTotal > 0 && (

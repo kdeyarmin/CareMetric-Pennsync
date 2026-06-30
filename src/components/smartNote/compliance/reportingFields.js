@@ -95,9 +95,11 @@ export function buildAuditFields({ coverageScore = 0, chartFindings = [], acknow
     status: escalateAuditStatus(base, chartFindings),
     issues: toAuditIssues(chartFindings),
     ...(acknowledgment ? { acknowledgment } : {}),
-    // Version stamp: which agency-configured rules judged this note (empty when
-    // only the static defaults applied). Lets an auditor see the exact rule set.
-    ...(Array.isArray(appliedRules) && appliedRules.length ? { rule_versions: appliedRules } : {}),
+    // Version stamp: which agency-configured rules judged this note ([] when only
+    // the static defaults applied). ALWAYS included — partial ComplianceAudit
+    // updates only write the fields present, so omitting it on a re-save would
+    // leave a stale prior stamp claiming rules judged a note they no longer do.
+    rule_versions: Array.isArray(appliedRules) ? appliedRules : [],
   };
 }
 
