@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import {
   Search, ArrowRight, Users, GraduationCap, Stethoscope,
-  ShieldCheck, BarChart3, Database, Settings, LayoutGrid,
+  ShieldCheck, BarChart3, Database, Settings, LayoutGrid, ClipboardList,
 } from "lucide-react";
 import { NAV_MAP, isLinkablePage } from "@/lib/nav.manifest";
 import { isSuperAdminView } from "@/lib/roles";
@@ -43,6 +43,15 @@ const GROUPS = [
     pages: [
       "AdminTraining", "AdminTrainingAnalytics",
       "LearningReports", "AITrainingGenerator", "AIComplianceInServices",
+    ],
+  },
+  {
+    title: "Intake & Referrals",
+    description: "Take in new referrals, triage them, and start admissions.",
+    icon: ClipboardList,
+    color: "text-rose-600 bg-rose-50",
+    pages: [
+      "ReferralIntake", "ReferralTriage",
     ],
   },
   {

@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
         message: `You have ${items.length} overdue in-service${items.length === 1 ? '' : 's'} in "${plan.name}". Please complete ${items.length === 1 ? 'it' : 'them'} to stay compliant.`,
         type: 'training_due',
         priority: 'high',
-        action_url: '/MyLearning',
+        action_url: '/LearningCenter?tab=courses',
         action_label: 'Open My Learning',
         metadata: { plan_id: planId, plan_name: plan.name, overdue_count: items.length },
       }));
