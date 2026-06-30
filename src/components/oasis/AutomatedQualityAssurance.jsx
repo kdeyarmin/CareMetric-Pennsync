@@ -204,11 +204,16 @@ For each failure, provide:
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
   }, [oasisData, patientData, clinicalNotes, onQAComplete]);
 
+  // Auto-run once per loaded assessment. Guard on !qaResults && !ai.loading (like
+  // AIComplianceAuditor) so the expensive AI QA call doesn't re-fire every time the
+  // parent re-renders: callers pass an inline onQAComplete, which makes
+  // runQualityAssurance a new identity each parent render, and without this guard
+  // the effect would re-run and overwrite results / spam the model on each one.
   useEffect(() => {
-    if (autoRun && oasisData) {
+    if (autoRun && oasisData && !qaResults && !ai.loading) {
       runQualityAssurance();
     }
-  }, [autoRun, oasisData?.id, oasisData, runQualityAssurance]);
+  }, [autoRun, oasisData?.id, oasisData, qaResults, ai.loading, runQualityAssurance]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {

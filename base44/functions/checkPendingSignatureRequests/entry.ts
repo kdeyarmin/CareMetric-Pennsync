@@ -10,8 +10,12 @@ Deno.serve(async (req) => {
     }
 
     // Get all pending or in_progress packages (bounded so a large backlog can't
-    // time the job out; the oldest are the ones needing reminders).
-    const packages = await base44.entities.DocumentPackage.filter({
+    // time the job out; the oldest are the ones needing reminders). Use the
+    // service role: this is an admin-wide reminder sweep, so it must see EVERY
+    // pending package, not just the ones the invoking admin created (a user-scoped
+    // read would silently skip packages created by other staff). Mirrors the
+    // service-role scope of sendAutomatedSignatureReminders.
+    const packages = await base44.asServiceRole.entities.DocumentPackage.filter({
       status: { $in: ['pending', 'in_progress'] }
     }, '-created_date', 500);
 
@@ -45,14 +49,14 @@ Deno.serve(async (req) => {
       // Get patient to retrieve caregiver email. Tolerate a deleted/invalid
       // patient_id: without the catch a single bad row throws and aborts the
       // whole reminder run, skipping every remaining package.
-      const patient = await base44.entities.Patient.get(pkg.patient_id).catch(() => null);
+      const patient = await base44.asServiceRole.entities.Patient.get(pkg.patient_id).catch(() => null);
       if (!patient?.caregiver_email) continue;
 
       // Get document count info
       const signatures = pkg.document_signatures?.length || 0;
       const allSignatures = await Promise.all(
-        (pkg.document_signatures || []).map(id => 
-          base44.entities.DocumentSignature.get(id).catch(() => null)
+        (pkg.document_signatures || []).map(id =>
+          base44.asServiceRole.entities.DocumentSignature.get(id).catch(() => null)
         )
       );
       const signedCount = allSignatures.filter(s => s?.status === 'completed').length;
@@ -86,7 +90,7 @@ Care Team
       });
 
       // Record that a reminder went out so the next run skips it within the window.
-      await base44.entities.DocumentPackage.update(pkg.id, {
+      await base44.asServiceRole.entities.DocumentPackage.update(pkg.id, {
         last_reminder_sent_at: now.toISOString()
       }).catch(() => {});
 
