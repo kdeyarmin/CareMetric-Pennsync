@@ -18,6 +18,12 @@ vi.mock("./compliance/generation", () => ({
   groundNote: vi.fn(async () => ({ ok: true, unsupported: [], sentences: [] })),
 }));
 
+// The online completeness critic. Default: no demotions. The propagation test
+// overrides it per-call. Offline tests never invoke it (the effect early-returns).
+vi.mock("./compliance/completenessCritic", () => ({
+  critiqueCoverage: vi.fn(async () => ({ ok: true, elements: [] })),
+}));
+
 import ConstrainedNoteReviewer from "./ConstrainedNoteReviewer";
 
 // A neutral draft (>= 20 chars) that matches NONE of the required-element keyword
@@ -96,5 +102,39 @@ describe("ConstrainedNoteReviewer — questions, adequacy & soft-confirm gate", 
     // Nothing answered yet → the hard gate disables Generate and names what's missing.
     expect(screen.getByRole("button", { name: /generate final note/i })).toBeDisabled();
     expect(screen.getByText(/required before generating/i)).toBeInTheDocument();
+  });
+});
+
+describe("ConstrainedNoteReviewer — critic demotion propagates into scoring", () => {
+  // This draft makes `safety` deterministically present (keyword "fall"), so it is
+  // NOT a gap by the keyword scan. The online critic then judges it not actually
+  // documented and demotes it.
+  const NEGATED_DRAFT = "Patient seen at home; no fall risk assessment done today, nothing else of note.";
+
+  beforeEach(() => { setOnline(true); }); // online so the completeness critic runs
+  afterEach(() => { setOnline(true); vi.clearAllMocks(); });
+
+  it("demotes a falsely-present element so a blank answer yields a 'not documented' line", async () => {
+    const { critiqueCoverage } = await import("./compliance/completenessCritic");
+    critiqueCoverage.mockResolvedValueOnce({ ok: true, elements: [{ id: "safety", documented: false }] });
+
+    renderWithProviders(<ConstrainedNoteReviewer roughNote={NEGATED_DRAFT} serviceLine="home_health" visitType="routine_visit" />);
+
+    // The keyword scan counted safety as present; the critic demotes it, so the
+    // safety question now appears (it wasn't a deterministic gap).
+    expect(await screen.findByText(/what safety \/ fall-risk assessment did you perform/i)).toBeInTheDocument();
+
+    // Answer the two criticals adequately; leave the demoted safety element blank.
+    const tas = screen.getAllByPlaceholderText(/type or dictate your answer/i);
+    fireEvent.change(tas[0], { target: { value: "Homebound due to severe dyspnea; needs a walker and one-person assist to ambulate." } });
+    fireEvent.change(tas[1], { target: { value: "Skilled wound assessment and sterile dressing change to the sacral ulcer." } });
+
+    fireEvent.click(screen.getByRole("button", { name: /generate final note/i }));
+
+    // Because the demotion flows into the fallback logic, the blank safety element
+    // produces an honest "not documented" line in the saved note — it is no longer
+    // silently treated as documented by the stray "fall" keyword. (The note renders
+    // in a textarea, so assert on its value, not a text node.)
+    expect(await screen.findByDisplayValue(/safety \/ fall-risk assessment was not documented this visit/i)).toBeInTheDocument();
   });
 });

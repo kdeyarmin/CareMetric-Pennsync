@@ -8,7 +8,7 @@ import { getRequiredElements } from "./compliance/requiredElements";
 import { buildOverrides } from "./compliance/ruleLibrary";
 import { checkAnswerAdequacy, findInadequateCritical } from "./compliance/answerAdequacy";
 import { critiqueCoverage } from "./compliance/completenessCritic";
-import { reconcileCritique, mergeGaps } from "./compliance/criticReconcile";
+import { reconcileCritique } from "./compliance/criticReconcile";
 import { detectPresence, computeGaps, computeCriticalGaps, computeCarryForward } from "./compliance/presenceDetection";
 import { splitSentences, formatVitalsSentence } from "./compliance/factExtraction";
 import { generateConstrainedNote, groundNote } from "./compliance/generation";
@@ -110,6 +110,20 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     return { normalized, vitalsSentence, required, presence, gaps, draftScore, appliedRules };
   }, [roughNote, serviceLine, visitType, vitals, complianceRules]);
 
+  // Critic-aware presence: the completeness critic can demote an element the
+  // keyword scan over-counted as present (e.g. a negated "no fall assessment
+  // done"). Flip those to absent so coverage, the "not documented" fallback, and
+  // the saved audit all reflect the demotion — not just the rendered question
+  // list. A null/empty critic (which includes EVERY offline run) returns the
+  // deterministic presence unchanged, so offline scoring is identical to before.
+  const effectivePresence = useMemo(() => {
+    if (!analysis) return [];
+    const demoted = critic?.demotedIds;
+    if (!demoted || demoted.length === 0) return analysis.presence;
+    const set = new Set(demoted);
+    return analysis.presence.map((p) => (set.has(p.id) ? { ...p, present: false, evidence: null } : p));
+  }, [analysis, critic]);
+
   // Deterministic visit-over-visit comparison: what measured values changed since
   // the patient's last documented note. Pure + offline, derived from the same
   // extraction the value-guard uses, so the trend summary is itself value-grounded.
@@ -205,10 +219,13 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
 
   const computeNotDocumented = useCallback(() => {
     if (!analysis) return [];
-    return analysis.gaps
+    // Derive from the critic-aware gaps so a blank demoted non-critical element
+    // gets its honest "not documented" line (and is whitelisted into the allowed
+    // input), matching how deterministic gaps are handled.
+    return computeGaps(effectivePresence, analysis.required)
       .filter(e => e.severity !== "critical" && !answers[e.id]?.trim() && !confirmedNegatives.has(e.id))
       .map(e => e.notDocumentedPhrase);
-  }, [analysis, answers, confirmedNegatives]);
+  }, [analysis, effectivePresence, answers, confirmedNegatives]);
   // The trend summary, when the nurse opts in, is whitelisted as input: its
   // current values come from the draft and its prior values from the chart note,
   // so it is legitimate source material (not an LLM invention) and must pass the
@@ -226,7 +243,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     if (!analysis) return null;
     const answeredIds = analysis.required.filter(e => answers[e.id]?.trim()).map(e => e.id);
     const confirmedNegativeIds = Array.from(confirmedNegatives);
-    const coverageScore = computeCoverageScore({ requiredElements: analysis.required, presenceResults: analysis.presence, answeredIds, confirmedNegativeIds });
+    const coverageScore = computeCoverageScore({ requiredElements: analysis.required, presenceResults: effectivePresence, answeredIds, confirmedNegativeIds });
     // When the nurse saves over a critical chart conflict, capture the override
     // trail (which findings, the rationale, and that it was acknowledged) so the
     // host can stamp who/when and persist it to the compliance audit record.
@@ -234,7 +251,7 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
     const acknowledgment = critical.length
       ? { acknowledged: acknowledgedRisks, justification: ackJustification.trim(), finding_ids: critical.map((f) => f.id) }
       : null;
-    return { finalNote: text, coverageScore, draftScore: analysis.draftScore, presence: analysis.presence, required: analysis.required, answeredIds, confirmedNegativeIds, answers, chartFindings, sustainedTrends, comparisons, acknowledgment, appliedRules: analysis.appliedRules || [] };
+    return { finalNote: text, coverageScore, draftScore: analysis.draftScore, presence: effectivePresence, required: analysis.required, answeredIds, confirmedNegativeIds, answers, chartFindings, sustainedTrends, comparisons, acknowledgment, appliedRules: analysis.appliedRules || [] };
   };
 
   // `groundingText` is the subset of `text` worth grounding (default: all of it).
@@ -367,16 +384,17 @@ export default function ConstrainedNoteReviewer({ roughNote, serviceLine = "home
   };
 
   // derived
-  // Effective gaps = deterministic gaps + any the critic demoted (over-counted as
-  // present). Additive only — the critic never removes a deterministic gap.
-  const gaps = analysis ? mergeGaps(analysis.gaps, analysis.required, critic?.demotedIds || []) : [];
+  // Gaps from the critic-aware presence: deterministic gaps plus any element the
+  // critic demoted (over-counted as present). Additive only — the critic can't
+  // remove a deterministic gap, since it only flips present→absent.
+  const gaps = analysis ? computeGaps(effectivePresence, analysis.required) : [];
   // Critical answers that are present but read as conclusory — drive the soft confirm.
   const thinCritical = analysis ? findInadequateCritical(analysis.required, answers) : [];
   const answeredOrConfirmed = (id) => !!answers[id]?.trim() || confirmedNegatives.has(id);
   const answeredCount = gaps.filter(g => answeredOrConfirmed(g.id)).length;
   const criticalUnanswered = analysis ? computeCriticalGaps(analysis.presence, analysis.required).filter(e => !answers[e.id]?.trim()) : [];
-  const documentedCount = analysis ? analysis.required.filter(e => { const p = analysis.presence.find(r => r.id === e.id); return (p && p.present) || answeredOrConfirmed(e.id); }).length : 0;
-  const liveCoverage = analysis ? computeCoverageScore({ requiredElements: analysis.required, presenceResults: analysis.presence, answeredIds: analysis.required.filter(e => answers[e.id]?.trim()).map(e => e.id), confirmedNegativeIds: Array.from(confirmedNegatives) }) : 0;
+  const documentedCount = analysis ? analysis.required.filter(e => { const p = effectivePresence.find(r => r.id === e.id); return (p && p.present) || answeredOrConfirmed(e.id); }).length : 0;
+  const liveCoverage = analysis ? computeCoverageScore({ requiredElements: analysis.required, presenceResults: effectivePresence, answeredIds: analysis.required.filter(e => answers[e.id]?.trim()).map(e => e.id), confirmedNegativeIds: Array.from(confirmedNegatives) }) : 0;
   const tone = liveCoverage >= 90 ? "green" : liveCoverage >= 70 ? "orange" : "red";
   const dirty = !!finalNote && finalNote !== verifiedNote;
   // Routine negatives the nurse hasn't typed an answer for — surfaced as a single
