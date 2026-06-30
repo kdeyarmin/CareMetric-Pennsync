@@ -41,9 +41,36 @@ and, for cross-validation, deterministic rather than LLM-only.
 - **No port performed — there is no real gap.** Porting any old-scrubber piece
   would duplicate a live, generally-superior capability and reintroduce the
   duplicate-feature confusion the consolidation removed.
-- The orphaned engines (`pdgmGrouper`, `oasisScales`, `clinicalIndicators`,
-  `visit/*Results`, `oasisScrubberPrompt`, `oasisScrubberData`) are **superseded
-  leftovers**, currently imported only by their own unit tests. They are kept for
-  now (tested, harmless); a future cleanup PR could remove them as confirmed dead
-  once the team agrees they hold no logic worth harvesting back into the live
-  validation path. That is a deliberate decision, not bundled here.
+## Cleanup performed (dead scrubber UI only)
+
+After confirming no gap, the **dead scrubber UI cluster** was removed — the
+result/summary panels that only the deleted `OASISScrubber` rendered, imported
+solely by their own specs and referenced nowhere in `package.json`:
+
+- 23 components removed: `CriticalMissingResults`, `IncompleteAssessmentsResults`,
+  `CompliantItemsResults`, `OverscoringResults`, `UnderscoringResults`,
+  `InconsistenciesResults`, `MismatchesResults`, `CrossValidationResults`,
+  `VagueDocumentationResults`, `RecommendationsSummary`, `QualityMeasuresImpact`,
+  `AuditDefenseSummary`, `ClinicalAlertsPanel`, `ClinicalGroupSummary`,
+  `ClinicalIndicatorsDetail`, `ClinicalIndicatorsGrid`, `CollapsibleResultHeader`,
+  `ComorbiditiesSummary`, `DocumentationQualitySummary`, `FunctionalPhrasesPanel`,
+  `GGSectionAnalysis`, `OptimizationSuggestionsPanel`, `PdgmAnalysisSummary`
+  (+ their `.spec.jsx`), plus `oasisScrubberData` and `oasisScrubberPrompt`
+  (+ specs). 50 files total.
+
+### Kept on purpose — tested clinical engines, NOT deleted
+
+The pure engines were **kept** even though they're currently imported only by
+their tests, because deleting them would *remove robustness*:
+
+- `pdgm/pdgmGrouper.js` — the canonical PDGM grouping reference that the **live**
+  `pdgm/pdgmRates.js` (used by the `PDGMRateSettings` page) is **parity-tested**
+  against. Deleting it would drop a correctness guard on live billing logic.
+- `oasis/oasisScales.js`, `visit/clinicalIndicators.js`,
+  `visit/pdgmClinicalGroup.js`, `visit/oasisPromptFormat.js` — pure, unit-tested
+  clinical logic. Harmless, and candidates to re-wire rather than discard.
+- Live engines `pdgm/pdgmRates`, `oasis/patientMatchScore`, `oasis/oasisAnalytics`
+  are wired into live pages/tabs and were never in scope.
+
+Verified after removal: clean build; `vitest` (210) and `test:utils` (624) pass;
+lint 0/0.
