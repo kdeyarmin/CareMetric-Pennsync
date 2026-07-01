@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import EnrollmentSummaryDashboard from '../components/learning/EnrollmentSummaryDashboard';
 import EmployeeTranscriptCenter from '../components/learning/EmployeeTranscriptCenter';
 import CourseRosterReport from '../components/learning/CourseRosterReport';
@@ -25,12 +26,21 @@ const BUSINESS_LINES = [
   { value: 'all', label: 'All' }
 ];
 
+const REPORT_TABS = ['summary', 'transcript', 'roster', 'plan-compliance', 'overdue', 'expiring'];
+
 export default function LearningReports() {
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
     retry: false
   });
+
+  // Deep-linkable tabs so other surfaces (e.g. the course manager's per-course
+  // stats) can drop the user straight onto the roster with ?tab=roster.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab = REPORT_TABS.includes(requestedTab) ? requestedTab : 'summary';
+  const handleTabChange = (value) => setSearchParams(value === 'summary' ? {} : { tab: value });
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.account_type === 'agency_admin';
   const isSuperAdmin = currentUser?.account_type === 'super_admin';
@@ -58,7 +68,7 @@ export default function LearningReports() {
         favoritePage="LearningReports"
       />
 
-      <Tabs defaultValue="summary" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
           <TabsTrigger value="summary" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />

@@ -15,7 +15,16 @@ const gradeObjectiveQuestion = (question, answer) => {
     return JSON.stringify(norm(answer)) === JSON.stringify(norm(correct));
   }
   if (question.type === 'matching') {
-    return normalizeValue(answer) === normalizeValue(correct);
+    // The learner submits a { [leftPrompt]: selectedOptionValue } map (see
+    // TrainingQuestionRenderer). The correct answer is stored as
+    // correct_answer_json.answer.pairs = [{ left, right }] where `right` is the
+    // value of the option that correctly matches `left`. Compare per-pair so key
+    // order and any extra keys don't matter — a flat stringify comparison here
+    // was order-sensitive and compared against the wrong shape entirely.
+    const pairs = Array.isArray(correct?.pairs) ? correct.pairs : [];
+    if (pairs.length === 0) return false;
+    const submitted = answer && typeof answer === 'object' && !Array.isArray(answer) ? answer : {};
+    return pairs.every((pair) => normalizeValue(submitted[pair.left]) === normalizeValue(pair.right));
   }
   return normalizeValue(answer) === normalizeValue(correct);
 };
@@ -159,6 +168,21 @@ Deno.serve(async (req) => {
       const answer = responseMap.get(question.id);
       if (answer === undefined || answer === null || answer === '' || (Array.isArray(answer) && answer.length === 0)) {
         return Response.json({ error: 'All questions must be answered before submission' }, { status: 400 });
+      }
+
+      // A matching answer is a { [left]: value } map; require a selection for
+      // every pair, otherwise a partially-filled map slips past the check above
+      // and is silently graded wrong.
+      if (question.type === 'matching') {
+        const pairs = Array.isArray(question.correct_answer_json?.answer?.pairs)
+          ? question.correct_answer_json.answer.pairs
+          : [];
+        const answered = answer && typeof answer === 'object' && !Array.isArray(answer)
+          ? pairs.every((pair) => answer[pair.left] !== undefined && answer[pair.left] !== '')
+          : false;
+        if (!answered) {
+          return Response.json({ error: 'All questions must be answered before submission' }, { status: 400 });
+        }
       }
 
       if (question.type === 'short_answer' || question.type === 'scenario_based') {
