@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, RefreshCw, TrendingUp, BookOpen, CheckCircle2, AlertTriangle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { severitySolidClass } from "@/lib/severityStyles";
 
 export default function AIPathwayUpdater({ pathway, onPathwayUpdated }) {
   const ai = useAICall();
@@ -134,16 +135,6 @@ Return ONLY valid JSON.`;
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-600 text-white';
-      case 'high': return 'bg-orange-500 text-white';
-      case 'medium': return 'bg-yellow-500 text-white';
-      case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-slate-500 text-white';
-    }
-  };
-
   return (
     <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-navy-50">
       <CardHeader>
@@ -234,7 +225,7 @@ Return ONLY valid JSON.`;
                         <CardContent className="p-3 space-y-2">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <Badge className={getPriorityColor(rec.priority)} size="sm">
+                              <Badge className={severitySolidClass(rec.priority)} size="sm">
                                 {rec.priority}
                               </Badge>
                               <p className="text-xs text-slate-500 mt-1">{rec.category}</p>

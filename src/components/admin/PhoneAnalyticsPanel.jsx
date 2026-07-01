@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart3, MessageSquare, PhoneCall, ShieldCheck, Users, Download } from "lucide-react";
 import { summarizePhoneActivity, formatDuration } from "@/components/admin/phoneAnalytics";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
+import { downloadCsv } from "@/lib/downloadCsv";
 import { toast } from "sonner";
 
 // PHI-conscious export columns: metadata only — never the SMS body or media.
@@ -33,23 +34,6 @@ const CALL_COLUMNS = [
   { key: "disposition", label: "Disposition" },
   { key: "has_voicemail", label: "Voicemail", format: (v) => (v ? "yes" : "") },
 ];
-
-/** Trigger a client-side CSV file download (browser only). */
-function downloadCsv(filename, csv) {
-  try {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch {
-    toast.error("Couldn't generate the export");
-  }
-}
 
 const WINDOWS = [
   { label: "7 days", days: 7 },
@@ -120,8 +104,9 @@ export default function PhoneAnalyticsPanel() {
       return Number.isNaN(t) ? true : t >= cutoff;
     });
   };
-  const exportSms = () => downloadCsv(`sms-export_${exportTimestamp()}.csv`, toCsv(SMS_COLUMNS, inWindow(smsMessages)));
-  const exportCalls = () => downloadCsv(`calls-export_${exportTimestamp()}.csv`, toCsv(CALL_COLUMNS, inWindow(callLogs)));
+  const onExportError = () => toast.error("Couldn't generate the export");
+  const exportSms = () => downloadCsv(`sms-export_${exportTimestamp()}.csv`, toCsv(SMS_COLUMNS, inWindow(smsMessages)), { onError: onExportError });
+  const exportCalls = () => downloadCsv(`calls-export_${exportTimestamp()}.csv`, toCsv(CALL_COLUMNS, inWindow(callLogs)), { onError: onExportError });
 
   if (!isAdmin) return null;
 

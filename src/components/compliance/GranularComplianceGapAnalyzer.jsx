@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
+import { severityBadgeClass } from "@/lib/severityStyles";
 
 export default function GranularComplianceGapAnalyzer({
   visits,
@@ -168,16 +169,6 @@ Provide detailed analysis with:
     setExpandedGaps(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const getSeverityColor = (severity) => {
-    const colors = {
-      critical: 'bg-red-100 text-red-800 border-red-300',
-      high: 'bg-orange-100 text-orange-800 border-orange-300',
-      medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      low: 'bg-blue-100 text-blue-800 border-blue-300'
-    };
-    return colors[severity] || 'bg-slate-100 text-slate-800';
-  };
-
   if (ai.loading) {
     return (
       <Card className="border-2 border-orange-200">
@@ -298,7 +289,7 @@ Provide detailed analysis with:
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <Badge className={getSeverityColor(gap.priority)}>{gap.priority}</Badge>
+                            <Badge className={severityBadgeClass(gap.priority)}>{gap.priority}</Badge>
                             <p className="font-semibold text-slate-900">{gap.gap_type}</p>
                           </div>
                           <p className="text-sm text-slate-600 mb-2">{gap.root_cause}</p>
@@ -362,7 +353,7 @@ Provide detailed analysis with:
                     <div key={idx} className="bg-navy-50 p-3 rounded-lg border border-navy-200">
                       <div className="flex items-center justify-between mb-2">
                         <p className="font-semibold text-slate-900">{training.topic}</p>
-                        <Badge className={getSeverityColor(training.priority)}>{training.priority}</Badge>
+                        <Badge className={severityBadgeClass(training.priority)}>{training.priority}</Badge>
                       </div>
                       <p className="text-sm text-slate-600 mb-1">
                         <strong>For:</strong> {training.target_audience}

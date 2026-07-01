@@ -22,6 +22,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { toast } from 'sonner';
+import { escapeHtml } from "@/lib/escapeHtml";
 
 export default function NextStepsSummaryGenerator({ patient, educationMaterial, diagnosis }) {
   const [sessionNotes, setSessionNotes] = useState("");
@@ -161,16 +162,6 @@ Return JSON:
     const selectedSteps = (summary.immediate_next_steps || []).filter((_, idx) => selectedItems[`step_${idx}`]);
     const selectedDaily = (summary.daily_checklist || []).filter((_, idx) => selectedItems[`daily_${idx}`]);
 
-    const escapeHtml = (str) => {
-      if (str == null) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    };
-    
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
       <html>

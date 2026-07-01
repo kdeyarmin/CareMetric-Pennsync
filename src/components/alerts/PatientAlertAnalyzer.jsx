@@ -7,19 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  AlertTriangle,
   Loader2,
   RefreshCw,
-  Brain,
-  Activity,
-  Heart,
-  Pill,
-  TrendingDown,
-  Shield,
-  Users,
-  Clock,
-  Zap
+  Brain
 } from "lucide-react";
+import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
 
 export default function PatientAlertAnalyzer({ 
   patientId, 
@@ -287,33 +279,6 @@ Return JSON:
       runAnalysis();
     }
   }, [autoAnalyze, patientId, patient, runAnalysis]);
-
-  const getAlertIcon = (type) => {
-    const icons = {
-      vital_deterioration: Activity,
-      medication_risk: Pill,
-      fall_risk: TrendingDown,
-      readmission_risk: Heart,
-      infection_risk: Shield,
-      symptom_escalation: AlertTriangle,
-      care_gap: Clock,
-      urgent_intervention: Zap,
-      hospice_transition: Heart,
-      caregiver_burnout: Users
-    };
-    const Icon = icons[type] || AlertTriangle;
-    return <Icon className="w-4 h-4" />;
-  };
-
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-600 text-white';
-      case 'high': return 'bg-orange-500 text-white';
-      case 'medium': return 'bg-yellow-500 text-white';
-      case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-slate-500 text-white';
-    }
-  };
 
   if (!patientId) {
     return (

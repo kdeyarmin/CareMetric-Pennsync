@@ -4,7 +4,7 @@ import { Award, Printer, CheckCircle2, AlertTriangle, BookOpen, RefreshCcw } fro
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
-import { generateTrainingCertificate } from "@/functions/generateTrainingCertificate";
+import { createCertificateBlobUrl } from "@/components/learning/certificatePdf";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -63,24 +63,14 @@ export default function MyAnnualEducationDashboard() {
     failed: assignments.filter((a) => a.pass_fail_result === 'failed').length,
   };
 
-  const certificateBlobUrl = async (certificate) => {
-    const response = await generateTrainingCertificate({
-      moduleName: certificate.course_title,
-      completionDate: certificate.completion_date || certificate.issued_at,
-      score: certificate.score
-    });
-    const blob = new Blob([response.data], { type: 'application/pdf' });
-    return window.URL.createObjectURL(blob);
-  };
-
   const printCertificate = async (certificate) => {
-    const url = await certificateBlobUrl(certificate);
+    const url = await createCertificateBlobUrl(certificate);
     const printWindow = window.open(url, '_blank');
     setTimeout(() => printWindow?.print(), 600);
   };
 
   const downloadCertificate = async (certificate) => {
-    const url = await certificateBlobUrl(certificate);
+    const url = await createCertificateBlobUrl(certificate);
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = `${certificate.course_title.replace(/\s+/g, '_')}_annual_certificate.pdf`;

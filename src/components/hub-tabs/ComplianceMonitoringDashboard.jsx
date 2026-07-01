@@ -6,6 +6,7 @@ import StatCard from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { deriveComplianceIssueStats } from "@/components/compliance/complianceIssueStats";
 import {
   AlertTriangle,
   Clock,
@@ -199,37 +200,9 @@ export default function ComplianceMonitoringDashboard() {
     return issues;
   }, [trainingAssignments, personnelCredentials, visits, allUsers]);
 
-  // Filter issues
-  const filteredIssues = complianceIssues.filter(issue => {
-    const matchesSearch = !searchTerm ||
-      (issue.userName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (issue.title || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesCategory = categoryFilter === 'all' || issue.type === categoryFilter;
-    const matchesSeverity = severityFilter === 'all' || issue.severity === severityFilter;
-    
-    return matchesSearch && matchesCategory && matchesSeverity;
-  });
-
-  // Group by user
-  const groupedByUser = filteredIssues.reduce((acc, issue) => {
-    if (!acc[issue.userId]) {
-      acc[issue.userId] = {
-        userName: issue.userName,
-        userRole: issue.userRole,
-        issues: []
-      };
-    }
-    acc[issue.userId].issues.push(issue);
-    return acc;
-  }, {});
-
-  // Calculate stats
-  const criticalCount = complianceIssues.filter(i => i.severity === 'critical').length;
-  const highCount = complianceIssues.filter(i => i.severity === 'high').length;
-  const affectedUsers = Object.keys(groupedByUser).length;
-  const overdueTraining = complianceIssues.filter(i => i.type === 'overdue_training').length;
-  const expiringCreds = complianceIssues.filter(i => i.type === 'expiring_credential').length;
+  // Filter, group and count (shared with the Compliance Center page).
+  const { filteredIssues, groupedByUser, criticalCount, highCount, affectedUsers, overdueTraining, expiringCreds } =
+    deriveComplianceIssueStats(complianceIssues, { searchTerm, categoryFilter, severityFilter });
   const incompleteDoc = complianceIssues.filter(i => i.type === 'incomplete_documentation').length;
 
   const handleToggleUser = (userId) => {

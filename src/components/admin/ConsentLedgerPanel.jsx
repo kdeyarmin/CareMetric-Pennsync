@@ -16,6 +16,7 @@ import {
   summarizeConsent, consentStatusLabel, formatConsentCsv,
 } from "@/components/admin/consentLedger";
 import { exportTimestamp } from "@/components/admin/csvExport";
+import { downloadCsv } from "@/lib/downloadCsv";
 
 const STATUS_BADGE = {
   opted_in: "bg-green-100 text-green-800",
@@ -25,19 +26,6 @@ const STATUS_BADGE = {
 
 function StatusBadge({ status }) {
   return <Badge className={STATUS_BADGE[status] || STATUS_BADGE.unknown}>{consentStatusLabel(status)}</Badge>;
-}
-
-/** Trigger a browser download of a CSV string via a Blob. */
-function downloadCsv(filename, csv) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 /**

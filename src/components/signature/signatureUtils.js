@@ -1,38 +1,3 @@
-import { base44 } from '@/api/base44Client';
-
-/**
- * Verify a signature's tamper-evidence MAC SERVER-SIDE.
- *
- * The previous client-side `verifySignatureIntegrity` recomputed a keyless 32-bit
- * hash that anyone could forge, and read it from a top-level field the capture
- * never wrote — so it provided no real assurance and reported every captured
- * record as invalid. Verification now runs in the `signatureIntegrity` backend
- * function, which recomputes the MAC over the stored record with a server-held
- * secret and returns a verdict.
- *
- * @param {string} signatureId - DocumentSignature id
- * @returns {Promise<{isValid: boolean, status: string, alg?: string, reason?: string}>}
- */
-export async function verifySignatureIntegrityRemote(signatureId) {
-  if (!signatureId) return { isValid: false, status: 'unsigned' };
-  try {
-    const resp = await base44.functions.invoke('signatureIntegrity', {
-      action: 'verify',
-      signature_id: signatureId,
-    });
-    const data = resp?.data || {};
-    return {
-      isValid: Boolean(data.isValid),
-      status: data.status || (data.isValid ? 'valid' : 'tampered'),
-      alg: data.alg,
-      reason: data.reason,
-    };
-  } catch (err) {
-    console.error('Signature integrity verification failed:', err?.message);
-    return { isValid: false, status: 'error' };
-  }
-}
-
 export function getDocumentDisplayName(signatureRecord) {
   return (
     signatureRecord?.document_name

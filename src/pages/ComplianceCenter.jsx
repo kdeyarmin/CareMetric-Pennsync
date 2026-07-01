@@ -5,6 +5,7 @@ import { useAICall } from "@/hooks/useAICall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StatCard from "@/components/ui/stat-card";
+import { deriveComplianceIssueStats } from "@/components/compliance/complianceIssueStats";
 import { Button } from "@/components/ui/button";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
@@ -283,32 +284,9 @@ export default function ComplianceCenter() {
     return issues;
   }, [trainingAssignments, personnelCredentials, allUsers]);
 
-  const filteredIssues = complianceIssues.filter(issue => {
-    const matchesSearch = !searchTerm ||
-      (issue.userName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (issue.title || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || issue.type === categoryFilter;
-    const matchesSeverity = severityFilter === 'all' || issue.severity === severityFilter;
-    return matchesSearch && matchesCategory && matchesSeverity;
-  });
-
-  const groupedByUser = filteredIssues.reduce((acc, issue) => {
-    if (!acc[issue.userId]) {
-      acc[issue.userId] = {
-        userName: issue.userName,
-        userRole: issue.userRole,
-        issues: []
-      };
-    }
-    acc[issue.userId].issues.push(issue);
-    return acc;
-  }, {});
-
-  const criticalCount = complianceIssues.filter(i => i.severity === 'critical').length;
-  const highCount = complianceIssues.filter(i => i.severity === 'high').length;
-  const affectedUsers = Object.keys(groupedByUser).length;
-  const overdueTraining = complianceIssues.filter(i => i.type === 'overdue_training').length;
-  const expiringCreds = complianceIssues.filter(i => i.type === 'expiring_credential').length;
+  // Filter, group and count (shared with ComplianceMonitoringDashboard).
+  const { filteredIssues, groupedByUser, criticalCount, highCount, affectedUsers, overdueTraining, expiringCreds } =
+    deriveComplianceIssueStats(complianceIssues, { searchTerm, categoryFilter, severityFilter });
 
   const sendNotificationMutation = useMutation({
     mutationFn: async ({ userEmails, message, subject }) => {

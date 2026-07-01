@@ -22,6 +22,7 @@ import {
   Database
 } from "lucide-react";
 import { toast } from "sonner";
+import { escapeHtml } from "@/lib/escapeHtml";
 
 export default function PDFSearchInterface() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,14 +74,6 @@ export default function PDFSearchInterface() {
 
   const highlightText = (text, terms) => {
     if (!text) return '';
-    // Escape HTML entities first to prevent XSS from snippet content
-    const escapeHtml = (str) =>
-      str.replace(/&/g, '&amp;')
-         .replace(/</g, '&lt;')
-         .replace(/>/g, '&gt;')
-         .replace(/"/g, '&quot;')
-         .replace(/'/g, '&#39;');
-
     let highlighted = escapeHtml(text);
     if (!terms || terms.length === 0) return highlighted;
 

@@ -21,6 +21,7 @@ import {
   Shield,
   Target
 } from "lucide-react";
+import { severityBadgeClass } from "@/lib/severityStyles";
 
 export default function ProactiveDocumentationAssistant({
   oasisData,
@@ -162,16 +163,6 @@ For EACH gap found, provide:
     }
   }, [oasisData, clinicalNotes, autoAnalyze, analyzeDocumentation]);
 
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-100 text-red-800 border-red-300';
-      case 'high': return 'bg-orange-100 text-orange-800 border-orange-300';
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'low': return 'bg-blue-100 text-blue-800 border-blue-300';
-      default: return 'bg-slate-100 text-slate-800 border-slate-300';
-    }
-  };
-
   const getSeverityIcon = (severity) => {
     switch (severity) {
       case 'critical': return <AlertTriangle className="w-4 h-4 text-red-600" />;
@@ -304,7 +295,7 @@ For EACH gap found, provide:
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-semibold text-slate-900">{gap.gap_title}</h4>
-                            <Badge className={getSeverityColor(gap.severity)}>
+                            <Badge className={severityBadgeClass(gap.severity)}>
                               {gap.severity}
                             </Badge>
                             {appliedSuggestions.has(idx) && (

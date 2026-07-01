@@ -48,9 +48,4 @@ export function isAdminView(user) {
   return view === "super_admin" || view === "facility_admin";
 }
 
-/** True for the clinical-only nurse view. */
-export function isNurseView(user) {
-  return getRoleView(user) === "nurse";
-}
-
 export { isSuperAdmin, isSuperAdminEmail };

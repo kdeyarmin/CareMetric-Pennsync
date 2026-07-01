@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { severitySolidClass } from "@/lib/severityStyles";
 
 
 import {
@@ -164,16 +165,6 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'critical': return 'bg-red-600 text-white';
-      case 'high': return 'bg-orange-500 text-white';
-      case 'medium': return 'bg-yellow-500 text-white';
-      case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-slate-500 text-white';
-    }
-  };
-
   if (!pdgmData || triggeredPathways.length === 0) {
     return null;
   }
@@ -205,7 +196,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
             <div className="bg-gradient-to-r from-indigo-100 to-navy-100 p-4">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-bold text-indigo-900 text-lg">{pathway.pathway_name}</h3>
-                <Badge className={getPriorityColor(pathway.priority_level)}>
+                <Badge className={severitySolidClass(pathway.priority_level)}>
                   {pathway.priority_level} priority
                 </Badge>
               </div>
@@ -232,7 +223,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                       <div key={pIdx} className="bg-white p-2 rounded border">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm font-medium text-slate-800">{prompt.category}</span>
-                          <Badge className={`text-xs ${getPriorityColor(prompt.priority)}`}>
+                          <Badge className={`text-xs ${severitySolidClass(prompt.priority)}`}>
                             {prompt.priority}
                           </Badge>
                         </div>
@@ -343,7 +334,7 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm font-medium text-slate-800">{task.task_title}</span>
                           <div className="flex gap-1">
-                            <Badge className={`text-xs ${getPriorityColor(task.priority)}`}>
+                            <Badge className={`text-xs ${severitySolidClass(task.priority)}`}>
                               {task.priority}
                             </Badge>
                             <Badge variant="outline" className="text-xs">
@@ -397,13 +388,3 @@ export default function ClinicalPathwayTrigger({ pdgmData, _analysisResults, pat
     </Card>
   );
 }
-
-const _getPriorityColor = (priority) => {
-  switch (priority) {
-    case 'critical': return 'bg-red-600 text-white';
-    case 'high': return 'bg-orange-500 text-white';
-    case 'medium': return 'bg-yellow-500 text-white';
-    case 'low': return 'bg-blue-500 text-white';
-    default: return 'bg-slate-500 text-white';
-  }
-};

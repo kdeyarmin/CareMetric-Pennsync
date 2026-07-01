@@ -29,22 +29,7 @@ import { generateFollowUpTasks } from "@/functions/generateFollowUpTasks";
 import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsage";
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
-
-const HOME_HEALTH_VISIT_TYPES = [
-  { value: "routine_visit", label: "Routine SN Visit" },
-  { value: "admission", label: "Start of Care (SOC)" },
-  { value: "recertification", label: "Recertification" },
-  { value: "discharge", label: "Discharge" },
-  { value: "prn", label: "PRN Visit" },
-];
-
-const HOSPICE_VISIT_TYPES = [
-  { value: "routine_visit", label: "Routine Hospice Visit" },
-  { value: "admission", label: "Hospice Admission" },
-  { value: "recertification", label: "Recertification (Benefit Period)" },
-  { value: "discharge", label: "Discharge / Revocation" },
-  { value: "prn", label: "After-Hours / Crisis Visit" },
-];
+import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
 
 // Returns the right visit types based on care scope
 const getVisitTypes = (careScope) => {

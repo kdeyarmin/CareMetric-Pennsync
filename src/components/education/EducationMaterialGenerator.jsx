@@ -27,6 +27,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { toast } from 'sonner';
+import { escapeHtml } from "@/lib/escapeHtml";
 
 export default function EducationMaterialGenerator({ patient, teachBackHistory = [], onMaterialGenerated }) {
   const [searchTopic, setSearchTopic] = useState("");
@@ -238,15 +239,6 @@ Return JSON:
 
   const handlePrint = () => {
     if (generatedContent) {
-      const escapeHtml = (str) => {
-        if (str == null) return '';
-        return String(str)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-      };
       const printWindow = window.open('', '_blank');
       printWindow.document.write(`
         <html>

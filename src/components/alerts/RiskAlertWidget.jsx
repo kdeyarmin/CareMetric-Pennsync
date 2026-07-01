@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { severityBadgeClass } from "@/lib/severityStyles";
 
 function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }) {
   const queryClient = useQueryClient();
@@ -66,16 +67,6 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
       });
     }
   });
-
-  const getSeverityColor = (severity) => {
-    const colors = {
-      critical: 'bg-red-100 text-red-800 border-red-300',
-      high: 'bg-orange-100 text-orange-800 border-orange-300',
-      medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      low: 'bg-blue-100 text-blue-800 border-blue-300'
-    };
-    return colors[severity] || colors.medium;
-  };
 
   if (isLoading) {
     return (
@@ -139,14 +130,14 @@ function RiskAlertWidget({ patientId, compact = false, showAllPatients = false }
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {alerts.map((alert) => (
-              <Card key={alert.id} className={`border-l-4 ${getSeverityColor(alert.severity)}`}>
+              <Card key={alert.id} className={`border-l-4 ${severityBadgeClass(alert.severity)}`}>
                 <CardContent className="p-3 space-y-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <AlertTriangle className="w-4 h-4 text-red-600" />
                         <h5 className="text-sm font-bold">{alert.title}</h5>
-                        <Badge className={getSeverityColor(alert.severity)}>
+                        <Badge className={severityBadgeClass(alert.severity)}>
                           {alert.severity}
                         </Badge>
                       </div>

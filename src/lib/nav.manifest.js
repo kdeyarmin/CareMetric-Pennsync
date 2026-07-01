@@ -920,19 +920,6 @@ export function buildPaletteEntries(manifest, isAdmin, isSuperAdmin = false) {
 }
 
 /**
- * Whether a page should be REACHABLE for a given role view. Used by the route
- * guard so a facility admin (or nurse) can't open a higher-tier page by URL.
- * `roleView` is one of: 'super_admin' | 'facility_admin' | 'nurse'.
- */
-export function isPageAllowedForRole(pageName, roleView) {
-  const entry = NAV_MAP[pageName];
-  if (!entry) return true; // unknown/derived pages aren't gated here
-  if (entry.superAdminOnly) return roleView === "super_admin";
-  if (entry.adminOnly) return roleView === "super_admin" || roleView === "facility_admin";
-  return true;
-}
-
-/**
  * The sidebar item that should appear "active" while viewing `pageName`.
  *
  * Sub/detail pages carry `category: null` (so they stay out of the sidebar) but

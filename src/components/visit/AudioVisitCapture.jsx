@@ -16,21 +16,7 @@ import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { todayEastern } from "../utils/timezone";
 import { toast } from "sonner";
 import { validateFileUpload } from "@/components/utils/security";
-
-const HOME_HEALTH_VISIT_TYPES = [
-  { value: "routine_visit", label: "Routine SN Visit" },
-  { value: "admission", label: "Start of Care (SOC)" },
-  { value: "recertification", label: "Recertification" },
-  { value: "discharge", label: "Discharge" },
-  { value: "prn", label: "PRN Visit" },
-];
-const HOSPICE_VISIT_TYPES = [
-  { value: "routine_visit", label: "Routine Hospice Visit" },
-  { value: "admission", label: "Hospice Admission" },
-  { value: "recertification", label: "Recertification" },
-  { value: "discharge", label: "Discharge / Revocation" },
-  { value: "prn", label: "After-Hours / Crisis Visit" },
-];
+import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
 
 /**
  * AudioVisitCapture — the "Visit Scribe" choice in the Clinical Notes hub.

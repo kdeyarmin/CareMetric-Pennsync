@@ -28,6 +28,7 @@ import {
   Download,
 } from "lucide-react";
 import GranularComplianceGapAnalyzer from "@/components/compliance/GranularComplianceGapAnalyzer";
+import { severityBadgeClass } from "@/lib/severityStyles";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { format, subDays, startOfWeek, endOfWeek } from "date-fns";
 
@@ -493,16 +494,6 @@ export default function RealTimeComplianceDashboard() {
     return 'from-red-500 to-gold-500';
   };
 
-  const getSeverityColor = (severity) => {
-    const colors = {
-      critical: 'bg-red-100 text-red-800 border-red-300',
-      high: 'bg-orange-100 text-orange-800 border-orange-300',
-      medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      low: 'bg-blue-100 text-blue-800 border-blue-300'
-    };
-    return colors[severity] || 'bg-slate-100 text-slate-800';
-  };
-
   const COLORS_PIE = ['#EF4444', '#F97316', '#EAB308', '#3557b0', '#10B981'];
 
   const featureDistribution = featureCompliance.map((f, _idx) => ({
@@ -820,7 +811,7 @@ export default function RealTimeComplianceDashboard() {
                     <div>
                       <h4 className="font-semibold text-slate-900">{issue.name}</h4>
                       <div className="flex items-center gap-2 mt-1">
-                        <Badge className={getSeverityColor(issue.severity)}>
+                        <Badge className={severityBadgeClass(issue.severity)}>
                           {issue.severity}
                         </Badge>
                         <Badge variant="outline" className="text-xs">{issue.source}</Badge>
@@ -928,7 +919,7 @@ export default function RealTimeComplianceDashboard() {
                       </p>
                       <div className="flex flex-wrap gap-1">
                         {nurse.trainingNeeds.slice(0, 3).map((training, tIdx) => (
-                          <Badge key={tIdx} className={getSeverityColor(training.severity)}>
+                          <Badge key={tIdx} className={severityBadgeClass(training.severity)}>
                             {training.type}
                           </Badge>
                         ))}

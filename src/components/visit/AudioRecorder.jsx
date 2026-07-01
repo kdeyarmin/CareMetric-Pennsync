@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Mic, MicOff, Trash2, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from 'sonner';
+import { formatTime } from "@/lib/formatTime";
 
 export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -77,12 +78,6 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   const handleDiscard = () => {
     setAudioBlob(null);
     setRecordingTime(0);
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (

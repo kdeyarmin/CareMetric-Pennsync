@@ -91,18 +91,6 @@ export default function PhoneFrame({ tabs, activeTab, onTabChange, children, cla
 }
 
 /**
- * PhoneScreen — convenience wrapper for a screen's scrolling body. A screen
- * typically renders <PhoneTopBar/> then <PhoneScreen>…rows…</PhoneScreen>.
- */
-export function PhoneScreen({ children, className }) {
-  return (
-    <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
-      <div className="flex-1 overflow-y-auto overscroll-contain">{children}</div>
-    </div>
-  );
-}
-
-/**
  * PhoneEmptyState — the centered icon + message a phone shows for an empty list.
  */
 export function PhoneEmptyState({ icon: Icon, title, hint }) {
