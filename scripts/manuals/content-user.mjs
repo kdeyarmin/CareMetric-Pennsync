@@ -31,8 +31,14 @@ export const userBlocks = [
       ])}
 
       <h3 id="welcome-who"><span class="h3-eyebrow">Audience</span>Who this manual is for</h3>
-      <p>This guide is for everyone who delivers or supports patient care in PennSync — <strong>registered nurses and LPNs, social workers, spiritual care providers and chaplains, therapists (PT/OT/ST), and home health aides.</strong> Wherever a feature is used differently for Home Health versus Hospice, we call it out.</p>
-      ${callout('note', 'A note on roles', '<p>Some screens described elsewhere (Admin Console, Reports & Analytics, Compliance Center) are reserved for facility administrators. If you do not see a feature in your sidebar, your role may not include it — that is expected, not an error.</p>')}
+      <p>This guide is for everyone who delivers or supports patient care in PennSync — both <strong>clinical</strong> and <strong>non-clinical (office)</strong> team members:</p>
+      <ul class="feat">
+        <li><strong>Clinical staff</strong> — registered nurses and LPNs, social workers, spiritual care providers and chaplains, and therapists (PT / OT / ST).</li>
+        <li><strong>Field &amp; support staff</strong> — home health aides and CNAs.</li>
+        <li><strong>Office &amp; administrative staff</strong> — schedulers, intake and referral coordinators, records and documentation clerks, billing/office coordinators, and front-office team members.</li>
+      </ul>
+      <p>Wherever a feature is used differently for Home Health versus Hospice, we call it out.</p>
+      ${callout('note', 'A note on roles', '<p>Some back-office and administrative screens (Referrals, Documents &amp; E-Signing, Incident Review, Admin Console, Reports &amp; Analytics, Compliance Center) require administrator access. If you do not see a feature in your sidebar, your role may not include it — that is expected, not an error. Office staff who need these tools should ask their facility administrator about access.</p>')}
 
       <h3 id="welcome-how"><span class="h3-eyebrow">Getting the most from it</span>How to use this manual</h3>
       <ul class="feat">
@@ -44,7 +50,69 @@ export const userBlocks = [
     `,
   },
 
-  /* 2 ── Getting Started ──────────────────────────────────────────────────── */
+  /* 2 ── Feature Overview ─────────────────────────────────────────────────── */
+  {
+    id: 'features',
+    title: 'Feature Overview',
+    sub: [
+      { id: 'feat-care', title: 'Patient care' },
+      { id: 'feat-doc', title: 'Documentation' },
+      { id: 'feat-comm', title: 'Communication' },
+      { id: 'feat-learn', title: 'Learning & resources' },
+      { id: 'feat-tools', title: 'Personal tools' },
+    ],
+    html: `
+      <p class="sec-intro">A quick map of everything PennSync does. Each feature below is covered step by step later in this manual.</p>
+
+      <h3 id="feat-care"><span class="h3-eyebrow">Patient care</span>Care &amp; assessments</h3>
+      ${table(['Feature', 'What it does'], [
+        ['<strong>Dashboard</strong>', 'Your daily home base — today’s visits, alerts, high-risk patients, quick actions, and route planning.'],
+        ['<strong>Patients</strong>', 'Search, filter, sort, and manage your patient roster; add new patients.'],
+        ['<strong>Patient 360 record</strong>', 'One connected record per patient: overview, vitals trends, visits, documents, tasks, and AI insights.'],
+        ['<strong>Patient Alerts</strong>', 'Clinical, risk, and deterioration alerts you can review and acknowledge.'],
+        ['<strong>OASIS Center</strong>', 'Complete OASIS-E assessments with AI guidance, then review and validate them.'],
+        ['<strong>Incidents</strong>', 'Report safety events (falls, medication errors) with automatic state-reportable detection.'],
+        ['<strong>Patient Education</strong>', 'Generate personalized, plain-language handouts and document teach-back.'],
+      ])}
+
+      <h3 id="feat-doc"><span class="h3-eyebrow">Documentation</span>Charting a visit</h3>
+      ${table(['Feature', 'What it does'], [
+        ['<strong>Clinical Notes</strong>', 'The documentation hub for every visit — choose Smart Note or Visit Scribe.'],
+        ['<strong>Smart Note</strong>', 'Type a few observations; AI expands them into a compliant, skilled note.'],
+        ['<strong>Visit Scribe</strong>', 'Record, upload, or dictate a visit out loud; AI transcribes it into a compliant note.'],
+        ['<strong>Offline Mode</strong>', 'Document without a signal; everything syncs automatically when you’re back online.'],
+      ])}
+
+      <h3 id="feat-comm"><span class="h3-eyebrow">Communication</span>Reaching your team &amp; patients</h3>
+      ${table(['Feature', 'What it does'], [
+        ['<strong>Messages</strong>', 'Secure internal messaging with priorities and patient context.'],
+        ['<strong>Phone Center</strong>', 'Calls and texts through a masked work number; callbacks, scheduled texts, and duty status.'],
+        ['<strong>Fax</strong>', 'Send faxes from your camera, an upload, or a template; track delivery.'],
+        ['<strong>Providers</strong>', 'A directory of physicians and provider offices with contact details.'],
+        ['<strong>Telehealth</strong>', 'Schedule and run secure video visits; patients join by a simple link.'],
+      ])}
+
+      <h3 id="feat-learn"><span class="h3-eyebrow">Learning &amp; resources</span>Growing &amp; referencing</h3>
+      ${table(['Feature', 'What it does'], [
+        ['<strong>Learning Center</strong>', 'Courses, learning plans, competencies, certificates, renewals, and transcripts.'],
+        ['<strong>Nurse Training Hub</strong>', 'Role-specific, AI-personalized training.'],
+        ['<strong>Libraries</strong>', 'Resource, Clinical, and Medicare Guidelines references on demand.'],
+      ])}
+
+      <h3 id="feat-tools"><span class="h3-eyebrow">Personal tools</span>Settings &amp; day-to-day</h3>
+      ${table(['Feature', 'What it does'], [
+        ['<strong>Settings</strong>', 'Your profile, care scope, credentials, and AI preferences.'],
+        ['<strong>Notifications</strong>', 'Choose which alerts you receive and set quiet hours.'],
+        ['<strong>Time Off</strong>', 'Request and track time off.'],
+        ['<strong>On-Call Schedule</strong>', 'View holiday and overnight coverage.'],
+        ['<strong>Help &amp; User Guides</strong>', 'Quick-start help, FAQs, and downloadable manuals.'],
+      ])}
+
+      ${callout('note', 'Back-office tools', '<p>Office and administrative staff also use back-office tools such as <strong>Referrals</strong>, <strong>Documents &amp; E-Signing</strong>, and <strong>Incident Review</strong>. These require administrator access and are documented in the Facility Administrator Manual.</p>')}
+    `,
+  },
+
+  /* 3 ── Getting Started ──────────────────────────────────────────────────── */
   {
     id: 'getting-started',
     title: 'Getting Started',
