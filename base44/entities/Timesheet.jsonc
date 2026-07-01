@@ -104,6 +104,40 @@
       "type": "string",
       "description": "Free-text note from the employee for the reviewer"
     },
+    "entry_mode": {
+      "type": "string",
+      "enum": [
+        "bulk",
+        "daily"
+      ],
+      "default": "bulk",
+      "description": "How the nurse entered the timesheet: a single period summary (bulk) or per-day rows (daily)"
+    },
+    "daily_entries": {
+      "type": "array",
+      "description": "Per-day hour/visit rows when entry_mode is 'daily'; summed server-side into the period totals and visit_counts",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "format": "date", "description": "Calendar day (YYYY-MM-DD)" },
+          "regular_hours": { "type": "number", "default": 0 },
+          "overtime_hours": { "type": "number", "default": 0 },
+          "holiday_hours": { "type": "number", "default": 0 },
+          "on_call_hours": { "type": "number", "default": 0 },
+          "on_call_visits": { "type": "number", "default": 0 },
+          "visit_counts": {
+            "type": "object",
+            "properties": {
+              "soc": { "type": "number", "default": 0 },
+              "roc": { "type": "number", "default": 0 },
+              "recert": { "type": "number", "default": 0 },
+              "routine": { "type": "number", "default": 0 },
+              "discharge": { "type": "number", "default": 0 }
+            }
+          }
+        }
+      }
+    },
     "manager_email": {
       "type": "string",
       "description": "Email of the facility admin/manager responsible for approving this timesheet (blank routes to admins)"

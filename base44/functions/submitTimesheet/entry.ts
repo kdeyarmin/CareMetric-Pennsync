@@ -160,6 +160,34 @@ function computeVisitPoints(counts, config) {
   return Math.round(total * 100) / 100;
 }
 
+// Daily-entry fields summed into the period totals (mirrors DAILY_SUM_FIELDS on
+// the frontend). Vacation/miles/emerg points/reimbursement stay period-level.
+const DAILY_SUM_FIELDS = ['regular_hours', 'overtime_hours', 'holiday_hours', 'on_call_hours', 'on_call_visits'];
+function normalizeDailyEntries(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 62).map((e) => {
+    const entry = { date: String(e?.date || '').slice(0, 10) };
+    for (const f of DAILY_SUM_FIELDS) entry[f] = toNonNegativeNumber(e?.[f]);
+    const vc = {};
+    for (const k of VISIT_TYPE_KEYS) vc[k] = toNonNegativeNumber(e?.visit_counts?.[k]);
+    entry.visit_counts = vc;
+    return entry;
+  });
+}
+function sumDailyEntries(entries) {
+  const totals = {};
+  for (const f of DAILY_SUM_FIELDS) totals[f] = 0;
+  const visit_counts = {};
+  for (const k of VISIT_TYPE_KEYS) visit_counts[k] = 0;
+  for (const e of Array.isArray(entries) ? entries : []) {
+    for (const f of DAILY_SUM_FIELDS) totals[f] += toNonNegativeNumber(e?.[f]);
+    for (const k of VISIT_TYPE_KEYS) visit_counts[k] += toNonNegativeNumber(e?.visit_counts?.[k]);
+  }
+  for (const f of DAILY_SUM_FIELDS) totals[f] = Math.round(totals[f] * 100) / 100;
+  for (const k of VISIT_TYPE_KEYS) visit_counts[k] = Math.round(visit_counts[k] * 100) / 100;
+  return { totals, visit_counts };
+}
+
 function parseISODate(value) {
   if (!value) return null;
   const datePart = String(value).slice(0, 10);
@@ -296,13 +324,25 @@ Deno.serve(async (req) => {
     const numbers = {};
     for (const f of NUMERIC_FIELDS) numbers[f] = toNonNegativeNumber(body[f]);
 
+    // Daily vs bulk entry. In daily mode the hour/visit buckets are the SUM of
+    // the per-day rows (authoritative), not the client-submitted period totals.
+    const entry_mode = body.entry_mode === 'daily' ? 'daily' : 'bulk';
+    const daily_entries = entry_mode === 'daily' ? normalizeDailyEntries(body.daily_entries) : [];
+    let dailyVisitCounts = null;
+    if (entry_mode === 'daily') {
+      const rolled = sumDailyEntries(daily_entries);
+      for (const f of DAILY_SUM_FIELDS) numbers[f] = rolled.totals[f];
+      dailyVisitCounts = rolled.visit_counts;
+    }
+
     // Home-health points are computed from the nurse's visit counts by type times
     // the facility's configured per-type point values — server-authoritative, so
     // the client cannot set points directly. Hospice has no points.
     const visit_counts = {};
     let computedPoints = 0;
     if (service_type === 'home_health') {
-      const rawCounts = body.visit_counts && typeof body.visit_counts === 'object' ? body.visit_counts : {};
+      const rawCounts = dailyVisitCounts
+        || (body.visit_counts && typeof body.visit_counts === 'object' ? body.visit_counts : {});
       for (const k of VISIT_TYPE_KEYS) visit_counts[k] = toNonNegativeNumber(rawCounts[k]);
       try {
         const configs = await base44.asServiceRole.entities.VisitPointConfig.list('-updated_date', 50);
@@ -364,6 +404,8 @@ Deno.serve(async (req) => {
       pay_period_end,
       ...numbers,
       visit_counts,
+      entry_mode,
+      daily_entries,
       auto_pto_hours,
       phone_reimbursement,
       notes: String(notes || '').slice(0, 2000),

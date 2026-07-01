@@ -24,10 +24,14 @@ import {
   computeVisitPoints,
   normalizeVisitCounts,
   pointFieldFor,
+  payPeriodDays,
+  dailyStateToEntries,
+  sumDailyEntries,
   getTimesheetValidationError,
   toNumber,
   NUMERIC_FIELDS,
 } from "./timesheetUtils";
+import DailyEntryGrid from "./DailyEntryGrid";
 import {
   currentPayPeriod,
   listPayPeriods,
@@ -59,6 +63,8 @@ function blankForm(currentUser) {
     manager_email: "",
     notes: "",
     visit_counts: {},
+    entry_mode: "bulk",
+    daily: {},
   };
   for (const f of NUMERIC_FIELDS) base[f] = "";
   return base;
@@ -91,11 +97,26 @@ function fromExisting(ts) {
     manager_email: ts.manager_email || "",
     notes: ts.notes || "",
     visit_counts: {},
+    entry_mode: ts.entry_mode === "daily" ? "daily" : "bulk",
+    daily: {},
   };
   for (const f of NUMERIC_FIELDS) base[f] = ts[f] == null || ts[f] === 0 ? "" : String(ts[f]);
   for (const vt of VISIT_TYPES) {
     const n = ts.visit_counts?.[vt.key];
     base.visit_counts[vt.key] = n == null || n === 0 ? "" : String(n);
+  }
+  // Rebuild the per-day grid state (flat cells keyed by date) from stored rows.
+  for (const e of Array.isArray(ts.daily_entries) ? ts.daily_entries : []) {
+    if (!e?.date) continue;
+    const cell = {};
+    for (const f of ["regular_hours", "overtime_hours", "holiday_hours", "on_call_hours", "on_call_visits"]) {
+      if (e[f]) cell[f] = String(e[f]);
+    }
+    for (const vt of VISIT_TYPES) {
+      const v = e.visit_counts?.[vt.key];
+      if (v) cell[vt.key] = String(v);
+    }
+    base.daily[e.date] = cell;
   }
   return base;
 }
@@ -120,6 +141,11 @@ export default function MyTimesheetForm({
   const update = (patch) => setForm((prev) => ({ ...prev, ...patch }));
   const updateVisit = (key, val) =>
     setForm((prev) => ({ ...prev, visit_counts: { ...prev.visit_counts, [key]: val } }));
+  const updateDaily = (date, key, val) =>
+    setForm((prev) => ({
+      ...prev,
+      daily: { ...prev.daily, [date]: { ...prev.daily?.[date], [key]: val } },
+    }));
 
   // Load an existing timesheet into the form when the user chooses to edit one.
   useEffect(() => {
@@ -134,12 +160,21 @@ export default function MyTimesheetForm({
   }, [defaultManagerEmail, editing]);
 
   const isHomeHealth = paysByPoints(form.service_type);
+  const mode = form.entry_mode === "daily" ? "daily" : "bulk";
 
-  // Live total points from the entered visit counts and the facility's per-type
-  // point values (the server recomputes this authoritatively on submit).
+  // Daily-entry rollup: the per-day rows summed into period totals + visit counts.
+  const days = useMemo(
+    () => payPeriodDays(form.pay_period_start, form.pay_period_end),
+    [form.pay_period_start, form.pay_period_end]
+  );
+  const dailyEntries = useMemo(() => dailyStateToEntries(form.daily), [form.daily]);
+  const rollup = useMemo(() => sumDailyEntries(dailyEntries), [dailyEntries]);
+
+  // Effective visit counts drive the live points total for whichever mode is active.
+  const effectiveVisitCounts = mode === "daily" ? rollup.visit_counts : form.visit_counts;
   const computedPoints = useMemo(
-    () => computeVisitPoints(form.visit_counts, visitPointConfig),
-    [form.visit_counts, visitPointConfig]
+    () => computeVisitPoints(effectiveVisitCounts, visitPointConfig),
+    [effectiveVisitCounts, visitPointConfig]
   );
   const hasPointConfig =
     !!visitPointConfig && VISIT_TYPES.some((vt) => toNumber(visitPointConfig?.[pointFieldFor(vt.key)]) > 0);
@@ -173,15 +208,22 @@ export default function MyTimesheetForm({
         status,
       };
       for (const f of NUMERIC_FIELDS) payload[f] = toNumber(form[f]);
-      if (form.service_type === "home_health") payload.visit_counts = normalizeVisitCounts(form.visit_counts);
+      payload.entry_mode = mode;
+      if (mode === "daily") {
+        // Server sums the per-day rows into the totals + visit_counts.
+        payload.daily_entries = dailyEntries;
+      } else if (form.service_type === "home_health") {
+        payload.visit_counts = normalizeVisitCounts(form.visit_counts);
+      }
       if (editing?.id) payload.timesheet_id = editing.id;
 
       if (status === "submitted") {
-        const validationError = getTimesheetValidationError({
-          ...payload,
-          auto_pto_hours: autoPtoHours,
-          visit_counts: normalizeVisitCounts(form.visit_counts),
-        });
+        // Validate against the EFFECTIVE values (daily rollup or bulk fields).
+        const effective =
+          mode === "daily"
+            ? { ...payload, ...rollup, visit_counts: rollup.visit_counts }
+            : { ...payload, visit_counts: normalizeVisitCounts(form.visit_counts) };
+        const validationError = getTimesheetValidationError({ ...effective, auto_pto_hours: autoPtoHours });
         if (validationError) throw new Error(validationError);
       }
 
@@ -350,7 +392,30 @@ export default function MyTimesheetForm({
             </AlertDescription>
           </Alert>
 
-          {isHomeHealth && (
+          <div>
+            <p className="text-sm font-semibold text-slate-700 mb-2">Entry mode</p>
+            <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+              {["bulk", "daily"].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => update({ entry_mode: m })}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    mode === m ? "bg-white shadow-sm font-semibold text-slate-900" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {m === "bulk" ? "Bulk (period total)" : "Daily entry"}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              {mode === "daily"
+                ? "Enter your hours and visits for each day — totals roll up automatically."
+                : "Enter your totals for the whole pay period at once."}
+            </p>
+          </div>
+
+          {isHomeHealth && mode === "bulk" && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-semibold text-slate-700">Visits (points)</p>
@@ -366,19 +431,51 @@ export default function MyTimesheetForm({
                   ? "Total points are calculated from your visit counts and the facility's point value for each visit type."
                   : "Enter your visits by type. Your administrator sets the point value for each type; totals appear once configured."}
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
-                {numberField({ key: "emergency_visit_points", label: "Emerg Visit Pts" })}
+            </div>
+          )}
+
+          {mode === "bulk" && (
+            <div>
+              <p className="text-sm font-semibold text-slate-700 mb-2">Hours</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {HOUR_FIELDS.map((f) => numberField(f))}
+                {!isHomeHealth && numberField({ key: "on_call_visits", label: "On-Call Visits" })}
               </div>
             </div>
           )}
 
-          <div>
-            <p className="text-sm font-semibold text-slate-700 mb-2">Hours</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {HOUR_FIELDS.map((f) => numberField(f))}
-              {!isHomeHealth && numberField({ key: "on_call_visits", label: "On-Call Visits" })}
+          {mode === "daily" && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-slate-700">Daily hours &amp; visits</p>
+                {isHomeHealth && (
+                  <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5">
+                    Total points: {computedPoints}
+                  </span>
+                )}
+              </div>
+              <DailyEntryGrid
+                days={days}
+                serviceType={form.service_type}
+                visitPointConfig={visitPointConfig}
+                value={form.daily}
+                onCell={updateDaily}
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Fill the days you worked — totals roll up below. Vacation, mileage
+                {isHomeHealth ? ", emergency points," : ""} and other reimbursement are entered once below.
+              </p>
             </div>
-          </div>
+          )}
+
+          {isHomeHealth && (
+            <div>
+              <p className="text-sm font-semibold text-slate-700 mb-2">Emergency visit points</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {numberField({ key: "emergency_visit_points", label: "Emerg Visit Pts" })}
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-2">

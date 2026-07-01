@@ -127,6 +127,87 @@ export function normalizeVisitCounts(visitCounts = {}) {
 }
 
 /**
+ * Per-day hour buckets a nurse can log in daily-entry mode. Vacation, mileage,
+ * emergency points, and other reimbursement stay period-level (entered once).
+ */
+export const DAILY_HOUR_FIELDS = [
+  { key: "regular_hours", label: "Reg" },
+  { key: "overtime_hours", label: "OT" },
+  { key: "holiday_hours", label: "Hol" },
+  { key: "on_call_hours", label: "On-Call" },
+];
+
+/** Numeric fields summed from daily entries into the period totals. */
+export const DAILY_SUM_FIELDS = [
+  "regular_hours",
+  "overtime_hours",
+  "holiday_hours",
+  "on_call_hours",
+  "on_call_visits",
+];
+
+/** All calendar days (inclusive) in a pay period as `YYYY-MM-DD` strings. */
+export function payPeriodDays(start, end) {
+  const s = parseISODate(start);
+  const e = parseISODate(end);
+  if (!s || !e || e < s) return [];
+  const out = [];
+  const cur = new Date(s);
+  while (cur <= e) {
+    out.push(toISODate(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+/**
+ * Sum an array of daily entries into period totals + visit_counts. Each entry
+ * carries the DAILY_SUM_FIELDS plus a nested visit_counts object.
+ */
+export function sumDailyEntries(entries = []) {
+  const totals = {};
+  for (const f of DAILY_SUM_FIELDS) totals[f] = 0;
+  const visit_counts = {};
+  for (const vt of VISIT_TYPES) visit_counts[vt.key] = 0;
+  for (const e of Array.isArray(entries) ? entries : []) {
+    for (const f of DAILY_SUM_FIELDS) totals[f] += toNumber(e?.[f]);
+    for (const vt of VISIT_TYPES) visit_counts[vt.key] += toNumber(e?.visit_counts?.[vt.key]);
+  }
+  for (const f of DAILY_SUM_FIELDS) totals[f] = Math.round(totals[f] * 100) / 100;
+  for (const vt of VISIT_TYPES) visit_counts[vt.key] = Math.round(visit_counts[vt.key] * 100) / 100;
+  return { ...totals, visit_counts };
+}
+
+/**
+ * Convert the form's per-day state ({ [date]: { regular_hours, soc, … } }, with
+ * visit types as flat keys) into a normalized daily_entries array, dropping days
+ * with nothing entered and nesting visit counts under visit_counts.
+ */
+export function dailyStateToEntries(dailyState = {}) {
+  const out = [];
+  for (const [date, cell] of Object.entries(dailyState || {})) {
+    const c = cell || {};
+    let any = false;
+    const entry = { date };
+    for (const f of DAILY_SUM_FIELDS) {
+      const v = Math.max(0, toNumber(c[f]));
+      entry[f] = v;
+      if (v > 0) any = true;
+    }
+    const visit_counts = {};
+    for (const vt of VISIT_TYPES) {
+      const v = Math.max(0, toNumber(c[vt.key]));
+      visit_counts[vt.key] = v;
+      if (v > 0) any = true;
+    }
+    entry.visit_counts = visit_counts;
+    if (any) out.push(entry);
+  }
+  out.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  return out;
+}
+
+/**
  * Split a display name into { first, last } for the home-health payroll report,
  * which lists Last / First in separate columns. The last whitespace-delimited
  * token is the surname; everything before it is the given name(s).

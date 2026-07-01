@@ -9,6 +9,9 @@ import {
   computeVisitPoints,
   totalVisits,
   normalizeVisitCounts,
+  payPeriodDays,
+  sumDailyEntries,
+  dailyStateToEntries,
   VISIT_TYPES,
   computePtoHoursForPeriod,
   effectiveVacationHours,
@@ -68,6 +71,46 @@ test("totalVisits and normalizeVisitCounts", () => {
   assert.deepEqual(normalizeVisitCounts({ soc: "2", roc: -1, routine: 5 }), {
     soc: 2, roc: 0, recert: 0, routine: 5, discharge: 0,
   });
+});
+
+test("payPeriodDays lists every inclusive day of the period", () => {
+  const days = payPeriodDays("2026-06-14", "2026-06-27");
+  assert.equal(days.length, 14);
+  assert.equal(days[0], "2026-06-14");
+  assert.equal(days[13], "2026-06-27");
+  assert.deepEqual(payPeriodDays("2026-06-27", "2026-06-14"), []); // reversed → empty
+});
+
+test("sumDailyEntries totals hours, on-call visits, and visit counts", () => {
+  const entries = [
+    { date: "2026-06-15", regular_hours: 8, overtime_hours: 1, visit_counts: { soc: 1, routine: 2 } },
+    { date: "2026-06-16", regular_hours: 8, on_call_visits: 1, visit_counts: { routine: 3, discharge: 1 } },
+  ];
+  const t = sumDailyEntries(entries);
+  assert.equal(t.regular_hours, 16);
+  assert.equal(t.overtime_hours, 1);
+  assert.equal(t.on_call_visits, 1);
+  assert.equal(t.visit_counts.soc, 1);
+  assert.equal(t.visit_counts.routine, 5);
+  assert.equal(t.visit_counts.discharge, 1);
+});
+
+test("dailyStateToEntries drops empty days and nests visit counts", () => {
+  const state = {
+    "2026-06-15": { regular_hours: "8", soc: "1" },
+    "2026-06-16": { regular_hours: "", overtime_hours: "0" }, // nothing → dropped
+    "2026-06-17": { routine: "2" },
+  };
+  const entries = dailyStateToEntries(state);
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].date, "2026-06-15");
+  assert.equal(entries[0].regular_hours, 8);
+  assert.equal(entries[0].visit_counts.soc, 1);
+  assert.equal(entries[1].date, "2026-06-17");
+  assert.equal(entries[1].visit_counts.routine, 2);
+  // Round-trips through sumDailyEntries.
+  assert.equal(sumDailyEntries(entries).regular_hours, 8);
+  assert.equal(sumDailyEntries(entries).visit_counts.routine, 2);
 });
 
 const PERIOD = { start: "2026-06-16", end: "2026-06-29" }; // Mon..Mon, 2 weeks
