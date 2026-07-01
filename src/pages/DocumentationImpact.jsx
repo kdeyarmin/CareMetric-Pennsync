@@ -9,27 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
 import { TrendingUp, TrendingDown, Minus, Lock, ArrowRight, Database, FileText, ChevronUp, ChevronDown, Download, Trophy } from "lucide-react";
 import { DEFAULT_PDGM_RATES } from "@/components/pdgm/pdgmRates";
 import { computeImpact, normalizePdgmDataToScenario } from "@/components/pdgm/reimbursementImpact";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
-
-function downloadCsv(filename, csv) {
-  try {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch {
-    toast.error("Couldn't generate the export");
-  }
-}
+import { downloadCsv } from "@/lib/downloadCsv";
 
 // Friendly labels for the pdgmRates clinical-group keys (the FE mirror of the
 // backend calculatePDGM groups).

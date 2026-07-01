@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart3, MessageSquare, PhoneCall, ShieldCheck, Users, Download } from "lucide-react";
 import { summarizePhoneActivity, formatDuration } from "@/components/admin/phoneAnalytics";
 import { toCsv, exportTimestamp } from "@/components/admin/csvExport";
-import { toast } from "sonner";
+import { downloadCsv } from "@/lib/downloadCsv";
 
 // PHI-conscious export columns: metadata only — never the SMS body or media.
 const SMS_COLUMNS = [
@@ -33,23 +33,6 @@ const CALL_COLUMNS = [
   { key: "disposition", label: "Disposition" },
   { key: "has_voicemail", label: "Voicemail", format: (v) => (v ? "yes" : "") },
 ];
-
-/** Trigger a client-side CSV file download (browser only). */
-function downloadCsv(filename, csv) {
-  try {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch {
-    toast.error("Couldn't generate the export");
-  }
-}
 
 const WINDOWS = [
   { label: "7 days", days: 7 },

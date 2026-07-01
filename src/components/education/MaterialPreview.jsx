@@ -3,24 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Edit, Send, X } from 'lucide-react';
+import { categoryLabels } from '@/components/education/educationCategories';
 
 export default function MaterialPreview({ material, onClose, onEdit, onSend }) {
-  const categoryLabels = {
-    medication_management: 'Medication Management',
-    wound_care: 'Wound Care',
-    diabetes_education: 'Diabetes Education',
-    heart_failure: 'Heart Failure',
-    fall_prevention: 'Fall Prevention',
-    nutrition: 'Nutrition',
-    exercise_therapy: 'Exercise Therapy',
-    pain_management: 'Pain Management',
-    infection_control: 'Infection Control',
-    copd_management: 'COPD Management',
-    stroke_recovery: 'Stroke Recovery',
-    post_surgical_care: 'Post-Surgical Care',
-    general_health: 'General Health'
-  };
-
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">

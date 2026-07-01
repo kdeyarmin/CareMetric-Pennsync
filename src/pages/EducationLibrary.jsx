@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import EducationMaterialEditor from '../components/education/EducationMaterialEditor';
 import PersonalizedMaterialSender from '../components/education/PersonalizedMaterialSender';
 import MaterialPreview from '../components/education/MaterialPreview';
+import { categoryLabels } from '@/components/education/educationCategories';
 import { toast } from 'sonner';
 
 export default function EducationLibrary() {
@@ -108,22 +109,6 @@ export default function EducationLibrary() {
 
     return { totalMaterials, totalSent, recentSent, mostUsed };
   }, [materials, sentMaterials]);
-
-  const categoryLabels = {
-    medication_management: 'Medication Management',
-    wound_care: 'Wound Care',
-    diabetes_education: 'Diabetes Education',
-    heart_failure: 'Heart Failure',
-    fall_prevention: 'Fall Prevention',
-    nutrition: 'Nutrition',
-    exercise_therapy: 'Exercise Therapy',
-    pain_management: 'Pain Management',
-    infection_control: 'Infection Control',
-    copd_management: 'COPD Management',
-    stroke_recovery: 'Stroke Recovery',
-    post_surgical_care: 'Post-Surgical Care',
-    general_health: 'General Health'
-  };
 
   return (
     <PageContainer>

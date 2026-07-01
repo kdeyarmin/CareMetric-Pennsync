@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toCsv, exportTimestamp } from '@/components/admin/csvExport';
+import { downloadCsv } from '@/lib/downloadCsv';
 
 const readinessColor = (pct) =>
   pct >= 90 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-red-600';
@@ -13,19 +14,6 @@ const barColor = (pct) =>
   pct >= 90 ? '[&>div]:bg-emerald-500' : pct >= 70 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500';
 
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : '');
-
-/** Trigger a client-side CSV file download (browser only). */
-function downloadCsv(filename, csv) {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 /**
  * Org-wide required-training readiness for educators and admins. Data is fetched

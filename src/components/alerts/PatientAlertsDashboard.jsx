@@ -36,17 +36,12 @@ import {
   Flag,
   Loader2,
   Activity,
-  Heart,
-  Pill,
-  TrendingDown,
-  Shield,
-  Users,
-  Zap,
   Eye,
   X,
   Search,
   FileText
 } from "lucide-react";
+import { getAlertIcon, getSeverityColor } from "@/components/alerts/alertPresentation";
 import { format, formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -191,33 +186,6 @@ export default function PatientAlertsDashboard({ patientId = null, _showAllPatie
       alertId: alert.id,
       data: { status: 'dismissed' }
     });
-  };
-
-  const getAlertIcon = (type) => {
-    const icons = {
-      vital_deterioration: Activity,
-      medication_risk: Pill,
-      fall_risk: TrendingDown,
-      readmission_risk: Heart,
-      infection_risk: Shield,
-      symptom_escalation: AlertTriangle,
-      care_gap: Clock,
-      urgent_intervention: Zap,
-      hospice_transition: Heart,
-      caregiver_burnout: Users
-    };
-    const Icon = icons[type] || AlertTriangle;
-    return <Icon className="w-4 h-4" />;
-  };
-
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-600 text-white';
-      case 'high': return 'bg-orange-500 text-white';
-      case 'medium': return 'bg-yellow-500 text-white';
-      case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-slate-500 text-white';
-    }
   };
 
   const getSeverityBorderColor = (severity) => {
