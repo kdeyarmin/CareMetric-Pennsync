@@ -28,8 +28,6 @@ import {
   Download,
   Calendar,
   User,
-  AlertTriangle,
-  Info,
   Lock,
   UnlockKeyhole,
   Database,
@@ -39,6 +37,7 @@ import {
 } from "lucide-react";
 import { formatEastern } from "../utils/timezone";
 import { toCsvRows } from "@/components/admin/csvExport";
+import { getSeverityBadge } from "@/components/security/auditSeverityBadge";
 
 export default function AuditTrailViewer({ filterType = "all" }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -142,21 +141,6 @@ export default function AuditTrailViewer({ filterType = "all" }) {
     a.href = url;
     a.download = `audit_log_${filterType}_${new Date().toISOString()}.csv`;
     a.click();
-  };
-
-  const getSeverityBadge = (severity) => {
-    const config = {
-      critical: { color: 'bg-red-600 text-white', icon: AlertTriangle },
-      warning: { color: 'bg-yellow-600 text-white', icon: AlertTriangle },
-      info: { color: 'bg-blue-600 text-white', icon: Info },
-    };
-    const { color, icon: Icon } = config[severity] || config.info;
-    return (
-      <Badge className={color}>
-        <Icon className="w-3 h-3 mr-1" />
-        {severity || 'info'}
-      </Badge>
-    );
   };
 
   const getActionIcon = (action) => {

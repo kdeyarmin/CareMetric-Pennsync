@@ -41,8 +41,7 @@ import {
   Search,
   Filter,
   Calendar,
-  User,
-  Info
+  User
 } from "lucide-react";
 import EncryptionStatusIndicator from "@/components/security/EncryptionStatusIndicator";
 import AIAuditAnalyzer from "@/components/security/AIAuditAnalyzer";
@@ -51,6 +50,7 @@ import VulnerabilityAssessment from "@/components/security/VulnerabilityAssessme
 import { logActivity } from "@/components/utils/activityLogger";
 import { formatEastern } from "@/components/utils/timezone";
 import { toCsvRows } from "@/components/admin/csvExport";
+import { getSeverityBadge } from "@/components/security/auditSeverityBadge";
 
 export default function SecurityCompliance() {
   const [selectedTab, setSelectedTab] = useState("overview");
@@ -140,21 +140,6 @@ export default function SecurityCompliance() {
     a.click();
     window.URL.revokeObjectURL(url);
     a.remove();
-  };
-
-  const getSeverityBadge = (severity) => {
-    const config = {
-      critical: { color: 'bg-red-600 text-white', icon: AlertTriangle },
-      warning: { color: 'bg-yellow-600 text-white', icon: AlertTriangle },
-      info: { color: 'bg-blue-600 text-white', icon: Info },
-    };
-    const { color, icon: Icon } = config[severity] || config.info;
-    return (
-      <Badge className={color}>
-        <Icon className="w-3 h-3 mr-1" />
-        {severity || 'info'}
-      </Badge>
-    );
   };
 
   const getActionColor = (action) => {

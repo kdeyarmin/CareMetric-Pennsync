@@ -1,9 +1,8 @@
-import { useLocation, Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import OASISNoAnalysisCard from "@/components/oasis/OASISNoAnalysisCard";
 import OASISValidationPanel from "@/components/oasis/OASISValidationPanel";
 import AuditRiskPredictor from "@/components/oasis/AuditRiskPredictor";
 import AIAuditRiskPredictor from "@/components/oasis/AIAuditRiskPredictor";
@@ -14,21 +13,7 @@ export default function OASISComplianceReview() {
   const { analysisResults, pdgmData, patientId } = location.state || {};
 
   if (!analysisResults) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-slate-600">No analysis data available. Please analyze an OASIS document first.</p>
-            <Link to={createPageUrl("OASISAnalyzer")}>
-              <Button className="mt-4">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Analyzer
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <OASISNoAnalysisCard />;
   }
 
   return (
