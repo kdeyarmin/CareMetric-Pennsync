@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ export default function TimeOff() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = isAdminView(currentUser);
   const isApprover = isAdmin || currentUser?.is_manager === true;
 
   // The current user's own requests (for the "My Time Off" tab).

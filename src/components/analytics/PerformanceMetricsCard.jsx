@@ -1,12 +1,17 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
-export default function PerformanceMetricsCard({ 
-  title, 
-  value, 
-  change, 
-  icon: Icon, 
-  color = "blue" 
+export default function PerformanceMetricsCard({
+  title,
+  value,
+  change,
+  icon: Icon,
+  color = "blue",
+  // For "lower is better" metrics (e.g. average documentation time) a decrease
+  // is the improvement. Set this so the arrow encodes good(up)/bad(down) rather
+  // than raw numeric direction — otherwise a team that got 12% SLOWER is shown
+  // with an up-arrow that reads as an improvement.
+  invertTrend = false,
 }) {
   const colorMap = {
     blue: "from-blue-500 to-blue-600",
@@ -17,8 +22,11 @@ export default function PerformanceMetricsCard({
   };
 
   const hasChange = change !== undefined && change !== null;
-  const isPositive = parseFloat(change) > 0;
-  const isNegative = parseFloat(change) < 0;
+  const numChange = parseFloat(change);
+  const isPositive = numChange > 0;
+  const isNegative = numChange < 0;
+  const isImprovement = hasChange && (invertTrend ? isNegative : isPositive);
+  const isRegression = hasChange && (invertTrend ? isPositive : isNegative);
 
   return (
     <Card className="overflow-hidden">
@@ -30,14 +38,14 @@ export default function PerformanceMetricsCard({
           </div>
           <p className="text-2xl font-bold">{value}</p>
           {hasChange && (
-            <div className="flex items-center gap-1 mt-2">
-              {isPositive ? (
+            <div className="flex items-center gap-1 mt-2" title={invertTrend ? "Lower is better" : undefined}>
+              {isImprovement ? (
                 <TrendingUp className="w-3 h-3" />
-              ) : isNegative ? (
+              ) : isRegression ? (
                 <TrendingDown className="w-3 h-3" />
               ) : null}
               <span className="text-xs opacity-90">
-                {isPositive ? '+' : ''}{change}% vs prev period
+                {isPositive ? '+' : ''}{change}% vs prev period{invertTrend ? ' (lower is better)' : ''}
               </span>
             </div>
           )}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -35,7 +36,7 @@ export default function AdminUserSetup() {
     queryKey: ['allUsers'],
     queryFn: () => base44.entities.User.list('-created_date'),
     initialData: [],
-    enabled: currentUser?.role === 'admin',
+    enabled: isAdminView(currentUser),
   });
 
   const inviteUserMutation = useMutation({
@@ -71,7 +72,7 @@ export default function AdminUserSetup() {
     inviteUserMutation.mutate({ email: inviteEmail, full_name: inviteFullName.trim(), role: inviteRole });
   };
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   if (!isAdmin) {
     return (

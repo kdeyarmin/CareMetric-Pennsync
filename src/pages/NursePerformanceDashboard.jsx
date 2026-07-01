@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -70,12 +71,12 @@ export default function NursePerformanceDashboard() {
   const { data: allUsers = [] } = useQuery({
     queryKey: ['allUsers'],
     queryFn: () => base44.entities.User.list(),
-    enabled: currentUser?.role === 'admin',
+    enabled: isAdminView(currentUser),
     initialData: []
   });
 
-  const nurseEmail = currentUser?.role === 'admin' && selectedNurse 
-    ? selectedNurse 
+  const nurseEmail = isAdminView(currentUser) && selectedNurse
+    ? selectedNurse
     : currentUser?.email;
 
   const { data: performanceData, isLoading, refetch } = useQuery({
@@ -181,7 +182,7 @@ export default function NursePerformanceDashboard() {
         favoritePage="NursePerformanceDashboard"
         actions={
           <div className="flex flex-col sm:flex-row gap-2">
-            {currentUser?.role === 'admin' && (
+            {isAdminView(currentUser) && (
               <Select value={selectedNurse} onValueChange={setSelectedNurse}>
                 <SelectTrigger className="w-full sm:w-64 h-11 touch-target">
                   <SelectValue placeholder="Select nurse..." />

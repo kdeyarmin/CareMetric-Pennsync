@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Sparkles, Brain, CheckCircle2, AlertCircle } from "lucide-react";
+import AICaveat from "@/components/ui/AICaveat";
 
 export default function AIPathwayGenerator({ onPathwayGenerated }) {
   const [diagnosis, setDiagnosis] = useState("");
@@ -233,6 +234,7 @@ Return ONLY valid JSON without any markdown formatting or explanations.`;
               <CheckCircle2 className="w-4 h-4 text-green-600" />
               Generated Pathways ({generatedPathways.length})
             </h3>
+            <AICaveat label="AI-generated — review clinically before creating these pathways" />
             {generatedPathways.map((pathway, idx) => (
               <Card key={idx} className="border-green-200 bg-white">
                 <CardContent className="p-4 space-y-3">

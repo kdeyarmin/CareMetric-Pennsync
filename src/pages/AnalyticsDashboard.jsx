@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +56,7 @@ export default function AnalyticsDashboard() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   // Fetch all users for admin
   const { data: allUsers = [] } = useQuery({
@@ -504,6 +505,7 @@ export default function AnalyticsDashboard() {
           change={metrics.timeChange}
           icon={Clock}
           color="blue"
+          invertTrend
         />
         <PerformanceMetricsCard
           title="Quality Score"

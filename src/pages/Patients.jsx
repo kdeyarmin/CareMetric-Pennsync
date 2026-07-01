@@ -274,16 +274,37 @@ export default function Patients() {
         }
       />
 
-      {/* Roster summary — shared StatCard treatment, matching the Dashboard. */}
+      {/* Roster summary — shared StatCard treatment, matching the Dashboard.
+          Each card is a one-tap filter: tapping the number a user is already
+          looking at narrows the roster instead of hunting through the popover. */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        <StatCard label="Total Patients" value={rosterStats.total} icon={Users} tone="navy" />
-        <StatCard label="Active" value={rosterStats.active} icon={UserCheck} tone="emerald" />
-        <StatCard
-          label="New (30 days)"
-          value={rosterStats.recent}
-          icon={CalendarPlus}
-          tone="slate"
-        />
+        <button
+          type="button"
+          onClick={() => setFilters(prev => ({ ...prev, status: 'all' }))}
+          className="w-full text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+          aria-label="Show all patients"
+          title="Show all patients"
+        >
+          <StatCard label="Total Patients" value={rosterStats.total} icon={Users} tone="navy" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilters(prev => ({ ...prev, status: 'active' }))}
+          className="w-full text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+          aria-label="Filter to active patients"
+          title="Filter to active patients"
+        >
+          <StatCard label="Active" value={rosterStats.active} icon={UserCheck} tone="emerald" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilters(prev => ({ ...prev, createdAfter: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10) }))}
+          className="w-full text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+          aria-label="Filter to patients added in the last 30 days"
+          title="Filter to patients added in the last 30 days"
+        >
+          <StatCard label="New (30 days)" value={rosterStats.recent} icon={CalendarPlus} tone="slate" />
+        </button>
       </div>
 
       {showForm && (

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAICall } from "@/hooks/useAICall";
+import AICaveat from "@/components/ui/AICaveat";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,7 +32,17 @@ export default function TemplateEditor({
   const [expandedSections, setExpandedSections] = useState({});
   const [clinicalResponses, setClinicalResponses] = useState({});
   const ai = useAICall();
+  const [aiEnhanced, setAiEnhanced] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // The editor is not remounted when a different template is selected (no key in
+  // TemplateLibrary), so re-sync local state on templateData change — otherwise
+  // the textarea keeps the previous template's content and the AI-enhanced
+  // caveat lingers from a prior template's enhance.
+  useEffect(() => {
+    setContent(templateData?.content?.template_content || '');
+    setAiEnhanced(false);
+  }, [templateData]);
 
   const clinicalPrompts = templateData?.content?.clinical_prompts || [];
   const requiredFields = templateData?.content?.required_fields || [];
@@ -79,6 +90,7 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
       });
 
       setContent(result);
+      setAiEnhanced(true);
       if (onContentChange) {
         onContentChange(result);
       }
@@ -258,6 +270,7 @@ Return the enhanced, complete clinical note ready for documentation. Keep all fa
             className="min-h-[500px] font-mono text-sm"
             placeholder="Template content will appear here..."
           />
+          {aiEnhanced && <AICaveat label="AI-enhanced — verify accuracy before saving or using" className="mt-2" />}
         </CardContent>
       </Card>
     </div>

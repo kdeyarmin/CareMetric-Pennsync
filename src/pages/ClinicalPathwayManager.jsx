@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -355,7 +356,7 @@ export default function ClinicalPathwayManager() {
   }
 
   // Admin-only surface: block non-admins (server-side authz remains the real gate).
-  if (currentUser?.role !== 'admin') {
+  if (!isAdminView(currentUser)) {
     return (
       <div className="p-8 max-w-2xl mx-auto">
         <Card className="border-l-4 border-l-red-500">
