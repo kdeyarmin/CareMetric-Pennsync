@@ -4,14 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Shield, Bell, Menu, X, ChevronLeft, Search } from "lucide-react";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
-const BACK_PAGES = ['PatientDetails', 'DocumentHub', 'ReferralIntake', 'TrainingCoursePlayer', 'EventReport'];
+// Root routes show the logo; every other route shows a back button. These are
+// the top-level destinations reachable from the bottom nav / main menu — landing
+// on one of them is "home", so no back affordance is needed there.
+const ROOT_PAGES = ['Dashboard', 'Patients', 'Messages', 'SmartNoteAssistant', 'SendFax', 'ReferralIntake', 'DocumentHub'];
 
 export default function MobileHeader({ currentPageName, totalNotificationCount, mobileMenuOpen, onToggleMobileMenu, onOpenNotificationCenter }) {
+  // Back button on child/detail routes only. Also require real browser history
+  // so a deep-linked child route (no prior entry) doesn't offer a dead "back".
+  const isChildRoute = !ROOT_PAGES.includes(currentPageName);
+  const showBack = isChildRoute && typeof window !== 'undefined' && window.history.length > 1;
   return (
     <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b border-slate-200 print:hidden safe-top">
       <div className="h-16 flex items-center justify-between px-4">
       <div className="flex items-center gap-2">
-        {BACK_PAGES.includes(currentPageName) && (
+        {showBack && (
           <Button variant="ghost" size="icon" className="text-slate-500 hover:text-navy-700 hover:bg-slate-100 h-10 w-10 mr-1" onClick={() => window.history.back()} aria-label="Go back">
             <ChevronLeft className="w-5 h-5" />
           </Button>
