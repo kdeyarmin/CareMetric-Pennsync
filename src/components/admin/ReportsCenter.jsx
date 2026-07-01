@@ -195,7 +195,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
                 ])
               },
               { type: 'spacer', height: 10 },
-              { type: 'heading', text: 'Penn Sync ROI', size: 14 },
+              { type: 'heading', text: 'PennSync by CareMetric ROI', size: 14 },
               { type: 'spacer', height: 5 },
               {
                 type: 'table',
@@ -231,7 +231,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
             break;
 
           default:
-            reportTitle = 'Penn Sync Report';
+            reportTitle = 'PennSync by CareMetric Report';
             pdfContent = [
               { type: 'text', text: 'Report data not available for PDF export in this format.' }
             ];
@@ -410,7 +410,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
   const generateProductivityReport = (visits, allUsers, startDate, endDate) => {
     const data = generateProductivityReportData(visits, allUsers);
 
-    let content = `Penn Sync Productivity Report\n`;
+    let content = `PennSync by CareMetric Productivity Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
     content += `Generated: ${formatEastern(new Date(), 'MMM d, yyyy hh:mm a')}\n\n`;
     content += `Nurse,Note Enhancements,Time Saved (hours)\n`;
@@ -433,7 +433,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
   const generateQualityReport = (visits, incidents, allPatients, startDate, endDate) => {
     const data = generateQualityReportData(visits, incidents, allPatients);
 
-    let content = `Penn Sync Quality Metrics Report\n`;
+    let content = `PennSync by CareMetric Quality Metrics Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
     content += `Generated: ${formatEastern(new Date(), 'MMM d, yyyy hh:mm a')}\n\n`;
     content += `OVERALL METRICS\n`;
@@ -481,7 +481,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
     const timeSavedHours = visits.filter(v => v.status === 'completed').length * 95 / 60;
     const costSavings = timeSavedHours * 40; // Avg nurse hourly cost
 
-    let content = `Penn Sync Financial Report\n`;
+    let content = `PennSync by CareMetric Financial Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
     content += `Generated: ${formatEastern(new Date(), 'MMM d, yyyy hh:mm a')}\n\n`;
     content += `REVENUE ANALYSIS\n`;
@@ -521,7 +521,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       return differenceInDays(docDate, visitDate) <= 7;
     });
 
-    let content = `Penn Sync Medicare Compliance Report\n`;
+    let content = `PennSync by CareMetric Medicare Compliance Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
     content += `Generated: ${formatEastern(new Date(), 'MMM d, yyyy hh:mm a')}\n\n`;
     content += `DOCUMENTATION COMPLIANCE\n`;
@@ -564,7 +564,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       vitalsTrends.avgHeartRate = Math.round(vitalsTrends.avgHeartRate / visitsWithVitals);
     }
 
-    let content = `Penn Sync Clinical Report\n`;
+    let content = `PennSync by CareMetric Clinical Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
     content += `Generated: ${formatEastern(new Date(), 'MMM d, yyyy hh:mm a')}\n\n`;
     content += `DIAGNOSIS DISTRIBUTION\n`;
@@ -610,7 +610,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       };
     });
 
-    let content = `Penn Sync Staff Performance Report\n`;
+    let content = `PennSync by CareMetric Staff Performance Report\n`;
     content += `Date Range: ${startDate} to ${endDate}\n`;
     content += `Generated: ${formatEastern(new Date(), 'MMM d, yyyy hh:mm a')}\n\n`;
     content += `Nurse,Credentials,Care Scope,Total Assigned,Completed,Completion Rate %,Documentation Quality %\n`;

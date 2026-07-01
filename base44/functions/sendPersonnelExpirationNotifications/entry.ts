@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
           to: item.user_id,
           subject: `${item.title} expires in ${daysUntilExpiration} days`,
           body: `Your ${item.item_type} "${item.title}" expires on ${new Date(item.expiration_date).toLocaleDateString()}. Please upload a renewed copy to your personnel file for approval.`,
-          from_name: 'Penn Sync HR'
+          from_name: 'PennSync by CareMetric'
         }).catch(err => console.error("Email failed:", err.message))
       );
 
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
             to: manager.email,
             subject: `Personnel file expiration reminder: ${item.user_name || item.user_id}`,
             body: `${item.user_name || item.user_id} has a ${item.item_type} item (${item.title}) expiring on ${new Date(item.expiration_date).toLocaleDateString()}.`,
-            from_name: 'Penn Sync HR'
+            from_name: 'PennSync by CareMetric'
           }).catch(err => console.error("Manager email failed:", err.message))
         );
       }

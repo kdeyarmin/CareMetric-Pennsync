@@ -813,7 +813,7 @@ export default function UserSettings() {
                     </p>
                   </div>
                   <p className="text-sm text-slate-700">
-                    You are about to request deletion of your CareMetric AI account. This action:
+                    You are about to request deletion of your PennSync by CareMetric account. This action:
                   </p>
                   <ul className="text-sm text-slate-700 space-y-1 ml-4 list-disc">
                     <li>Notifies your administrators to process the deletion</li>

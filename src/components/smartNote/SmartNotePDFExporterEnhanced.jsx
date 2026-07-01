@@ -57,7 +57,7 @@ export default function SmartNotePDFExporterEnhanced({
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(14);
       doc.setFont(undefined, "bold");
-      doc.text("Penn Sync", margin, 10);
+      doc.text("PennSync by CareMetric", margin, 10);
 
       doc.setFontSize(8);
       doc.setFont(undefined, "normal");
@@ -261,7 +261,7 @@ export default function SmartNotePDFExporterEnhanced({
         doc.setFontSize(7);
         doc.setTextColor(160, 160, 160);
         doc.text(
-          `Penn Sync Clinical Documentation  |  Generated: ${new Date().toLocaleString()}  |  Page ${p} of ${totalPages}`,
+          `PennSync by CareMetric Clinical Documentation  |  Generated: ${new Date().toLocaleString()}  |  Page ${p} of ${totalPages}`,
           margin,
           pageHeight - 5
         );

@@ -340,7 +340,7 @@ function generatePDFReport(config) {
   // Title
   doc.setFontSize(20);
   doc.setFont(undefined, 'bold');
-  doc.text('Penn Sync AI Report', 105, 30, { align: 'center' });
+  doc.text('PennSync by CareMetric AI Report', 105, 30, { align: 'center' });
   doc.setFontSize(14);
   doc.text(report_type.replace(/_/g, ' ').toUpperCase(), 105, 40, { align: 'center' });
   doc.setFontSize(10);

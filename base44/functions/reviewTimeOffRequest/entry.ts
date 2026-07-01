@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       });
       await base44.asServiceRole.integrations.Core.SendEmail({
         to: request.employee_email,
-        from_name: 'Penn Sync Time Off',
+        from_name: 'PennSync by CareMetric',
         subject: decision === 'approved' ? 'Your time off was approved' : 'Your time-off request was denied',
         body: `Your ${prettyType} request for ${request.start_date} → ${request.end_date} was ${decision} by ${reviewerName}.` +
           `${trimmedNote ? `\n\nNote: ${trimmedNote}` : ''}\n\nView the details in Penn Sync under Time Off.`,

@@ -186,7 +186,7 @@ Return JSON with the complete material:`,
 
       await base44.integrations.Core.SendEmail({
         to: patient.email,
-        from_name: "Penn Sync Care Team",
+        from_name: "PennSync by CareMetric Care Team",
         subject: `Your Personal Health Education Guide - ${educationMaterial.title}`,
         body: fullText
       });

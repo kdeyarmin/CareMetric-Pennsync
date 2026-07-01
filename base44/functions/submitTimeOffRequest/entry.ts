@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
         recipients.map((r) =>
           base44.asServiceRole.integrations.Core.SendEmail({
             to: r.email,
-            from_name: 'Penn Sync Time Off',
+            from_name: 'PennSync by CareMetric',
             subject: `Time-off request from ${requesterName}`,
             body: `${requesterName} has requested time off and needs your review.\n\n` +
               `Type: ${prettyType}\nDates: ${start_date} → ${end_date}\nBusiness days: ${total}\n` +
