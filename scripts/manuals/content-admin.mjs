@@ -78,9 +78,9 @@ export const adminBlocks = [
       <p>Two sidebar sections appear only for administrators:</p>
       ${grid2([
         { h: 'Office', p: 'Back-office workflows: Referrals, Incident Review, and Documents & E-Signing.' },
-        { h: 'Administration', p: 'Admin Console, Users, Reports & Analytics, and Compliance Center — plus every other admin tool via the Admin Console launchpad and ⌘K.' },
+        { h: 'Administration', p: 'Admin Console, Users, Reports & Analytics, and Compliance Center — plus every other admin tool via the Admin Console launchpad and Cmd/Ctrl + K.' },
       ])}
-      ${callout('tip', 'The Admin Console is your launchpad', '<p>Rather than crowd the sidebar, PennSync surfaces the daily-use admin destinations there and keeps every other admin tool one click away inside the Admin Console directory (and ⌘K search).</p>')}
+      ${callout('tip', 'The Admin Console is your launchpad', '<p>Rather than crowd the sidebar, PennSync surfaces the daily-use admin destinations there and keeps every other admin tool one click away inside the Admin Console directory (and Cmd/Ctrl + K search).</p>')}
     `,
   },
 
@@ -102,7 +102,7 @@ export const adminBlocks = [
         ['<strong>System Health</strong>', 'Live status indicators for the platform (sync status, service availability, storage).'],
         ['<strong>Settings</strong>', 'Quick access to facility configuration and preferences.'],
       ])}
-      ${callout('tip', 'Deep-link straight to a tab', '<p>Any tab is directly reachable, e.g. Admin Console → User Activity. Use ⌘K and type “activity”, “data quality”, or “system health” to jump there.</p>')}
+      ${callout('tip', 'Deep-link straight to a tab', '<p>Any tab is directly reachable, e.g. Admin Console → User Activity. Use Cmd / Ctrl + K and type “activity”, “data quality”, or “system health” to jump there.</p>')}
     `,
   },
 

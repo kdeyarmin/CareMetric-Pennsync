@@ -201,6 +201,63 @@ dl.gloss{margin:14px 0}
 .mini p{margin:0; color:var(--slate); font-size:10pt}
 .lead{font-size:11.5pt; color:var(--slate); margin:0 0 14px}
 .divider-sm{height:1px; background:var(--line); margin:22px 0}
+
+/* ── Figures (illustrative UI diagrams) ────────────────────────────────────── */
+figure.fig{margin:18px 0 20px; break-inside:avoid}
+.fig .frame{border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 10px 26px rgba(13,22,40,.10)}
+.fig figcaption{margin-top:9px; font-size:9.5pt; color:var(--muted); text-align:center; line-height:1.4}
+.fig figcaption .flabel{color:var(--gold-600); font-weight:800; text-transform:uppercase; letter-spacing:1.2px; margin-right:7px}
+.illus-note{font-size:8.5pt; color:var(--muted); font-style:italic; text-align:center; margin:-12px 0 16px}
+
+/* Mock app window */
+.uiwin{background:#fff; font-size:9.5px}
+.uiwin .titlebar{display:flex; align-items:center; gap:6px; padding:8px 12px; background:#eef2f8; border-bottom:1px solid var(--line)}
+.uiwin .dot{width:9px; height:9px; border-radius:50%}
+.uiwin .dot.r{background:#f87171} .uiwin .dot.y{background:#fbbf24} .uiwin .dot.g{background:#34d399}
+.uiwin .tb-title{margin-left:8px; font-size:9pt; color:var(--muted); font-weight:600}
+.uiwin .shell{display:grid; grid-template-columns:172px 1fr}
+.uiwin .side{background:var(--navy-800); color:#fff; padding:12px 10px}
+.uiwin .side .brand{display:flex; align-items:center; gap:6px; font-weight:800; font-size:12px; margin-bottom:10px}
+.uiwin .side .brand .sync{color:var(--gold-400)}
+.uiwin .side .cat{font-size:7px; letter-spacing:1.4px; text-transform:uppercase; color:#8aa0cf; margin:9px 0 3px}
+.uiwin .side .nav{display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:6px; font-size:9.5px; color:#dbe4f5; margin:1px 0}
+.uiwin .side .nav .ic{width:11px; height:11px; border-radius:3px; background:rgba(255,255,255,.22); flex:0 0 auto}
+.uiwin .side .nav.active{background:rgba(220,171,53,.20); color:#fff; font-weight:600}
+.uiwin .side .nav.active .ic{background:var(--gold-400)}
+.uiwin .main{display:flex; flex-direction:column}
+.uiwin .topbar{display:flex; align-items:center; justify-content:space-between; padding:9px 14px; border-bottom:1px solid var(--line); background:#fff}
+.uiwin .crumb{font-size:9px; color:var(--muted)} .uiwin .crumb b{color:var(--navy-700)}
+.uiwin .tools{display:flex; align-items:center; gap:8px}
+.uiwin .search{display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:4px 11px; font-size:8.5px; color:var(--muted)}
+.uiwin .kbdmini{background:#eef2f8; border:1px solid #d5deea; border-radius:4px; padding:0 4px; font-size:7.5px; font-weight:700; color:var(--navy-700)}
+.uiwin .bell{width:20px; height:20px; border-radius:50%; background:#eef2f8; position:relative}
+.uiwin .bell::after{content:''; position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:var(--gold-500)}
+.uiwin .content{padding:14px; background:#f6f8fc; flex:1}
+.uiwin .h{height:11px; border-radius:4px; background:#dbe4f2; margin-bottom:9px}
+.uiwin .card{background:#fff; border:1px solid var(--line); border-radius:8px; padding:11px; margin-bottom:9px}
+.uiwin .bar{height:8px; border-radius:4px; background:#e7edf6; margin:5px 0}
+.uiwin .row2{display:grid; grid-template-columns:1fr 1fr; gap:9px}
+.uiwin .pill{display:inline-block; font-size:8px; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--navy-50); color:var(--navy-700)}
+.uiwin .pill.gold{background:var(--gold-100); color:var(--gold-600)}
+.uiwin .btn{display:inline-block; font-size:8.5px; font-weight:700; color:#fff; background:var(--navy-700); border-radius:6px; padding:5px 12px}
+.uiwin .btn.gold{background:var(--gold-400); color:var(--navy-900)}
+.uiwin .tabs{display:flex; gap:14px; border-bottom:1px solid var(--line); padding:0 14px; background:#fff}
+.uiwin .tab{font-size:9px; color:var(--muted); padding:9px 0; border-bottom:2px solid transparent}
+.uiwin .tab.on{color:var(--navy-800); font-weight:700; border-bottom-color:var(--gold-400)}
+
+/* Annotation badge + legend */
+.anno{display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; background:var(--gold-400); color:var(--navy-900); font-size:9px; font-weight:800; vertical-align:middle; margin-left:4px}
+ul.legend{list-style:none; padding:0; margin:12px 0 0; display:grid; grid-template-columns:1fr 1fr; gap:6px 20px}
+ul.legend li{font-size:10pt; color:var(--slate); display:flex; gap:8px; align-items:baseline}
+ul.legend .anno{margin-left:0; flex:0 0 auto; position:relative; top:2px}
+
+/* Step flow pipeline */
+.flow{display:flex; flex-wrap:wrap; gap:9px; margin:14px 0}
+.flow .fstep{flex:1 1 0; min-width:120px; border:1px solid var(--navy-100); border-radius:11px; padding:11px 12px; background:linear-gradient(180deg,#fff,#f6faff)}
+.flow .fstep .fn{width:23px; height:23px; border-radius:50%; background:var(--navy-800); color:#fff; font-weight:800; font-size:11px; display:flex; align-items:center; justify-content:center; margin-bottom:7px}
+.flow .fstep:last-child .fn{background:var(--gold-400); color:var(--navy-900)}
+.flow .fstep h5{margin:0 0 3px; font-size:10.5pt; color:var(--navy-800); font-weight:750}
+.flow .fstep p{margin:0; font-size:9pt; color:var(--slate); line-height:1.45}
 </style>
 </head>
 <body>
@@ -251,6 +308,7 @@ dl.gloss{margin:14px 0}
         <li>Use the <strong>Contents</strong> page to jump straight to a task.</li>
         <li>Look for <strong>“Go to”</strong> chips like the one below — they show the exact path through the app.</li>
         <li>Watch for the callout boxes: <strong>Tips</strong> save you time, <strong>Important</strong> notes prevent mistakes, and <strong>Best practice</strong> boxes reflect how top-performing clinicians work.</li>
+        <li><strong>Figures</strong> are simplified, labeled illustrations of the PennSync interface used to walk you through a screen; your live screens show real patient data and full detail.</li>
       </ul>
       <div class="navpath"><span class="navpath-label">Go to</span><span class="np first">Sidebar</span><span class="sep">▸</span><span class="np">Overview</span><span class="sep">▸</span><span class="np">Dashboard</span></div>
     
@@ -261,21 +319,21 @@ dl.gloss{margin:14px 0}
       <p class="sec-intro">A quick map of everything PennSync does. Each feature below is covered step by step later in this manual.</p>
 
       <h3 id="feat-care"><span class="h3-eyebrow">Patient care</span>Care &amp; assessments</h3>
-      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th></tr></thead><tbody><tr><td><strong>Dashboard</strong></td><td>Your daily home base — today’s visits, alerts, high-risk patients, quick actions, and route planning.</td></tr><tr><td><strong>Patients</strong></td><td>Search, filter, sort, and manage your patient roster; add new patients.</td></tr><tr><td><strong>Patient 360 record</strong></td><td>One connected record per patient: overview, vitals trends, visits, documents, tasks, and AI insights.</td></tr><tr><td><strong>Patient Alerts</strong></td><td>Clinical, risk, and deterioration alerts you can review and acknowledge.</td></tr><tr><td><strong>OASIS Center</strong></td><td>Complete OASIS-E assessments with AI guidance, then review and validate them.</td></tr><tr><td><strong>Incidents</strong></td><td>Report safety events (falls, medication errors) with automatic state-reportable detection.</td></tr><tr><td><strong>Patient Education</strong></td><td>Generate personalized, plain-language handouts and document teach-back.</td></tr></tbody></table>
+      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th><th>Find it under</th></tr></thead><tbody><tr><td><strong>Dashboard</strong></td><td>Your daily home base — today’s visits, AI-note and time-saved stats, real-time patient alerts, high-risk and hospitalization-risk monitors, pending referrals, announcements, and one-tap quick actions. A Smart Route Optimizer sequences your day’s visits.</td><td>Overview</td></tr><tr><td><strong>Patients</strong></td><td>Your census with fuzzy search (name, MRN, phone, diagnosis) and filters for status, diagnosis, age, last visit, and insurance. Add patients, sort, favorite, and act in bulk.</td><td>Patient Care ▸ Patients</td></tr><tr><td><strong>Patient 360 record</strong></td><td>One connected record per patient: overview and health history, vitals-trend charts, visits, documents, proactive tasks, and AI tools (risk, deterioration, history summary, compliance).</td><td>Patients ▸ (select) ▸ Patient Details</td></tr><tr><td><strong>Patient Alerts</strong></td><td>A dedicated view of every clinical, risk, and deterioration alert for your patients — review, prioritize, and acknowledge.</td><td>Patient Care ▸ Patients ▸ Patient Alerts</td></tr><tr><td><strong>OASIS Center</strong></td><td>Complete OASIS-E with AI pre-fill and compliance hints, then analyze, review/approve, and validate — all as tabs of one hub.</td><td>Patient Care ▸ OASIS Center</td></tr><tr><td><strong>Incidents</strong></td><td>Report safety events (falls, medication errors, injuries) with event type, severity, and AI severity scoring; automatic state-reportable detection; track each report to resolution.</td><td>Patient Care ▸ Incidents</td></tr><tr><td><strong>Patient Education</strong></td><td>Generate personalized, plain-language handouts for common conditions, tuned to the patient’s history and reading level; email or print; document teach-back.</td><td>Patient Care ▸ Patient Education</td></tr></tbody></table>
 
       <h3 id="feat-doc"><span class="h3-eyebrow">Documentation</span>Charting a visit</h3>
-      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th></tr></thead><tbody><tr><td><strong>Clinical Notes</strong></td><td>The documentation hub for every visit — choose Smart Note or Visit Scribe.</td></tr><tr><td><strong>Smart Note</strong></td><td>Type a few observations; AI expands them into a compliant, skilled note.</td></tr><tr><td><strong>Visit Scribe</strong></td><td>Record, upload, or dictate a visit out loud; AI transcribes it into a compliant note.</td></tr><tr><td><strong>Offline Mode</strong></td><td>Document without a signal; everything syncs automatically when you’re back online.</td></tr></tbody></table>
+      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th><th>Find it under</th></tr></thead><tbody><tr><td><strong>Clinical Notes</strong></td><td>The documentation hub for every visit — a clear choice between Smart Note and Visit Scribe, with structured vitals capture and automatic visit + compliance records.</td><td>Documentation ▸ Clinical Notes</td></tr><tr><td><strong>Smart Note</strong></td><td>Type a few rough observations; AI checks Home Health / Hospice compliance and rewrites them into a complete, skilled note with medical-necessity and homebound language.</td><td>Clinical Notes ▸ Smart Note</td></tr><tr><td><strong>Visit Scribe</strong></td><td>Document by voice — record or upload audio, or dictate live. AI transcribes and runs the same compliance review and polishing as a typed note.</td><td>Clinical Notes ▸ Visit Scribe</td></tr><tr><td><strong>Offline Mode</strong></td><td>Document a visit with no signal — notes and audio are saved on your device and sync automatically when you reconnect.</td><td>Tools ▸ Offline Mode</td></tr></tbody></table>
 
       <h3 id="feat-comm"><span class="h3-eyebrow">Communication</span>Reaching your team &amp; patients</h3>
-      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th></tr></thead><tbody><tr><td><strong>Messages</strong></td><td>Secure internal messaging with priorities and patient context.</td></tr><tr><td><strong>Phone Center</strong></td><td>Calls and texts through a masked work number; callbacks, scheduled texts, and duty status.</td></tr><tr><td><strong>Fax</strong></td><td>Send faxes from your camera, an upload, or a template; track delivery.</td></tr><tr><td><strong>Providers</strong></td><td>A directory of physicians and provider offices with contact details.</td></tr><tr><td><strong>Telehealth</strong></td><td>Schedule and run secure video visits; patients join by a simple link.</td></tr></tbody></table>
+      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th><th>Find it under</th></tr></thead><tbody><tr><td><strong>Messages</strong></td><td>Secure internal messaging with Urgent / High / Normal priorities, threading, and patient context for clean handoffs.</td><td>Communication ▸ Messages</td></tr><tr><td><strong>Phone Center</strong></td><td>Calls and texts through a masked work number (your personal cell stays private): Texts, Recents, Callbacks queue, Scheduled texts, and Duty Status.</td><td>Communication ▸ Phone Center</td></tr><tr><td><strong>Fax</strong></td><td>Send a fax from your camera, an uploaded file, or a template — with an AI cover page, batch sending, contacts, and delivery tracking.</td><td>Communication ▸ Fax</td></tr><tr><td><strong>Providers</strong></td><td>A searchable directory of physicians and provider offices with phone, fax, email, address, and specialty.</td><td>Communication ▸ Providers</td></tr><tr><td><strong>Telehealth</strong></td><td>Schedule and run secure video visits; text the patient a one-tap join link; view vitals live and document from the session.</td><td>Communication ▸ Telehealth</td></tr></tbody></table>
 
       <h3 id="feat-learn"><span class="h3-eyebrow">Learning &amp; resources</span>Growing &amp; referencing</h3>
-      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th></tr></thead><tbody><tr><td><strong>Learning Center</strong></td><td>Courses, learning plans, competencies, certificates, renewals, and transcripts.</td></tr><tr><td><strong>Nurse Training Hub</strong></td><td>Role-specific, AI-personalized training.</td></tr><tr><td><strong>Libraries</strong></td><td>Resource, Clinical, and Medicare Guidelines references on demand.</td></tr></tbody></table>
+      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th><th>Find it under</th></tr></thead><tbody><tr><td><strong>Learning Center</strong></td><td>Courses, learning plans, competencies, certificates, renewals (with calendar export), in-services, annual education, and transcripts.</td><td>Learning &amp; Resources ▸ Learning Center</td></tr><tr><td><strong>Nurse Training Hub</strong></td><td>Role-specific, AI-personalized nursing training and documentation practice.</td><td>Learning Center ▸ Nurse Training Hub</td></tr><tr><td><strong>Reference Libraries</strong></td><td>Resource Library (agency guidelines &amp; policies), Clinical Library (disease/medication references), and Medicare Guidelines on demand.</td><td>Learning &amp; Resources ▸ Library</td></tr></tbody></table>
 
       <h3 id="feat-tools"><span class="h3-eyebrow">Personal tools</span>Settings &amp; day-to-day</h3>
-      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th></tr></thead><tbody><tr><td><strong>Settings</strong></td><td>Your profile, care scope, credentials, and AI preferences.</td></tr><tr><td><strong>Notifications</strong></td><td>Choose which alerts you receive and set quiet hours.</td></tr><tr><td><strong>Time Off</strong></td><td>Request and track time off.</td></tr><tr><td><strong>On-Call Schedule</strong></td><td>View holiday and overnight coverage.</td></tr><tr><td><strong>Help &amp; User Guides</strong></td><td>Quick-start help, FAQs, and downloadable manuals.</td></tr></tbody></table>
+      <table class="tbl"><thead><tr><th>Feature</th><th>What it does</th><th>Find it under</th></tr></thead><tbody><tr><td><strong>Settings</strong></td><td>Your profile, care scope (Home Health / Hospice / Both), credentials with expiration reminders, and AI preferences.</td><td>Tools ▸ Settings</td></tr><tr><td><strong>Notifications</strong></td><td>Choose which alerts you receive (messages, SMS, clinical alerts, approvals) and set quiet hours.</td><td>Settings ▸ Notification Settings</td></tr><tr><td><strong>Time Off</strong></td><td>Request PTO/sick/vacation and track approvals; managers approve and view a team calendar.</td><td>Tools ▸ Time Off</td></tr><tr><td><strong>On-Call Schedule</strong></td><td>View holiday and overnight coverage so you always know who’s on (admins edit it).</td><td>Tools ▸ On-Call</td></tr><tr><td><strong>Help &amp; User Guides</strong></td><td>Quick-start help, searchable FAQs, and downloadable manuals (including this one).</td><td>Tools ▸ Help</td></tr></tbody></table>
 
-      <div class="callout callout-note"><span class="ci">i</span><div><p class="ct">Back-office tools</p><div class="cx"><p>Office and administrative staff also use back-office tools such as <strong>Referrals</strong>, <strong>Documents &amp; E-Signing</strong>, and <strong>Incident Review</strong>. These require administrator access and are documented in the Facility Administrator Manual.</p></div></div></div>
+      <div class="callout callout-note"><span class="ci">i</span><div><p class="ct">For office &amp; administrative staff</p><div class="cx"><p>Office staff also use back-office tools — <strong>Referrals</strong> (intake with AI extraction), <strong>Documents &amp; E-Signing</strong>, <strong>Incident Review</strong>, and <strong>Template Management</strong>. These require administrator access; ask your facility administrator, and see the <em>Facility Administrator Manual</em> for how they work.</p></div></div></div>
     
   </section></div></div>
 <div class="sheet"><div class="pad"><section class="sec" id="getting-started">
@@ -289,10 +347,44 @@ dl.gloss{margin:14px 0}
       <div class="callout callout-important"><span class="ci">!</span><div><p class="ct">Forgot your password?</p><div class="cx"><p>Use the <strong>Forgot password</strong> link on the sign-in screen, or ask your facility administrator to send a reset. Never share your password — every action in PennSync is recorded under your name for HIPAA accountability.</p></div></div></div>
 
       <h3 id="gs-workspace"><span class="h3-eyebrow">Navigation</span>Finding your way around</h3>
-      <p>Every screen shares the same layout:</p>
-      <div class="grid2"><div class="mini"><h4>Sidebar</h4><p>On the left, grouped into Overview, Patient Care, Documentation, Communication, Learning & Resources, and Tools. Tap any item to open it.</p></div><div class="mini"><h4>Breadcrumbs</h4><p>Across the top, showing where you are (e.g. Patients ▸ Patient Details). Tap a crumb to step back.</p></div><div class="mini"><h4>Command palette</h4><p>Press <span class="kbd">Ctrl / ⌘</span> + <span class="kbd">K</span> to jump to any page or patient by name — the fastest way to move around.</p></div><div class="mini"><h4>Mobile bottom bar</h4><p>On phones, the most-used shortcuts (including Notes) sit in a bottom navigation bar; a notifications bell shows new alerts.</p></div></div>
-      <div class="navpath"><span class="navpath-label">Go to</span><span class="np first">Anywhere</span><span class="sep">▸</span><span class="np">Press ⌘K / Ctrl+K</span><span class="sep">▸</span><span class="np">Type a page or patient</span></div>
-      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">Search beats scrolling</p><div class="cx"><p>Don’t hunt through the sidebar — press <strong>⌘K / Ctrl+K</strong> and type “fax”, “oasis”, a patient’s name, or a task. The command palette only ever shows pages you’re allowed to open.</p></div></div></div>
+      <p>Every screen shares the same layout. The illustration below maps the four things you’ll use most to move around PennSync.</p>
+      <figure class="fig"><div class="frame"><div class="uiwin">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">PennSync by CareMetric</span></div>
+    <div class="shell">
+      <div class="side">
+        <div class="brand">Penn<span class="sync">Sync</span><span class="anno">1</span></div>
+        <div class="cat">Overview</div>
+        <div class="nav"><span class="ic"></span>Dashboard</div>
+        <div class="cat">Patient Care</div>
+        <div class="nav active"><span class="ic"></span>Patients</div>
+        <div class="nav"><span class="ic"></span>OASIS Center</div>
+        <div class="nav"><span class="ic"></span>Incidents</div>
+        <div class="nav"><span class="ic"></span>Patient Education</div>
+        <div class="cat">Documentation</div>
+        <div class="nav"><span class="ic"></span>Clinical Notes</div>
+        <div class="cat">Communication</div>
+        <div class="nav"><span class="ic"></span>Messages</div>
+        <div class="nav"><span class="ic"></span>Phone Center</div>
+      </div>
+      <div class="main">
+        <div class="topbar">
+          <div class="crumb"><b>Patients</b> &nbsp;▸&nbsp; Patient Details<span class="anno">2</span></div>
+          <div class="tools"><span class="search"><span class="kbdmini">Cmd</span><span class="kbdmini">K</span> &nbsp;Search patients &amp; pages…<span class="anno">3</span></span><span class="bell"></span><span class="anno">4</span></div>
+        </div>
+        <div class="content">
+          <div class="h" style="width:38%"></div>
+          <div class="row2">
+            <div class="card"><span class="pill">Active</span><div class="bar" style="width:80%"></div><div class="bar" style="width:60%"></div></div>
+            <div class="card"><span class="pill gold">AI summary</span><div class="bar" style="width:70%"></div><div class="bar" style="width:85%"></div></div>
+          </div>
+          <div class="card"><div class="bar" style="width:55%"></div><div class="bar" style="width:40%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div></div><figcaption><span class="flabel">Figure</span>The PennSync workspace — the numbered elements are explained in the key below.</figcaption></figure>
+      <ul class="legend"><li><span class="anno">1</span><span><strong>Sidebar</strong> — your features, grouped into Overview, Patient Care, Documentation, Communication, Learning &amp; Resources, and Tools. Tap any item to open it.</span></li><li><span class="anno">2</span><span><strong>Breadcrumbs</strong> — show where you are (e.g. Patients ▸ Patient Details); click any crumb to step back.</span></li><li><span class="anno">3</span><span><strong>Command palette</strong> — press <span class="kbd">Cmd</span> / <span class="kbd">Ctrl</span> + <span class="kbd">K</span> to jump to any page or patient by name.</span></li><li><span class="anno">4</span><span><strong>Notifications</strong> — the bell shows new alerts, messages, and approvals.</span></li></ul>
+      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">Search beats scrolling</p><div class="cx"><p>Don’t hunt through the sidebar — press <strong>Cmd / Ctrl + K</strong> and type “fax”, “oasis”, a patient’s name, or a task. The command palette only ever shows pages you’re allowed to open.</p></div></div></div>
+      <div class="callout callout-note"><span class="ci">i</span><div><p class="ct">On a phone</p><div class="cx"><p>On phones the sidebar collapses to a menu and the most-used shortcuts (including Notes) move to a bottom navigation bar. Pull down on the Dashboard to refresh your visits and alerts.</p></div></div></div>
 
       <h3 id="gs-profile"><span class="h3-eyebrow">Set up</span>Your profile & care scope</h3>
       <p>Before your first visit, complete your profile so PennSync tailors itself to you.</p>
@@ -329,7 +421,7 @@ dl.gloss{margin:14px 0}
       <div class="navpath"><span class="navpath-label">Go to</span><span class="np first">Sidebar</span><span class="sep">▸</span><span class="np">Patient Care</span><span class="sep">▸</span><span class="np">Patients</span></div>
       <p>The Patients page lists your census with summary cards (total active, recently admitted, active count) at the top. To find someone:</p>
       <div class="grid2"><div class="mini"><h4>Search</h4><p>Type a name, MRN, phone number, or diagnosis — results filter as you type.</p></div><div class="mini"><h4>Filter</h4><p>Narrow by status (active / inactive / discharged), diagnosis, age range, last-visit dates, or insurance type.</p></div><div class="mini"><h4>Sort</h4><p>Order by newest, oldest, last visit, or name (A–Z / Z–A).</p></div><div class="mini"><h4>Swipe (mobile)</h4><p>Swipe a patient card to reveal quick actions like view or add a visit.</p></div></div>
-      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">Open a patient in one step</p><div class="cx"><p>Skip the list — press <strong>⌘K / Ctrl+K</strong> and type the patient’s name to jump straight to their record.</p></div></div></div>
+      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">Open a patient in one step</p><div class="cx"><p>Skip the list — press <strong>Cmd / Ctrl + K</strong> and type the patient’s name to jump straight to their record.</p></div></div></div>
 
       <h3 id="pat-add"><span class="h3-eyebrow">New patient</span>Adding a patient</h3>
       <ol class="steps"><li><span class="st">Start a new patient</span><span class="sd">On the Patients page, choose Add Patient.</span></li><li><span class="st">Enter demographics</span><span class="sd">Name, date of birth, contact details, address, and insurance.</span></li><li><span class="st">Add clinical basics</span><span class="sd">Primary diagnosis, referring provider, and care scope (Home Health or Hospice).</span></li><li><span class="st">Save</span><span class="sd">The patient is added to your roster and ready for scheduling and documentation.</span></li></ol>
@@ -360,6 +452,18 @@ dl.gloss{margin:14px 0}
 
       <h3 id="oasis-tabs"><span class="h3-eyebrow">Everything in one place</span>The OASIS Center</h3>
       <p>Beyond the assessment itself, the OASIS Center gathers related tools as tabs:</p>
+      <figure class="fig"><div class="frame"><div class="uiwin">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">OASIS Center</span></div>
+    <div class="tabs">
+      <div class="tab on">Assessment</div><div class="tab">Analyze</div><div class="tab">Review &amp; Approve</div>
+      <div class="tab">Clinical</div><div class="tab">Quality</div>
+    </div>
+    <div class="content" style="background:#fff">
+      <div class="card"><span class="pill gold">AI pre-fill</span><div class="bar" style="width:70%; margin-top:6px"></div><div class="bar" style="width:82%"></div></div>
+      <div class="card"><div class="bar" style="width:60%"></div><div class="bar" style="width:48%"></div></div>
+      <div style="text-align:right"><span class="btn">Save draft</span> &nbsp; <span class="btn gold">Submit</span></div>
+    </div>
+  </div></div><figcaption><span class="flabel">Figure</span>The OASIS Center — the Assessment tab is open; the other tabs analyze, review, and validate the same assessment.</figcaption></figure>
       <table class="tbl"><thead><tr><th>Tab</th><th>Purpose</th></tr></thead><tbody><tr><td><strong>Assessment</strong></td><td>Complete the OASIS-E with AI guidance (the default view).</td></tr><tr><td><strong>Analyze</strong></td><td>Deep-dive accuracy scoring, compliance gaps, and clinical-pathway recommendations.</td></tr><tr><td><strong>Review & Approve</strong></td><td>Queue of completed assessments awaiting clinician sign-off.</td></tr><tr><td><strong>Clinical</strong></td><td>Clinician quality check — validates answers against documented diagnoses and symptoms.</td></tr><tr><td><strong>Quality & Documentation</strong></td><td>Compliance validation, missing fields, and documentation gaps.</td></tr></tbody></table>
       <div class="callout callout-note"><span class="ci">i</span><div><p class="ct">Some tabs are for administrators</p><div class="cx"><p>Revenue, Analytics, and Audit tabs present financial and agency-wide data and appear for facility administrators. Clinicians work primarily in Assessment, Analyze, Review, Clinical, and Quality.</p></div></div></div>
     
@@ -403,6 +507,25 @@ dl.gloss{margin:14px 0}
       <div class="grid2"><div class="mini"><h4>Smart Note — type</h4><p>Jot a few rough observations and let AI expand them into a complete, compliant, skilled note.</p></div><div class="mini"><h4>Visit Scribe — speak</h4><p>Record or dictate the visit out loud; PennSync transcribes it and turns it into a compliant note.</p></div></div>
 
       <h3 id="doc-smart"><span class="h3-eyebrow">Fastest for typing</span>Smart Note (typed)</h3>
+      <p>Smart Note turns a few quick observations into a complete, compliant note in five steps:</p>
+      <div class="flow"><div class="fstep"><div class="fn">1</div><h5>Select patient</h5><p>AI personalizes to their diagnoses, meds, and history.</p></div><div class="fstep"><div class="fn">2</div><h5>Enter vitals</h5><p>Structured vitals flow to the chart and trends.</p></div><div class="fstep"><div class="fn">3</div><h5>Write observations</h5><p>Plain language and bullet points are fine.</p></div><div class="fstep"><div class="fn">4</div><h5>AI checks &amp; polishes</h5><p>Compliance is verified; skilled language is added.</p></div><div class="fstep"><div class="fn">5</div><h5>Review &amp; save</h5><p>Edit if needed; the visit and audit are created.</p></div></div>
+      <figure class="fig"><div class="frame"><div class="uiwin">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tb-title">Clinical Notes — Smart Note</span></div>
+    <div class="content" style="background:#fff; padding:16px">
+      <div class="card"><span class="pill">Patient</span><span class="anno">1</span><div class="bar" style="width:45%; margin-top:6px"></div></div>
+      <div class="card"><span class="pill">Vitals</span><span class="anno">2</span>
+        <div class="row2" style="margin-top:6px"><div class="bar" style="width:100%"></div><div class="bar" style="width:100%"></div></div>
+        <div class="row2"><div class="bar" style="width:100%"></div><div class="bar" style="width:100%"></div></div>
+      </div>
+      <div class="row2">
+        <div class="card"><span class="pill">Your observations</span><span class="anno">3</span><div class="bar" style="width:90%; margin-top:6px"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:85%"></div></div>
+        <div class="card" style="background:#f6faff; border-color:var(--navy-100)"><span class="pill gold">AI compliance &amp; polish</span><span class="anno">4</span><div class="bar" style="width:95%; margin-top:6px; background:#dbe7fb"></div><div class="bar" style="width:88%; background:#dbe7fb"></div><div class="bar" style="width:70%; background:#dbe7fb"></div></div>
+      </div>
+      <div style="text-align:right; margin-top:4px"><span class="btn gold">Save note<span class="anno">5</span></span></div>
+    </div>
+  </div></div><figcaption><span class="flabel">Figure</span>The Smart Note screen — the numbered areas match the walkthrough below.</figcaption></figure>
+      <ul class="legend"><li><span class="anno">1</span><span>Select the patient — AI uses their record to personalize the note.</span></li><li><span class="anno">2</span><span>Enter vital signs in the structured form.</span></li><li><span class="anno">3</span><span>Type your observations in plain language.</span></li><li><span class="anno">4</span><span>AI flags any compliance issues and rewrites your text into a skilled note.</span></li><li><span class="anno">5</span><span>Review and Save — the visit and compliance audit are created automatically.</span></li></ul>
+      <h4>Step by step</h4>
       <ol class="steps"><li><span class="st">Choose Smart Note</span><span class="sd">In Clinical Notes, select Smart Note. Always select the patient first.</span></li><li><span class="st">Capture vitals</span><span class="sd">Enter vital signs (temperature, blood pressure, heart rate, respiratory rate, O₂, pain) in the structured form so they reach the chart and trends.</span></li><li><span class="st">Write your observations</span><span class="sd">Type rough notes in plain language — bullet points are fine.</span></li><li><span class="st">Let AI check & polish</span><span class="sd">PennSync flags compliance issues (Home Health or Hospice rules) and rewrites your notes into professional, skilled documentation with medical-necessity and homebound language.</span></li><li><span class="st">Review, edit & save</span><span class="sd">Confirm the note reads accurately, make any edits, and save. The visit record and compliance audit are created automatically.</span></li></ol>
       <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">Always select the patient first</p><div class="cx"><p>Selecting the patient lets AI personalize the note using their diagnoses, medications, and history. The more you document for a patient, the better the suggestions get.</p></div></div></div>
 
@@ -568,8 +691,8 @@ dl.gloss{margin:14px 0}
 
       <h3 id="ar-scope"><span class="h3-eyebrow">Your surface</span>What a facility admin can do</h3>
       <p>Two sidebar sections appear only for administrators:</p>
-      <div class="grid2"><div class="mini"><h4>Office</h4><p>Back-office workflows: Referrals, Incident Review, and Documents & E-Signing.</p></div><div class="mini"><h4>Administration</h4><p>Admin Console, Users, Reports & Analytics, and Compliance Center — plus every other admin tool via the Admin Console launchpad and ⌘K.</p></div></div>
-      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">The Admin Console is your launchpad</p><div class="cx"><p>Rather than crowd the sidebar, PennSync surfaces the daily-use admin destinations there and keeps every other admin tool one click away inside the Admin Console directory (and ⌘K search).</p></div></div></div>
+      <div class="grid2"><div class="mini"><h4>Office</h4><p>Back-office workflows: Referrals, Incident Review, and Documents & E-Signing.</p></div><div class="mini"><h4>Administration</h4><p>Admin Console, Users, Reports & Analytics, and Compliance Center — plus every other admin tool via the Admin Console launchpad and Cmd/Ctrl + K.</p></div></div>
+      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">The Admin Console is your launchpad</p><div class="cx"><p>Rather than crowd the sidebar, PennSync surfaces the daily-use admin destinations there and keeps every other admin tool one click away inside the Admin Console directory (and Cmd/Ctrl + K search).</p></div></div></div>
     
   </section></div></div>
 <div class="sheet"><div class="pad"><section class="sec" id="admin-console">
@@ -581,7 +704,7 @@ dl.gloss{margin:14px 0}
 
       <h3 id="ac-tabs"><span class="h3-eyebrow">Everything in one place</span>The five tabs</h3>
       <table class="tbl"><thead><tr><th>Tab</th><th>What it shows</th></tr></thead><tbody><tr><td><strong>Overview</strong></td><td>The admin launchpad — every administrative tool grouped by function (Users & Staff, Clinical Oversight, Training, Data & Documents, System & Configuration), plus a status summary.</td></tr><tr><td><strong>User Activity</strong></td><td>A real-time audit of who did what — logins, page visits, and record changes — filterable by user, and exportable.</td></tr><tr><td><strong>Data Quality</strong></td><td>Completeness scoring, missing required fields, and validation issues you can act on.</td></tr><tr><td><strong>System Health</strong></td><td>Live status indicators for the platform (sync status, service availability, storage).</td></tr><tr><td><strong>Settings</strong></td><td>Quick access to facility configuration and preferences.</td></tr></tbody></table>
-      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">Deep-link straight to a tab</p><div class="cx"><p>Any tab is directly reachable, e.g. Admin Console → User Activity. Use ⌘K and type “activity”, “data quality”, or “system health” to jump there.</p></div></div></div>
+      <div class="callout callout-tip"><span class="ci">★</span><div><p class="ct">Deep-link straight to a tab</p><div class="cx"><p>Any tab is directly reachable, e.g. Admin Console → User Activity. Use Cmd / Ctrl + K and type “activity”, “data quality”, or “system health” to jump there.</p></div></div></div>
     
   </section></div></div>
 <div class="sheet"><div class="pad"><section class="sec" id="admin-users">
