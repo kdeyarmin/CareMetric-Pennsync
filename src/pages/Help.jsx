@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BookOpen, Download, Search, MessageCircle,
   FileText, Lightbulb, Award, Sparkles, Users,
-  ClipboardList, Phone, Mail, HelpCircle, Target, CheckCircle2
+  ClipboardList, Phone, Mail, HelpCircle, Target, CheckCircle2, ShieldCheck
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +13,14 @@ import { generateUserManual } from "@/functions/generateUserManual";
 import { toast } from 'sonner';
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { useAuth } from "@/lib/AuthContext";
+import { isAdminView } from "@/lib/roles";
 
 export default function Help() {
   const [searchQuery, setSearchQuery] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = isAdminView(user);
 
   const handleDownloadManual = async () => {
     setDownloading(true);
@@ -166,6 +170,50 @@ export default function Help() {
 
           {/* Quick Start Tab */}
           <TabsContent value="quickstart" className="space-y-6">
+            {/* Branded, print-ready reference manuals (static PDFs in /public/manuals). */}
+            <Card className="bg-navy-900 text-white border-none shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-white text-lg">
+                  <BookOpen className="w-5 h-5 text-gold-400" />
+                  PennSync Manuals
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className={`grid gap-3 ${isAdmin ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
+                  <a
+                    href="/manuals/PennSync-User-Manual.pdf"
+                    download
+                    className="flex items-center gap-3 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-3 transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-gold-400 text-navy-900 flex items-center justify-center flex-shrink-0">
+                      <BookOpen className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-white text-sm">User Manual</p>
+                      <p className="text-xs text-navy-100">For all clinical staff · PDF</p>
+                    </div>
+                    <Download className="w-5 h-5 text-gold-400 flex-shrink-0" />
+                  </a>
+                  {isAdmin && (
+                    <a
+                      href="/manuals/PennSync-Facility-Admin-Manual.pdf"
+                      download
+                      className="flex items-center gap-3 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-inset ring-white/10 p-3 transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-gold-400 text-navy-900 flex items-center justify-center flex-shrink-0">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-white text-sm">Facility Administrator Manual</p>
+                        <p className="text-xs text-navy-100">User guide + admin tools · PDF</p>
+                      </div>
+                      <Download className="w-5 h-5 text-gold-400 flex-shrink-0" />
+                    </a>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="border-navy-900 border-2">
               <CardHeader className="border-b border-slate-100">
                 <CardTitle className="flex items-center gap-2">
