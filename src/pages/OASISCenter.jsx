@@ -18,7 +18,7 @@ import {
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
-import { isSuperAdmin } from "@/lib/superAdmin";
+import { isAdminView } from "@/lib/roles";
 
 const SmartOASISAssessment = lazy(() => import("@/components/hub-tabs/SmartOASISAssessment"));
 const OASISAnalyzer = lazy(() => import("@/components/hub-tabs/OASISAnalyzer"));
@@ -55,7 +55,7 @@ export default function OASISCenter() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin(currentUser);
+  const isAdmin = isAdminView(currentUser);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");

@@ -73,6 +73,12 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 | 12 | Patient chart | **Removed the dead "Schedule Visit" quick action** that fired a developer-placeholder error toast (`"implement as needed"`) on tap. A real scheduler is tracked below. | bug |
 | 13 | Admin role lockout (Theme 2) | **Adopted the shared `isAdminView` / `isSuperAdminView` predicate** on the pages that hard-coded `role === 'admin'` for current-user access gates — Admin Console, Clinical Pathways, Training Analytics, User Management, Nurse Performance, Background Jobs — so `agency_admin` / `super_admin` accounts are no longer blocked by the page after the router admits them. Other-user checks (admin counts, created-user role) were intentionally left unchanged. | bug |
 
+### Third batch (also in this PR) — role lockout fix completed app-wide
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 14 | Admin role lockout (Theme 2, cont.) | **Completed the `isAdminView` adoption** across every remaining page that hard-coded a current-user `role === 'admin'` check: `ReportsAnalytics`, `AnalyticsDashboard`, `PatientDataManagement`, `MedicareGuidelinesLibrary`, `TimeOff`, `IncidentReportingModule`, `AdminUserSetup`, `AdminTraining`, `LearningCenter`, `TrainingCoursePlayer`, `OASISCenter`, `DocumentHub`, `TemplateManagement`, `OnCallSchedule`. The four `role === 'admin' \|\| isSuperAdmin(...)` sites collapsed to a single `isAdminView(...)`. Every current-user admin check in the app now flows through the shared predicate; **other-user** checks (approver filters, admin counts, created-user manual label, per-row role badges, the `isManager` helper) were deliberately preserved. | bug |
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)
@@ -81,7 +87,6 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 
 - **Add copy + generated-at timestamp to the patient-chart AI summary**, and gate it behind an explicit action instead of auto-firing an Opus call on every chart open. *(performance + trust)*
 - **Use `SearchablePatientSelect`** in Event Report, PDF Search, and the Education Hub instead of raw UUID text fields / 2000-row selects. *(ux-polish)*
-- **Finish the role-predicate adoption** — the remaining pages that still read `role === 'admin'` for current-user checks (e.g. `OASISCenter`, `DocumentHub`, `TemplateManagement`, `OnCallSchedule`, `TimeOff`, `IncidentReportingModule`, `AdminTraining`, `AdminUserSetup`, `ReportsAnalytics`, `AnalyticsDashboard`, `PatientDataManagement`, `MedicareGuidelinesLibrary`, `LearningCenter`, `TrainingCoursePlayer`) should also use `isAdminView`. *(bug)*
 - **Make StatCards actionable** (tap "Active" to filter the roster to active; tap a severity count to filter alerts). *(ux-polish)*
 - **Bring back a real "Schedule Visit"** dialog on the patient chart (Visit.create + date/type form) to replace the removed placeholder. *(new-capability)*
 

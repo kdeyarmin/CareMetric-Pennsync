@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Plus, Edit2, Trash2, FileText, FileType } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
-import { isSuperAdmin } from '@/lib/superAdmin';
+import { isAdminView } from '@/lib/roles';
 
 const PDFTemplateLibrary = lazy(() => import('@/components/hub-tabs/PDFTemplateLibrary'));
 
@@ -39,7 +39,7 @@ export default function TemplateManagement() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
-  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin(currentUser);
+  const isAdmin = isAdminView(currentUser);
   // The document-template CRUD tab is admin-only; the PDF Templates tab stays
   // open to everyone (the retired /PDFTemplateLibrary route was non-admin), so
   // non-admins land on — and are limited to — the PDF tab.
