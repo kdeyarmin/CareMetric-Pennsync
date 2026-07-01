@@ -41,9 +41,8 @@ Deno.serve(async (req) => {
     const patientData = patient[0];
 
     // Fetch related data
-    const [visits, carePlans, incidents, existingAlerts] = await Promise.all([
+    const [visits, incidents, existingAlerts] = await Promise.all([
       base44.entities.Visit.filter({ patient_id }, '-visit_date', 10),
-      base44.entities.CarePlan.filter({ patient_id }),
       base44.entities.Incident.filter({ patient_id }, '-incident_date', 5),
       base44.entities.PatientAlert.filter({ patient_id, status: 'active' })
     ]);
@@ -95,9 +94,6 @@ ${patientData.past_hospitalizations?.map(h => `- ${h.date}: ${h.reason} at ${h.h
 
 RECENT INCIDENTS (Last 5):
 ${incidents.map(i => `- ${i.incident_date}: ${i.incident_type} (${i.severity}) - ${i.report?.substring(0, 150)}...`).join('\n') || 'None reported'}
-
-ACTIVE CARE PLANS:
-${carePlans.filter(cp => cp.status === 'active').map(cp => `- Problem: ${cp.problem}, Goal: ${cp.goal}`).join('\n') || 'None active'}
 
 BASELINE VITALS:
 - BP: ${patientData.baseline_vitals?.blood_pressure_systolic}/${patientData.baseline_vitals?.blood_pressure_diastolic} mmHg

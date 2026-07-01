@@ -77,11 +77,6 @@ export default function RealTimeComplianceDashboard() {
     queryFn: () => base44.entities.Patient.list('-updated_date', 2000),
   });
 
-  const { data: allCarePlans = [] } = useQuery({
-    queryKey: ['allCarePlans'],
-    queryFn: () => base44.entities.CarePlan.list(),
-  });
-
   // Calculate date filter
   const filterDate = useMemo(() => {
     if (dateRange === "all") return null;
@@ -796,7 +791,6 @@ export default function RealTimeComplianceDashboard() {
       <GranularComplianceGapAnalyzer
         visits={allVisits}
         patients={allPatients}
-        carePlans={allCarePlans}
         complianceAudits={filteredAudits}
         dateRange={parseInt(dateRange)}
       />

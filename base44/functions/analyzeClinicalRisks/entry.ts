@@ -31,11 +31,10 @@ Deno.serve(async (req) => {
     // Fetch via the RLS-scoped client (NOT asServiceRole) so the platform
     // enforces that this caller may access this patient — prevents
     // cross-patient IDOR via a guessed patientId.
-    const [patient, visits, oasisRecords, carePlans, incidents] = await Promise.all([
+    const [patient, visits, oasisRecords, incidents] = await Promise.all([
       base44.entities.Patient.filter({ id: patientId }),
       base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
       base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 3),
-      base44.entities.CarePlan.filter({ patient_id: patientId }),
       base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 10)
     ]);
 
@@ -81,15 +80,6 @@ Type: ${v.visit_type}
 Status: ${v.status}
 Vital Signs: ${JSON.stringify(v.vital_signs || {})}
 Notes: ${v.nurse_notes?.substring(0, 300) || 'No notes'}...
-`).join('\n---\n')}
-
-ACTIVE CARE PLANS (${carePlans.filter(cp => cp.status === 'active').length}):
-${carePlans.filter(cp => cp.status === 'active').map(cp => `
-Problem: ${cp.problem}
-Goal: ${cp.goal}
-Interventions: ${cp.interventions?.join('; ') || 'None'}
-Target Date: ${cp.target_date}
-Status: ${cp.status}
 `).join('\n---\n')}
 
 RECENT INCIDENTS (${incidents.length}):

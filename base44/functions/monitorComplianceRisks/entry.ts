@@ -30,10 +30,9 @@ Deno.serve(async (req) => {
       const patientAlerts = [];
       
       // Fetch patient data
-      const [visits, oasisRecords, carePlans] = await Promise.all([
+      const [visits, oasisRecords] = await Promise.all([
         base44.asServiceRole.entities.Visit.filter({ patient_id: patient.id }, '-visit_date', 10),
-        base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patient.id }, '-created_date', 1),
-        base44.asServiceRole.entities.CarePlan.filter({ patient_id: patient.id, status: 'active' })
+        base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patient.id }, '-created_date', 1)
       ]);
       
       const lastVisit = visits[0];
@@ -67,35 +66,6 @@ Deno.serve(async (req) => {
           risk_score: 85,
           data_sources: { last_visit_date: lastVisit?.visit_date, diagnosis: patient.primary_diagnosis }
         });
-      }
-      
-      // RISK 2: Functional decline from OASIS without care plan update
-      if (oasisRecords.length > 0) {
-        const latestOASIS = oasisRecords[0];
-        const functionalLevel = latestOASIS.pdgm_data?.functional_impairment_level;
-        
-        if ((functionalLevel === 'high' || functionalLevel === 'medium') && carePlans.length === 0) {
-          patientAlerts.push({
-            patient_id: patient.id,
-            alert_type: 'care_gap',
-            severity: 'critical',
-            title: 'Functional Impairment Without Active Care Plan',
-            message: `OASIS shows ${functionalLevel} functional impairment but no active care plans exist.`,
-            contributing_factors: [
-              `OASIS functional level: ${functionalLevel}`,
-              'No active care plans on file',
-              'CMS requires care planning for functional limitations'
-            ],
-            recommended_actions: [
-              'Create care plan addressing functional limitations immediately',
-              'Document patient/family goals',
-              'Schedule skilled nursing visit for assessment',
-              'Consider PT/OT referral'
-            ],
-            risk_score: 95,
-            data_sources: { oasis_date: latestOASIS.created_date, functional_level: functionalLevel }
-          });
-        }
       }
       
       // RISK 3: Missing vital signs in recent visits
@@ -194,36 +164,6 @@ Deno.serve(async (req) => {
             data_sources: { last_visit_date: lastVisit.visit_date }
           });
         }
-      }
-      
-      // RISK 6: Care plan goals overdue for assessment
-      const overduePlans = carePlans.filter(cp => {
-        if (!cp.target_date) return false;
-        const targetDate = new Date(cp.target_date);
-        return currentDate > targetDate;
-      });
-      
-      if (overduePlans.length > 0) {
-        patientAlerts.push({
-          patient_id: patient.id,
-          alert_type: 'care_gap',
-          severity: 'medium',
-          title: `${overduePlans.length} Care Plan Goal(s) Overdue for Assessment`,
-          message: 'Care plan goals past target date require re-evaluation.',
-          contributing_factors: [
-            `${overduePlans.length} goals past target date`,
-            'CMS requires timely assessment of patient progress',
-            'Documentation needed for continued care justification'
-          ],
-          recommended_actions: [
-            'Assess progress toward overdue goals at next visit',
-            'Update care plan status (met/not met/revised)',
-            'Document barriers to goal achievement if not met',
-            'Revise interventions if goals not progressing'
-          ],
-          risk_score: 60,
-          data_sources: { overdue_count: overduePlans.length }
-        });
       }
       
       // Create alerts that don't already exist

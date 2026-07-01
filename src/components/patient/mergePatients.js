@@ -12,8 +12,8 @@ import { base44 } from "@/api/base44Client";
 // the caller can't write (RLS) is skipped and logged, and the soft-archive +
 // merged_into_id pointer keeps anything left behind recoverable.
 export const PATIENT_RELATED_ENTITIES = [
-  // Visits / care plans / alerts / pending updates
-  "Visit", "CarePlan", "CarePlanProposal", "PatientAlert", "PendingPatientUpdate",
+  // Visits / alerts / pending updates
+  "Visit", "PatientAlert", "PendingPatientUpdate",
   "CareCoordinationAlert", "PatientRecommendation", "PatientRiskAssessment",
   // OASIS
   "OASISAssessment", "OASISUpload", "OASISAudit", "OASISFeedback", "OASISScenario",
@@ -35,9 +35,9 @@ export const PATIENT_RELATED_ENTITIES = [
 
 /**
  * Merge one duplicate patient into a surviving (primary) record:
- *   1. Reassign every related record (visits, care plans, alerts, pending
- *      updates) from the duplicate to the primary, so clinical history moves to
- *      the chart that's being kept.
+ *   1. Reassign every related record (visits, alerts, pending updates) from the
+ *      duplicate to the primary, so clinical history moves to the chart that's
+ *      being kept.
  *   2. Soft-delete the duplicate — `is_archived: true`, `status: 'merged'`, and a
  *      pointer back to the survivor — mirroring the deduplicatePatients backend
  *      so a merge done in the UI looks identical to one done server-side and is

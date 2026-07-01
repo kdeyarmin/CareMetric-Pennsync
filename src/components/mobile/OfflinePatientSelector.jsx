@@ -78,10 +78,7 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
         if (!patient) continue;
 
         // Fetch comprehensive patient data
-        const [carePlans, recentVisits] = await Promise.all([
-          base44.entities.CarePlan.filter({ patient_id: patientId, status: 'active' }),
-          base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5)
-        ]);
+        const recentVisits = await base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5);
 
         const patientCache = {
           patient: {
@@ -104,13 +101,6 @@ export default function OfflinePatientSelector({ onCacheComplete, _showDetails =
             baseline_vitals: patient.baseline_vitals,
             functional_status: patient.functional_status
           },
-          carePlans: carePlans.map(cp => ({
-            id: cp.id,
-            problem: cp.problem,
-            goal: cp.goal,
-            interventions: cp.interventions,
-            status: cp.status
-          })),
           recentVisits: recentVisits.map(v => ({
             id: v.id,
             visit_date: v.visit_date,

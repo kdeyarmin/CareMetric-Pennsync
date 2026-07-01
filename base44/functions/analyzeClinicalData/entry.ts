@@ -2,8 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
  * Unified Clinical Data Analysis Function
- * Handles: event extraction, event analysis, trend analysis, and care plan generation
- * Replaces: extractClinicalEvents, analyzeClinicalEvents, analyzeClinicalTrends, generateCarePlanSuggestions
+ * Handles: event extraction, event analysis, and trend analysis
+ * Replaces: extractClinicalEvents, analyzeClinicalEvents, analyzeClinicalTrends
  */
 
 // Tolerant JSON extractor: we ask for strict JSON in-prompt instead of passing
@@ -85,9 +85,6 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 
       case 'analyze_trends':
         return await analyzeTrends(base44, params);
-
-      case 'generate_care_plans':
-        return await generateCarePlans(base44, params);
 
       case 'full_clinical_analysis':
         // Complete clinical analysis with all components
@@ -332,85 +329,21 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
   });
 }
 
-async function generateCarePlans(base44, params) {
-  const { patient_id } = params;
-
-  if (!patient_id) {
-    return Response.json({ error: 'Missing patient_id' }, { status: 400 });
-  }
-
-  const [patients, clinicalEvents, existingCarePlans, visits, incidents] = await Promise.all([
-    base44.entities.Patient.filter({ id: patient_id }),
-    base44.entities.ClinicalEvent.filter({ patient_id }, '-event_date', 50),
-    base44.entities.CarePlan.filter({ patient_id }),
-    base44.entities.Visit.filter({ patient_id }, '-visit_date', 10),
-    base44.entities.Incident.filter({ patient_id }, '-incident_date', 10)
-  ]);
-
-  const patient = patients[0];
-  if (!patient) {
-    return Response.json({ error: 'Patient not found' }, { status: 404 });
-  }
-
-  const result = await base44.integrations.Core.InvokeLLM({
-    model: "claude_opus_4_8",
-    prompt: `Generate comprehensive care plan suggestions for this home health patient.
-
-PATIENT: ${patient.first_name} ${patient.last_name}, Age: ${patient.date_of_birth ? new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear() : 'Unknown'}
-Primary Diagnosis: ${patient.primary_diagnosis}
-Secondary Diagnoses: ${patient.secondary_diagnoses?.join(', ') || 'None'}
-Medications: ${patient.current_medications?.map(m => `${m.name} ${m.dosage || ''}`).join(', ')}
-
-RECENT CLINICAL EVENTS: ${JSON.stringify(clinicalEvents.slice(0, 20), null, 2)}
-RECENT VISITS: ${JSON.stringify(visits.slice(0, 5), null, 2)}
-INCIDENTS: ${JSON.stringify(incidents, null, 2)}
-EXISTING CARE PLANS: ${existingCarePlans.map(cp => cp.problem).join(', ') || 'None'}
-
-Generate care plan suggestions addressing:
-1. Unaddressed clinical needs
-2. Risk factors requiring prevention
-3. Medication management
-4. Functional improvement opportunities
-5. Safety concerns
-6. Patient education needs
-7. Chronic disease management
-
-For each: problem (NANDA-I), measurable goal, 3-5 interventions, expected outcomes, baseline measurement, frequency, priority, rationale, medicare considerations, target_days.
-
-Only suggest NEW care plans not already covered.
-
-Return ONLY valid JSON, no prose or code fences, with this shape:
-{"suggestions":[{"problem":"","goal":"","interventions":[""],"expected_outcomes":"","baseline_measurement":"","frequency":"","priority":"","rationale":"","medicare_considerations":"","target_days":0}],"overall_assessment":"","critical_gaps_identified":[""]}`
-  });
-  const parsed = parseLLMJson(result) || {};
-
-  return Response.json({
-    success: true,
-    patient_name: `${patient.first_name} ${patient.last_name}`,
-    suggestions: parsed?.suggestions || [],
-    overall_assessment: parsed?.overall_assessment || '',
-    critical_gaps_identified: parsed?.critical_gaps_identified || []
-  });
-}
-
 async function fullClinicalAnalysis(base44, params) {
   const { patient_id } = params;
 
   // Run all analyses in parallel
-  const [trendsResult, carePlansResult, eventsResult] = await Promise.all([
+  const [trendsResult, eventsResult] = await Promise.all([
     analyzeTrends(base44, { patient_id }),
-    generateCarePlans(base44, { patient_id }),
     analyzeEvents(base44, { patient_id })
   ]);
 
   const trendsData = await trendsResult.json();
-  const carePlansData = await carePlansResult.json();
   const eventsData = await eventsResult.json();
 
   return Response.json({
     success: true,
     trends: trendsData,
-    care_plan_suggestions: carePlansData,
     event_analysis: eventsData
   });
 }

@@ -61,17 +61,44 @@ export async function persistVisitNote({
 
   if (!navigator.onLine) {
     const { addToSyncQueue } = await import('@/lib/indexedDB');
-    // Stable client-generated idempotency key so the offline-sync drain can dedupe.
+    // Offline save → the AI grounding pass was deferred. Mark the queued visit so
+    // the record shows live grounding hadn't run yet, and surface the audit as
+    // "pending_review" (rather than the coverage-derived passed/flagged) so a
+    // deferred-grounding note isn't read as fully verified in compliance reporting.
+    const visitFields = {
+      patient_id: patientId, visit_date: visitDate, visit_type: visitType,
+      status: "completed", nurse_notes: finalText, raw_transcription: roughNote,
+      compliance_score: coverageScore, vital_signs: vitals, documentation_source: source,
+      grounding_pending: true, ...structured, ...reportingFields,
+    };
+    const audit = { nurse_email: currentUser.email, ...auditFields, status: "pending_review" };
+
+    // A visit that already exists server-side (a same-session online save, or a
+    // deep-linked scheduled visit) must be UPDATED on reconnect, not re-created —
+    // otherwise the drain creates a duplicate and (for a scheduled visit) leaves
+    // the original open/overdue.
+    const targetVisitId = savedVisitId || existingVisitId;
+    if (targetVisitId) {
+      await addToSyncQueue('UPDATE_VISIT', { visit_id: targetVisitId, ...visitFields, __audit: audit });
+      toast.success("Saved offline. Will sync when reconnected.");
+      logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
+      return { mode: 'offline', visitId: targetVisitId, auditId: savedAuditId || null, finalText, coverageScore };
+    }
+
+    // First save of a brand-new visit while offline. Each offline save is queued
+    // independently — we deliberately do NOT drop prior queued CREATE_VISITs for the
+    // same patient+date: two genuinely distinct same-day visits share that key, and
+    // dropping one would lose a clinical note. A re-save while still offline can thus
+    // create a duplicate visit on drain, which is recoverable (merge) — the safer
+    // trade than unrecoverable data loss. A precise re-save collapse would need a
+    // stable per-edit id threaded from the caller.
+    // Stable client-generated idempotency key so a retried DRAIN stays idempotent.
     // crypto.randomUUID is only defined in secure contexts; fall back so the offline
     // save (the whole point of this branch) never throws in the field.
     const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    // Offline save → the AI grounding pass was deferred. Mark the queued visit so
-    // the record shows live grounding hadn't run yet, and surface the audit as
-    // "pending_review" (rather than the coverage-derived passed/flagged) so a
-    // deferred-grounding note isn't read as fully verified in compliance reporting.
-    await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, patient_id: patientId, visit_date: visitDate, visit_type: visitType, status: "completed", nurse_notes: finalText, raw_transcription: roughNote, compliance_score: coverageScore, vital_signs: vitals, documentation_source: source, grounding_pending: true, ...structured, ...reportingFields, __audit: { nurse_email: currentUser.email, ...auditFields, status: "pending_review" } });
+    await addToSyncQueue('CREATE_VISIT', { client_request_id: clientRequestId, ...visitFields, __audit: audit });
     toast.success("Saved offline. Will sync when reconnected.");
     logActivity(ActivityActions.NOTE_ENHANCED, { patient_id: patientId, visit_type: visitType, overall_score: coverageScore });
     return { mode: 'offline', visitId: null, auditId: null, finalText, coverageScore };

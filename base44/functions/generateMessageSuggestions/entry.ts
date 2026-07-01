@@ -16,10 +16,9 @@ Deno.serve(async (req) => {
     }
 
     // Fetch patient data and recent thread
-    const [patients, recentVisits, carePlans, incidents, threadMessages] = await Promise.all([
+    const [patients, recentVisits, incidents, threadMessages] = await Promise.all([
       base44.entities.Patient.filter({ id: patient_id }),
       base44.entities.Visit.filter({ patient_id }, '-visit_date', 5),
-      base44.entities.CarePlan.filter({ patient_id, status: 'active' }),
       base44.entities.Incident.filter({ patient_id }, '-incident_date', 5),
       thread_id ? base44.entities.Message.filter({ thread_id }, '-created_date', 10) : Promise.resolve([])
     ]);
@@ -42,9 +41,6 @@ Current Medications: ${patient.current_medications?.map(m => m.name).join(', ') 
 
 RECENT VISITS (${recentVisits.length}):
 ${recentVisits.map(v => `${v.visit_date}: ${v.visit_type} - ${v.nurse_notes?.substring(0, 200) || 'No notes'}`).join('\n')}
-
-ACTIVE CARE PLANS (${carePlans.length}):
-${carePlans.map(cp => `${cp.problem}: ${cp.goal} (${cp.status})`).join('\n')}
 
 RECENT INCIDENTS (${incidents.length}):
 ${incidents.map(i => `${i.incident_date}: ${i.incident_type} - ${i.severity}`).join('\n')}

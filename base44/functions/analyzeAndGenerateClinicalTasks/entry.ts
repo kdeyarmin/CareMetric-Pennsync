@@ -31,10 +31,9 @@ Deno.serve(async (req) => {
     // Fetch comprehensive patient data
     // Reads are scoped to the authenticated user (tenant/RLS) rather than service role
     // to prevent reading patients the caller is not authorized to access (IDOR hardening).
-    const [patient, visits, carePlans, alerts, recentTasks] = await Promise.all([
+    const [patient, visits, alerts, recentTasks] = await Promise.all([
       base44.entities.Patient.filter({ id: patientId }).then(p => p[0]),
       base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5),
-      base44.entities.CarePlan.filter({ patient_id: patientId, status: 'active' }),
       base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }),
       base44.asServiceRole.entities.Task.filter({ patient_id: patientId, status: { $in: ['pending', 'in_progress'] } })
     ]);
@@ -58,14 +57,6 @@ ${JSON.stringify(visits.map(v => ({
   type: v.visit_type,
   notes: v.nurse_notes?.substring(0, 300),
   vitals: v.vital_signs
-})), null, 2)}
-
-ACTIVE CARE PLANS:
-${JSON.stringify(carePlans.map(cp => ({
-  problem: cp.problem,
-  goal: cp.goal,
-  target_date: cp.target_date,
-  frequency: cp.frequency
 })), null, 2)}
 
 ACTIVE ALERTS:

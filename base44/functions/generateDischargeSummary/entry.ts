@@ -27,9 +27,6 @@ Deno.serve(async (req) => {
       '-visit_date'
     );
 
-    // Fetch care plans
-    const carePlans = await base44.entities.CarePlan.filter({ patient_id });
-
     // Fetch education materials sent
     const educationMaterials = await base44.entities.SentEducationMaterial.filter(
       { patient_id }
@@ -68,14 +65,6 @@ Type: ${v.visit_type}
 Notes: ${v.nurse_notes?.substring(0, 500) || 'No notes'}
 `).join('\n')}
 
-CARE PLANS:
-${carePlans.map(cp => `
-Problem: ${cp.problem}
-Goal: ${cp.goal}
-Status: ${cp.status}
-Interventions: ${cp.interventions?.join(', ') || 'None listed'}
-`).join('\n')}
-
 PATIENT EDUCATION PROVIDED:
 ${educationMaterials.map(e => e.material_title).join(', ')}
 
@@ -110,16 +99,6 @@ Format as a professional medical summary. Be detailed, objective, and Medicare-c
       return `${v.visit_date}: ${v.visit_type}`;
     });
 
-    // Determine care plan outcomes
-    const carePlanOutcomes = carePlans.map(cp => ({
-      problem: cp.problem,
-      goal: cp.goal,
-      outcome: cp.status === 'met' ? 'met' :
-               cp.status === 'not_met' ? 'not_met' :
-               cp.status === 'revised' ? 'partially_met' : 'ongoing',
-      notes: cp.progress_notes || 'See visit documentation'
-    }));
-
     // Create discharge summary
     const dischargeSummary = await base44.entities.DischargeSummary.create({
       patient_id,
@@ -137,13 +116,10 @@ Format as a professional medical summary. Be detailed, objective, and Medicare-c
         therapy_visits: therapyVisits.length,
         visit_highlights: visitHighlights
       },
-      care_plan_outcomes: carePlanOutcomes,
       functional_status: {
         at_admission: 'See admission assessment',
         at_discharge: 'Patient improved overall functional status',
-        improvement_areas: (carePlans || [])
-          .filter(cp => cp && cp.status === 'met' && cp.problem)
-          .map(cp => cp.problem)
+        improvement_areas: []
       },
       patient_education_provided: educationMaterials.map(e => ({
         topic: e.material_title,
@@ -164,7 +140,6 @@ Format as a professional medical summary. Be detailed, objective, and Medicare-c
       generated_date: new Date().toISOString(),
       ai_generation_metadata: {
         visits_analyzed: visits.length,
-        care_plans_analyzed: carePlans.length,
         generation_confidence: 95
       }
     });

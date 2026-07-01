@@ -37,12 +37,11 @@ Deno.serve(async (req) => {
     startDate.setDate(startDate.getDate() - date_range_days);
 
     // Fetch comprehensive data
-    const [visits, patients, incidents, users, carePlans, audits, trainings, noteConversions, alerts, tasks] = await Promise.all([
+    const [visits, patients, incidents, users, audits, trainings, noteConversions, alerts, tasks] = await Promise.all([
       base44.asServiceRole.entities.Visit.list('-visit_date', 1000),
       base44.asServiceRole.entities.Patient.list('-created_date', 5000),
       base44.asServiceRole.entities.Incident.list('-incident_date', 500),
       base44.asServiceRole.entities.User.list('-created_date', 5000),
-      base44.asServiceRole.entities.CarePlan.list('-created_date', 5000),
       base44.asServiceRole.entities.ComplianceAudit.list('-created_date', 500),
       base44.asServiceRole.entities.TrainingAssignment.list('-created_date', 5000),
       base44.asServiceRole.entities.NoteConversion.list('-created_date', 5000),

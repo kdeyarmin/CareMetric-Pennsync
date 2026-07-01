@@ -42,14 +42,12 @@ Deno.serve(async (req) => {
 
     // Fetch patient data once for all analyses
     let patientData = null;
-    let carePlans = [];
     let recentVisits = [];
     let oasisData = null;
 
     if (patientId) {
-      const [patient, plans, visits, oasis] = await Promise.all([
+      const [patient, visits, oasis] = await Promise.all([
         base44.asServiceRole.entities.Patient.filter({ id: patientId }, '', 1),
-        base44.asServiceRole.entities.CarePlan.filter({ patient_id: patientId, status: 'active' }),
         base44.asServiceRole.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 3),
         base44.asServiceRole.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 1)
       ]);
@@ -60,7 +58,6 @@ Deno.serve(async (req) => {
       if (patientData && user.role !== 'admin' && patientData.created_by !== user.email && !(Array.isArray(patientData.assigned_nurses) && patientData.assigned_nurses.includes(user.email))) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
-      carePlans = plans || [];
       recentVisits = visits || [];
       oasisData = oasis[0] || null;
     }
@@ -77,8 +74,6 @@ VISIT DETAILS:
 - Visit Type: ${visitType}
 - Diagnosis: ${diagnosis}
 - Vitals: ${JSON.stringify(vitalSigns)}
-
-ACTIVE CARE PLANS: ${carePlans.length > 0 ? carePlans.map(cp => `${cp.problem}: ${cp.goal}`).join('; ') : 'None'}
 
 RECENT VISITS: ${recentVisits.length > 0 ? `Last visit ${recentVisits[0].visit_date}` : 'None'}
 `;
@@ -168,7 +163,6 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
       context: {
         patient_id: patientId,
         has_oasis: !!oasisData,
-        care_plans_count: carePlans.length,
         recent_visits_count: recentVisits.length
       }
     });

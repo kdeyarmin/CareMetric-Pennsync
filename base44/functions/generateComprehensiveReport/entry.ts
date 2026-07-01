@@ -29,12 +29,11 @@ Deno.serve(async (req) => {
     const endDateStr = today.toISOString().split('T')[0];
 
     // Fetch comprehensive data
-    const [visits, patients, incidents, users, carePlans, complianceAudits, trainingCompletions, noteConversions, oasisUploads, alerts] = await Promise.all([
+    const [visits, patients, incidents, users, complianceAudits, trainingCompletions, noteConversions, oasisUploads, alerts] = await Promise.all([
       base44.asServiceRole.entities.Visit.list('-visit_date', 1000),
       base44.asServiceRole.entities.Patient.list('-created_date', 5000),
       base44.asServiceRole.entities.Incident.list('-incident_date', 500),
       base44.asServiceRole.entities.User.list('-created_date', 5000),
-      base44.asServiceRole.entities.CarePlan.list('-created_date', 5000),
       base44.asServiceRole.entities.ComplianceAudit.list('-audit_date', 500),
       base44.asServiceRole.entities.TrainingAssignment.list('-created_date', 5000),
       base44.asServiceRole.entities.NoteConversion.list('-created_date', 5000),
@@ -250,18 +249,6 @@ Deno.serve(async (req) => {
     addText(`Active Alerts: ${activeAlerts}`, 10);
     addText(`Critical Alerts: ${criticalAlerts}`, 10);
     addText(`Resolved Alerts: ${resolvedAlerts}`, 10);
-
-    // CARE PLAN EFFECTIVENESS
-    addSection('CARE PLAN MANAGEMENT');
-    
-    const activeCarePlans = carePlans.filter(cp => cp.status === 'active').length;
-    const metGoals = carePlans.filter(cp => cp.status === 'met').length;
-    const revisedPlans = carePlans.filter(cp => cp.status === 'revised').length;
-
-    addText(`Active Care Plans: ${activeCarePlans}`, 10);
-    addText(`Goals Met: ${metGoals}`, 10);
-    addText(`Plans Revised: ${revisedPlans}`, 10);
-    addText(`Success Rate: ${carePlans.length > 0 ? Math.round((metGoals / carePlans.length) * 100) : 0}%`, 10);
 
     // RECOMMENDATIONS
     addSection('KEY RECOMMENDATIONS');

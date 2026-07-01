@@ -19,10 +19,9 @@ import {
 } from "lucide-react";
 import { isValid } from "date-fns";
 
-export default function AIPatientDashboardSummary({ 
-  patient, 
-  visits = [], 
-  carePlans = [],
+export default function AIPatientDashboardSummary({
+  patient,
+  visits = [],
   tasks = [],
   incidents = []
 }) {
@@ -46,9 +45,6 @@ export default function AIPatientDashboardSummary({
         return v.status === 'scheduled' && isValid(visitDate) && visitDate >= today;
       }).slice(0, 5);
 
-      // Get active care plans
-      const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
-
       // Get pending tasks
       const pendingTasks = tasks.filter(t => t.status === 'pending');
 
@@ -69,9 +65,6 @@ ${recentVisits.length > 0 ? recentVisits.map(v => `- ${v.visit_date}: ${v.visit_
 
 UPCOMING APPOINTMENTS:
 ${upcomingVisits.length > 0 ? upcomingVisits.map(v => `- ${v.visit_date} at ${v.visit_time || 'TBD'}: ${v.visit_type}`).join('\n') : '- No scheduled visits'}
-
-ACTIVE CARE PLANS (${activeCarePlans.length}):
-${activeCarePlans.length > 0 ? activeCarePlans.map(cp => `- ${cp.problem}: ${cp.goal}`).join('\n') : '- None'}
 
 PENDING TASKS (${pendingTasks.length}):
 ${pendingTasks.length > 0 ? pendingTasks.slice(0, 5).map(t => `- ${t.title} (${t.priority} priority)`).join('\n') : '- None'}
@@ -130,7 +123,7 @@ Provide a comprehensive yet concise dashboard summary in JSON:
       toast.error("The AI request didn't complete. Please try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [patient, visits, carePlans, tasks, incidents]);
+  }, [patient, visits, tasks, incidents]);
 
   useEffect(() => {
     if (patient) {

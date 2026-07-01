@@ -312,8 +312,8 @@ class OfflineStorage {
     }
   }
 
-  // Map a generic change type like "visit_create" / "care_plan_update" to its
-  // entity name ("Visit" / "CarePlan") and action ("create" / "update").
+  // Map a generic change type like "visit_create" / "document_signature_update"
+  // to its entity name ("Visit" / "DocumentSignature") and action ("create" / "update").
   parseChangeType(type) {
     const parts = String(type || '').split('_');
     const action = parts.pop();

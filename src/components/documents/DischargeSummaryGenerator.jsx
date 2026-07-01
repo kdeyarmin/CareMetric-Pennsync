@@ -28,13 +28,6 @@ export default function DischargeSummaryGenerator({ patientId, patient }) {
     initialData: [],
   });
 
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ['patientCarePlans', patientId],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: patientId }),
-    enabled: !!patientId,
-    initialData: [],
-  });
-
   const { data: incidents = [] } = useQuery({
     queryKey: ['patientIncidents', patientId],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }),
@@ -77,14 +70,6 @@ Visit ${i + 1} (${v.visit_date}):
 - Summary: ${v.nurse_notes?.substring(0, 200) || 'No notes'}
 `).join('\n')}
 
-CARE PLAN OUTCOMES:
-${carePlans.map(cp => `
-- Problem: ${cp.problem}
-- Goal: ${cp.goal}
-- Status: ${cp.status}
-- Progress: ${cp.status === 'met' ? 'Goal achieved' : cp.status === 'active' ? 'In progress' : 'Not met'}
-`).join('\n') || 'No care plans documented'}
-
 INCIDENTS DURING CARE:
 ${incidents.length > 0 ? incidents.map(inc => `
 - ${inc.incident_type} (${inc.incident_date}): ${inc.severity} severity
@@ -109,11 +94,10 @@ Generate a comprehensive discharge summary in proper clinical format with these 
 3. DIAGNOSES
 4. HOSPITAL COURSE / SKILLED SERVICES PROVIDED
 5. FUNCTIONAL STATUS PROGRESSION
-6. CARE PLAN OUTCOMES
-7. MEDICATIONS AT DISCHARGE
-8. DISCHARGE INSTRUCTIONS
-9. FOLLOW-UP RECOMMENDATIONS
-10. DISCHARGE DISPOSITION
+6. MEDICATIONS AT DISCHARGE
+7. DISCHARGE INSTRUCTIONS
+8. FOLLOW-UP RECOMMENDATIONS
+9. DISCHARGE DISPOSITION
 
 Use professional medical terminology. Be detailed and specific. Include all relevant clinical information. Ensure Medicare compliance.`,
         response_json_schema: {
@@ -198,7 +182,7 @@ Use professional medical terminology. Be detailed and specific. Include all rele
 
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <p className="text-sm text-blue-900">
-                <strong>Data Source:</strong> {visits.length} visits, {carePlans.length} care plans
+                <strong>Data Source:</strong> {visits.length} visits
                 {incidents.length > 0 && `, ${incidents.length} incidents`}
               </p>
             </div>

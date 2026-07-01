@@ -53,6 +53,17 @@ export default function OASISActionWorkflow({
   const [reviewNotes, setReviewNotes] = useState("");
   const [assignTo, setAssignTo] = useState("");
 
+  // Close the review dialog AND clear its form state, so review notes / assignee
+  // from one action item never carry over to the next. Both the success path and
+  // a user close (Cancel / overlay / Esc) route through here — a controlled
+  // `open=false` does not fire onOpenChange, so each close site must call this.
+  const closeReviewDialog = () => {
+    setShowReviewDialog(false);
+    setSelectedAction(null);
+    setReviewNotes("");
+    setAssignTo("");
+  };
+
   // Fetch action items
   const { data: actionItems = [], isLoading } = useQuery({
     queryKey: ['oasis-actions', analysisId],
@@ -79,9 +90,7 @@ export default function OASISActionWorkflow({
     mutationFn: ({ id, data }) => base44.entities.OASISActionItem.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['oasis-actions', analysisId] });
-      setShowReviewDialog(false);
-      setSelectedAction(null);
-      setReviewNotes("");
+      closeReviewDialog();
     }
   });
 
@@ -527,7 +536,7 @@ export default function OASISActionWorkflow({
         </Tabs>
 
         {/* Review Dialog */}
-        <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
+        <Dialog open={showReviewDialog} onOpenChange={(open) => (open ? setShowReviewDialog(true) : closeReviewDialog())}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Review Action Item</DialogTitle>
@@ -601,7 +610,7 @@ export default function OASISActionWorkflow({
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
+              <Button variant="outline" onClick={closeReviewDialog}>
                 Cancel
               </Button>
               <Button 

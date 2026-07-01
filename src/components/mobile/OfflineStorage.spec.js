@@ -5,7 +5,7 @@ describe('OfflineStorage.parseChangeType', () => {
   it('maps change types to entity name and action', () => {
     expect(offlineStorage.parseChangeType('visit_create')).toEqual({ entityName: 'Visit', action: 'create' });
     expect(offlineStorage.parseChangeType('incident_create')).toEqual({ entityName: 'Incident', action: 'create' });
-    expect(offlineStorage.parseChangeType('care_plan_update')).toEqual({ entityName: 'CarePlan', action: 'update' });
+    expect(offlineStorage.parseChangeType('document_signature_update')).toEqual({ entityName: 'DocumentSignature', action: 'update' });
   });
 });
 

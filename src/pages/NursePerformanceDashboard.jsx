@@ -380,60 +380,11 @@ export default function NursePerformanceDashboard() {
 
             {/* Patient Outcomes Tab */}
             <TabsContent value="outcomes" className="space-y-6">
-              <div className="grid md:grid-cols-4 gap-6">
+              <div className="grid md:grid-cols-2 gap-6">
                 <Card>
                   <CardContent className="p-6">
                     <p className="text-sm text-slate-600 mb-2">Patients Managed</p>
                     <p className="text-3xl font-bold text-blue-600">{patientOutcomes?.total_patients || 0}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Care Plans</p>
-                    <p className="text-3xl font-bold text-emerald-600">{patientOutcomes?.care_plans_managed || 0}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Goals Met</p>
-                    <p className="text-3xl font-bold text-navy-600">{patientOutcomes?.goals_met || 0}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Achievement Rate</p>
-                    <p className="text-3xl font-bold text-teal-600">{patientOutcomes?.goal_achievement_rate || 0}%</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Care Plan Progress</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Met', value: patientOutcomes?.goals_met || 0 },
-                            { name: 'Active', value: patientOutcomes?.goals_active || 0 }
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                          outerRadius={80}
-                          fill="#264491"
-                          dataKey="value"
-                        >
-                          <Cell fill="#10B981" />
-                          <Cell fill="#3557b0" />
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
                   </CardContent>
                 </Card>
 

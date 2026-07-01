@@ -52,13 +52,6 @@ export default function PatientAlertAnalyzer({
     enabled: !!patientId
   });
 
-  // Fetch care plans
-  const { data: carePlans = [] } = useQuery({
-    queryKey: ['patientCarePlans', patientId],
-    queryFn: () => base44.entities.CarePlan.filter({ patient_id: patientId }),
-    enabled: !!patientId
-  });
-
   // Fetch incidents
   const { data: incidents = [] } = useQuery({
     queryKey: ['patientIncidents', patientId],
@@ -152,13 +145,6 @@ export default function PatientAlertAnalyzer({
         details: i.details
       }));
 
-      const carePlanSummaries = carePlans.map(cp => ({
-        problem: cp.problem,
-        goal: cp.goal,
-        status: cp.status,
-        target_date: cp.target_date
-      }));
-
       setAnalysisProgress(30);
 
       // Extract vital trends
@@ -185,9 +171,6 @@ ${JSON.stringify(vitalTrends, null, 2)}
 
 RECENT INCIDENTS:
 ${JSON.stringify(incidentSummaries, null, 2)}
-
-ACTIVE CARE PLANS:
-${JSON.stringify(carePlanSummaries, null, 2)}
 
 ANALYSIS REQUIREMENTS:
 1. Identify ANY patterns suggesting clinical deterioration
@@ -296,7 +279,7 @@ Return JSON:
       console.error("Error analyzing patient:", error);
     }
     setIsAnalyzing(false);
-  }, [patient, recentVisits, incidents, carePlans, patientId, existingAlerts, queryClient, onAlertsGenerated, extractVitalTrends, sendAlertNotifications]);
+  }, [patient, recentVisits, incidents, patientId, existingAlerts, queryClient, onAlertsGenerated, extractVitalTrends, sendAlertNotifications]);
 
   // Auto-analyze on mount if enabled
   useEffect(() => {

@@ -15,12 +15,11 @@ import {
   ChevronUp
 } from "lucide-react";
 
-export default function GranularComplianceGapAnalyzer({ 
-  visits, 
-  patients, 
-  _carePlans, 
+export default function GranularComplianceGapAnalyzer({
+  visits,
+  patients,
   complianceAudits,
-  dateRange = 30 
+  dateRange = 30
 }) {
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const ai = useAICall();

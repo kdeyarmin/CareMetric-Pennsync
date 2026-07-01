@@ -39,9 +39,6 @@ export default function TemplateFieldMapper({ mappings = [], signatureFields = [
       'visit_date', 'visit_type', 'vital_signs.temperature', 'vital_signs.blood_pressure_systolic',
       'vital_signs.blood_pressure_diastolic', 'vital_signs.heart_rate', 'nurse_notes'
     ],
-    care_plan: [
-      'problem', 'goal', 'interventions', 'target_date', 'status', 'baseline_measurement'
-    ],
     medication: [
       'current_medications[0].name', 'current_medications[0].dosage', 
       'current_medications[0].frequency', 'current_medications[0].prescriber'
@@ -138,7 +135,6 @@ export default function TemplateFieldMapper({ mappings = [], signatureFields = [
               <SelectContent>
                 <SelectItem value="patient">Patient</SelectItem>
                 <SelectItem value="visit">Visit</SelectItem>
-                <SelectItem value="care_plan">Care Plan</SelectItem>
                 <SelectItem value="medication">Medication</SelectItem>
                 <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>

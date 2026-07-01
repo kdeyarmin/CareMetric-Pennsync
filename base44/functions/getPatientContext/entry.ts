@@ -2,14 +2,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
  * getPatientContext — returns the core datasets the PatientDetails page needs for
- * a single patient (the patient record, visits, care plans, incidents, tasks, and
- * active alerts) in ONE round-trip instead of the page firing six independent
+ * a single patient (the patient record, visits, incidents, tasks, and active
+ * alerts) in ONE round-trip instead of the page firing several independent
  * entity queries from the browser.
  *
  * IMPORTANT — access control: every read runs AS THE CALLER (`base44.entities`,
  * NOT `asServiceRole`), so Base44 row-level security applies exactly as it did
  * when PatientDetails issued these queries directly. This deliberately preserves
- * the prior visibility model — Visit/CarePlan/Incident are `created_by`-scoped,
+ * the prior visibility model — Visit/Incident are `created_by`-scoped,
  * Task is `assigned_to`-scoped, Patient is assigned_nurses OR created_by OR admin
  * — so batching them here neither widens PHI/task visibility for a shared patient
  * nor locks out a creator who isn't yet in `assigned_nurses`. RLS is the gate: if
@@ -27,9 +27,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  *   incidents— Incident.filter({patient_id}, '-incident_date')
  *   alerts   — PatientAlert.filter({patient_id, status:'active'})
  *   tasks    — unsorted filter by patient_id
- *
- * carePlans is always returned empty (the Care Plans feature was removed); the
- * key is kept so existing client cache-seeding stays a drop-in.
  */
 Deno.serve(async (req) => {
   try {
@@ -49,7 +46,7 @@ Deno.serve(async (req) => {
     // Not readable by this caller (or absent) → empty payload, mirroring the old
     // caller-scoped Patient.filter returning [] (page shows its not-found state).
     if (!patient) {
-      return Response.json({ patient: null, visits: [], carePlans: [], incidents: [], tasks: [], activeAlerts: [] });
+      return Response.json({ patient: null, visits: [], incidents: [], tasks: [], activeAlerts: [] });
     }
 
     const [visits, incidents, tasks, activeAlerts] = await Promise.all([
@@ -59,7 +56,7 @@ Deno.serve(async (req) => {
       e.PatientAlert.filter({ patient_id: patientId, status: 'active' }),
     ]);
 
-    return Response.json({ patient, visits, carePlans: [], incidents, tasks, activeAlerts });
+    return Response.json({ patient, visits, incidents, tasks, activeAlerts });
   } catch (error) {
     console.error('getPatientContext error:', error?.message);
     return Response.json({ error: 'Failed to load patient context' }, { status: 500 });

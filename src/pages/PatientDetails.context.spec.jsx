@@ -7,7 +7,6 @@ const PATIENT = { id: 'p1', first_name: 'Jane', last_name: 'Doe', status: 'activ
 const CTX = {
   patient: PATIENT,
   visits: [{ id: 'v1', patient_id: 'p1', status: 'completed', visit_date: '2026-06-01' }],
-  carePlans: [{ id: 'cp1', patient_id: 'p1', status: 'active' }],
   incidents: [],
   tasks: [],
   activeAlerts: [],
@@ -56,16 +55,15 @@ describe('PatientDetails — getPatientContext seeding', () => {
     const { default: PatientDetails } = await import('@/pages/PatientDetails');
     renderWithProviders(<PatientDetails />, { queryClient: qc });
 
-    // The single consolidated fetch ran with the URL's patient id. (Explicit 5s
-    // timeout to match the sibling test — this heavy page mount can exceed the 1s
-    // waitFor default under full-suite parallel load.)
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('getPatientContext', { patientId: 'p1' }), { timeout: 5000 });
+    // The single consolidated fetch ran with the URL's patient id. (Explicit 10s
+    // timeout — this heavy page mount can exceed the default under full-suite
+    // parallel load on a constrained CI runner.)
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('getPatientContext', { patientId: 'p1' }), { timeout: 10000 });
 
     // Seeding: a child reading ['patientVisits','p1'] (or ['patient','p1']) finds
     // the payload already in cache — no second request.
-    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 5000 });
+    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 10000 });
     expect(qc.getQueryData(['patient', 'p1'])).toEqual([PATIENT]);
-    expect(qc.getQueryData(['patientCarePlans', 'p1'])).toEqual(CTX.carePlans);
     expect(qc.getQueryData(['patientActiveAlerts', 'p1'])).toEqual(CTX.activeAlerts);
 
     // getPatientContext was the only patient-data round-trip the page issued.
@@ -83,7 +81,7 @@ describe('PatientDetails — getPatientContext seeding', () => {
     const { default: PatientDetails } = await import('@/pages/PatientDetails');
     renderWithProviders(<PatientDetails />, { queryClient: qc });
 
-    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 5000 });
+    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(CTX.visits), { timeout: 10000 });
     const callsAfterLoad = invoke.mock.calls.filter((c) => c[0] === 'getPatientContext').length;
 
     // Simulate the server now returning a newly-created visit, then do exactly what
@@ -96,7 +94,7 @@ describe('PatientDetails — getPatientContext seeding', () => {
     qc.invalidateQueries({ queryKey: ['patientContext', 'p1'] });
 
     // The mirror the children render from is refreshed with the new visit...
-    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(updated.visits), { timeout: 5000 });
+    await waitFor(() => expect(qc.getQueryData(['patientVisits', 'p1'])).toEqual(updated.visits), { timeout: 10000 });
     // ...via exactly one refetch (no loop).
     const callsAfterInvalidate = invoke.mock.calls.filter((c) => c[0] === 'getPatientContext').length;
     expect(callsAfterInvalidate).toBe(callsAfterLoad + 1);

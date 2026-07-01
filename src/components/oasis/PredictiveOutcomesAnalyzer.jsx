@@ -20,16 +20,15 @@ export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, 
     queryKey: ['patientHistory', patientId],
     queryFn: async () => {
       if (!patientId) return [];
-      const [visits, oasisData, carePlans, incidents, alerts, tasks, recommendations] = await Promise.all([
+      const [visits, oasisData, incidents, alerts, tasks, recommendations] = await Promise.all([
         base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 50),
         base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 20),
-        base44.entities.CarePlan.filter({ patient_id: patientId }),
         base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 20),
         base44.entities.PatientAlert.filter({ patient_id: patientId }, '-created_date', 30),
         base44.entities.Task.filter({ patient_id: patientId }, '-created_date', 50),
         base44.entities.PatientRecommendation.filter({ patient_id: patientId }, '-created_date', 30)
       ]);
-      return { visits, oasisData, carePlans, incidents, alerts, tasks, recommendations };
+      return { visits, oasisData, incidents, alerts, tasks, recommendations };
     },
     enabled: !!patientId
   });
@@ -57,7 +56,6 @@ export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, 
       fall_count: history.incidents?.filter(i => i.incident_type === 'fall')?.length || 0,
       active_alerts: history.alerts?.filter(a => a.status === 'active').length || 0,
       critical_alerts: history.alerts?.filter(a => a.severity === 'critical' && a.status === 'active').length || 0,
-      care_plan_adherence: history.carePlans?.filter(cp => cp.status === 'met').length / (history.carePlans?.length || 1),
       recommendation_completion_rate: history.recommendations?.filter(r => r.status === 'completed').length / (history.recommendations?.length || 1),
       avg_visit_gap_days: null,
       functional_trend: 'unknown'
@@ -142,7 +140,6 @@ PATIENT CONTEXT:
 - Support System: ${patient?.social_history?.support_system || 'Unknown'}
 - Active Alerts: ${patientHistory?.alerts?.filter(a => a.status === 'active').length || 0}
 - Pending Tasks: ${patientHistory?.tasks?.filter(t => t.status === 'pending').length || 0}
-- Active Care Plans: ${patientHistory?.carePlans?.filter(cp => cp.status === 'active').length || 0}
 - Recent Incidents: ${patientHistory?.incidents?.length || 0} (falls: ${patientHistory?.incidents?.filter(i => i.incident_type === 'fall').length || 0}, hospitalizations: ${patientHistory?.incidents?.filter(i => i.incident_type === 'hospitalized').length || 0})
 - Previous Recommendations: ${patientHistory?.recommendations?.filter(r => r.status === 'completed').length || 0} completed, ${patientHistory?.recommendations?.filter(r => r.status === 'pending').length || 0} pending
 

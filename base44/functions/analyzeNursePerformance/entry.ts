@@ -35,13 +35,12 @@ Deno.serve(async (req) => {
     dateThreshold.setDate(dateThreshold.getDate() - date_range_days);
 
     // Fetch all relevant data
-    const [activities, recommendations, audits, visits, patients, carePlans, incidents] = await Promise.all([
+    const [activities, recommendations, audits, visits, patients, incidents] = await Promise.all([
       base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail }),
       base44.asServiceRole.entities.TrainingRecommendation.filter({ nurse_email: targetEmail }),
       base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }),
       base44.asServiceRole.entities.Visit.filter({ created_by: targetEmail }),
       base44.asServiceRole.entities.Patient.list('-created_date', 5000),
-      base44.asServiceRole.entities.CarePlan.list('-created_date', 5000),
       base44.asServiceRole.entities.Incident.list('-created_date', 5000)
     ]);
 
@@ -294,20 +293,13 @@ Return ONLY valid JSON, no prose or code fences, with this shape:
 
     // Calculate patient outcomes
     const nursePatientIds = [...new Set(visits.map(v => v.patient_id))];
-    const nurseCarePlans = carePlans.filter(cp => nursePatientIds.includes(cp.patient_id));
-    const metGoals = nurseCarePlans.filter(cp => cp.status === 'met').length;
-    const activeGoals = nurseCarePlans.filter(cp => cp.status === 'active').length;
-    
-    const nurseIncidents = incidents.filter(i => 
+
+    const nurseIncidents = incidents.filter(i =>
       visits.some(v => v.id === i.visit_id)
     );
 
     const patientOutcomes = {
       total_patients: nursePatientIds.length,
-      care_plans_managed: nurseCarePlans.length,
-      goals_met: metGoals,
-      goals_active: activeGoals,
-      goal_achievement_rate: nurseCarePlans.length > 0 ? Math.round((metGoals / nurseCarePlans.length) * 100) : 0,
       incidents_reported: nurseIncidents.length,
       high_severity_incidents: nurseIncidents.filter(i => i.severity === 'high').length
     };
@@ -345,7 +337,6 @@ PERFORMANCE TRENDS:
 - AI Tool Usage: ${metrics.suggestion_acceptance_rate}% acceptance rate
 
 QUALITY INDICATORS:
-- Goal Achievement: ${patientOutcomes.goal_achievement_rate}%
 - Template Usage: ${metrics.template_usage} times
 - Unaddressed Recommendations: ${recommendations.filter(r => !r.addressed).length}
 

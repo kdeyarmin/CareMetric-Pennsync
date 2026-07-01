@@ -36,7 +36,6 @@ import {
 export default function PatientRiskStratification({
   patient,
   visits = [],
-  carePlans = [],
   incidents = [],
   compact = false,
   onRiskCalculated,
@@ -63,7 +62,6 @@ export default function PatientRiskStratification({
     try {
       // Gather comprehensive patient data
       const recentVisits = visits.slice(0, 10);
-      const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
       const recentIncidents = incidents.slice(0, 5);
 
       // Extract vital trends
@@ -90,9 +88,6 @@ ${recentVisits.map(v => `- ${v.visit_date}: ${v.visit_type} - ${v.nurse_notes?.s
 
 VITAL SIGN TRENDS:
 ${vitalTrends.length > 0 ? vitalTrends.map(v => `${v.date}: BP ${v.vitals?.blood_pressure_systolic || v.vitals?.bp || '?'}/${v.vitals?.blood_pressure_diastolic || '?'}, HR ${v.vitals?.heart_rate || v.vitals?.hr || '?'}, O2 ${v.vitals?.oxygen_saturation || v.vitals?.o2 || '?'}%`).join('\n') : 'No vital data available'}
-
-ACTIVE CARE PLANS (${activeCarePlans.length}):
-${activeCarePlans.map(cp => `- ${cp.problem}: ${cp.goal} (Status: ${cp.status})`).join('\n') || 'None'}
 
 INCIDENT HISTORY (${recentIncidents.length} recent):
 ${recentIncidents.map(i => `- ${i.incident_date}: ${i.incident_type} - Severity: ${i.severity}`).join('\n') || 'No incidents'}
@@ -185,7 +180,7 @@ Return JSON:
       toast.error("The AI request didn't complete. Please try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [patient, visits, carePlans, incidents, onRiskCalculated, calculateAge]);
+  }, [patient, visits, incidents, onRiskCalculated, calculateAge]);
 
   useEffect(() => {
     if (autoCalculate && patient && !riskData) {
