@@ -126,6 +126,14 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 
 > Theme 1's **UI caveat coverage is now broad** — every major surface that shows AI-drafted text (patient summary, predictive insights, incident narrative, template enhance, pathway generate/update) carries a consistent provenance line. Remaining Theme-1 work is a **review-acknowledgement gate before AI text is persisted to a chart** (a bigger, backend-touching change left for a dedicated pass).
 
+### Ninth batch (also in this PR) — persistent offline indicator (Theme 4 start)
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 31 | App shell | **New persistent `OfflineIndicator`** (`src/components/offline/OfflineIndicator.jsx`, tested) rendered at the top of the page content on every route. It shows an unmissable "You're offline — viewing cached data; changes sync on reconnect" banner while offline and disappears when connectivity returns. Complements (doesn't duplicate) the bottom-right `OfflineSyncStatus` card, which owns pending-count + manual "Sync now". | trust-safety |
+
+> This is the awareness slice of Theme 4. The larger offline work — cache-age/staleness labeling and an offline write-queue for incidents/notes with auto-sync — remains a roadmap item (much of the sync-queue plumbing already exists in `src/lib/offlineSync.js` + `OfflineManager`).
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)
