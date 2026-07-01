@@ -9,7 +9,6 @@ const noteConvCreate = vi.fn(async () => ({}));
 const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
 const addToSyncQueue = vi.fn(async () => {});
-const dropQueuedCreateVisits = vi.fn(async () => 0);
 
 vi.mock("@/api/base44Client", () => ({
   base44: {
@@ -26,7 +25,7 @@ vi.mock("@/components/utils/activityLogger", () => ({ logActivity: vi.fn(), Acti
 // Isolate from the (separately tested) pure compliance helpers.
 vi.mock("@/components/smartNote/compliance/coverageScore", () => ({ deriveStructuredVisitFields: () => ({}), toNoteConversionFields: (x) => x }));
 vi.mock("@/components/smartNote/compliance/reportingFields", () => ({ buildVisitReportingFields: () => ({}), buildAuditFields: () => ({ status: "ok" }) }));
-vi.mock("@/lib/indexedDB", () => ({ addToSyncQueue: (...a) => addToSyncQueue(...a), dropQueuedCreateVisits: (...a) => dropQueuedCreateVisits(...a) }));
+vi.mock("@/lib/indexedDB", () => ({ addToSyncQueue: (...a) => addToSyncQueue(...a) }));
 
 import { persistVisitNote } from "./persistVisitNote";
 
@@ -102,9 +101,6 @@ describe("persistVisitNote", () => {
     expect(payload.grounding_pending).toBe(true);
     expect(payload.__audit.status).toBe("pending_review");
     expect(visitCreate).not.toHaveBeenCalled();
-    // A brand-new offline visit dedupes prior queued creates for the same
-    // patient+date so an offline re-save can't produce two visits on drain.
-    expect(dropQueuedCreateVisits).toHaveBeenCalledWith("p1", "2026-06-21");
   });
 
   it("queues UPDATE_VISIT (not a duplicate CREATE) when offline re-saving an existing visit", async () => {
@@ -117,8 +113,7 @@ describe("persistVisitNote", () => {
     expect(payload.visit_id).toBe("visit-9");
     expect(payload.vital_signs).toEqual({ temperature: 99 });
     expect(payload.__audit).toBeTruthy();
-    // An existing visit is updated in place — no CREATE_VISIT, no dedupe needed.
-    expect(dropQueuedCreateVisits).not.toHaveBeenCalled();
+    // An existing visit is updated in place — no CREATE_VISIT.
     expect(visitCreate).not.toHaveBeenCalled();
   });
 

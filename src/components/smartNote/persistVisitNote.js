@@ -60,7 +60,7 @@ export async function persistVisitNote({
   const auditFields = buildAuditFields({ coverageScore, chartFindings, acknowledgment, appliedRules });
 
   if (!navigator.onLine) {
-    const { addToSyncQueue, dropQueuedCreateVisits } = await import('@/lib/indexedDB');
+    const { addToSyncQueue } = await import('@/lib/indexedDB');
     // Offline save → the AI grounding pass was deferred. Mark the queued visit so
     // the record shows live grounding hadn't run yet, and surface the audit as
     // "pending_review" (rather than the coverage-derived passed/flagged) so a
@@ -85,12 +85,14 @@ export async function persistVisitNote({
       return { mode: 'offline', visitId: targetVisitId, auditId: savedAuditId || null, finalText, coverageScore };
     }
 
-    // First save of a brand-new visit while offline. Collapse repeated offline
-    // re-saves of the same visit (edit → re-save while still offline) into one by
-    // dropping any prior queued CREATE_VISIT for this patient+date — otherwise the
-    // drain would create two visits from two queue items with different keys.
-    await dropQueuedCreateVisits(patientId, visitDate);
-    // Stable client-generated idempotency key so the offline-sync drain can dedupe.
+    // First save of a brand-new visit while offline. Each offline save is queued
+    // independently — we deliberately do NOT drop prior queued CREATE_VISITs for the
+    // same patient+date: two genuinely distinct same-day visits share that key, and
+    // dropping one would lose a clinical note. A re-save while still offline can thus
+    // create a duplicate visit on drain, which is recoverable (merge) — the safer
+    // trade than unrecoverable data loss. A precise re-save collapse would need a
+    // stable per-edit id threaded from the caller.
+    // Stable client-generated idempotency key so a retried DRAIN stays idempotent.
     // crypto.randomUUID is only defined in secure contexts; fall back so the offline
     // save (the whole point of this branch) never throws in the field.
     const clientRequestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
