@@ -63,7 +63,7 @@ export default function OfflineVisitDocumentation({ patientId, visitId, existing
 
     if (isOnline) {
       // Save directly online
-      saveOnline();
+      await saveOnline();
     } else {
       // Queue to the ONE canonical offline queue (IndexedDB sync_queue), drained
       // globally by OfflineManager on reconnect. Strip the local-only placeholder

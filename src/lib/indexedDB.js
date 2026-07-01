@@ -1,3 +1,5 @@
+import { QUEUE_CHANGED_EVENT } from '@/lib/offlineQueueEvent';
+
 const DB_NAME = 'base44-offline-db';
 const DB_VERSION = 1;
 
@@ -106,10 +108,10 @@ export const addToSyncQueue = async (action, payload) => {
     request.onerror = () => reject(request.error);
   });
   // Let any mounted sync-status widget refresh its pending count immediately
-  // instead of waiting for its poll tick. Event name kept in sync with
-  // offlineSync.QUEUE_CHANGED_EVENT (not imported here to avoid a cycle).
+  // instead of waiting for its poll tick. The event name is shared with
+  // offlineSync.js via a dependency-free module so the two can't drift.
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('offline-queue-changed'));
+    window.dispatchEvent(new CustomEvent(QUEUE_CHANGED_EVENT));
   }
   return id;
 };

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { getSyncQueue, removeFromSyncQueue } from '@/lib/indexedDB';
+import { QUEUE_CHANGED_EVENT } from '@/lib/offlineQueueEvent';
 
 /**
  * offlineSync — the ONE drain path + status source for the canonical offline
@@ -21,9 +22,9 @@ import { getSyncQueue, removeFromSyncQueue } from '@/lib/indexedDB';
  * OfflineMode incident form that previously wrote to its own queue.
  */
 
-// Fired whenever the queue changes (an item enqueued or drained) so any mounted
-// status widget re-reads the count without waiting for its poll tick.
-export const QUEUE_CHANGED_EVENT = 'offline-queue-changed';
+// Re-exported for callers that already import it from here; the name itself lives
+// in the dependency-free offlineQueueEvent module shared with indexedDB.js.
+export { QUEUE_CHANGED_EVENT };
 
 export function notifyQueueChanged() {
   if (typeof window !== 'undefined') {
@@ -31,27 +32,36 @@ export function notifyQueueChanged() {
   }
 }
 
-// Module-level in-flight guard shared by every caller (the global OfflineManager
+// The single in-flight drain, shared by every caller (the global OfflineManager
 // mount AND any manual "Sync now" button). syncItem has no per-item lock and the
 // idempotency checks are read-then-write, so two concurrent drains could both
-// create the same record; one flag serializes them regardless of caller.
-let draining = false;
+// create the same record — coalescing onto one promise serializes them.
+let inFlightDrain = null;
 
 /**
  * Drain the canonical IndexedDB sync queue once. Idempotent per item and safe to
- * call concurrently (re-entrant calls no-op while a drain is in flight). Returns
+ * call concurrently: a call made while a drain is already running returns that
+ * SAME in-flight promise, so the caller's `isSyncing` period matches the real
+ * drain (rather than resolving instantly) and no two drains overlap. Returns
  * `{ synced, error }`; the caller owns any user-facing toast. `deps` is injectable
  * so the worker can be unit-tested without IndexedDB or the real SDK.
  */
 export async function drainSyncQueue(deps = {}) {
+  if (inFlightDrain) return inFlightDrain;
+  inFlightDrain = drainOnce(deps);
+  try {
+    return await inFlightDrain;
+  } finally {
+    inFlightDrain = null;
+  }
+}
+
+async function drainOnce(deps) {
   const {
     entities = base44.entities,
     getQueue = getSyncQueue,
     removeItem = removeFromSyncQueue,
   } = deps;
-
-  if (draining) return { synced: 0, error: null };
-  draining = true;
 
   let synced = 0;
   let error = null;
@@ -141,8 +151,6 @@ export async function drainSyncQueue(deps = {}) {
     // items stay queued and are retried on the next drain. Surface to the caller.
     console.error('Error draining sync queue:', err);
     error = err;
-  } finally {
-    draining = false;
   }
 
   if (synced > 0) notifyQueueChanged();
