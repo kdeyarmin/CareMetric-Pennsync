@@ -101,7 +101,7 @@ export default function UserManagement({ users }) {
         page: 'UserManagement'
       });
       
-      toast.success(`Invitation sent to ${inviteData.email}. The user will receive an email with instructions. Invitation expires in 7 days.`);
+      toast.success(`Invitation sent to ${inviteData.email}. They'll receive a branded welcome email with app-install steps and their ${inviteData.role === 'admin' ? 'Facility Administrator Manual' : 'User Manual'}. Invitation expires in 7 days.`);
       queryClient.invalidateQueries({ queryKey: ['allUsers'] });
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
       setShowInviteDialog(false);
