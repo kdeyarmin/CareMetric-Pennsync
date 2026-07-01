@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ import RecentActivityFeed from "../components/dashboard/RecentActivityFeed";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function PatientRecordDashboard() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState({
     status: "all",
@@ -279,7 +281,7 @@ export default function PatientRecordDashboard() {
                     </div>
                     <Button
                       className="w-full mt-4"
-                      onClick={() => window.location.href = `/PatientDetails?id=${selectedPatient.id}`}
+                      onClick={() => navigate(`/PatientDetails?id=${selectedPatient.id}`)}
                     >
                       <FileText className="w-4 h-4 mr-2" />
                       View Full Record

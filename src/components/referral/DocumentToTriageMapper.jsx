@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import SearchablePatientSelect from "../ui/SearchablePatientSelect";
 import { todayEastern } from "@/components/utils/timezone";
 
 export default function DocumentToTriageMapper({ onTriageCreated }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: patients = [] } = useQuery({
     queryKey: ['patients-for-triage-mapper'],
@@ -197,9 +199,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    window.location.href = `/patientdetails?id=${result.patientId}`;
-                  }}
+                  onClick={() => navigate(`/PatientDetails?id=${result.patientId}`)}
                 >
                   View Patient <ArrowRight className="w-3 h-3 ml-1" />
                 </Button>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { buildPdgmNavigatorCsv } from "./pdgmNavigatorExport";
@@ -46,6 +47,7 @@ import AIGroupAssignmentValidator from "./AIGroupAssignmentValidator";
 
 
 export default function AutomatedPDGMNavigator({ analysisResults, pdgmData, revenueData, onNavigationComplete }) {
+  const navigate = useNavigate();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [navigation, setNavigation] = useState(null);
   const [error, setError] = useState(null);
@@ -441,7 +443,7 @@ PREDICT:
               variant="outline" 
               size="sm" 
               className="gap-2"
-              onClick={() => window.location.href = '/agency-settings'}
+              onClick={() => navigate('/AgencySettings')}
             >
               <Settings className="w-3 h-3" />
               Agency Settings
