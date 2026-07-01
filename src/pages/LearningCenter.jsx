@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import EmptyState from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,6 @@ import {
   Brain
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmbeddedPage from '@/components/ui/embeddedPage';
