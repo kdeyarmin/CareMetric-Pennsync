@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Download, FileText, Users, Loader2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import ReportFilters from './ReportFilters';
 import { toCsvRows } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
@@ -22,7 +23,10 @@ const statusColors = {
 };
 
 export default function CourseRosterReport() {
-  const [selectedCourse, setSelectedCourse] = useState('');
+  // Allow deep-linking to a specific course's roster (e.g. from the course
+  // manager's per-course "View roster" link: ?tab=roster&course=<id>).
+  const [searchParams] = useSearchParams();
+  const [selectedCourse, setSelectedCourse] = useState(() => searchParams.get('course') || '');
   const [filters, setFilters] = useState({
     businessLine: 'home_health',
     dateStart: '',

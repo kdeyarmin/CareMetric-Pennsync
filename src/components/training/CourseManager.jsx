@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Plus, Edit2, Trash2, BookOpen, Eye, BarChart3, Copy, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import CourseForm from "./CourseForm";
 import CourseLessonBuilder from "./CourseLessonBuilder";
 import CourseQuizBuilder from "./CourseQuizBuilder";
@@ -133,6 +134,12 @@ export default function CourseManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['training-courses'] });
+      queryClient.invalidateQueries({ queryKey: ['course-manager-assignments'] });
+      toast.success('Course duplicated as a draft.');
+    },
+    onError: (err) => {
+      console.error('Course duplication error:', err);
+      toast.error('Could not duplicate the course. Some content may not have copied — please review the draft.');
     },
   });
 
@@ -310,7 +317,7 @@ export default function CourseManager() {
                         <BarChart3 className="w-3.5 h-3.5" /> Completion
                       </span>
                       <Link
-                        to={`${createPageUrl('LearningReports')}?tab=roster`}
+                        to={`${createPageUrl('LearningReports')}?tab=roster&course=${course.id}`}
                         className="text-xs text-blue-600 hover:underline"
                       >
                         View roster
@@ -350,7 +357,7 @@ export default function CourseManager() {
                       variant="outline"
                       size="sm"
                       title="Duplicate course"
-                      disabled={duplicateMutation.isPending}
+                      disabled={duplicateMutation.isPending && duplicateMutation.variables?.id === course.id}
                       onClick={() => duplicateMutation.mutate(course)}
                     >
                       {duplicateMutation.isPending && duplicateMutation.variables?.id === course.id ? (

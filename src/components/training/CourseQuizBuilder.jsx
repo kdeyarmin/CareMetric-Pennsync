@@ -32,6 +32,7 @@ const blankQuestion = () => ({
   prompt: "",
   points: 1,
   rationale: "",
+  rubric: "",
   options: [blankOption(true), blankOption(false)],
   correctBool: true,
   pairs: [blankPair(), blankPair()],
@@ -66,6 +67,7 @@ export const questionToItem = (q) => {
     prompt: q.prompt || "",
     points: q.points || 1,
     rationale: q.rationale || "",
+    rubric: q.rubric || "",
     options: options.length ? options : [blankOption(true), blankOption(false)],
     correctBool: answer === true,
     pairs: pairs.length ? pairs : [blankPair(), blankPair()],
@@ -80,6 +82,9 @@ export const itemToPayload = (item, courseId, orderIndex) => {
     prompt: item.prompt,
     points: Number(item.points) || 1,
     rationale: item.rationale || "",
+    // rubric drives AI grading of short_answer/scenario responses; harmless on
+    // objective types.
+    rubric: item.rubric || "",
     order_index: orderIndex,
     active: true,
   };
@@ -137,20 +142,22 @@ export default function CourseQuizBuilder({ courseId }) {
   const [error, setError] = useState("");
   const seededFor = useRef(null);
 
-  const { data: questions = [], isLoading } = useQuery({
+  // No `initialData` — see CourseLessonBuilder: initialData makes isLoading false
+  // on first render, which would seed from an empty list and then let Save delete
+  // all existing questions.
+  const { data: questions = [], isLoading, isSuccess } = useQuery({
     queryKey: ["training-questions", courseId],
     queryFn: () =>
       base44.entities.TrainingQuestion.filter({ course_id: courseId, active: true }, "order_index", 200),
     enabled: !!courseId,
-    initialData: [],
   });
 
   useEffect(() => {
     if (!courseId || seededFor.current === courseId) return;
-    if (isLoading) return;
+    if (isLoading || !isSuccess) return;
     setItems(questions.map(questionToItem));
     seededFor.current = courseId;
-  }, [courseId, isLoading, questions]);
+  }, [courseId, isLoading, isSuccess, questions]);
 
   const updateItem = (localId, patch) =>
     setItems((prev) => prev.map((it) => (it._localId === localId ? { ...it, ...patch } : it)));
@@ -266,6 +273,12 @@ export default function CourseQuizBuilder({ courseId }) {
     );
 
   const saveAll = async () => {
+    // Guard against saving before the editor has seeded from server data — a
+    // save now would treat every existing question as "removed" and delete it.
+    if (seededFor.current !== courseId) {
+      setError("Questions are still loading. Please try again in a moment.");
+      return;
+    }
     setSaving(true);
     setSaved(false);
     setError("");
@@ -288,6 +301,20 @@ export default function CourseQuizBuilder({ courseId }) {
       );
       if (badMatching) {
         setError("Each matching question needs at least one complete left/right pair.");
+        setSaving(false);
+        return;
+      }
+
+      // The learner's answer is keyed by left-prompt text, so duplicate left
+      // prompts within one matching question collide and can never all be graded
+      // correct. Reject them at authoring time.
+      const dupLeft = usable.find((it) => {
+        if (it.type !== "matching") return false;
+        const lefts = (it.pairs || []).map((p) => p.left.trim().toLowerCase()).filter(Boolean);
+        return new Set(lefts).size !== lefts.length;
+      });
+      if (dupLeft) {
+        setError("Matching questions can't reuse the same left prompt twice — make each left unique.");
         setSaving(false);
         return;
       }
@@ -536,9 +563,19 @@ export default function CourseQuizBuilder({ courseId }) {
             )}
 
             {item.type === "short_answer" && (
-              <p className="text-xs text-slate-500 italic">
-                Short-answer responses are evaluated by AI against the prompt and rationale.
-              </p>
+              <div className="space-y-1">
+                <Label className="text-sm font-semibold">Grading Rubric</Label>
+                <Textarea
+                  value={item.rubric}
+                  onChange={(e) => updateItem(item._localId, { rubric: e.target.value })}
+                  placeholder="Criteria for full / partial / no credit — the AI grader uses this to score responses."
+                  rows={2}
+                  className="mt-1"
+                />
+                <p className="text-xs text-slate-500 italic">
+                  Short-answer responses are graded by AI against this rubric (falls back to the prompt if blank).
+                </p>
+              </div>
             )}
 
             <div>

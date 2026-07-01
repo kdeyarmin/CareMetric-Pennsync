@@ -170,6 +170,21 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'All questions must be answered before submission' }, { status: 400 });
       }
 
+      // A matching answer is a { [left]: value } map; require a selection for
+      // every pair, otherwise a partially-filled map slips past the check above
+      // and is silently graded wrong.
+      if (question.type === 'matching') {
+        const pairs = Array.isArray(question.correct_answer_json?.answer?.pairs)
+          ? question.correct_answer_json.answer.pairs
+          : [];
+        const answered = answer && typeof answer === 'object' && !Array.isArray(answer)
+          ? pairs.every((pair) => answer[pair.left] !== undefined && answer[pair.left] !== '')
+          : false;
+        if (!answered) {
+          return Response.json({ error: 'All questions must be answered before submission' }, { status: 400 });
+        }
+      }
+
       if (question.type === 'short_answer' || question.type === 'scenario_based') {
         subjectivePayload.push({
           questionId: question.id,

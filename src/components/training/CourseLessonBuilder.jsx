@@ -85,21 +85,26 @@ export default function CourseLessonBuilder({ courseId, courseCategory }) {
   const [error, setError] = useState("");
   const seededFor = useRef(null);
 
-  const { data: modules = [], isLoading } = useQuery({
+  // NOTE: intentionally no `initialData` here. With initialData set, react-query
+  // v5 reports isLoading:false on the very first render (status is 'success'),
+  // so the seeding effect below would seed from the empty placeholder and the
+  // seededFor guard would then block re-seeding when the real rows arrive — the
+  // editor would show empty and Save would delete every existing lesson.
+  const { data: modules = [], isLoading, isSuccess } = useQuery({
     queryKey: ["training-modules", courseId],
     queryFn: () => base44.entities.TrainingModule.filter({ course_id: courseId }, "order_index", 100),
     enabled: !!courseId,
-    initialData: [],
   });
 
-  // Seed the editor from server data once per course. After that the local list
-  // is the source of truth until the admin saves.
+  // Seed the editor from server data once per course, only after the fetch has
+  // actually succeeded. After that the local list is the source of truth until
+  // the admin saves.
   useEffect(() => {
     if (!courseId || seededFor.current === courseId) return;
-    if (isLoading) return;
+    if (isLoading || !isSuccess) return;
     setItems(modules.map(moduleToItem));
     seededFor.current = courseId;
-  }, [courseId, isLoading, modules]);
+  }, [courseId, isLoading, isSuccess, modules]);
 
   const updateItem = (localId, patch) =>
     setItems((prev) => prev.map((it) => (it._localId === localId ? { ...it, ...patch } : it)));
@@ -156,6 +161,12 @@ export default function CourseLessonBuilder({ courseId, courseCategory }) {
     );
 
   const saveAll = async () => {
+    // Guard against saving before the editor has seeded from server data — a
+    // save now would treat every existing lesson as "removed" and delete it.
+    if (seededFor.current !== courseId) {
+      setError("Lessons are still loading. Please try again in a moment.");
+      return;
+    }
     setSaving(true);
     setSaved(false);
     setError("");
