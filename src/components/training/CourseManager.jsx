@@ -12,6 +12,7 @@ import CourseForm from "./CourseForm";
 import CourseLessonBuilder from "./CourseLessonBuilder";
 import CourseQuizBuilder from "./CourseQuizBuilder";
 import CourseAssignDialog from "./CourseAssignDialog";
+import AICourseGenerator from "./AICourseGenerator";
 import { createPageUrl } from "@/utils";
 import {
   Dialog,
@@ -149,6 +150,20 @@ export default function CourseManager() {
     setShowForm(true);
   };
 
+  // After AI generation, refresh the list and open the new draft in the builder
+  // so the admin reviews the generated lessons/quiz before publishing.
+  const handleGenerated = async (courseId) => {
+    await queryClient.invalidateQueries({ queryKey: ['training-courses'] });
+    queryClient.invalidateQueries({ queryKey: ['course-manager-assignments'] });
+    try {
+      const rows = await base44.entities.TrainingCourse.filter({ id: courseId });
+      if (rows[0]) openBuilder(rows[0]);
+    } catch (err) {
+      // The course is already in the list; opening the builder is best-effort.
+      console.error('Could not open generated course:', err);
+    }
+  };
+
   const closeBuilder = () => {
     setShowForm(false);
     setBuilderCourse(null);
@@ -173,10 +188,13 @@ export default function CourseManager() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-xl font-bold">Training Courses</h2>
-        <Button onClick={() => openBuilder(null)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Course
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <AICourseGenerator onGenerated={handleGenerated} />
+          <Button onClick={() => openBuilder(null)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Course
+          </Button>
+        </div>
         <Dialog open={showForm} onOpenChange={(next) => (next ? setShowForm(true) : closeBuilder())}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="bg-white rounded-2xl">
