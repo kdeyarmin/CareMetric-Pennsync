@@ -11,7 +11,8 @@ vi.mock("@/api/base44Client", async () => {
   return { base44: makeBase44Stub() };
 });
 
-import QuickPhraseTextarea from "./QuickPhraseTextarea";
+import QuickPhraseTextarea, { mergePhrases } from "./QuickPhraseTextarea";
+import { DEFAULT_CLINICAL_PHRASES } from "@/components/clinical/defaultClinicalPhrases";
 
 // Controlled harness — the component is controlled, exactly as used in the editor.
 function Harness(props) {
@@ -62,5 +63,28 @@ describe("QuickPhraseTextarea", () => {
     const ta = screen.getByRole("textbox");
     type(ta, "BP 120/80", 9);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});
+
+describe("mergePhrases", () => {
+  const defaultPhrase = DEFAULT_CLINICAL_PHRASES[0].phrase; // e.g. "diabetic education"
+  const has = (list, phrase) => list.some((p) => p.phrase === phrase);
+
+  it("keeps a default when only a NON-visible record shares its phrase", () => {
+    // Another nurse's private template with the same phrase must not remove the
+    // bundled default from the current nurse's picker.
+    const templates = [{ id: "t1", phrase: defaultPhrase, created_by: "other@x.com" }];
+    const merged = mergePhrases(templates, { email: "me@x.com", patientId: "" });
+    const defaults = merged.filter((p) => !p.id);
+    expect(has(defaults, defaultPhrase)).toBe(true);
+  });
+
+  it("suppresses the default when a VISIBLE record shares its phrase", () => {
+    const templates = [{ id: "t1", phrase: defaultPhrase, is_agency_wide: true }];
+    const merged = mergePhrases(templates, { email: "me@x.com", patientId: "" });
+    const defaults = merged.filter((p) => !p.id);
+    expect(has(defaults, defaultPhrase)).toBe(false);
+    // The authored (visible) record is still present.
+    expect(merged.some((p) => p.id === "t1")).toBe(true);
   });
 });

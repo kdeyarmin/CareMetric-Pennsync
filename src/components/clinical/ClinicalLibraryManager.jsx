@@ -158,9 +158,11 @@ export default function ClinicalLibraryManager() {
       ...formData,
       phrase: formData.phrase.toLowerCase().trim(),
       created_by: currentUser?.email,
-      // Normalize the optional patient binding: keep name only when an id is set.
-      patient_id: formData.patient_id || undefined,
-      patient_name: formData.patient_id ? (formData.patient_name || undefined) : undefined
+      // Normalize the optional patient binding. Use null (not undefined) so that
+      // clearing a previously-bound phrase actually unsets the field on update —
+      // JSON serialization drops undefined, which would leave the old binding.
+      patient_id: formData.patient_id || null,
+      patient_name: formData.patient_id ? (formData.patient_name || null) : null
     };
 
     if (editingTemplate) {

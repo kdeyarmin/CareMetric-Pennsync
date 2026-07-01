@@ -6,13 +6,17 @@ import { Sparkles, Loader2, User, Globe, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { expandClinicalPhrase } from "@/functions/expandClinicalPhrase";
 import { DEFAULT_CLINICAL_PHRASES } from "@/components/clinical/defaultClinicalPhrases";
-import { detectPhraseTrigger, rankPhrases, applyExpansion, phraseNeedsPatient, normalizePhraseText } from "./quickPhrase";
+import { detectPhraseTrigger, rankPhrases, applyExpansion, phraseNeedsPatient, normalizePhraseText, isPhraseVisible } from "./quickPhrase";
 
 // Merge the agency's authored ClinicalLibraryTemplate records with the bundled
 // offline defaults, so the picker works even before an agency seeds its library
-// (and offline). Authored records win on a phrase-name collision.
-function mergePhrases(templates) {
-  const seen = new Set((templates || []).map((t) => normalizePhraseText(t.phrase)));
+// (and offline). A default is suppressed only when a template that is actually
+// VISIBLE in this context shares its phrase — otherwise a hidden record (another
+// nurse's private phrase, or a different patient's bound phrase) would silently
+// remove the default even though rankPhrases filters that record right back out.
+export function mergePhrases(templates, ctx) {
+  const visible = (templates || []).filter((t) => isPhraseVisible(t, ctx));
+  const seen = new Set(visible.map((t) => normalizePhraseText(t.phrase)));
   const defaults = DEFAULT_CLINICAL_PHRASES.filter((d) => !seen.has(normalizePhraseText(d.phrase)));
   return [...(templates || []), ...defaults];
 }
@@ -74,7 +78,10 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
     staleTime: 5 * 60 * 1000,
   });
 
-  const phrases = useMemo(() => mergePhrases(templates), [templates]);
+  const phrases = useMemo(
+    () => mergePhrases(templates, { email: userEmail, patientId }),
+    [templates, userEmail, patientId],
+  );
   const ranked = trigger
     ? rankPhrases(phrases, { query: trigger.query, visitType, patientId, email: userEmail, limit: 8 })
     : [];

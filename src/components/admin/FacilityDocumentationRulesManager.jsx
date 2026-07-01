@@ -138,7 +138,9 @@ export default function FacilityDocumentationRulesManager() {
       toast.error("Rule name and requirement are required.");
       return;
     }
-    const payload = { ...form, created_by: currentUser?.email };
+    // Stamp created_by only on create; preserve the original creator on edit so
+    // the audit field isn't rewritten to whoever last touched the rule.
+    const payload = { ...form, created_by: editing ? editing.created_by : currentUser?.email };
     if (editing) updateMutation.mutate({ id: editing.id, data: payload });
     else createMutation.mutate(payload);
   };

@@ -128,7 +128,10 @@ export function applyExpansion(text, range, expandedText) {
   const hi = Math.max(s, e);
   const before = src.slice(0, lo);
   const after = src.slice(hi);
-  const insert = String(expandedText == null ? '' : expandedText);
+  let insert = String(expandedText == null ? '' : expandedText);
+  // Keep a word boundary: if the expansion runs straight into following non-space
+  // text (token expanded mid-line), add one separating space so words don't glue.
+  if (insert && after && !/\s$/.test(insert) && !/^\s/.test(after)) insert += ' ';
   const newText = before + insert + after;
   return { text: newText, caret: (before + insert).length };
 }

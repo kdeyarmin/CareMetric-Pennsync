@@ -124,7 +124,15 @@ test('applyExpansion: mid-line replacement keeps trailing text', () => {
   const text = 'a /edu z';
   const range = { start: 2, end: 6 }; // "/edu"
   const { text: out } = applyExpansion(text, range, 'EDUCATION');
-  assert.equal(out, 'a EDUCATION z');
+  assert.equal(out, 'a EDUCATION z'); // after starts with space — no extra space added
+});
+
+test('applyExpansion: adds a separating space when it would glue onto following text', () => {
+  const text = '/edub'; // token "/edu" then "b" immediately after
+  const range = { start: 0, end: 4 };
+  const { text: out, caret } = applyExpansion(text, range, 'EDU');
+  assert.equal(out, 'EDU b');
+  assert.equal(caret, 'EDU '.length); // caret sits after the inserted text (incl. the space)
 });
 
 test('phraseNeedsPatient: patient-bound + patient-specific need a patient', () => {
