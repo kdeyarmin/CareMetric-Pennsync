@@ -22,7 +22,12 @@ export default function SessionTimeoutManager({
 }) {
   const [showWarning, setShowWarning] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(warningMinutes * 60);
-  const [lastActivity, setLastActivity] = useState(Date.now());
+  // Last-activity timestamp lives in a ref, not state. This manager is mounted
+  // app-wide in Layout and resetActivity fires on every mousedown/keydown/scroll/
+  // touch/click — holding it in state would re-render the manager AND tear down +
+  // recreate the 1s interval on every one of those events (scroll alone fires
+  // many times a second). The interval reads the ref instead.
+  const lastActivityRef = useRef(Date.now());
   // Latch so the 1-second checkInterval can't re-enter handleLogout on every
   // tick while the logout redirect is still in flight — otherwise each tick
   // re-fires the SESSION_TIMEOUT audit write and another logout/clear call.
@@ -34,7 +39,7 @@ export default function SessionTimeoutManager({
 
     await logSecurityEvent('SESSION_TIMEOUT', {
       timeout_minutes: timeoutMinutes,
-      last_activity: new Date(lastActivity).toISOString()
+      last_activity: new Date(lastActivityRef.current).toISOString()
     }, 'warning');
 
     // Clear sensitive data from memory (incl. cached PHI in the query cache)
@@ -48,20 +53,23 @@ export default function SessionTimeoutManager({
     // Logout and redirect (pass the current URL so the SDK performs a
     // deterministic navigation, matching AuthContext.logout).
     base44.auth.logout(window.location.href);
-  }, [timeoutMinutes, lastActivity]);
+  }, [timeoutMinutes]);
 
   const handleExtendSession = useCallback(() => {
     setShowWarning(false);
-    setLastActivity(Date.now());
+    lastActivityRef.current = Date.now();
     setSecondsRemaining(warningMinutes * 60);
-    
+
     logSecurityEvent('SESSION_EXTENDED', {
       extended_at: new Date().toISOString()
     }, 'info');
   }, [warningMinutes]);
 
   const resetActivity = useCallback(() => {
-    setLastActivity(Date.now());
+    lastActivityRef.current = Date.now();
+    // setShowWarning(false) is a no-op re-render while already hidden (React bails
+    // on identical state), so the hot activity path stays cheap; it only actually
+    // re-renders to CLOSE an open warning when the user returns.
     setShowWarning(false);
   }, []);
 
@@ -84,23 +92,25 @@ export default function SessionTimeoutManager({
     const warningThreshold = (timeoutMinutes - warningMinutes) * 60 * 1000;
     const timeoutThreshold = timeoutMinutes * 60 * 1000;
 
+    // Set up once and read lastActivityRef each tick — the interval is no longer
+    // recreated on every activity event. The setShow/setSeconds calls are no-op
+    // re-renders when the value is unchanged, so an idle-but-not-warning session
+    // costs nothing per tick.
     const checkInterval = setInterval(() => {
-      const inactive = Date.now() - lastActivity;
+      const inactive = Date.now() - lastActivityRef.current;
 
       if (inactive >= timeoutThreshold) {
         handleLogout();
-      } else if (inactive >= warningThreshold && !showWarning) {
+      } else if (inactive >= warningThreshold) {
         setShowWarning(true);
-      }
-
-      if (showWarning) {
-        const remaining = Math.max(0, Math.floor((timeoutThreshold - inactive) / 1000));
-        setSecondsRemaining(remaining);
+        setSecondsRemaining(Math.max(0, Math.floor((timeoutThreshold - inactive) / 1000)));
+      } else {
+        setShowWarning(false);
       }
     }, 1000);
 
     return () => clearInterval(checkInterval);
-  }, [lastActivity, showWarning, timeoutMinutes, warningMinutes, handleLogout]);
+  }, [timeoutMinutes, warningMinutes, handleLogout]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
