@@ -85,5 +85,15 @@
     "phrase",
     "category",
     "template_type"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        { "is_agency_wide": true },
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "write": {}
+  }
 }

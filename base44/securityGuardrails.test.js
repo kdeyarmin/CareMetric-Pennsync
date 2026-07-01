@@ -87,3 +87,21 @@ test('dangerouslySetInnerHTML stays within the reviewed, sanitized allowlist', (
       'Confirm the injected HTML is sanitized (sanitizeHtml/DOMPurify) and add the file to the allowlist in this test.',
   );
 });
+
+// 5. ClinicalLibraryTemplate records can be patient-bound (patient_name +
+//    expanded_text order text). Its read RLS must be scoped so an unscoped
+//    `.list()` from the phrase picker / library manager cannot ship OTHER users'
+//    and OTHER patients' bound-phrase content to the browser. Regression guard for
+//    the read-scoping fix. (Raw-regex, mirroring this file's style, to avoid a
+//    JSON5 dependency — the schema-well-formedness is covered by schemaContract.)
+test('ClinicalLibraryTemplate scopes read RLS (no unscoped patient-bound phrase exposure)', () => {
+  const src = read('base44/entities/ClinicalLibraryTemplate.jsonc');
+  assert.ok(
+    /"rls"\s*:/.test(src) && /"read"\s*:/.test(src),
+    'ClinicalLibraryTemplate must define an rls.read policy — without one, any authenticated user can list every template, including other patients\' bound-phrase content.',
+  );
+  assert.ok(
+    /"created_by"\s*:\s*"\{\{user\.email\}\}"/.test(src),
+    'ClinicalLibraryTemplate rls.read must scope by created_by ({{user.email}}) so bulk reads stay limited to own + agency-wide (+admin) templates.',
+  );
+});

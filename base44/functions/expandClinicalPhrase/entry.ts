@@ -15,8 +15,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Phrase is required' }, { status: 400 });
     }
 
-    // Find matching template
-    const templates = await base44.entities.ClinicalLibraryTemplate.filter({
+    // Find matching template. Read as service role (RLS on ClinicalLibraryTemplate
+    // scopes the CLIENT list to own/agency-wide, so a patient-bound phrase authored
+    // by a teammate wouldn't be visible there). The selection below stays
+    // minimum-necessary: it only returns THIS patient's bound phrase, or an
+    // agency-wide/own phrase — never another patient's or another user's private text.
+    const templates = await base44.asServiceRole.entities.ClinicalLibraryTemplate.filter({
       phrase: phrase.toLowerCase().trim(),
       is_active: true
     });
