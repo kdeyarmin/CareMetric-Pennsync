@@ -356,6 +356,50 @@ export default function TrainingCoursePlayer() {
               ))}
             </div>
 
+            {/* Course outline — the lessons the learner will work through */}
+            {modules.length > 0 && modules[0].id !== "fallback" && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="font-semibold text-slate-800 mb-2 text-sm flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-blue-600" /> Course outline
+                </p>
+                <ol className="space-y-1.5">
+                  {modules.map((m, i) => (
+                    <li key={m.id || i} className="flex items-start gap-2.5 text-sm">
+                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
+                        {i + 1}
+                      </span>
+                      <span className="text-slate-700">{m.title}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {/* What you'll be tested on */}
+            {totalQuestions > 0 && (() => {
+              const TYPE_LABELS = {
+                mcq: "Multiple choice",
+                multi_select: "Select all that apply",
+                true_false: "True/False",
+                short_answer: "Short answer",
+                scenario_based: "Scenario",
+                matching: "Matching",
+              };
+              const formats = [...new Set(questions.map((q) => q.type))].map((t) => TYPE_LABELS[t] || t);
+              return (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+                  <p className="font-semibold text-indigo-900 mb-2 text-sm flex items-center gap-2">
+                    <Target className="w-4 h-4 text-indigo-600" /> What you&rsquo;ll be tested on
+                  </p>
+                  <ul className="space-y-1 text-sm text-indigo-900/90">
+                    <li>• A {totalQuestions}-question test at the end, {formats.join(", ")}.</li>
+                    <li>• You need <strong>{passingScore}%</strong> to pass{assignment?.max_attempts ? `, with up to ${assignment.max_attempts} attempt${assignment.max_attempts === 1 ? "" : "s"}` : ""}.</li>
+                    {course.enable_certificate !== false && <li>• Pass to earn your certificate of completion.</li>}
+                  </ul>
+                </div>
+              );
+            })()}
+
             {/* Attachments */}
             {(course.attachment_urls || []).length > 0 && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">

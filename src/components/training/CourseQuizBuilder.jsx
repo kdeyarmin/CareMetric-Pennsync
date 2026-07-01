@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useCourseContentBuilder } from "./useCourseContentBuilder";
+import { generateCourseQuiz } from "@/functions/generateCourseQuiz";
+import { configNotReadyMessage } from "@/lib/aiFeatureError";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +14,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle2, AlertCircle, HelpCircle, GripVertical,
+  Plus, Trash2, ChevronUp, ChevronDown, Loader2, CheckCircle2, AlertCircle, HelpCircle, GripVertical, Sparkles,
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
@@ -158,7 +162,7 @@ const validateQuestions = (usable) => {
 };
 
 export default function CourseQuizBuilder({ courseId }) {
-  const { items, setItems, saving, saved, error, move, onDragEnd, saveAll } = useCourseContentBuilder({
+  const { items, setItems, saving, saved, error, setError, move, onDragEnd, saveAll } = useCourseContentBuilder({
     courseId,
     queryKey: ["training-questions", courseId],
     queryFn: () =>
@@ -173,6 +177,31 @@ export default function CourseQuizBuilder({ courseId }) {
     notReadyMessage: "Questions are still loading. Please try again in a moment.",
     saveErrorMessage: "Failed to save quiz. Please try again.",
   });
+
+  // AI: draft questions from the course's lessons. The generated questions are
+  // appended to the local list (not persisted) so the admin reviews and edits
+  // them before hitting Save Quiz.
+  const [aiCount, setAiCount] = useState(5);
+  const [aiLoading, setAiLoading] = useState(false);
+  const draftWithAI = async () => {
+    setAiLoading(true);
+    setError("");
+    try {
+      const res = await generateCourseQuiz({ course_id: courseId, question_count: Number(aiCount) || 5 });
+      const data = res?.data || res;
+      if (!data?.success || !Array.isArray(data.questions) || data.questions.length === 0) {
+        throw new Error(data?.error || "No questions were generated.");
+      }
+      setItems((prev) => [...prev, ...data.questions.map(questionToItem)]);
+      toast.success(`Added ${data.questions.length} AI-drafted question${data.questions.length === 1 ? "" : "s"} — review and Save Quiz.`);
+    } catch (err) {
+      const friendly = configNotReadyMessage(err);
+      if (!friendly) console.error("AI quiz generation failed:", err);
+      setError(friendly || err?.message || "Failed to generate questions. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const updateItem = (localId, patch) =>
     setItems((prev) => prev.map((it) => (it._localId === localId ? { ...it, ...patch } : it)));
@@ -277,6 +306,34 @@ export default function CourseQuizBuilder({ courseId }) {
 
   return (
     <div className="space-y-4">
+      {/* AI: draft the end-of-course test from the lessons */}
+      <div className="rounded-xl border border-navy-200 bg-navy-50/40 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <Sparkles className="w-4 h-4 text-navy-600 flex-shrink-0" />
+          <span className="text-sm text-slate-700">Draft questions from this course&rsquo;s lessons with AI.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="ai-quiz-count" className="text-xs text-slate-500">How many</Label>
+          <Input
+            id="ai-quiz-count"
+            type="number"
+            min="1"
+            max="20"
+            value={aiCount}
+            onChange={(e) => setAiCount(e.target.value)}
+            className="h-9 w-16"
+            disabled={aiLoading}
+          />
+          <Button type="button" variant="outline" size="sm" onClick={draftWithAI} disabled={aiLoading}>
+            {aiLoading ? (
+              <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Drafting…</>
+            ) : (
+              <><Sparkles className="w-4 h-4 mr-1" /> Draft with AI</>
+            )}
+          </Button>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
           Questions are graded automatically (multiple choice) or by AI (short answer).
