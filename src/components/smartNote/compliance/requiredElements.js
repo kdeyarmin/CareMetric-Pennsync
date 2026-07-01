@@ -27,7 +27,6 @@
 // answers. A wired MedicareComplianceRule may supply richer examples (see
 // ruleLibrary.js); the static ones below are the offline default.
 
-export const SERVICE_LINES = ["home_health", "hospice"];
 export const VISIT_TYPES = ["routine_visit", "admission", "recertification", "discharge", "prn"];
 
 // ── Element library (composed per visit type below) ────────────────────────

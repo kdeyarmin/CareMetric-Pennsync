@@ -82,9 +82,3 @@ const fallbackClientAnalysis = async (nurseEmail) => {
     return null;
   }
 };
-
-export const getTrainingRecommendations = (deficitAnalysis) => {
-  if (!deficitAnalysis || !deficitAnalysis.recommendations) return [];
-  
-  return deficitAnalysis.recommendations.slice(0, 5);
-};

@@ -252,23 +252,8 @@ export const calculateNurseStats = (nurseEmail, data) => {
 };
 
 /**
- * Format number with commas
- */
-export const formatNumber = (num) => {
-  return num.toLocaleString();
-};
-
-/**
  * Format currency
  */
 export const formatCurrency = (amount) => {
   return `$${amount.toLocaleString()}`;
-};
-
-/**
- * Calculate percentage
- */
-export const calculatePercentage = (part, total) => {
-  if (total === 0) return 0;
-  return Math.round((part / total) * 100);
 };

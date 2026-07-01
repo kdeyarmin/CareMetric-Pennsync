@@ -13,6 +13,3 @@ export const APP_NAME = "PennSync";
 
 /** Underlying software platform. */
 export const PLATFORM_NAME = "CareMetric";
-
-/** Full brand lockup string: "PennSync by CareMetric". */
-export const BRAND_FULL = `${APP_NAME} by ${PLATFORM_NAME}`;

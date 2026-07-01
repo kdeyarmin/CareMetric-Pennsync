@@ -314,43 +314,6 @@ export const exportToPDF = async (options = {}) => {
   return true;
 };
 
-export const exportChartToPDF = async (chartElementId, options = {}) => {
-  const element = document.getElementById(chartElementId);
-  if (!element) return false;
-
-  try {
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      logging: false
-    });
-
-    const doc = new jsPDF(options.orientation || 'landscape', 'mm', 'a4');
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
-
-    // Title
-    if (options.title) {
-      doc.setFontSize(18);
-      doc.setFont(undefined, 'bold');
-      doc.text(options.title, margin, margin + 5);
-    }
-
-    const imgData = canvas.toDataURL('image/png');
-    const imgWidth = pageWidth - (2 * margin);
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    
-    doc.addImage(imgData, 'PNG', margin, margin + 15, imgWidth, Math.min(imgHeight, pageHeight - 40));
-    
-    doc.save(options.filename || 'chart.pdf');
-    return true;
-  } catch (error) {
-    console.error('Chart export error:', error);
-    return false;
-  }
-};
-
 export const exportDataTableToPDF = (data, columns, options = {}) => {
   const headers = columns.map(col => col.header || col.key);
   const rows = data.map(item => 

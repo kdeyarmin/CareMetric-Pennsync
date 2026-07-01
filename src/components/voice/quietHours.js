@@ -130,23 +130,6 @@ function hourInZone(date, timeZone) {
  *   - reason 'unknown_timezone' (allowed: true) when it can't be resolved
  *   - reason 'disabled' (allowed: true) when enforcement is off
  */
-/**
- * Map AgencySettings → the isWithinQuietHours options so the client util and the
- * inline backend send-path mirrors derive the window IDENTICALLY. Admins can
- * customize the TCPA window via tcpa_quiet_start_hour / tcpa_quiet_end_hour;
- * without this helper the source util only knew the hardcoded 8/21 defaults while
- * the backend honored the custom values (silent drift). Mirrors the backend's
- * `Number(settings?.tcpa_quiet_start_hour ?? 8)` reads exactly.
- */
-export function agencyQuietHoursConfig(settings) {
-  const s = settings || {};
-  return {
-    enabled: s.tcpa_quiet_hours_enabled === true,
-    startHour: Number(s.tcpa_quiet_start_hour ?? 8),
-    endHour: Number(s.tcpa_quiet_end_hour ?? 21),
-  };
-}
-
 export function isWithinQuietHours(toNumber, now = new Date(), { enabled = true, startHour = 8, endHour = 21 } = {}) {
   if (!enabled) return { allowed: true, reason: "disabled" };
   const timeZone = timezoneForNumber(toNumber);

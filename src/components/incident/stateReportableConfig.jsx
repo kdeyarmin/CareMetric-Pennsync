@@ -47,8 +47,3 @@ const TYPE_TO_STATE_CATEGORY = {
 export function getStateReportableCategory(incidentType) {
   return TYPE_TO_STATE_CATEGORY[incidentType] || null;
 }
-
-// True when a general incident type should trigger the state-reportable pathway.
-export function isStateReportableType(incidentType) {
-  return !!TYPE_TO_STATE_CATEGORY[incidentType];
-}

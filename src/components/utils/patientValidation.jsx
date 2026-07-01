@@ -17,42 +17,6 @@ export const VALIDATION_ERRORS = {
   INVALID_AGE: 'Patient appears to be over 125 years old'
 };
 
-// Levenshtein edit distance (iterative, two-row) — helper for fuzzyMatch.
-const levenshtein = (a, b) => {
-  const m = a.length;
-  const n = b.length;
-  if (m === 0) return n;
-  if (n === 0) return m;
-  let prev = Array.from({ length: n + 1 }, (_, i) => i);
-  let curr = new Array(n + 1);
-  for (let i = 1; i <= m; i++) {
-    curr[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
-    }
-    [prev, curr] = [curr, prev];
-  }
-  return prev[n];
-};
-
-// Fuzzy string match. Returns { match, type } where type is 'exact' (identical
-// after normalization), 'close' (similarity >= threshold but not identical), or
-// 'none'. Consumed by RealTimeValidator to surface "did you mean an existing
-// value?" warnings — it only warns on type === 'close', so an exact match
-// deliberately produces no warning.
-export const fuzzyMatch = (value, target, threshold = 0.8) => {
-  if (!value || !target) return { match: false, type: 'none' };
-  const a = String(value).trim().toLowerCase();
-  const b = String(target).trim().toLowerCase();
-  if (!a || !b) return { match: false, type: 'none' };
-  if (a === b) return { match: true, type: 'exact' };
-  const similarity = 1 - levenshtein(a, b) / Math.max(a.length, b.length);
-  return similarity >= threshold
-    ? { match: true, type: 'close' }
-    : { match: false, type: 'none' };
-};
-
 // Email validation
 export const validateEmail = (email) => {
   if (!email) return null;
@@ -115,20 +79,6 @@ export const validateDateOrder = (admissionDate, dischargeDate) => {
     return VALIDATION_ERRORS.INVALID_DATE_ORDER;
   }
   
-  return null;
-};
-
-// MRN validation
-export const validateMRN = (mrn) => {
-  if (!mrn || !mrn.trim()) return VALIDATION_ERRORS.INVALID_MRN;
-  return null;
-};
-
-// Name validation
-export const validateName = (firstName, lastName) => {
-  if (!firstName?.trim() || !lastName?.trim()) {
-    return VALIDATION_ERRORS.INVALID_NAME;
-  }
   return null;
 };
 
@@ -267,56 +217,4 @@ export const validatePatient = (patient) => {
   }
   
   return validationResults;
-};
-
-// Comprehensive patient record validation (legacy)
-export const validatePatientRecord = (patient) => {
-  const errors = {};
-  
-  if (patient.email) {
-    const emailError = validateEmail(patient.email);
-    if (emailError) errors.email = emailError;
-  }
-  
-  if (patient.phone) {
-    const phoneError = validatePhone(patient.phone);
-    if (phoneError) errors.phone = phoneError;
-  }
-  
-  if (patient.date_of_birth) {
-    const dobError = validateDateOfBirth(patient.date_of_birth);
-    if (dobError) errors.date_of_birth = dobError;
-  }
-  
-  if (patient.admission_date) {
-    const admitError = validateDate(patient.admission_date);
-    if (admitError) errors.admission_date = admitError;
-  }
-  
-  if (patient.discharge_date) {
-    const dischargeError = validateDate(patient.discharge_date);
-    if (dischargeError) errors.discharge_date = dischargeError;
-  }
-  
-  if (patient.admission_date && patient.discharge_date) {
-    const orderError = validateDateOrder(patient.admission_date, patient.discharge_date);
-    if (orderError) errors.date_order = orderError;
-  }
-  
-  if (patient.emergency_contact_phone) {
-    const emergPhoneError = validatePhone(patient.emergency_contact_phone);
-    if (emergPhoneError) errors.emergency_contact_phone = emergPhoneError;
-  }
-  
-  if (patient.physician_phone) {
-    const physPhoneError = validatePhone(patient.physician_phone);
-    if (physPhoneError) errors.physician_phone = physPhoneError;
-  }
-  
-  if (patient.caregiver_phone) {
-    const carePhoneError = validatePhone(patient.caregiver_phone);
-    if (carePhoneError) errors.caregiver_phone = carePhoneError;
-  }
-  
-  return Object.keys(errors).length === 0 ? null : errors;
 };
