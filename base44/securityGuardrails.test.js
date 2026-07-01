@@ -87,3 +87,40 @@ test('dangerouslySetInnerHTML stays within the reviewed, sanitized allowlist', (
       'Confirm the injected HTML is sanitized (sanitizeHtml/DOMPurify) and add the file to the allowlist in this test.',
   );
 });
+
+// 5. ClinicalLibraryTemplate records can be patient-bound (patient_name +
+//    expanded_text order text). Its read RLS must be scoped so an unscoped
+//    `.list()` from the phrase picker / library manager cannot ship OTHER users'
+//    and OTHER patients' bound-phrase content to the browser. Regression guard for
+//    the read-scoping fix. (Raw-regex, mirroring this file's style, to avoid a
+//    JSON5 dependency — the schema-well-formedness is covered by schemaContract.)
+test('ClinicalLibraryTemplate scopes read RLS (no unscoped patient-bound phrase exposure)', () => {
+  const src = read('base44/entities/ClinicalLibraryTemplate.jsonc');
+  assert.ok(
+    /"rls"\s*:/.test(src) && /"read"\s*:/.test(src),
+    'ClinicalLibraryTemplate must define an rls.read policy — without one, any authenticated user can list every template, including other patients\' bound-phrase content.',
+  );
+  assert.ok(
+    /"created_by"\s*:\s*"\{\{user\.email\}\}"/.test(src),
+    'ClinicalLibraryTemplate rls.read must scope by created_by ({{user.email}}) so bulk reads stay limited to own + agency-wide (+admin) templates.',
+  );
+});
+
+// 6. expandClinicalPhrase reads templates via SERVICE ROLE (bypassing RLS) so a
+//    teammate-authored patient-bound phrase is reachable. Because RLS is bypassed,
+//    a patient-bound match must be re-authorized against patient access — otherwise
+//    an authenticated user could POST another patient's id + a known phrase and
+//    retrieve that patient's bound order text. This pins the access gate.
+test('expandClinicalPhrase re-authorizes patient-bound templates against patient access', () => {
+  const src = read('base44/functions/expandClinicalPhrase/entry.ts');
+  assert.ok(
+    /asServiceRole\.entities\.ClinicalLibraryTemplate\.filter/.test(src),
+    'expandClinicalPhrase reads templates via service role — if that changes, revisit this guard.',
+  );
+  // A user-context Patient read must gate the patient-bound branch (drops the
+  // match to undefined when the caller cannot read the patient).
+  assert.ok(
+    /base44\.entities\.Patient\.filter/.test(src) && /patientBound\s*=\s*undefined/.test(src),
+    'expandClinicalPhrase must drop a patient-bound template when the caller cannot read the patient (user-context Patient.filter). Without it, the service-role read + early generic-branch return leaks bound order text for arbitrary patient ids.',
+  );
+});
