@@ -136,4 +136,18 @@ describe('drainSyncQueue', () => {
     expect(h.remaining()).toHaveLength(2);
     err.mockRestore();
   });
+
+  it('coalesces concurrent callers onto a single in-flight drain (no double-processing)', async () => {
+    const h = harness([{ id: 9, action: 'CREATE_TASK', payload: { a: 1 } }]);
+    // Two overlapping calls: the second must join the first's in-flight drain
+    // rather than starting its own drain of the same queue.
+    const [r1, r2] = await Promise.all([drainSyncQueue(h), drainSyncQueue(h)]);
+    expect(h.entities.Task.create).toHaveBeenCalledTimes(1);
+    expect(h.removeItem).toHaveBeenCalledTimes(1);
+    expect(r1.synced).toBe(1);
+    expect(r2.synced).toBe(1);
+    // The joining caller is flagged coalesced so it can suppress a duplicate toast.
+    expect(r1.coalesced).toBeFalsy();
+    expect(r2.coalesced).toBe(true);
+  });
 });
