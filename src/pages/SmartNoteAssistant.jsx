@@ -94,6 +94,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [draftRestored, setDraftRestored] = useState(false);
   const [signatureImage, setSignatureImage] = useState(null);
   const [followUpTasks, setFollowUpTasks] = useState([]);
+  // Explicit override when the nurse saves despite an unmet *critical* facility
+  // documentation requirement (keyword detection can miss, so this is an
+  // acknowledged override rather than a hard block). Reset for each review.
+  const [facilityAck, setFacilityAck] = useState(false);
   const [generatingTasks, setGeneratingTasks] = useState(false);
   const recRef = useRef(null);
   const recStopRef = useRef(null);
@@ -352,6 +356,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setSaved(false);
     setSavedVisitId(null);
     setSavedAuditId(null);
+    setFacilityAck(false);
     setStep(2);
   };
 
@@ -442,7 +447,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const reset = () => {
     setNote(""); setSaved(false); setSavedVisitId(null); setSavedAuditId(null);
     setStep(1); setDraftRestored(false); setSignatureImage(null); setFollowUpTasks([]);
-    setVitals({}); setExistingVisitId(null);
+    setVitals({}); setExistingVisitId(null); setFacilityAck(false);
     clearDraft(patientIdRef.current);
   };
 
@@ -724,7 +729,21 @@ export default function SmartNoteAssistant({ visitId = null }) {
               complianceRules={complianceRules}
               onEscalate={escalateToTasks}
               onBack={() => setStep(1)}
-              renderFinalNote={(api) => (
+              renderFinalNote={(api) => {
+                // Enforce facility documentation requirements against the FINAL
+                // note (not just the rough draft). Critical unmet requirements gate
+                // the save behind an explicit, audit-logged override.
+                const facilityResults = evaluateFacilityRules({
+                  rules: facilityDocRules,
+                  patient: patientDetail || patient,
+                  noteText: api.finalNote,
+                  visitType,
+                });
+                const facilityMissingCritical = facilityResults.filter(
+                  (r) => r.missing && r.rule.severity === "critical",
+                );
+                const facilityBlocked = facilityMissingCritical.length > 0 && !facilityAck;
+                return (
                 <>
                   {generatingTasks && (
                     <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
@@ -735,6 +754,38 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   {followUpTasks.length > 0 && (
                     <FollowUpTasksPanel tasks={followUpTasks} onDismiss={() => setFollowUpTasks([])} />
                   )}
+
+                  <FacilityRequirementsChecklist
+                    patient={patientDetail || patient}
+                    noteText={api.finalNote}
+                    visitType={visitType}
+                  />
+
+                  {facilityMissingCritical.length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-rose-800">
+                        <AlertTriangle className="w-4 h-4" />
+                        Critical facility requirement{facilityMissingCritical.length > 1 ? "s" : ""} not documented
+                      </div>
+                      <ul className="mt-1 ml-6 list-disc text-sm text-rose-700">
+                        {facilityMissingCritical.map((r) => (
+                          <li key={r.rule.id || r.rule.rule_name}>{r.rule.requirement_label || r.rule.rule_name}</li>
+                        ))}
+                      </ul>
+                      <label className="mt-2 flex items-start gap-2 text-xs text-rose-800">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 rounded"
+                          checked={facilityAck}
+                          onChange={(e) => setFacilityAck(e.target.checked)}
+                        />
+                        <span>
+                          Add the required detail above, or acknowledge saving without it. This override is recorded.
+                        </span>
+                      </label>
+                    </div>
+                  )}
+
                   <FinalNoteDisplay
                     finalNote={api.finalNote}
                     setFinalNote={api.setFinalNote}
@@ -758,13 +809,27 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     onReset={reset}
                     originalNote={note}
                     noteSections={parseNoteSections(api.finalNote)}
-                    onSave={() => handleSave(api)}
+                    onSave={() => {
+                      if (facilityBlocked) {
+                        toast.error("Document the required facility item(s) or acknowledge the override before saving.");
+                        return;
+                      }
+                      if (facilityMissingCritical.length > 0 && facilityAck) {
+                        logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {
+                          patientId,
+                          facility_override: true,
+                          unmet_requirements: facilityMissingCritical.map((r) => r.rule.rule_name),
+                        });
+                      }
+                      handleSave(api);
+                    }}
                     saving={saving}
                     saved={saved && !api.dirty}
-                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical}
+                    saveDisabled={saving || !!(api.fixRequired && !api.fixRequired.offlinePending) || !patientId || api.chartRisk?.hasUnacknowledgedCritical || facilityBlocked}
                   />
                 </>
-              )}
+                );
+              }}
             />
           )}
         </>
