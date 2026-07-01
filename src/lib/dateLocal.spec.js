@@ -16,6 +16,14 @@ describe("parseLocalDate", () => {
     expect(parseLocalDate("not-a-date")).toBeNull();
   });
 
+  it("fails closed on impossible calendar dates instead of rolling them", () => {
+    expect(parseLocalDate("2026-02-31")).toBeNull(); // would roll to Mar 3
+    expect(parseLocalDate("2026-13-01")).toBeNull(); // month out of range
+    expect(parseLocalDate("2026-04-31")).toBeNull(); // April has 30 days
+    // A real leap day still parses.
+    expect(parseLocalDate("2024-02-29")).not.toBeNull();
+  });
+
   it("passes a Date through unchanged", () => {
     const now = new Date(2020, 0, 15);
     expect(parseLocalDate(now)).toBe(now);

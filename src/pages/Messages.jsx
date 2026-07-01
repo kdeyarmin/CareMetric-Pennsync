@@ -197,6 +197,7 @@ export default function Messages() {
   };
 
   const handleSendMessage = () => {
+    if (sendMessageMutation.isPending) return;
     if (newMessage.recipients.length === 0 || !newMessage.subject.trim() || !newMessage.message_text.trim()) {
       toast.error('Please add a recipient, subject, and message.');
       return;
@@ -211,7 +212,10 @@ export default function Messages() {
   };
 
   const handleReply = () => {
-    if (!selectedThread || !replyText.trim()) return;
+    // Guard on isPending so the Enter-key path can't fire a second Message.create
+    // before the first resolves — the reply text now persists until onSuccess, so
+    // without this a fast double-Enter would send the same reply twice.
+    if (!selectedThread || !replyText.trim() || sendMessageMutation.isPending) return;
 
     const me = currentUser?.email;
     const originalMessage = selectedThread.latestMessage;

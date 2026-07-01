@@ -22,7 +22,15 @@ export function parseLocalDate(value) {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(value).trim());
   if (iso) {
-    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]) - 1;
+    const day = Number(iso[3]);
+    const d = new Date(y, mo, day);
+    // Reject impossible calendar dates (e.g. "2026-02-31", "2026-13-01") that the
+    // Date constructor would silently roll forward — fail closed rather than
+    // surface a wrong DOB / admission date, matching this function's contract.
+    if (d.getFullYear() !== y || d.getMonth() !== mo || d.getDate() !== day) return null;
+    return d;
   }
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;

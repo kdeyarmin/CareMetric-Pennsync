@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import AICaveat from "@/components/ui/AICaveat";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,15 @@ export default function TemplateEditor({
   const ai = useAICall();
   const [aiEnhanced, setAiEnhanced] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // The editor is not remounted when a different template is selected (no key in
+  // TemplateLibrary), so re-sync local state on templateData change — otherwise
+  // the textarea keeps the previous template's content and the AI-enhanced
+  // caveat lingers from a prior template's enhance.
+  useEffect(() => {
+    setContent(templateData?.content?.template_content || '');
+    setAiEnhanced(false);
+  }, [templateData]);
 
   const clinicalPrompts = templateData?.content?.clinical_prompts || [];
   const requiredFields = templateData?.content?.required_fields || [];

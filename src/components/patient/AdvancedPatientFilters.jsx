@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,6 +63,29 @@ export default function AdvancedPatientFilters({ onFilterChange, activeFilters =
     createdAfter: activeFilters.createdAfter || "",
     createdBefore: activeFilters.createdBefore || "",
   });
+
+  // Keep the panel in sync when filters are applied from OUTSIDE it — e.g. the
+  // roster stat-card shortcuts call setFilters on the parent, which flows back in
+  // as activeFilters. Without this the internal copy (and thus the chips, count,
+  // and date inputs) would ignore those external changes, so the roster could
+  // look narrowed with no visible active filter. The equality guard prevents a
+  // render loop when activeFilters simply echoes a change we just made.
+  useEffect(() => {
+    setFilters((prev) => {
+      const next = {
+        search: activeFilters.search || "",
+        status: activeFilters.status || "all",
+        diagnosis: activeFilters.diagnosis || "",
+        ageMin: activeFilters.ageMin || "",
+        ageMax: activeFilters.ageMax || "",
+        hasVisits: activeFilters.hasVisits || "all",
+        createdAfter: activeFilters.createdAfter || "",
+        createdBefore: activeFilters.createdBefore || "",
+      };
+      const unchanged = Object.keys(next).every((k) => next[k] === prev[k]);
+      return unchanged ? prev : next;
+    });
+  }, [activeFilters]);
 
   const handleFilterChange = (key, value) => {
     const newFilters = { ...filters, [key]: value };
