@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   CheckCircle2, Loader2, ArrowRight, ClipboardList, User,
-  Mic, Square, AlertTriangle
+  Mic, Square, AlertTriangle, Sparkles
 } from "lucide-react";
 import { todayEastern } from "../components/utils/timezone";
 import { logActivity, ActivityActions } from "../components/utils/activityLogger";
@@ -647,10 +647,16 @@ export default function SmartNoteAssistant({ visitId = null }) {
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
                   <span className="text-xs font-semibold text-navy-700">Your Rough Notes / Bullet Points</span>
-                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
-                    onClick={() => { setActiveTab("drafter"); }}>
-                    <ClipboardList className="w-3.5 h-3.5" /> Use Structured Form
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
+                      onClick={() => textareaRef.current?.openQuickPhrases?.()}>
+                      <Sparkles className="w-3.5 h-3.5" /> Quick Phrase
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-navy-600 hover:text-navy-800"
+                      onClick={() => { setActiveTab("drafter"); }}>
+                      <ClipboardList className="w-3.5 h-3.5" /> Use Structured Form
+                    </Button>
+                  </div>
                 </div>
                 {/* Voice input — one consolidated group: speak live, or record &
                     transcribe. All paths append your own words to the draft below;

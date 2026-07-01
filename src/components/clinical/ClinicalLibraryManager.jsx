@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ClinicalLibraryAnalytics from "./ClinicalLibraryAnalytics";
 import FolderTreeView from "./FolderTreeView";
 import ClinicalLibraryIntro from "./ClinicalLibraryIntro";
+import ClinicalPhraseSeeder from "./ClinicalPhraseSeeder";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 
 export default function ClinicalLibraryManager() {
@@ -305,6 +306,7 @@ export default function ClinicalLibraryManager() {
 
       <TabsContent value="templates" className="space-y-6">
       <ClinicalLibraryIntro isAdmin={isAdmin} />
+      {isAdmin && <ClinicalPhraseSeeder currentUserEmail={currentUser?.email} />}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Sidebar */}
         <Card className="lg:col-span-1">

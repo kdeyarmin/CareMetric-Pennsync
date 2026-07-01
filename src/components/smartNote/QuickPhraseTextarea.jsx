@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
@@ -31,8 +31,31 @@ const QuickPhraseTextarea = forwardRef(function QuickPhraseTextarea(
   // must not re-open the menu; a NEW token (different start) reopens normally.
   const dismissedStartRef = useRef(null);
 
-  // Expose the underlying textarea to the parent (it calls .focus()).
-  useImperativeHandle(forwardedRef, () => areaRef.current, []);
+  // Open the phrase picker without typing "/": insert a slash at the caret (with a
+  // leading space if needed so it forms a valid trigger) and reuse the normal flow.
+  const openQuickPhrases = useCallback(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    el.focus();
+    const cur = el.value ?? "";
+    const pos = typeof el.selectionStart === "number" ? el.selectionStart : cur.length;
+    const needsSep = pos > 0 && !/\s/.test(cur[pos - 1]);
+    const sep = needsSep ? " " : "";
+    const slashPos = pos + sep.length;
+    const newText = cur.slice(0, pos) + sep + "/" + cur.slice(pos);
+    dismissedStartRef.current = null;
+    pendingCaretRef.current = slashPos + 1;
+    onChange?.(newText);
+    setTrigger({ trigger: "/", query: "", start: slashPos, end: slashPos + 1 });
+  }, [onChange]);
+
+  // Expose focus (the parent calls .focus()) plus an imperative way to open the
+  // picker from a toolbar button.
+  useImperativeHandle(
+    forwardedRef,
+    () => ({ focus: () => areaRef.current?.focus(), openQuickPhrases }),
+    [openQuickPhrases],
+  );
 
   const { data: templates = [] } = useQuery({
     queryKey: ["clinical-templates"],
