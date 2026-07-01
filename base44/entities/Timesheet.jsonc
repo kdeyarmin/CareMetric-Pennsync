@@ -1,0 +1,214 @@
+{
+  "name": "Timesheet",
+  "type": "object",
+  "properties": {
+    "employee_email": {
+      "type": "string",
+      "description": "Email of the employee the timesheet belongs to"
+    },
+    "employee_name": {
+      "type": "string",
+      "description": "Display name of the employee"
+    },
+    "service_type": {
+      "type": "string",
+      "enum": [
+        "home_health",
+        "hospice"
+      ],
+      "default": "home_health",
+      "description": "Service line — determines the pay model (home health nurses are paid by point AND by hour; hospice nurses by the hour only) and which payroll report the row lands in"
+    },
+    "pay_period_start": {
+      "type": "string",
+      "format": "date",
+      "description": "First day of the pay period (inclusive)"
+    },
+    "pay_period_end": {
+      "type": "string",
+      "format": "date",
+      "description": "Last day of the pay period (inclusive)"
+    },
+    "regular_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Home health: total visit points, computed server-side from visit_counts × the facility's VisitPointConfig per-type point values (blank/0 for hospice)"
+    },
+    "visit_counts": {
+      "type": "object",
+      "description": "Home health: number of visits entered by the nurse per visit type; multiplied by the facility's per-type point values to compute regular_points",
+      "properties": {
+        "soc": { "type": "number", "default": 0, "description": "Start of Care visits" },
+        "roc": { "type": "number", "default": 0, "description": "Resumption of Care visits" },
+        "recert": { "type": "number", "default": 0, "description": "Recertification visits" },
+        "routine": { "type": "number", "default": 0, "description": "Routine visits" },
+        "discharge": { "type": "number", "default": 0, "description": "Discharge visits" }
+      }
+    },
+    "emergency_visit_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Home health: emergency visit points (the payroll 'Emerg Visit Pts' column)"
+    },
+    "regular_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "Regular hours worked in the period"
+    },
+    "overtime_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "Overtime (OT) hours"
+    },
+    "vacation_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "PTO hours entered manually (approved PTO is carried separately in auto_pto_hours and added to this on the payroll's PTO column)"
+    },
+    "holiday_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "Holiday hours (premium hours worked on a holiday)"
+    },
+    "on_call_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "On-call hours (hospice on-call pay is $5.00/hour)"
+    },
+    "on_call_visits": {
+      "type": "number",
+      "default": 0,
+      "description": "Hospice: on-call visits (the payroll 'Visits' column, paid $50.00/visit)"
+    },
+    "miles": {
+      "type": "number",
+      "default": 0,
+      "description": "Reimbursable miles driven"
+    },
+    "reimbursement": {
+      "type": "number",
+      "default": 0,
+      "description": "Other reimbursement dollars (the payroll 'Reimb' column)"
+    },
+    "auto_pto_hours": {
+      "type": "number",
+      "default": 0,
+      "description": "Vacation/PTO hours auto-carried from the employee's approved time-off requests overlapping this pay period; added to vacation_hours on the payroll report"
+    },
+    "phone_reimbursement": {
+      "type": "number",
+      "default": 0,
+      "description": "Standing phone reimbursement (an expense reimbursement, not pay) auto-applied from the employee's EmployeePayrollProfile; added to reimbursement on the payroll report"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text note from the employee for the reviewer"
+    },
+    "entry_mode": {
+      "type": "string",
+      "enum": [
+        "bulk",
+        "daily"
+      ],
+      "default": "bulk",
+      "description": "How the nurse entered the timesheet: a single period summary (bulk) or per-day rows (daily)"
+    },
+    "daily_entries": {
+      "type": "array",
+      "description": "Per-day hour/visit rows when entry_mode is 'daily'; summed server-side into the period totals and visit_counts",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "format": "date", "description": "Calendar day (YYYY-MM-DD)" },
+          "regular_hours": { "type": "number", "default": 0 },
+          "overtime_hours": { "type": "number", "default": 0 },
+          "holiday_hours": { "type": "number", "default": 0 },
+          "on_call_hours": { "type": "number", "default": 0 },
+          "on_call_visits": { "type": "number", "default": 0 },
+          "visit_counts": {
+            "type": "object",
+            "properties": {
+              "soc": { "type": "number", "default": 0 },
+              "roc": { "type": "number", "default": 0 },
+              "recert": { "type": "number", "default": 0 },
+              "routine": { "type": "number", "default": 0 },
+              "discharge": { "type": "number", "default": 0 }
+            }
+          }
+        }
+      }
+    },
+    "manager_email": {
+      "type": "string",
+      "description": "Email of the facility admin/manager responsible for approving this timesheet (blank routes to admins)"
+    },
+    "manager_name": {
+      "type": "string",
+      "description": "Display name of the approving manager"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "approved",
+        "rejected"
+      ],
+      "default": "draft",
+      "description": "Approval status of the timesheet"
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the employee submitted the timesheet for approval"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "Email of the admin/manager who reviewed the timesheet"
+    },
+    "reviewer_name": {
+      "type": "string",
+      "description": "Display name of the reviewer"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the timesheet was approved or rejected"
+    },
+    "review_notes": {
+      "type": "string",
+      "description": "Reviewer's note attached on approval or rejection"
+    }
+  },
+  "required": [
+    "service_type",
+    "pay_period_start",
+    "pay_period_end",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "employee_email": "{{user.email}}"
+        },
+        {
+          "manager_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -751,6 +751,16 @@ export const NAV_MANIFEST = [
     badge: "timeOffApprovals",
   },
   {
+    page: "Timesheets",
+    label: "Timesheets",
+    icon: ClipboardList,
+    category: "Tools",
+    adminOnly: false,
+    breadcrumbParent: null,
+    keywords: ["timesheet", "timesheets", "payroll", "hours", "points", "pay period", "pay", "wages", "accountant", "mileage", "reimbursement"],
+    badge: "timesheetApprovals",
+  },
+  {
     // All users can view the on-call schedule; only admins can enter/edit it
     // (enforced in-page and by OnCallShift RLS write rules).
     page: "OnCallSchedule",
