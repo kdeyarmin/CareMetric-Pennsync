@@ -32,7 +32,18 @@
     "regular_points": {
       "type": "number",
       "default": 0,
-      "description": "Home health: visit points paid at the per-point rate (blank/0 for hospice)"
+      "description": "Home health: total visit points, computed server-side from visit_counts × the facility's VisitPointConfig per-type point values (blank/0 for hospice)"
+    },
+    "visit_counts": {
+      "type": "object",
+      "description": "Home health: number of visits entered by the nurse per visit type; multiplied by the facility's per-type point values to compute regular_points",
+      "properties": {
+        "soc": { "type": "number", "default": 0, "description": "Start of Care visits" },
+        "roc": { "type": "number", "default": 0, "description": "Resumption of Care visits" },
+        "recert": { "type": "number", "default": 0, "description": "Recertification visits" },
+        "routine": { "type": "number", "default": 0, "description": "Routine visits" },
+        "discharge": { "type": "number", "default": 0, "description": "Discharge visits" }
+      }
     },
     "emergency_visit_points": {
       "type": "number",

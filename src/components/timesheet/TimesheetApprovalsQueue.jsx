@@ -22,6 +22,8 @@ import {
   effectiveVacationHours,
   toNumber,
   paysByPoints,
+  VISIT_TYPES,
+  totalVisits,
 } from "./timesheetUtils";
 
 export default function TimesheetApprovalsQueue({ timesheets = [] }) {
@@ -152,6 +154,14 @@ export default function TimesheetApprovalsQueue({ timesheets = [] }) {
                         {!isHH && toNumber(t.on_call_visits) > 0 && <span>Visits: <span className="font-medium">{toNumber(t.on_call_visits)}</span></span>}
                         <span className="text-slate-400">Total {hours} hrs</span>
                       </div>
+                      {isHH && totalVisits(t.visit_counts) > 0 && (
+                        <p className="text-xs text-slate-500 mt-1">
+                          Visits:{" "}
+                          {VISIT_TYPES.filter((vt) => toNumber(t.visit_counts?.[vt.key]) > 0)
+                            .map((vt) => `${vt.label} ${toNumber(t.visit_counts[vt.key])}`)
+                            .join(" · ")}
+                        </p>
+                      )}
                       {toNumber(t.auto_pto_hours) > 0 && (
                         <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-2 inline-block">
                           {toNumber(t.auto_pto_hours)} vacation hrs auto-carried from approved PTO

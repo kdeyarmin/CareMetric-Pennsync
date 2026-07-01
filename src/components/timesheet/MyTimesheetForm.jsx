@@ -18,8 +18,12 @@ import { ClipboardList, Send, Info, Save, X, CalendarClock, AlertTriangle } from
 import { toast } from "sonner";
 import {
   SERVICE_TYPES,
+  VISIT_TYPES,
   paysByPoints,
   computePtoHoursForPeriod,
+  computeVisitPoints,
+  normalizeVisitCounts,
+  pointFieldFor,
   getTimesheetValidationError,
   toNumber,
   NUMERIC_FIELDS,
@@ -33,11 +37,6 @@ import {
   dueLabel,
   paydayLabel,
 } from "./payPeriodSchedule";
-
-const POINT_FIELDS = [
-  { key: "regular_points", label: "Regular Points" },
-  { key: "emergency_visit_points", label: "Emergency Visit Pts" },
-];
 
 const HOUR_FIELDS = [
   { key: "regular_hours", label: "Regular Hours" },
@@ -59,6 +58,7 @@ function blankForm(currentUser) {
     pay_period_end: period.end,
     manager_email: "",
     notes: "",
+    visit_counts: {},
   };
   for (const f of NUMERIC_FIELDS) base[f] = "";
   return base;
@@ -90,8 +90,13 @@ function fromExisting(ts) {
     pay_period_end: ts.pay_period_end || "",
     manager_email: ts.manager_email || "",
     notes: ts.notes || "",
+    visit_counts: {},
   };
   for (const f of NUMERIC_FIELDS) base[f] = ts[f] == null || ts[f] === 0 ? "" : String(ts[f]);
+  for (const vt of VISIT_TYPES) {
+    const n = ts.visit_counts?.[vt.key];
+    base.visit_counts[vt.key] = n == null || n === 0 ? "" : String(n);
+  }
   return base;
 }
 
@@ -101,6 +106,7 @@ export default function MyTimesheetForm({
   defaultManagerEmail = "",
   approvedTimeOff = [],
   phoneReimbursement = 0,
+  visitPointConfig = null,
   editing = null,
   onCancelEdit,
 }) {
@@ -112,6 +118,8 @@ export default function MyTimesheetForm({
   const [error, setError] = useState("");
 
   const update = (patch) => setForm((prev) => ({ ...prev, ...patch }));
+  const updateVisit = (key, val) =>
+    setForm((prev) => ({ ...prev, visit_counts: { ...prev.visit_counts, [key]: val } }));
 
   // Load an existing timesheet into the form when the user chooses to edit one.
   useEffect(() => {
@@ -126,6 +134,15 @@ export default function MyTimesheetForm({
   }, [defaultManagerEmail, editing]);
 
   const isHomeHealth = paysByPoints(form.service_type);
+
+  // Live total points from the entered visit counts and the facility's per-type
+  // point values (the server recomputes this authoritatively on submit).
+  const computedPoints = useMemo(
+    () => computeVisitPoints(form.visit_counts, visitPointConfig),
+    [form.visit_counts, visitPointConfig]
+  );
+  const hasPointConfig =
+    !!visitPointConfig && VISIT_TYPES.some((vt) => toNumber(visitPointConfig?.[pointFieldFor(vt.key)]) > 0);
 
   // Approved PTO overlapping the chosen period — auto-added to the Vacation
   // column on payroll. This is a live preview; the server recomputes it
@@ -156,10 +173,15 @@ export default function MyTimesheetForm({
         status,
       };
       for (const f of NUMERIC_FIELDS) payload[f] = toNumber(form[f]);
+      if (form.service_type === "home_health") payload.visit_counts = normalizeVisitCounts(form.visit_counts);
       if (editing?.id) payload.timesheet_id = editing.id;
 
       if (status === "submitted") {
-        const validationError = getTimesheetValidationError({ ...payload, auto_pto_hours: autoPtoHours });
+        const validationError = getTimesheetValidationError({
+          ...payload,
+          auto_pto_hours: autoPtoHours,
+          visit_counts: normalizeVisitCounts(form.visit_counts),
+        });
         if (validationError) throw new Error(validationError);
       }
 
@@ -200,6 +222,33 @@ export default function MyTimesheetForm({
       />
     </div>
   );
+
+  const visitField = (vt) => {
+    const ptVal = toNumber(visitPointConfig?.[pointFieldFor(vt.key)]);
+    return (
+      <div key={vt.key}>
+        <Label htmlFor={`ts-visit-${vt.key}`} className="flex items-center gap-1">
+          {vt.label}
+          {ptVal > 0 && (
+            <span className="text-xs font-normal text-slate-400">
+              ({ptVal} pt{ptVal === 1 ? "" : "s"})
+            </span>
+          )}
+        </Label>
+        <Input
+          id={`ts-visit-${vt.key}`}
+          type="number"
+          min="0"
+          step="1"
+          inputMode="numeric"
+          className="mt-1"
+          placeholder="0"
+          value={form.visit_counts?.[vt.key] ?? ""}
+          onChange={(e) => updateVisit(vt.key, e.target.value)}
+        />
+      </div>
+    );
+  };
 
   return (
     <Card className="shadow-sm">
@@ -303,9 +352,22 @@ export default function MyTimesheetForm({
 
           {isHomeHealth && (
             <div>
-              <p className="text-sm font-semibold text-slate-700 mb-2">Points</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {POINT_FIELDS.map((f) => numberField(f))}
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-slate-700">Visits (points)</p>
+                <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5">
+                  Total points: {computedPoints}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                {VISIT_TYPES.map((vt) => visitField(vt))}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                {hasPointConfig
+                  ? "Total points are calculated from your visit counts and the facility's point value for each visit type."
+                  : "Enter your visits by type. Your administrator sets the point value for each type; totals appear once configured."}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
+                {numberField({ key: "emergency_visit_points", label: "Emerg Visit Pts" })}
               </div>
             </div>
           )}

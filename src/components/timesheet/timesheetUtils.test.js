@@ -6,6 +6,10 @@ import {
   paysByPoints,
   toNumber,
   splitName,
+  computeVisitPoints,
+  totalVisits,
+  normalizeVisitCounts,
+  VISIT_TYPES,
   computePtoHoursForPeriod,
   effectiveVacationHours,
   effectiveReimbursement,
@@ -40,6 +44,30 @@ test("splitName separates last (surname) from given names", () => {
   assert.deepEqual(splitName("Mary Jo Watkins"), { first: "Mary Jo", last: "Watkins" });
   assert.deepEqual(splitName("Cher"), { first: "Cher", last: "" });
   assert.deepEqual(splitName("  "), { first: "", last: "" });
+});
+
+test("VISIT_TYPES covers SOC, ROC, Recert, Routine, Discharge", () => {
+  assert.deepEqual(VISIT_TYPES.map((v) => v.key), ["soc", "roc", "recert", "routine", "discharge"]);
+});
+
+test("computeVisitPoints multiplies each visit count by its configured point value", () => {
+  const config = { soc_points: 5, roc_points: 4, recert_points: 4, routine_points: 1, discharge_points: 2 };
+  const counts = { soc: 2, roc: 1, recert: 0, routine: 10, discharge: 3 };
+  // 2*5 + 1*4 + 0*4 + 10*1 + 3*2 = 10 + 4 + 0 + 10 + 6 = 30
+  assert.equal(computeVisitPoints(counts, config), 30);
+});
+
+test("computeVisitPoints handles missing counts/config and fractional points", () => {
+  assert.equal(computeVisitPoints({}, {}), 0);
+  assert.equal(computeVisitPoints({ routine: 3 }, { routine_points: 1.5 }), 4.5);
+  assert.equal(computeVisitPoints({ soc: 1 }, {}), 0); // no configured value → 0
+});
+
+test("totalVisits and normalizeVisitCounts", () => {
+  assert.equal(totalVisits({ soc: 2, routine: 10, discharge: 3 }), 15);
+  assert.deepEqual(normalizeVisitCounts({ soc: "2", roc: -1, routine: 5 }), {
+    soc: 2, roc: 0, recert: 0, routine: 5, discharge: 0,
+  });
 });
 
 const PERIOD = { start: "2026-06-16", end: "2026-06-29" }; // Mon..Mon, 2 weeks

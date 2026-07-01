@@ -1,0 +1,49 @@
+{
+  "name": "VisitPointConfig",
+  "type": "object",
+  "properties": {
+    "soc_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Point value the facility pays for a Start of Care (SOC) visit"
+    },
+    "roc_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Point value for a Resumption of Care (ROC) visit"
+    },
+    "recert_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Point value for a Recertification visit"
+    },
+    "routine_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Point value for a routine visit"
+    },
+    "discharge_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Point value for a Discharge visit"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this is the active point schedule used to compute home-health points"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Admin note about this point schedule"
+    }
+  },
+  "required": [],
+  "rls": {
+    "read": {},
+    "write": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

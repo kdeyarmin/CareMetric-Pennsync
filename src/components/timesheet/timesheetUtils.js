@@ -47,6 +47,24 @@ export const PAID_PTO_TYPES = [
   "other",
 ];
 
+/**
+ * Home-health visit types. Each carries a facility-configured point value
+ * (stored on VisitPointConfig as `${key}_points`); the nurse enters a count per
+ * type and total points = Σ count × point value.
+ */
+export const VISIT_TYPES = [
+  { key: "soc", label: "SOC", full: "Start of Care" },
+  { key: "roc", label: "ROC", full: "Resumption of Care" },
+  { key: "recert", label: "Recert", full: "Recertification" },
+  { key: "routine", label: "Routine Visit", full: "Routine visit" },
+  { key: "discharge", label: "Discharge", full: "Discharge" },
+];
+
+/** The VisitPointConfig field name that holds a visit type's point value. */
+export function pointFieldFor(visitTypeKey) {
+  return `${visitTypeKey}_points`;
+}
+
 /** The numeric payroll fields, in the order they appear on a timesheet. */
 export const NUMERIC_FIELDS = [
   "regular_points",
@@ -78,6 +96,34 @@ export function paysByPoints(serviceType) {
 export function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Total home-health points from visit counts and the facility's per-type point
+ * values: Σ (count of a visit type) × (that type's configured point value).
+ *
+ * @param {object} visitCounts  { soc, roc, recert, routine, discharge }
+ * @param {object} pointConfig  VisitPointConfig ({ soc_points, roc_points, … })
+ * @returns {number} rounded to 2 decimals
+ */
+export function computeVisitPoints(visitCounts = {}, pointConfig = {}) {
+  let total = 0;
+  for (const vt of VISIT_TYPES) {
+    total += toNumber(visitCounts?.[vt.key]) * toNumber(pointConfig?.[pointFieldFor(vt.key)]);
+  }
+  return Math.round(total * 100) / 100;
+}
+
+/** Total number of visits across all types. */
+export function totalVisits(visitCounts = {}) {
+  return VISIT_TYPES.reduce((sum, vt) => sum + toNumber(visitCounts?.[vt.key]), 0);
+}
+
+/** Normalize a visit-counts object to plain non-negative numbers. */
+export function normalizeVisitCounts(visitCounts = {}) {
+  const out = {};
+  for (const vt of VISIT_TYPES) out[vt.key] = Math.max(0, toNumber(visitCounts?.[vt.key]));
+  return out;
 }
 
 /**
@@ -175,9 +221,11 @@ export function getTimesheetValidationError(ts) {
     if (toNumber(t[f]) < 0) return "Values can't be negative.";
   }
   const anyEntered =
-    NUMERIC_FIELDS.some((f) => toNumber(t[f]) > 0) || toNumber(t.auto_pto_hours) > 0;
+    NUMERIC_FIELDS.some((f) => toNumber(t[f]) > 0) ||
+    toNumber(t.auto_pto_hours) > 0 ||
+    totalVisits(t.visit_counts) > 0;
   if (!anyEntered) {
-    return "Enter at least one hour, point, or reimbursement value before submitting.";
+    return "Enter at least one visit, hour, or reimbursement value before submitting.";
   }
   return null;
 }

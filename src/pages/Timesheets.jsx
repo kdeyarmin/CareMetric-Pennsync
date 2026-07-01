@@ -13,6 +13,7 @@ import TimesheetApprovalsQueue from "@/components/timesheet/TimesheetApprovalsQu
 import PayrollExportPanel from "@/components/timesheet/PayrollExportPanel";
 import PayrollReports from "@/components/timesheet/PayrollReports";
 import PayrollSetupPanel from "@/components/timesheet/PayrollSetupPanel";
+import VisitPointConfigCard from "@/components/timesheet/VisitPointConfigCard";
 import { toNumber } from "@/components/timesheet/timesheetUtils";
 
 export default function Timesheets() {
@@ -69,6 +70,18 @@ export default function Timesheets() {
     enabled: !!currentUser?.email,
   });
   const myPhoneReimbursement = toNumber(myProfile?.phone_reimbursement);
+
+  // Facility visit-type point values — readable by everyone so the nurse form can
+  // preview total points; only admins can edit them (server-enforced).
+  const { data: visitPointConfig = null } = useQuery({
+    queryKey: ["visit-point-config"],
+    queryFn: async () => {
+      const rows = await base44.entities.VisitPointConfig.list("-updated_date", 10);
+      return (rows || []).find((c) => c.active !== false) || (rows || [])[0] || null;
+    },
+    initialData: null,
+    enabled: !!currentUser?.email,
+  });
 
   // Candidate approvers for the timesheet form (admins + flagged managers).
   const { data: approvers = [] } = useQuery({
@@ -177,6 +190,7 @@ export default function Timesheets() {
               defaultManagerEmail={currentUser?.manager_email || ""}
               approvedTimeOff={approvedTimeOff}
               phoneReimbursement={myPhoneReimbursement}
+              visitPointConfig={visitPointConfig}
               editing={editing}
               onCancelEdit={() => setEditing(null)}
             />
@@ -198,7 +212,8 @@ export default function Timesheets() {
             <TabsContent value="reports">
               <PayrollReports timesheets={teamTimesheets} />
             </TabsContent>
-            <TabsContent value="setup">
+            <TabsContent value="setup" className="space-y-6">
+              <VisitPointConfigCard config={visitPointConfig} />
               <PayrollSetupPanel employees={employees} profiles={payrollProfiles} />
             </TabsContent>
           </>

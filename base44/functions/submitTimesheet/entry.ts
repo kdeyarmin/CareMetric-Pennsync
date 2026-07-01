@@ -148,6 +148,17 @@ const NUMERIC_FIELDS = [
   'regular_points', 'emergency_visit_points', 'regular_hours', 'overtime_hours',
   'vacation_hours', 'holiday_hours', 'on_call_hours', 'on_call_visits', 'miles', 'reimbursement',
 ];
+// Home-health visit types; total points = Σ (count of a type) × (its point value).
+const VISIT_TYPE_KEYS = ['soc', 'roc', 'recert', 'routine', 'discharge'];
+function computeVisitPoints(counts, config) {
+  let total = 0;
+  for (const k of VISIT_TYPE_KEYS) {
+    const c = Number(counts?.[k]);
+    const p = Number(config?.[`${k}_points`]);
+    total += (Number.isFinite(c) ? c : 0) * (Number.isFinite(p) ? p : 0);
+  }
+  return Math.round(total * 100) / 100;
+}
 
 function parseISODate(value) {
   if (!value) return null;
@@ -285,6 +296,24 @@ Deno.serve(async (req) => {
     const numbers = {};
     for (const f of NUMERIC_FIELDS) numbers[f] = toNonNegativeNumber(body[f]);
 
+    // Home-health points are computed from the nurse's visit counts by type times
+    // the facility's configured per-type point values — server-authoritative, so
+    // the client cannot set points directly. Hospice has no points.
+    const visit_counts = {};
+    let computedPoints = 0;
+    if (service_type === 'home_health') {
+      const rawCounts = body.visit_counts && typeof body.visit_counts === 'object' ? body.visit_counts : {};
+      for (const k of VISIT_TYPE_KEYS) visit_counts[k] = toNonNegativeNumber(rawCounts[k]);
+      try {
+        const configs = await base44.asServiceRole.entities.VisitPointConfig.list('-updated_date', 50);
+        const cfg = (configs || []).find((c) => c && c.active !== false) || (configs || [])[0] || {};
+        computedPoints = computeVisitPoints(visit_counts, cfg);
+      } catch (_cfgError) {
+        computedPoints = 0; // No configured point values yet → 0 points.
+      }
+    }
+    numbers.regular_points = computedPoints;
+
     // Authoritative PTO carryover from the employee's approved, paid time off.
     let auto_pto_hours = 0;
     try {
@@ -334,6 +363,7 @@ Deno.serve(async (req) => {
       pay_period_start,
       pay_period_end,
       ...numbers,
+      visit_counts,
       auto_pto_hours,
       phone_reimbursement,
       notes: String(notes || '').slice(0, 2000),
