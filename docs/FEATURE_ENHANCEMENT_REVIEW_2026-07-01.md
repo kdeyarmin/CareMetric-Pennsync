@@ -79,6 +79,14 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 |---|---|---|---|
 | 14 | Admin role lockout (Theme 2, cont.) | **Completed the `isAdminView` adoption** across every remaining page that hard-coded a current-user `role === 'admin'` check: `ReportsAnalytics`, `AnalyticsDashboard`, `PatientDataManagement`, `MedicareGuidelinesLibrary`, `TimeOff`, `IncidentReportingModule`, `AdminUserSetup`, `AdminTraining`, `LearningCenter`, `TrainingCoursePlayer`, `OASISCenter`, `DocumentHub`, `TemplateManagement`, `OnCallSchedule`. The four `role === 'admin' \|\| isSuperAdmin(...)` sites collapsed to a single `isAdminView(...)`. Every current-user admin check in the app now flows through the shared predicate; **other-user** checks (approver filters, admin counts, created-user manual label, per-row role badges, the `isManager` helper) were deliberately preserved. | bug |
 
+### Fourth batch (also in this PR) — patient-select ergonomics + actionable stats
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 15 | Event Report | **Replaced the raw patient-UUID text field** with `SearchablePatientSelect` (search by name/MRN, recents, favorites), so a reporter can't mistype an ID and discover the failure only at submit. | ux-polish |
+| 16 | Patient Education Hub | **Swapped both 2000-row patient `<Select>` dropdowns** for `SearchablePatientSelect`, preserving the "fill patient email on select" behavior. Finding a patient is now type-to-search instead of scroll. | ux-polish |
+| 17 | Patient roster | **Made the roster stat cards one-tap filters** — "Total" clears the status filter, "Active" filters to active, "New (30 days)" filters to the last 30 days — so tapping the number a nurse is already looking at narrows the list. | quick-win |
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)
@@ -86,8 +94,6 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 ### Top quick wins (high impact · low effort · low risk)
 
 - **Add copy + generated-at timestamp to the patient-chart AI summary**, and gate it behind an explicit action instead of auto-firing an Opus call on every chart open. *(performance + trust)*
-- **Use `SearchablePatientSelect`** in Event Report, PDF Search, and the Education Hub instead of raw UUID text fields / 2000-row selects. *(ux-polish)*
-- **Make StatCards actionable** (tap "Active" to filter the roster to active; tap a severity count to filter alerts). *(ux-polish)*
 - **Bring back a real "Schedule Visit"** dialog on the patient chart (Visit.create + date/type form) to replace the removed placeholder. *(new-capability)*
 
 ### Bigger bets (roadmap)
