@@ -27,6 +27,9 @@ const BRAND_LOGO_URL =
 export const DEFAULT_IOS_APP_URL = 'https://apps.apple.com/us/app/caremetric-ai/id6757097720';
 export const DEFAULT_ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=com.caremetic.ai';
 
+// Support address shown in the email (the SUPPORT_EMAIL env var overrides it).
+export const DEFAULT_SUPPORT_EMAIL = 'info@caremetric.ai';
+
 const BRAND = {
   navy: '#213a76',
   navyDeep: '#1c2f5e',
@@ -115,7 +118,10 @@ export function buildWelcomeEmail(opts = {}) {
   const manualUrl = escapeHtml(
     `${(manualsBaseUrl || appUrl || '').replace(/\/+$/, '')}/manuals/${manual.file}`
   );
-  const support = escapeHtml(supportEmail || 'your administrator');
+  const supportRaw = String(supportEmail || 'your administrator');
+  const support = supportRaw.includes('@')
+    ? `<a href="mailto:${escapeHtml(supportRaw)}" style="color:${BRAND.navy};font-weight:600;text-decoration:none;">${escapeHtml(supportRaw)}</a>`
+    : escapeHtml(supportRaw);
 
   // App-store badges only render when a real store URL is configured, so the
   // email never shows a dead link. The "Add to Home Screen" PWA instructions are
@@ -324,7 +330,7 @@ Deno.serve(async (req) => {
         manualsBaseUrl,
         iosAppUrl: Deno.env.get('IOS_APP_STORE_URL') || DEFAULT_IOS_APP_URL,
         androidAppUrl: Deno.env.get('ANDROID_PLAY_STORE_URL') || DEFAULT_ANDROID_APP_URL,
-        supportEmail: Deno.env.get('SUPPORT_EMAIL') || user.email || null,
+        supportEmail: Deno.env.get('SUPPORT_EMAIL') || DEFAULT_SUPPORT_EMAIL,
       });
       await base44.asServiceRole.integrations.Core.SendEmail({
         to: email,

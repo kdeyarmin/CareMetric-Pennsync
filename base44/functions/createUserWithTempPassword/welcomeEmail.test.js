@@ -35,7 +35,14 @@ async function loadBuilders() {
 }
 
 const mod = await loadBuilders();
-const { buildWelcomeEmail, manualForRole, escapeHtml, DEFAULT_IOS_APP_URL, DEFAULT_ANDROID_APP_URL } = mod;
+const {
+  buildWelcomeEmail,
+  manualForRole,
+  escapeHtml,
+  DEFAULT_IOS_APP_URL,
+  DEFAULT_ANDROID_APP_URL,
+  DEFAULT_SUPPORT_EMAIL,
+} = mod;
 
 const BASE = {
   fullName: "Jane Doe",
@@ -44,7 +51,7 @@ const BASE = {
   manualsBaseUrl: "https://app.example.test",
   iosAppUrl: "https://apps.apple.com/app/pennsync",
   androidAppUrl: "https://play.google.com/store/apps/details?id=com.caremetric.pennsync",
-  supportEmail: "admin@example.test",
+  supportEmail: "info@caremetric.ai",
 };
 
 test("manualForRole maps clinical users to the User Manual", () => {
@@ -142,6 +149,22 @@ test("attacker-controlled name is HTML-escaped (no raw markup in body)", () => {
 test("blank name falls back to a friendly greeting", () => {
   const { body } = buildWelcomeEmail({ ...BASE, role: "user", fullName: "   " });
   assert.ok(body.includes("Welcome to PennSync, there!"));
+});
+
+test("ships the info@caremetric.ai support default as a mailto link", () => {
+  assert.equal(DEFAULT_SUPPORT_EMAIL, "info@caremetric.ai");
+  const { body } = buildWelcomeEmail({ ...BASE, role: "user", supportEmail: DEFAULT_SUPPORT_EMAIL });
+  assert.ok(body.includes('mailto:info@caremetric.ai'));
+  assert.ok(body.includes("contact <a"));
+  // No placeholder / inviting-admin address leaks into the support line.
+  assert.ok(!body.includes("sunrisehealth"));
+  assert.ok(!body.includes("contact your administrator"));
+});
+
+test("falls back to 'contact your administrator' as plain text when no support email", () => {
+  const { body } = buildWelcomeEmail({ ...BASE, role: "user", supportEmail: null });
+  assert.ok(body.includes("contact your administrator"));
+  assert.ok(!body.includes("mailto:your"));
 });
 
 test("ships the published App Store / Play Store defaults", () => {
