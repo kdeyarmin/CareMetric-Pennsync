@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { BarChart3, Activity, Building2, Loader2 } from "lucide-react";
@@ -41,7 +42,7 @@ export default function ReportsAnalytics() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -97,13 +98,13 @@ export default function UserManagement() {
   const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ['allUsersManagement'],
     queryFn: () => base44.entities.User.list(),
-    enabled: currentUser?.role === 'admin',
+    enabled: isAdminView(currentUser),
   });
 
   const { data: userActivities = [] } = useQuery({
     queryKey: ['userActivitiesSummary'],
     queryFn: () => base44.entities.UserActivity.list('-created_date', 1000),
-    enabled: currentUser?.role === 'admin',
+    enabled: isAdminView(currentUser),
   });
 
   const { data: invitations = [] } = useQuery({
@@ -117,7 +118,7 @@ export default function UserManagement() {
       const userEmails = new Set(allUsers.map(u => (u.email || '').toLowerCase()).filter(Boolean));
       return allInvitations.filter(inv => !userEmails.has((inv.email || '').toLowerCase()));
     },
-    enabled: currentUser?.role === 'admin' && allUsers.length > 0,
+    enabled: isAdminView(currentUser) && allUsers.length > 0,
   });
 
   const updateUserMutation = useMutation({
@@ -395,7 +396,7 @@ export default function UserManagement() {
     );
   };
 
-  if (currentUser?.role !== 'admin') {
+  if (!isAdminView(currentUser)) {
     return (
       <div className="p-8 max-w-4xl mx-auto">
         <Card className="border-red-200 bg-red-50">

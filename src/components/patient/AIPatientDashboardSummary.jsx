@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import AICaveat from "@/components/ui/AICaveat";
 import {
   Sparkles,
   TrendingUp,
@@ -15,9 +16,35 @@ import {
   FileText,
   Activity,
   RefreshCw,
-  Loader2
+  Loader2,
+  Copy
 } from "lucide-react";
 import { isValid } from "date-fns";
+
+// Flatten the structured AI summary into plain text a clinician can paste into
+// a note (headings + bullets), so the summary isn't trapped in the widget.
+function summaryToText(summary, patient) {
+  if (!summary) return "";
+  const lines = [];
+  const name = patient ? `${patient.first_name || ""} ${patient.last_name || ""}`.trim() : "";
+  if (name) lines.push(`AI Patient Summary — ${name}`);
+  if (summary.overall_status) lines.push(`Overall status: ${summary.overall_status}${summary.status_reason ? ` — ${summary.status_reason}` : ""}`);
+  const section = (title, arr) => {
+    if (Array.isArray(arr) && arr.length) {
+      lines.push("", title);
+      arr.forEach((item) => lines.push(`- ${typeof item === "string" ? item : item?.concern || JSON.stringify(item)}`));
+    }
+  };
+  section("Red flags:", summary.red_flags);
+  section("Key highlights:", summary.key_highlights);
+  section("Priority concerns:", summary.priority_concerns);
+  if (summary.recent_activity_summary) lines.push("", `Recent activity: ${summary.recent_activity_summary}`);
+  if (summary.care_plan_progress) lines.push("", `Care plan progress: ${summary.care_plan_progress}`);
+  section("Next visit priorities:", summary.next_visit_priorities);
+  section("Recommendations:", summary.recommendations);
+  lines.push("", "AI-generated — verify before clinical use.");
+  return lines.join("\n");
+}
 
 export default function AIPatientDashboardSummary({
   patient,
@@ -26,6 +53,7 @@ export default function AIPatientDashboardSummary({
   incidents = []
 }) {
   const [summary, setSummary] = useState(null);
+  const [generatedAt, setGeneratedAt] = useState(null);
   const ai = useAICall();
 
   const generateSummary = useCallback(async () => {
@@ -118,6 +146,7 @@ Provide a comprehensive yet concise dashboard summary in JSON:
       });
 
       setSummary(result);
+      setGeneratedAt(new Date());
     } catch (error) {
       console.error("Error generating summary:", error);
       toast.error("The AI request didn't complete. Please try again.");
@@ -180,9 +209,27 @@ Provide a comprehensive yet concise dashboard summary in JSON:
             <Sparkles className="w-5 h-5 text-navy-600" />
             AI Patient Dashboard Summary
           </CardTitle>
-          <Button size="sm" variant="outline" onClick={generateSummary}>
-            <RefreshCw className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label="Copy summary to clipboard"
+              title="Copy summary to clipboard"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(summaryToText(summary, patient));
+                  toast.success("Summary copied to clipboard");
+                } catch {
+                  toast.error("Couldn't copy — please select the text and copy manually.");
+                }
+              }}
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button size="sm" variant="outline" aria-label="Regenerate summary" title="Regenerate summary" onClick={generateSummary}>
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -327,6 +374,8 @@ Provide a comprehensive yet concise dashboard summary in JSON:
             </ul>
           </div>
         )}
+
+        <AICaveat generatedAt={generatedAt} className="pt-1" />
       </CardContent>
     </Card>
   );

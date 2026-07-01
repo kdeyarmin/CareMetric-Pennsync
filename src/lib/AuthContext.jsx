@@ -159,7 +159,10 @@ export const AuthProvider = ({ children }) => {
       appPublicSettings,
       logout,
       navigateToLogin,
-      checkAppState
+      checkAppState,
+      // Re-fetch the current user (e.g. after they accept the AI content
+      // responsibility agreement) so gates keyed off `user` re-evaluate.
+      refreshUser: checkUserAuth
     }}>
       {children}
     </AuthContext.Provider>

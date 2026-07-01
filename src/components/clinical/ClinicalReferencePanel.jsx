@@ -4,7 +4,9 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Stethoscope, ClipboardList, AlertTriangle, Activity } from "lucide-react";
+import { Search, Stethoscope, ClipboardList, AlertTriangle, Activity, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const SCALES = [
   {
@@ -218,6 +220,53 @@ const categoryColors = {
   hospice: "bg-purple-100 text-purple-800",
 };
 
+// Plain-text builders so a nurse can paste correctly-worded criteria straight
+// into a note instead of retyping ranges from memory.
+function scaleToText(scale) {
+  const lines = scale.scores.map((s) => `  ${s.label}: ${s.range}`).join("\n");
+  return `${scale.name}\n${lines}\nDomains: ${scale.domains.join(", ")}`;
+}
+function protocolToText(protocol) {
+  const steps = protocol.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  return `${protocol.name}\n${steps}\nTriggers: ${protocol.triggers}`;
+}
+function vitalsToText() {
+  const header = "Vital Signs Quick Reference (Parameter | Normal | Concern | Critical)";
+  const rows = VITALS_REFERENCE.map(
+    (r) => `${r.parameter} | ${r.normal} | ${r.concern} | ${r.critical}`
+  ).join("\n");
+  return `${header}\n${rows}`;
+}
+
+function CopyButton({ text, label = "Copy to clipboard", className }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async (e) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Couldn't copy — please select the text and copy manually.");
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700",
+        className
+      )}
+    >
+      {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+    </button>
+  );
+}
+
 export default function ClinicalReferencePanel() {
   const [search, setSearch] = useState("");
 
@@ -258,9 +307,12 @@ export default function ClinicalReferencePanel() {
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-base font-semibold text-slate-900">{scale.name}</CardTitle>
-                  <Badge className={`text-xs flex-shrink-0 ${categoryColors[scale.category] || "bg-slate-100 text-slate-700"}`}>
-                    {scale.category}
-                  </Badge>
+                  <div className="flex flex-shrink-0 items-center gap-1">
+                    <Badge className={`text-xs ${categoryColors[scale.category] || "bg-slate-100 text-slate-700"}`}>
+                      {scale.category}
+                    </Badge>
+                    <CopyButton text={scaleToText(scale)} label={`Copy ${scale.name}`} />
+                  </div>
                 </div>
                 <p className="text-sm text-slate-600">{scale.description}</p>
               </CardHeader>
@@ -290,9 +342,12 @@ export default function ClinicalReferencePanel() {
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-base font-semibold text-slate-900">{protocol.name}</CardTitle>
-                  <Badge className={`text-xs flex-shrink-0 ${categoryColors[protocol.category] || "bg-slate-100 text-slate-700"}`}>
-                    {protocol.category}
-                  </Badge>
+                  <div className="flex flex-shrink-0 items-center gap-1">
+                    <Badge className={`text-xs ${categoryColors[protocol.category] || "bg-slate-100 text-slate-700"}`}>
+                      {protocol.category}
+                    </Badge>
+                    <CopyButton text={protocolToText(protocol)} label={`Copy ${protocol.name}`} />
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0 space-y-3">
@@ -317,10 +372,13 @@ export default function ClinicalReferencePanel() {
         <TabsContent value="vitals" className="mt-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Activity className="w-5 h-5 text-blue-600" />
-                Vital Signs Quick Reference
-              </CardTitle>
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  Vital Signs Quick Reference
+                </CardTitle>
+                <CopyButton text={vitalsToText()} label="Copy vitals reference table" />
+              </div>
               <p className="text-sm text-slate-600">Normal ranges, concerning values, and critical thresholds for home health documentation.</p>
             </CardHeader>
             <CardContent>

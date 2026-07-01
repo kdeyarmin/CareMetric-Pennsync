@@ -6,6 +6,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import AICaveat from "@/components/ui/AICaveat";
 import {
   Brain,
   Sparkles,
@@ -26,6 +27,7 @@ export default function PredictiveInsightsPanel({
   _selectedPatientId = ''
 }) {
   const [insights, setInsights] = useState(null);
+  const [generatedAt, setGeneratedAt] = useState(null);
   const ai = useAICall();
 
   const generateInsights = async () => {
@@ -146,6 +148,7 @@ Provide comprehensive predictive insights including:
       });
 
       setInsights(result);
+      setGeneratedAt(new Date());
     } catch (error) {
       console.error("Insights generation error:", error);
       toast.error("The AI request didn't complete. Please try again.");
@@ -200,6 +203,7 @@ Provide comprehensive predictive insights including:
               <strong>Executive Summary:</strong> {insights.executive_summary}
             </AlertDescription>
           </Alert>
+          <AICaveat generatedAt={generatedAt} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Population Trends */}

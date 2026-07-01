@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import DuplicateScanner from "../components/patient/DuplicateScanner";
 import PatientFileUpdateUploader from "../components/patient/PatientFileUpdateUploader";
 import { base44 } from "@/api/base44Client";
+import { isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,7 +76,7 @@ export default function PatientDataManagement() {
   // Admin-only page: gate the agency-wide data pulls on role (defense in depth;
   // server-side row authorization is the primary control).
   const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminView(currentUser);
 
   const { data: patients = [], isLoading } = useQuery({
     queryKey: ['patients'],

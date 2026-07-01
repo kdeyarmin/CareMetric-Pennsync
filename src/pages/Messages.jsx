@@ -26,6 +26,8 @@ import {
   CheckCircle2,
   User,
   PenSquare,
+  Search,
+  AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -46,7 +48,9 @@ export default function Messages() {
   const [visibleThreadCount, setVisibleThreadCount] = useState(20);
   const [filterPriority, setFilterPriority] = useState("all");
   const [filterRead, setFilterRead] = useState("all");
+  const [search, setSearch] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [replyUrgent, setReplyUrgent] = useState(false);
   const [newMessage, setNewMessage] = useState({
     subject: "",
     message_text: "",
@@ -108,6 +112,15 @@ export default function Messages() {
         priority: "normal",
         patient_id: null
       });
+      // Only clear the reply box on a confirmed send — see handleReply, which no
+      // longer clears optimistically, so a failed send on flaky cellular keeps
+      // the nurse's typed words instead of silently dropping them.
+      setReplyText("");
+      setReplyUrgent(false);
+      toast.success("Message sent");
+    },
+    onError: () => {
+      toast.error("Message failed to send. Your text was kept — tap send to retry.");
     },
   });
 
@@ -144,12 +157,21 @@ export default function Messages() {
   });
 
   // Filter threads
+  const searchQuery = search.trim().toLowerCase();
   const filteredThreads = threads
     .filter(thread => thread.isRecipient || thread.isMyMessage)
     .filter(thread => {
       if (filterPriority !== "all" && thread.priority !== filterPriority) return false;
       if (filterRead === "unread" && thread.unreadCount === 0) return false;
       if (filterRead === "read" && thread.unreadCount > 0) return false;
+      if (searchQuery) {
+        // Client-side match across subject, sender, and any message body in the
+        // thread — everything is already loaded, so this is a pure filter.
+        const inSubject = (thread.subject || "").toLowerCase().includes(searchQuery);
+        const inSender = (thread.latestMessage?.sender_name || "").toLowerCase().includes(searchQuery);
+        const inBody = thread.messages.some(m => (m.message_text || "").toLowerCase().includes(searchQuery));
+        if (!inSubject && !inSender && !inBody) return false;
+      }
       return true;
     })
     .sort((a, b) => new Date(b.latestMessage.created_date) - new Date(a.latestMessage.created_date));
@@ -167,6 +189,7 @@ export default function Messages() {
   const handleThreadClick = (thread) => {
     setSelectedThreadId(thread.threadId);
     setReplyText("");
+    setReplyUrgent(false);
     // Mark all unread messages in thread as read
     thread.messages
       .filter(m => !m.read_by?.includes(currentUser?.email))
@@ -174,6 +197,7 @@ export default function Messages() {
   };
 
   const handleSendMessage = () => {
+    if (sendMessageMutation.isPending) return;
     if (newMessage.recipients.length === 0 || !newMessage.subject.trim() || !newMessage.message_text.trim()) {
       toast.error('Please add a recipient, subject, and message.');
       return;
@@ -188,7 +212,10 @@ export default function Messages() {
   };
 
   const handleReply = () => {
-    if (!selectedThread || !replyText.trim()) return;
+    // Guard on isPending so the Enter-key path can't fire a second Message.create
+    // before the first resolves — the reply text now persists until onSuccess, so
+    // without this a fast double-Enter would send the same reply twice.
+    if (!selectedThread || !replyText.trim() || sendMessageMutation.isPending) return;
 
     const me = currentUser?.email;
     const originalMessage = selectedThread.latestMessage;
@@ -209,11 +236,14 @@ export default function Messages() {
       sender_name: currentUser?.full_name,
       sender_email: me,
       recipients,
-      priority: originalMessage.priority,
+      // A reply inherits the thread's priority, but the nurse can escalate this
+      // specific reply to urgent (e.g. a status change the recipient must see).
+      priority: replyUrgent ? 'urgent' : originalMessage.priority,
       patient_id: originalMessage.patient_id,
       thread_id: selectedThread.threadId
     });
-    setReplyText("");
+    // NOTE: do NOT clear replyText here — it is cleared in the mutation's
+    // onSuccess so a failed send preserves the nurse's typed reply for retry.
   };
 
   const unreadCount = threads.filter(t => t.unreadCount > 0).length;
@@ -318,6 +348,18 @@ export default function Messages() {
               <Button
                 type="button"
                 size="icon"
+                variant="outline"
+                onClick={() => setReplyUrgent((v) => !v)}
+                aria-pressed={replyUrgent}
+                aria-label={replyUrgent ? "Urgent priority on — tap to turn off" : "Mark this reply urgent"}
+                title={replyUrgent ? "Urgent — tap to turn off" : "Mark this reply urgent"}
+                className={`h-9 w-9 flex-shrink-0 rounded-full ${replyUrgent ? "bg-red-600 text-white hover:bg-red-700 border-red-600" : "text-slate-500"}`}
+              >
+                <AlertTriangle className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
                 onClick={handleReply}
                 disabled={!replyText.trim() || sendMessageMutation.isPending}
                 aria-label="Send reply"
@@ -345,6 +387,19 @@ export default function Messages() {
                 </button>
               }
             />
+            {/* Search */}
+            <div className="flex-shrink-0 border-b border-slate-100 bg-white px-3 pt-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search messages…"
+                  aria-label="Search messages"
+                  className="h-9 pl-8 text-sm"
+                />
+              </div>
+            </div>
             {/* Filters */}
             <div className="flex flex-shrink-0 gap-2 border-b border-slate-100 bg-white px-3 py-2">
               <Select value={filterPriority} onValueChange={setFilterPriority}>
@@ -374,7 +429,11 @@ export default function Messages() {
               {isLoading ? (
                 <p className="py-8 text-center text-sm text-slate-500">Loading messages…</p>
               ) : filteredThreads.length === 0 ? (
-                <PhoneEmptyState icon={Mail} title="No messages found" hint="Start a conversation with the pencil icon." />
+                <PhoneEmptyState
+                  icon={search ? Search : Mail}
+                  title={search ? "No matching messages" : "No messages found"}
+                  hint={search ? "Try a different name, subject, or keyword." : "Start a conversation with the pencil icon."}
+                />
               ) : (
                 <>
                   <ul className="divide-y divide-slate-100 bg-white">

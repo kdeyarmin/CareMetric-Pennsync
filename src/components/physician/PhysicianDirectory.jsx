@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import PhysicianForm from './PhysicianForm';
 import ProviderCsvImport from './ProviderCsvImport';
+import { formatPhoneDisplay, normalizeE164 } from '@/components/voice/phoneUtils';
 import { toast } from 'sonner';
 
 export default function PhysicianDirectory({ onSelectPhysician, mode = 'directory' }) {
@@ -226,27 +227,42 @@ export default function PhysicianDirectory({ onSelectPhysician, mode = 'director
                       <div className="space-y-1 text-sm text-slate-600">
                         {physician.fax_number && (
                           <div className="flex items-center gap-2">
-                            <Send className="w-3 h-3" />
-                            <span className="font-medium">Fax:</span> {physician.fax_number}
+                            <Send className="w-3 h-3 shrink-0" />
+                            <span className="font-medium">Fax:</span> {formatPhoneDisplay(physician.fax_number)}
                           </div>
                         )}
                         {physician.phone_number && (
-                          <div className="flex items-center gap-2">
-                            <Phone className="w-3 h-3" />
-                            <span className="font-medium">Phone:</span> {physician.phone_number}
-                          </div>
+                          <a
+                            href={`tel:${normalizeE164(physician.phone_number) || String(physician.phone_number).replace(/[^\d+]/g, '')}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-2 min-h-[36px] text-indigo-600 hover:underline"
+                          >
+                            <Phone className="w-3 h-3 shrink-0" />
+                            <span className="font-medium text-slate-600">Phone:</span> {formatPhoneDisplay(physician.phone_number)}
+                          </a>
                         )}
                         {physician.email && (
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-3 h-3" />
-                            <span className="font-medium">Email:</span> {physician.email}
-                          </div>
+                          <a
+                            href={`mailto:${physician.email}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-2 min-h-[36px] text-indigo-600 hover:underline break-all"
+                          >
+                            <Mail className="w-3 h-3 shrink-0" />
+                            <span className="font-medium text-slate-600">Email:</span> {physician.email}
+                          </a>
                         )}
                         {physician.office_address && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-3 h-3" />
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([physician.office_address, physician.office_city, physician.office_state, physician.office_zip].filter(Boolean).join(', '))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-2 min-h-[36px] text-indigo-600 hover:underline"
+                            title="Open address in maps"
+                          >
+                            <MapPin className="w-3 h-3 shrink-0" />
                             <span>{physician.office_address}, {physician.office_city}, {physician.office_state} {physician.office_zip}</span>
-                          </div>
+                          </a>
                         )}
                       </div>
 

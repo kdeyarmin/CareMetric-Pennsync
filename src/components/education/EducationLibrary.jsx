@@ -20,6 +20,13 @@ export default function EducationLibrary({ patient, onSelectMaterial }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
+  // The topic cards are only actionable when a selection handler is supplied
+  // (the patient-chart Education tab). Rendered standalone in the Resource
+  // Library there is no handler, so the cards were a browse-only catalog whose
+  // onClick called `undefined(...)` and crashed the tab. Gate the click + the
+  // clickable affordance on a real handler so the catalog is safe to browse.
+  const interactive = typeof onSelectMaterial === "function";
+
   const categories = [
     { id: "all", label: "All Topics", icon: BookOpen },
     { id: "cardiac", label: "Heart & Cardiac", icon: Heart },
@@ -332,10 +339,10 @@ export default function EducationLibrary({ patient, onSelectMaterial }) {
           <CardContent className="pt-0">
             <div className="grid md:grid-cols-3 gap-3">
               {suggestedTopics.map((topic) => (
-                <Card 
-                  key={topic.id} 
-                  className="cursor-pointer hover:shadow-md transition-shadow border-green-300"
-                  onClick={() => onSelectMaterial({ title: topic.title, topic: topic.title })}
+                <Card
+                  key={topic.id}
+                  className={`transition-shadow border-green-300 ${interactive ? "cursor-pointer hover:shadow-md" : ""}`}
+                  onClick={interactive ? () => onSelectMaterial({ title: topic.title, topic: topic.title }) : undefined}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-start gap-2">
@@ -356,10 +363,10 @@ export default function EducationLibrary({ patient, onSelectMaterial }) {
       {/* All Topics */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTopics.map((topic) => (
-          <Card 
-            key={topic.id} 
-            className="cursor-pointer hover:shadow-lg transition-all hover:border-blue-300"
-            onClick={() => onSelectMaterial({ title: topic.title, topic: topic.title })}
+          <Card
+            key={topic.id}
+            className={`transition-all ${interactive ? "cursor-pointer hover:shadow-lg hover:border-blue-300" : ""}`}
+            onClick={interactive ? () => onSelectMaterial({ title: topic.title, topic: topic.title }) : undefined}
           >
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-2">

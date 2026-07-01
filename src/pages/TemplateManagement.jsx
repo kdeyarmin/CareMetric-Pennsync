@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Plus, Edit2, Trash2, FileText, FileType } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
-import { isSuperAdmin } from '@/lib/superAdmin';
+import { isAdminView } from '@/lib/roles';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 const PDFTemplateLibrary = lazy(() => import('@/components/hub-tabs/PDFTemplateLibrary'));
 
@@ -26,6 +27,7 @@ const tabLoader = (
 
 export default function TemplateManagement() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [formData, setFormData] = useState({
@@ -39,7 +41,7 @@ export default function TemplateManagement() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
-  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin(currentUser);
+  const isAdmin = isAdminView(currentUser);
   // The document-template CRUD tab is admin-only; the PDF Templates tab stays
   // open to everyone (the retired /PDFTemplateLibrary route was non-admin), so
   // non-admins land on — and are limited to — the PDF tab.
@@ -255,7 +257,16 @@ export default function TemplateManagement() {
                 <Button
                   size="sm"
                   variant="destructive"
-                  onClick={() => deleteMutation.mutate(template.id)}
+                  onClick={async () => {
+                    if (await confirm({
+                      title: 'Delete template?',
+                      description: `This permanently removes "${template.name}". This cannot be undone.`,
+                      confirmText: 'Delete',
+                      destructive: true,
+                    })) {
+                      deleteMutation.mutate(template.id);
+                    }
+                  }}
                   disabled={deleteMutation.isPending}
                 >
                   <Trash2 className="w-4 h-4" />
