@@ -504,6 +504,7 @@ export default function AnalyticsDashboard() {
           change={metrics.timeChange}
           icon={Clock}
           color="blue"
+          invertTrend
         />
         <PerformanceMetricsCard
           title="Quality Score"

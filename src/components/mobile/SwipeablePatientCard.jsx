@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { User, Phone, MapPin, ChevronRight } from "lucide-react";
 import { getPatientDisplayName } from "@/components/patient/patientDisplay";
+import { calculateAge } from "@/lib/dateLocal";
 
 export default function SwipeablePatientCard({ 
   patient, 
@@ -43,18 +44,8 @@ export default function SwipeablePatientCard({
     }
   };
 
-  const calculateAge = (dob) => {
-    if (!dob) return null;
-    const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    return age;
-  };
-
+  // Local-calendar age (shared helper) so a date-only DOB isn't parsed as UTC
+  // midnight and shown a year off at the Medicare-band boundary in US timezones.
   const age = calculateAge(patient.date_of_birth);
 
   return (
@@ -102,7 +93,7 @@ export default function SwipeablePatientCard({
                 {getPatientDisplayName(patient)}
               </h3>
               <div className="flex items-center gap-2 flex-wrap">
-                {age && <Badge variant="outline" className="text-xs">{age} yrs</Badge>}
+                {age !== null && <Badge variant="outline" className="text-xs">{age} yrs</Badge>}
                 {patient.status && (
                   <Badge className={`text-xs ${
                     patient.status === 'active' ? 'bg-green-500' : 'bg-slate-500'
