@@ -259,15 +259,17 @@ export default function Dashboard() {
       {/* Quick Action Buttons — consistent navy hover accent (no rainbow). */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 sm:gap-6 mb-8">
         {[
-          { page: "SmartNoteAssistant", label: "Smart Notes",   Icon: FileText },
-          { page: "SendFax",            label: "Send Fax",      Icon: Send },
-          { page: "PatientEducationHub",label: "Pt. Education",  Icon: User },
-          { page: "VisitScribe",        label: "Visit Scribe",  Icon: Mic },
-          { page: "Incidents",          label: "Incidents",     Icon: AlertTriangle },
+          { page: "SmartNoteAssistant",  to: "/SmartNoteAssistant",                    label: "Smart Notes",   Icon: FileText },
+          { page: "SendFax",             to: "/SendFax",                               label: "Send Fax",      Icon: Send },
+          { page: "PatientEducationHub", to: "/PatientEducationHub",                   label: "Pt. Education", Icon: User },
+          // Visit Scribe was folded into the Clinical Notes hub — link straight to
+          // its tab instead of the retired /VisitScribe redirect hop.
+          { page: "VisitScribe",         to: "/ClinicalDocumentation?tab=visit-scribe", label: "Visit Scribe",  Icon: Mic },
+          { page: "Incidents",           to: "/Incidents",                             label: "Incidents",     Icon: AlertTriangle },
         ].map((item) => {
           const ItemIcon = item.Icon;
           return (
-            <Link key={item.page} to={`/${item.page}`} className="group">
+            <Link key={item.page} to={item.to} className="group">
               <Card className="h-full transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:border-navy-200 bg-white/50 hover:bg-white">
                 <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center text-center gap-3 min-h-[110px]">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-50 text-slate-500 ring-1 ring-inset ring-slate-200 transition-all group-hover:bg-navy-50 group-hover:text-navy-700 group-hover:ring-navy-200 shadow-sm">
