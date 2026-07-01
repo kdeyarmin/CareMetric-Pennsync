@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   XCircle
 } from "lucide-react";
+import { severityBadgeClass } from "@/lib/severityStyles";
 
 export default function PredictiveRiskAnalyzer({ patientId, _patientName, onAlertsCreated, autoAnalyze = false }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -67,16 +68,6 @@ export default function PredictiveRiskAnalyzer({ patientId, _patientName, onAler
     if (score >= 75) return 'High Risk';
     if (score >= 50) return 'Moderate Risk';
     return 'Low Risk';
-  };
-
-  const getSeverityColor = (severity) => {
-    const colors = {
-      critical: 'bg-red-100 text-red-800 border-red-300',
-      high: 'bg-orange-100 text-orange-800 border-orange-300',
-      medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      low: 'bg-blue-100 text-blue-800 border-blue-300'
-    };
-    return colors[severity] || colors.medium;
   };
 
   const riskIcons = {
@@ -180,14 +171,14 @@ export default function PredictiveRiskAnalyzer({ patientId, _patientName, onAler
                 </div>
 
                 {analysis.high_risk_alerts.map((alert, idx) => (
-                  <Card key={idx} className={`border-l-4 ${getSeverityColor(alert.severity)}`}>
+                  <Card key={idx} className={`border-l-4 ${severityBadgeClass(alert.severity)}`}>
                     <CardContent className="p-3 space-y-2">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
                           <AlertTriangle className={`w-4 h-4 ${alert.severity === 'critical' ? 'text-red-600' : 'text-orange-600'}`} />
                           <h5 className="text-sm font-bold">{alert.title}</h5>
                         </div>
-                        <Badge className={getSeverityColor(alert.severity)}>
+                        <Badge className={severityBadgeClass(alert.severity)}>
                           {alert.severity}
                         </Badge>
                       </div>

@@ -1,4 +1,5 @@
 import { Activity, Pill, TrendingDown, Heart, Shield, AlertTriangle, Clock, Zap, Users } from "lucide-react";
+import { severitySolidClass } from "@/lib/severityStyles";
 
 /**
  * Shared presentation helpers for patient alerts, used by both PatientAlertAnalyzer
@@ -26,16 +27,5 @@ export function getAlertIcon(type) {
 
 /** Tailwind badge classes for an alert severity. */
 export function getSeverityColor(severity) {
-  switch (severity) {
-    case "critical":
-      return "bg-red-600 text-white";
-    case "high":
-      return "bg-orange-500 text-white";
-    case "medium":
-      return "bg-yellow-500 text-white";
-    case "low":
-      return "bg-blue-500 text-white";
-    default:
-      return "bg-slate-500 text-white";
-  }
+  return severitySolidClass(severity);
 }

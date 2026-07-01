@@ -19,6 +19,7 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Progress } from "@/components/ui/progress";
 import { toast } from 'sonner';
+import { severityBadgeClass } from "@/lib/severityStyles";
 
 export default function RealTimeDocumentationReviewer({ 
   noteContent, 
@@ -252,15 +253,6 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
     }
   }, [noteContent, autoAnalyze, analyzeDocumentation]);
 
-  const getSeverityColor = (severity) => {
-    const colors = {
-      critical: "bg-red-100 text-red-800 border-red-300",
-      high: "bg-orange-100 text-orange-800 border-orange-300",
-      medium: "bg-yellow-100 text-yellow-800 border-yellow-300"
-    };
-    return colors[severity] || colors.medium;
-  };
-
   const getScoreColor = (score) => {
     if (score >= 90) return "text-green-600";
     if (score >= 75) return "text-blue-600";
@@ -418,7 +410,7 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
                 <AccordionItem key={index} value={`compliance-${index}`} className="border rounded-lg">
                   <AccordionTrigger className="px-3 hover:no-underline">
                     <div className="flex items-center gap-2">
-                      <Badge className={getSeverityColor(issue.severity)}>
+                      <Badge className={severityBadgeClass(issue.severity)}>
                         {issue.severity}
                       </Badge>
                       <span className="font-medium text-sm text-left">{issue.section}: {issue.issue}</span>

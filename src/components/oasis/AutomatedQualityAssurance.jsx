@@ -18,6 +18,7 @@ import {
   BookOpen,
   Target
 } from "lucide-react";
+import { severityBadgeClass } from "@/lib/severityStyles";
 
 export default function AutomatedQualityAssurance({
   oasisData,
@@ -215,16 +216,6 @@ For each failure, provide:
     }
   }, [autoRun, oasisData?.id, oasisData, qaResults, ai.loading, runQualityAssurance]);
 
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-100 text-red-800 border-red-300';
-      case 'high': return 'bg-orange-100 text-orange-800 border-orange-300';
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'low': return 'bg-blue-100 text-blue-800 border-blue-300';
-      default: return 'bg-slate-100 text-slate-800 border-slate-300';
-    }
-  };
-
   return (
     <Card className="border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 to-blue-50">
       <CardHeader>
@@ -364,7 +355,7 @@ For each failure, provide:
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
                                   <h4 className="font-semibold text-red-900">{error.error_type}</h4>
-                                  <Badge className={getSeverityColor(error.severity)}>
+                                  <Badge className={severityBadgeClass(error.severity)}>
                                     {error.severity}
                                   </Badge>
                                 </div>
@@ -574,7 +565,7 @@ For each failure, provide:
                           <div key={idx} className="bg-white rounded-lg border-2 border-orange-200 p-4">
                             <div className="flex items-center justify-between mb-2">
                               <h4 className="font-semibold text-orange-900">{issue.compliance_area}</h4>
-                              <Badge className={getSeverityColor(issue.severity)}>
+                              <Badge className={severityBadgeClass(issue.severity)}>
                                 {issue.severity}
                               </Badge>
                             </div>

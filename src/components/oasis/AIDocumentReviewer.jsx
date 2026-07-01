@@ -14,6 +14,7 @@ import {
   AlertOctagon,
   Shield
 } from "lucide-react";
+import { severityBadgeClass } from "@/lib/severityStyles";
 
 export default function AIDocumentReviewer({ oasisData, autoReview = true }) {
   const ai = useAICall();
@@ -150,16 +151,6 @@ Provide actionable, specific feedback for each issue found.`;
       performAIReview();
     }
   }, [oasisData, autoReview, reviewResults, performAIReview]);
-
-  const getSeverityColor = (severity) => {
-    const colors = {
-      critical: "bg-red-100 text-red-800 border-red-300",
-      high: "bg-orange-100 text-orange-800 border-orange-300",
-      medium: "bg-yellow-100 text-yellow-800 border-yellow-300",
-      low: "bg-blue-100 text-blue-800 border-blue-300"
-    };
-    return colors[severity] || colors.medium;
-  };
 
   const getComplianceStatusColor = (status) => {
     const colors = {
@@ -302,7 +293,7 @@ Provide actionable, specific feedback for each issue found.`;
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {reviewResults.compliance_issues.map((issue, idx) => (
-                    <div key={idx} className={`p-3 rounded border ${getSeverityColor(issue.severity)}`}>
+                    <div key={idx} className={`p-3 rounded border ${severityBadgeClass(issue.severity)}`}>
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <p className="font-semibold">{issue.regulation}</p>
                         <Badge variant="outline" className="text-xs">
