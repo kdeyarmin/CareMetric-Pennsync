@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
+import { formatTime } from "@/lib/formatTime";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { Mic, MicOff, X, CheckCircle2, AlertCircle, Loader2, FileAudio } from "lucide-react";
@@ -161,12 +162,6 @@ Plan: ${soap.plan || "N/A"}
     setTranscript(null);
     setShowMapper(false);
     setSoapPreview(null);
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   // Release the mic, recorder, and timer on unmount mid-recording. Detach onstop

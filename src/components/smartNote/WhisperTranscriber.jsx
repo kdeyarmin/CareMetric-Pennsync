@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { configNotReadyMessage } from '@/lib/aiFeatureError';
+import { formatTime } from '@/lib/formatTime';
 import { Mic, MicOff, Loader, AlertCircle, Copy, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -162,12 +163,6 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
     setTranscript('');
     audioChunksRef.current = [];
     setRecordingTime(0);
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Clock, RefreshCw } from "lucide-react";
 import { logSecurityEvent } from "../utils/security";
 import { clearCachedPHI } from "@/lib/phiStorage";
+import { formatTime } from "@/lib/formatTime";
 
 /**
  * Session Timeout Manager Component
@@ -111,12 +112,6 @@ export default function SessionTimeoutManager({
 
     return () => clearInterval(checkInterval);
   }, [timeoutMinutes, warningMinutes, handleLogout]);
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
     // The warning must not be dismissible by outside-click/Esc: closing it that
