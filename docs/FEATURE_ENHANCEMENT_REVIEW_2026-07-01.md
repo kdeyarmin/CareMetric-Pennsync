@@ -134,6 +134,14 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 
 > This is the awareness slice of Theme 4. The larger offline work — cache-age/staleness labeling and an offline write-queue for incidents/notes with auto-sync — remains a roadmap item (much of the sync-queue plumbing already exists in `src/lib/offlineSync.js` + `OfflineManager`).
 
+### Tenth batch (also in this PR) — patient-centric ⌘K
+
+| # | Feature | Change | Type |
+|---|---|---|---|
+| 32 | Command palette | **⌘K now jumps straight to any patient chart.** Typing ≥2 chars of a name or MRN surfaces a "Patients" group (the roster is fetched lazily only while the palette is open, and is server-scoped by RLS); selecting one navigates to `PatientDetails`. Collapses the most common navigation (find a patient's chart) to a single keystroke. | new-capability |
+
+> **Sidebar Favorites was intentionally *not* touched here.** Investigation showed it's not a simple ID-vs-object bug: the sidebar and favorite-scoped alerts read `currentUser.favorited_patients` as `{id, name}` objects, but **no client code writes that field**, while a *separate* localStorage favorites system (patient IDs) lives only inside `SearchablePatientSelect`. Making Favorites work means **unifying those two systems** — a persisted star action on the chart that writes `favorited_patients` as `{id, name}`, reconciled with the local system — which is a real feature with a data-shape decision, not a safe drop-in. Left as a scoped roadmap item.
+
 ---
 
 ## 4. Prioritized backlog (not yet implemented)
@@ -147,7 +155,7 @@ Verified the same way (`build` clean, lint clean, **306/306** component tests pa
 
 1. **Unified AI-trust layer** — the shared `AICaveat` primitive now exists and is applied to the patient-chart summary and predictive insights (batch 7); **extend it** to the remaining AI surfaces and add a review-ack before AI text is persisted to a chart (Theme 1).
 2. **First-class offline mode across the shell** — persistent offline indicator, cache-age warnings, and an offline write-queue for incidents/notes with auto-sync on reconnect (Theme 4).
-3. **Patient-centric command palette + working sidebar Favorites** — ⌘K jumps straight to any scoped patient chart; fix the `favorited_patients` ID-vs-object mismatch so Favorites and favorite-scoped alerts actually work.
+3. **Working sidebar Favorites** — ⌘K patient jump is **done** (batch 10); the remaining piece is unifying the two disconnected favorites systems (`User.favorited_patients` objects vs `SearchablePatientSelect` localStorage IDs) behind a persisted star action so the sidebar Favorites and favorite-scoped alerts populate.
 4. **Safe, auditable patient-merge workflow** — history-aware survivor selection, demographic back-fill, undo, and persistent "not duplicates" dismissals.
 5. **Real date-range reporting** across analytics tabs — payer/surveyor windows, bookmarkable URLs, proper empty-vs-error states, and honest "estimated" labeling on revenue figures.
 
